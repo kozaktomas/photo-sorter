@@ -1,0 +1,603 @@
+{
+  "access_token": "abc123def456ghi789jkl012mno345pqr678stu901vwx",
+  "config": {
+    "mode": "user",
+    "name": "PhotoPrism",
+    "about": "PhotoPrism®",
+    "edition": "plus",
+    "version": "251130-b3068414c-Linux-AMD64-Plus",
+    "copyright": "(c) 2018-2025 PhotoPrism UG. All rights reserved.",
+    "flags": "sponsor settings",
+    "baseUri": "",
+    "staticUri": "/static",
+    "cssUri": "/static/build/app.5652a66f230d5a89b079.css",
+    "jsUri": "/static/build/app.5fa220f63fe47ed0bfab.js",
+    "manifestUri": "/manifest.json?97395d1f",
+    "apiUri": "/api/v1",
+    "contentUri": "/api/v1",
+    "videoUri": "/api/v1",
+    "siteUrl": "https://photos.example.com/",
+    "siteDomain": "photos.example.com",
+    "siteAuthor": "John Doe",
+    "siteTitle": "My Photos",
+    "siteCaption": "My Photos",
+    "siteDescription": "",
+    "sitePreview": "https://i.photoprism.app/prism?cover=64\u0026style=centered%20dark\u0026caption=none\u0026title=My+Photos",
+    "legalInfo": "",
+    "legalUrl": "",
+    "appName": "My Photos",
+    "appMode": "standalone",
+    "appIcon": "logo",
+    "appColor": "#19191a",
+    "defaultLocale": "en",
+    "defaultTimezone": "Local",
+    "wallpaperUri": "/static/img/wallpaper/welcome.jpg",
+    "restart": false,
+    "debug": false,
+    "trace": false,
+    "test": false,
+    "demo": false,
+    "portal": false,
+    "sponsor": true,
+    "readonly": false,
+    "uploadNSFW": true,
+    "uploadAllow": "",
+    "public": false,
+    "authMode": "password",
+    "usersPath": "users",
+    "loginUri": "/library/login",
+    "loginInfo": "",
+    "registerUri": "",
+    "passwordLength": 8,
+    "passwordResetUri": "",
+    "develop": false,
+    "experimental": false,
+    "albumCategories": null,
+    "albums": [],
+    "cameras": [
+      {
+        "ID": 4,
+        "Slug": "apple-iphone-11",
+        "Name": "Apple iPhone 11",
+        "Make": "Apple",
+        "Model": "iPhone 11",
+        "Type": "phone"
+      },
+      {
+        "ID": 2,
+        "Slug": "apple-iphone-14-pro",
+        "Name": "Apple iPhone 14 Pro",
+        "Make": "Apple",
+        "Model": "iPhone 14 Pro",
+        "Type": "phone"
+      },
+      {
+        "ID": 3,
+        "Slug": "samsung-galaxy-s23",
+        "Name": "Samsung Galaxy S23",
+        "Make": "Samsung",
+        "Model": "Galaxy S23",
+        "Type": "phone"
+      },
+      {
+        "ID": 1,
+        "Slug": "zz",
+        "Name": "Unknown",
+        "Make": "",
+        "Model": "Unknown"
+      }
+    ],
+    "lenses": [
+      {
+        "ID": 4,
+        "Slug": "apple-iphone-11-4-25mm-f-1-8",
+        "Name": "Apple iPhone 11 4.25mm f/1.8",
+        "Make": "Apple",
+        "Model": "iPhone 11 4.25mm f/1.8",
+        "Type": ""
+      },
+      {
+        "ID": 3,
+        "Slug": "apple-iphone-14-pro-2-22mm-f-2-2",
+        "Name": "Apple iPhone 14 Pro 2.22mm f/2.2",
+        "Make": "Apple",
+        "Model": "iPhone 14 Pro 2.22mm f/2.2",
+        "Type": ""
+      },
+      {
+        "ID": 2,
+        "Slug": "apple-iphone-14-pro-6-86mm-f-1-78",
+        "Name": "Apple iPhone 14 Pro 6.86mm f/1.78",
+        "Make": "Apple",
+        "Model": "iPhone 14 Pro 6.86mm f/1.78",
+        "Type": ""
+      },
+      {
+        "ID": 1,
+        "Slug": "zz",
+        "Name": "Unknown",
+        "Make": "",
+        "Model": "Unknown",
+        "Type": ""
+      }
+    ],
+    "countries": [
+      {
+        "ID": "cz",
+        "Slug": "czech-republic",
+        "Name": "Czech Republic"
+      },
+      {
+        "ID": "zz",
+        "Slug": "zz",
+        "Name": "Unknown"
+      }
+    ],
+    "people": [],
+    "thumbs": [
+      {
+        "size": "fit_720",
+        "usage": "SD TV, Mobile",
+        "w": 720,
+        "h": 720
+      },
+      {
+        "size": "fit_1280",
+        "usage": "HD TV, SXGA",
+        "w": 1280,
+        "h": 1024
+      },
+      {
+        "size": "fit_1920",
+        "usage": "Full HD",
+        "w": 1920,
+        "h": 1200
+      },
+      {
+        "size": "fit_2560",
+        "usage": "Quad HD",
+        "w": 2560,
+        "h": 1600
+      },
+      {
+        "size": "fit_4096",
+        "usage": "DCI 4K, Retina 4K",
+        "w": 4096,
+        "h": 4096
+      },
+      {
+        "size": "fit_5120",
+        "usage": "Retina 5K",
+        "w": 5120,
+        "h": 5120
+      },
+      {
+        "size": "fit_7680",
+        "usage": "8K Ultra HD 2",
+        "w": 7680,
+        "h": 4320
+      }
+    ],
+    "tier": 4,
+    "membership": "essentials",
+    "customer": "",
+    "mapKey": "mapkey123456789",
+    "downloadToken": "downloadtoken123",
+    "previewToken": "previewtoken123",
+    "disable": {
+      "restart": false,
+      "webdav": true,
+      "settings": false,
+      "places": false,
+      "backups": false,
+      "tensorflow": false,
+      "faces": false,
+      "classification": false,
+      "ffmpeg": false,
+      "exiftool": false,
+      "vips": false,
+      "sips": true,
+      "darktable": false,
+      "rawtherapee": false,
+      "imagemagick": false,
+      "heifconvert": false,
+      "vectors": true,
+      "jpegxl": false,
+      "raw": false
+    },
+    "count": {
+      "all": 203,
+      "photos": 197,
+      "media": 6,
+      "animated": 0,
+      "live": 0,
+      "audio": 0,
+      "videos": 6,
+      "documents": 0,
+      "cameras": 3,
+      "lenses": 3,
+      "countries": 1,
+      "hidden": 0,
+      "archived": 2,
+      "favorites": 0,
+      "review": 0,
+      "stories": 0,
+      "private": 0,
+      "albums": 6,
+      "private_albums": 0,
+      "moments": 2,
+      "private_moments": 0,
+      "months": 3,
+      "private_months": 0,
+      "states": 1,
+      "private_states": 0,
+      "folders": 4,
+      "private_folders": 0,
+      "files": 247,
+      "people": 8,
+      "places": 4,
+      "labels": 15,
+      "labelMaxPhotos": 116
+    },
+    "pos": {
+      "uid": "pt4ku3oe0i8w6osl",
+      "cid": "s2:47128b947ebc",
+      "utc": "2025-06-30T18:47:31Z",
+      "lat": 50.0,
+      "lng": 14.0
+    },
+    "years": [
+      2025,
+      2024
+    ],
+    "colors": [
+      {
+        "Example": "#AB47BC",
+        "Name": "Purple",
+        "Slug": "purple"
+      },
+      {
+        "Example": "#FF00FF",
+        "Name": "Magenta",
+        "Slug": "magenta"
+      },
+      {
+        "Example": "#EC407A",
+        "Name": "Pink",
+        "Slug": "pink"
+      },
+      {
+        "Example": "#EF5350",
+        "Name": "Red",
+        "Slug": "red"
+      },
+      {
+        "Example": "#FFA726",
+        "Name": "Orange",
+        "Slug": "orange"
+      },
+      {
+        "Example": "#D4AF37",
+        "Name": "Gold",
+        "Slug": "gold"
+      },
+      {
+        "Example": "#FDD835",
+        "Name": "Yellow",
+        "Slug": "yellow"
+      },
+      {
+        "Example": "#CDDC39",
+        "Name": "Lime",
+        "Slug": "lime"
+      },
+      {
+        "Example": "#66BB6A",
+        "Name": "Green",
+        "Slug": "green"
+      },
+      {
+        "Example": "#009688",
+        "Name": "Teal",
+        "Slug": "teal"
+      },
+      {
+        "Example": "#00BCD4",
+        "Name": "Cyan",
+        "Slug": "cyan"
+      },
+      {
+        "Example": "#2196F3",
+        "Name": "Blue",
+        "Slug": "blue"
+      },
+      {
+        "Example": "#A1887F",
+        "Name": "Brown",
+        "Slug": "brown"
+      },
+      {
+        "Example": "#F5F5F5",
+        "Name": "White",
+        "Slug": "white"
+      },
+      {
+        "Example": "#9E9E9E",
+        "Name": "Grey",
+        "Slug": "grey"
+      },
+      {
+        "Example": "#212121",
+        "Name": "Black",
+        "Slug": "black"
+      }
+    ],
+    "categories": [
+      {
+        "UID": "lt4ktfel5dftnu94",
+        "Slug": "event",
+        "Name": "Event"
+      },
+      {
+        "UID": "lt4kteqx7tttm8bm",
+        "Slug": "info",
+        "Name": "Info"
+      },
+      {
+        "UID": "lt4kteugg67cinxv",
+        "Slug": "people",
+        "Name": "People"
+      },
+      {
+        "UID": "lt4ktgjmgp3wt8ia",
+        "Slug": "vehicle",
+        "Name": "Vehicle"
+      }
+    ],
+    "clip": 160,
+    "server": {
+      "cores": 8,
+      "routines": 38,
+      "memory": {
+        "total": 16372301824,
+        "free": 4297637888,
+        "used": 55613056,
+        "reserved": 736524712,
+        "info": "Used 56 MB / Reserved 736 MB"
+      }
+    },
+    "usage": {
+      "filesUsed": 0,
+      "filesUsedPct": 0,
+      "filesFree": 0,
+      "filesFreePct": 0,
+      "filesTotal": 0,
+      "usersUsedPct": 0,
+      "usersFreePct": 0
+    },
+    "settings": {
+      "ui": {
+        "scrollbar": true,
+        "zoom": false,
+        "theme": "default",
+        "language": "en",
+        "timeZone": "Europe/Prague",
+        "startPage": "default"
+      },
+      "search": {
+        "batchSize": -1,
+        "listView": true,
+        "showTitles": true,
+        "showCaptions": true
+      },
+      "maps": {
+        "animate": 0,
+        "style": "streets"
+      },
+      "features": {
+        "account": true,
+        "albums": true,
+        "archive": true,
+        "delete": true,
+        "download": true,
+        "edit": true,
+        "batchEdit": true,
+        "estimates": true,
+        "favorites": true,
+        "files": true,
+        "folders": true,
+        "import": true,
+        "labels": true,
+        "library": true,
+        "logs": true,
+        "calendar": true,
+        "moments": true,
+        "people": true,
+        "places": true,
+        "private": true,
+        "ratings": true,
+        "reactions": true,
+        "review": true,
+        "search": true,
+        "services": true,
+        "settings": true,
+        "share": true,
+        "upload": true,
+        "videos": true
+      },
+      "import": {
+        "path": "/",
+        "move": false,
+        "dest": ""
+      },
+      "index": {
+        "path": "/",
+        "convert": true,
+        "rescan": true,
+        "skipArchived": false
+      },
+      "stack": {
+        "uuid": true,
+        "meta": true,
+        "name": false
+      },
+      "share": {
+        "title": ""
+      },
+      "download": {
+        "name": "file",
+        "disabled": false,
+        "originals": true,
+        "mediaRaw": true,
+        "mediaSidecar": false
+      },
+      "albums": {
+        "download": {
+          "name": "share",
+          "disabled": false,
+          "originals": true,
+          "mediaRaw": false,
+          "mediaSidecar": false
+        },
+        "order": {
+          "album": "oldest",
+          "folder": "added",
+          "moment": "oldest",
+          "state": "newest",
+          "month": "oldest"
+        }
+      },
+      "templates": {
+        "default": "index.gohtml"
+      }
+    },
+    "acl": {
+      "albums": {
+        "access_all": true,
+        "access_library": true,
+        "access_own": true,
+        "access_shared": true,
+        "create": true,
+        "delete": true,
+        "download": true,
+        "full_access": true,
+        "manage": true,
+        "publish": true,
+        "rate": true,
+        "react": true,
+        "share": true,
+        "subscribe": true,
+        "update": true,
+        "use": true,
+        "view": true
+      },
+      "photos": {
+        "access_all": true,
+        "access_library": true,
+        "access_own": true,
+        "access_shared": true,
+        "create": true,
+        "delete": true,
+        "download": true,
+        "full_access": true,
+        "manage": true,
+        "publish": true,
+        "rate": true,
+        "react": true,
+        "share": true,
+        "subscribe": true,
+        "update": true,
+        "use": true,
+        "view": true
+      }
+    },
+    "ext": {
+      "oidc": {
+        "enabled": false,
+        "icon": "/static/img/oidc.svg",
+        "loginUri": "/api/v1/oidc/login",
+        "provider": "OpenID",
+        "redirect": false,
+        "register": false
+      },
+      "plus": {}
+    }
+  },
+  "data": {
+    "tokens": null,
+    "shares": null
+  },
+  "expires_in": 1209600,
+  "id": "session123456789abcdef",
+  "provider": "local",
+  "scope": "*",
+  "session_id": "sessionid123456789abcdef0123456789abcdef0123456789abcdef",
+  "status": "success",
+  "token_type": "Bearer",
+  "user": {
+    "ID": 2,
+    "UID": "ut4kse79m0i3a2pt",
+    "AuthProvider": "default",
+    "AuthMethod": "",
+    "AuthID": "",
+    "Name": "testuser",
+    "DisplayName": "Test User",
+    "Email": "test@example.com",
+    "Role": "admin",
+    "Scope": "*",
+    "Attr": "",
+    "SuperAdmin": false,
+    "CanLogin": true,
+    "LoginAt": "2026-01-07T19:32:45Z",
+    "WebDAV": false,
+    "BasePath": "",
+    "UploadPath": "",
+    "CanInvite": false,
+    "Details": {
+      "BirthYear": 1990,
+      "BirthMonth": 1,
+      "BirthDay": 1,
+      "NameTitle": "",
+      "GivenName": "Test",
+      "MiddleName": "",
+      "FamilyName": "User",
+      "NameSuffix": "",
+      "NickName": "",
+      "NameSrc": "manual",
+      "Gender": "",
+      "About": "",
+      "Bio": "",
+      "Location": "Example City",
+      "Country": "cz",
+      "Phone": "",
+      "SiteURL": "",
+      "ProfileURL": "",
+      "OrgTitle": "",
+      "OrgName": "",
+      "OrgEmail": "",
+      "OrgPhone": "",
+      "OrgURL": "",
+      "CreatedAt": "2025-10-23T08:18:07Z",
+      "UpdatedAt": "2025-10-23T12:00:45Z"
+    },
+    "Settings": {
+      "UITheme": "default",
+      "UIStartPage": "default",
+      "UILanguage": "en",
+      "UITimeZone": "Europe/Prague",
+      "MapsStyle": "streets",
+      "MapsAnimate": -1,
+      "IndexPath": "/",
+      "IndexRescan": 1,
+      "DownloadOriginals": 1,
+      "DownloadMediaRaw": 1,
+      "DownloadMediaSidecar": -1,
+      "CreatedAt": "2025-10-23T08:18:07Z",
+      "UpdatedAt": "2025-10-23T12:00:45Z"
+    },
+    "Thumb": "9b965f43c6c98a912d53a746b875a71594c2a452",
+    "ThumbSrc": "manual",
+    "CreatedAt": "2025-10-23T08:18:07Z",
+    "UpdatedAt": "2025-10-23T12:00:45Z"
+  }
+}

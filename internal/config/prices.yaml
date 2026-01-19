@@ -1,0 +1,35 @@
+# Model pricing configuration
+# Prices are per 1 million tokens in USD
+
+models:
+  gpt-4.1-mini:
+    standard:
+      input: 0.40
+      output: 1.60
+    batch:
+      input: 0.20
+      output: 0.80
+
+  gemini-2.5-flash:
+    standard:
+      input: 0.30
+      output: 2.50
+    batch:
+      input: 0.15
+      output: 1.25
+
+  llama3.2-vision:
+    standard:
+      input: 0.00
+      output: 0.00
+    batch:
+      input: 0.00
+      output: 0.00
+
+  llava:  # llama.cpp (local, free)
+    standard:
+      input: 0.00
+      output: 0.00
+    batch:
+      input: 0.00
+      output: 0.00
