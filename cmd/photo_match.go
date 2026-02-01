@@ -11,17 +11,17 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"text/tabwriter"
-	"unicode"
 
 	"github.com/spf13/cobra"
-	"github.com/tomas/photo-sorter/internal/config"
-	"github.com/tomas/photo-sorter/internal/database"
-	"github.com/tomas/photo-sorter/internal/photoprism"
+	"github.com/kozaktomas/photo-sorter/internal/config"
+	"github.com/kozaktomas/photo-sorter/internal/constants"
+	"github.com/kozaktomas/photo-sorter/internal/database"
+	"github.com/kozaktomas/photo-sorter/internal/database/postgres"
+	"github.com/kozaktomas/photo-sorter/internal/facematch"
+	"github.com/kozaktomas/photo-sorter/internal/photoprism"
 	"golang.org/x/image/draw"
-	"golang.org/x/text/runes"
-	"golang.org/x/text/transform"
-	"golang.org/x/text/unicode/norm"
 )
 
 var photoMatchCmd = &cobra.Command{
@@ -32,30 +32,30 @@ var photoMatchCmd = &cobra.Command{
 This command:
 1. Fetches photos tagged with the person from PhotoPrism (q=person:<name>)
 2. Retrieves face embeddings for those photos from PostgreSQL
-3. Searches for similar faces across all photos in the database
+3. Searches for similar faces across all stored embeddings
 4. Outputs photos where the same person appears
 
 Use --apply to create markers and assign the person in PhotoPrism.
 Use --dry-run with --apply to preview changes without applying them.
 
 Examples:
-  # Find all photos containing tomas-kozak
-  photo-sorter photo match tomas-kozak
+  # Find all photos containing john-doe
+  photo-sorter photo match john-doe
 
   # Adjust similarity threshold (lower = stricter matching)
-  photo-sorter photo match tomas-kozak --threshold 0.4
+  photo-sorter photo match john-doe --threshold 0.4
 
   # Limit results
-  photo-sorter photo match tomas-kozak --limit 100
+  photo-sorter photo match john-doe --limit 100
 
   # Output as JSON
-  photo-sorter photo match tomas-kozak --json
+  photo-sorter photo match john-doe --json
 
   # Preview what would be applied (dry-run)
-  photo-sorter photo match tomas-kozak --apply --dry-run
+  photo-sorter photo match john-doe --apply --dry-run
 
   # Actually apply changes to PhotoPrism
-  photo-sorter photo match tomas-kozak --apply`,
+  photo-sorter photo match john-doe --apply`,
 	Args: cobra.ExactArgs(1),
 	RunE: runPhotoMatch,
 }
@@ -71,29 +71,20 @@ func init() {
 	photoMatchCmd.Flags().Bool("save-matches", false, "Save matched photos with face boxes to test/ folder")
 }
 
-// MatchAction represents what action is needed for a matched face
-type MatchAction string
-
-const (
-	ActionCreateMarker MatchAction = "create_marker" // No marker exists, need to create one
-	ActionAssignPerson MatchAction = "assign_person" // Marker exists but no person assigned
-	ActionAlreadyDone  MatchAction = "already_done"  // Marker exists with person already assigned
-)
-
 // MatchResult represents a photo that matches the person search
 type MatchResult struct {
-	PhotoUID   string      `json:"photo_uid"`
-	Distance   float64     `json:"distance"`
-	FaceIndex  int         `json:"face_index"`
-	BBox       []float64   `json:"bbox"`                  // Our detected bbox [x1, y1, x2, y2] in pixels
-	BBoxRel    []float64   `json:"bbox_rel,omitempty"`    // Relative bbox [x, y, w, h] (0-1)
-	FileUID    string      `json:"file_uid,omitempty"`    // File UID for creating markers
-	Action     MatchAction `json:"action"`                // What action is needed
-	MarkerUID  string      `json:"marker_uid,omitempty"`  // Existing marker UID if found
-	MarkerName string      `json:"marker_name,omitempty"` // Existing marker name if assigned
-	IoU        float64     `json:"iou,omitempty"`         // IoU with matched marker
-	Applied    bool        `json:"applied,omitempty"`     // Whether the change was applied
-	ApplyError string      `json:"apply_error,omitempty"` // Error message if apply failed
+	PhotoUID   string               `json:"photo_uid"`
+	Distance   float64              `json:"distance"`
+	FaceIndex  int                  `json:"face_index"`
+	BBox       []float64            `json:"bbox"`                  // Our detected bbox [x1, y1, x2, y2] in pixels
+	BBoxRel    []float64            `json:"bbox_rel,omitempty"`    // Relative bbox [x, y, w, h] (0-1)
+	FileUID    string               `json:"file_uid,omitempty"`    // File UID for creating markers
+	Action     facematch.MatchAction `json:"action"`                // What action is needed
+	MarkerUID  string               `json:"marker_uid,omitempty"`  // Existing marker UID if found
+	MarkerName string               `json:"marker_name,omitempty"` // Existing marker name if assigned
+	IoU        float64              `json:"iou,omitempty"`         // IoU with matched marker
+	Applied    bool                 `json:"applied,omitempty"`     // Whether the change was applied
+	ApplyError string               `json:"apply_error,omitempty"` // Error message if apply failed
 }
 
 // MatchOutput represents the JSON output structure
@@ -112,74 +103,6 @@ type MatchSummary struct {
 	AlreadyDone  int `json:"already_done"`
 }
 
-// computeIoU calculates Intersection over Union between two bounding boxes
-// bbox1 and bbox2 are [x1, y1, x2, y2] in the same coordinate system
-func computeIoU(bbox1, bbox2 []float64) float64 {
-	if len(bbox1) != 4 || len(bbox2) != 4 {
-		return 0
-	}
-
-	// Calculate intersection
-	x1 := max(bbox1[0], bbox2[0])
-	y1 := max(bbox1[1], bbox2[1])
-	x2 := min(bbox1[2], bbox2[2])
-	y2 := min(bbox1[3], bbox2[3])
-
-	if x2 <= x1 || y2 <= y1 {
-		return 0 // No intersection
-	}
-
-	intersection := (x2 - x1) * (y2 - y1)
-
-	// Calculate union
-	area1 := (bbox1[2] - bbox1[0]) * (bbox1[3] - bbox1[1])
-	area2 := (bbox2[2] - bbox2[0]) * (bbox2[3] - bbox2[1])
-	union := area1 + area2 - intersection
-
-	if union <= 0 {
-		return 0
-	}
-
-	return intersection / union
-}
-
-// convertPixelBBoxToRelative converts pixel bbox to relative (0-1) coordinates
-func convertPixelBBoxToRelative(bbox []float64, width, height int) []float64 {
-	if len(bbox) != 4 || width <= 0 || height <= 0 {
-		return bbox
-	}
-	return []float64{
-		bbox[0] / float64(width),
-		bbox[1] / float64(height),
-		bbox[2] / float64(width),
-		bbox[3] / float64(height),
-	}
-}
-
-// markerToRelativeBBox converts PhotoPrism marker (X, Y, W, H) to [x1, y1, x2, y2]
-func markerToRelativeBBox(m photoprism.Marker) []float64 {
-	return []float64{
-		m.X,
-		m.Y,
-		m.X + m.W,
-		m.Y + m.H,
-	}
-}
-
-// removeDiacritics removes diacritical marks from a string (e.g., "Tomáš" -> "Tomas")
-func removeDiacritics(s string) string {
-	t := transform.Chain(norm.NFD, runes.Remove(runes.In(unicode.Mn)), norm.NFC)
-	result, _, _ := transform.String(t, s)
-	return result
-}
-
-// normalizePersonName normalizes a name for comparison (lowercase, no diacritics, spaces for dashes)
-func normalizePersonName(name string) string {
-	name = removeDiacritics(name)
-	name = strings.ToLower(name)
-	name = strings.ReplaceAll(name, "-", " ")
-	return name
-}
 
 // resizeImageForMatch resizes an image to fit within maxSize while maintaining aspect ratio
 func resizeImageForMatch(img image.Image, maxSize int) image.Image {
@@ -260,6 +183,103 @@ func drawBoundingBox(img image.Image, bbox []float64, lineWidth int, padding int
 	return dst
 }
 
+// findPersonMarker finds a marker belonging to the given person in a list of markers.
+// It matches by normalized name (exact match or all parts contained).
+// Returns nil if no matching marker is found.
+func findPersonMarker(markers []photoprism.Marker, personName string) *photoprism.Marker {
+	personNameNorm := facematch.NormalizePersonName(personName)
+
+	for i := range markers {
+		if markers[i].Type != "face" {
+			continue
+		}
+		markerNameNorm := facematch.NormalizePersonName(markers[i].Name)
+
+		// Exact match after normalization
+		if markerNameNorm == personNameNorm {
+			return &markers[i]
+		}
+		// Contains match - all parts of person name must be in marker name
+		parts := strings.Split(personNameNorm, " ")
+		allMatch := true
+		for _, part := range parts {
+			if part == "" {
+				continue
+			}
+			if !strings.Contains(markerNameNorm, part) {
+				allMatch = false
+				break
+			}
+		}
+		if allMatch && len(parts) > 0 {
+			return &markers[i]
+		}
+	}
+	return nil
+}
+
+// findBestFaceForMarker finds the database face that best matches a marker by IoU.
+// Returns the face and IoU score, or nil/-1 if no match found.
+func findBestFaceForMarker(faces []database.StoredFace, marker *photoprism.Marker, width, height int) (*database.StoredFace, float64) {
+	if marker == nil || width == 0 || height == 0 {
+		return nil, -1
+	}
+
+	markerBBox := facematch.MarkerToCornerBBox(marker.X, marker.Y, marker.W, marker.H)
+	var bestFace *database.StoredFace
+	bestIoU := -1.0
+
+	for i := range faces {
+		if len(faces[i].BBox) != 4 {
+			continue
+		}
+		faceBBoxRel := facematch.ConvertPixelBBoxToRelative(faces[i].BBox, width, height)
+		iou := facematch.ComputeIoU(markerBBox, faceBBoxRel)
+		if iou > bestIoU {
+			bestIoU = iou
+			bestFace = &faces[i]
+		}
+	}
+
+	return bestFace, bestIoU
+}
+
+// findBestMarkerForBBox finds the marker that best matches a bounding box by IoU.
+// Returns the marker and IoU score, or nil/0 if no match exceeds the threshold.
+func findBestMarkerForBBox(markers []photoprism.Marker, bboxRel []float64) (*photoprism.Marker, float64) {
+	if len(bboxRel) != 4 {
+		return nil, 0
+	}
+
+	// Convert [x,y,w,h] format to corner format [x1,y1,x2,y2] for IoU
+	bboxCorners := []float64{
+		bboxRel[0],
+		bboxRel[1],
+		bboxRel[0] + bboxRel[2],
+		bboxRel[1] + bboxRel[3],
+	}
+
+	var bestMarker *photoprism.Marker
+	bestIoU := 0.0
+
+	for i := range markers {
+		if markers[i].Type != "face" {
+			continue
+		}
+		markerBBox := facematch.MarkerToCornerBBox(markers[i].X, markers[i].Y, markers[i].W, markers[i].H)
+		iou := facematch.ComputeIoU(bboxCorners, markerBBox)
+		if iou > bestIoU {
+			bestIoU = iou
+			bestMarker = &markers[i]
+		}
+	}
+
+	if bestMarker != nil && bestIoU >= constants.IoUThreshold {
+		return bestMarker, bestIoU
+	}
+	return nil, 0
+}
+
 // saveMatchedPhoto downloads a photo, draws bbox, resizes, and saves to test/ folder
 func saveMatchedPhoto(pp *photoprism.PhotoPrism, photoUID string, bbox []float64, outputDir string) error {
 	// Download photo
@@ -302,15 +322,33 @@ func saveMatchedPhoto(pp *photoprism.PhotoPrism, photoUID string, bbox []float64
 
 func runPhotoMatch(cmd *cobra.Command, args []string) error {
 	personName := args[0]
-	threshold, _ := cmd.Flags().GetFloat64("threshold")
-	limit, _ := cmd.Flags().GetInt("limit")
-	jsonOutput, _ := cmd.Flags().GetBool("json")
-	apply, _ := cmd.Flags().GetBool("apply")
-	dryRun, _ := cmd.Flags().GetBool("dry-run")
-	saveMatches, _ := cmd.Flags().GetBool("save-matches")
+	threshold := mustGetFloat64(cmd, "threshold")
+	limit := mustGetInt(cmd, "limit")
+	jsonOutput := mustGetBool(cmd, "json")
+	apply := mustGetBool(cmd, "apply")
+	dryRun := mustGetBool(cmd, "dry-run")
+	saveMatches := mustGetBool(cmd, "save-matches")
 
 	ctx := context.Background()
 	cfg := config.Load()
+
+	// Initialize PostgreSQL database
+	if cfg.Database.URL == "" {
+		return fmt.Errorf("DATABASE_URL environment variable is required")
+	}
+	if err := postgres.Initialize(&cfg.Database); err != nil {
+		return fmt.Errorf("failed to initialize PostgreSQL: %w", err)
+	}
+
+	// Create singleton repositories and register with database package
+	pool := postgres.GetGlobalPool()
+	faceRepo := postgres.NewFaceRepository(pool)
+	embeddingRepo := postgres.NewEmbeddingRepository(pool)
+	database.RegisterPostgresBackend(
+		func() database.EmbeddingReader { return embeddingRepo },
+		func() database.FaceReader { return faceRepo },
+		func() database.FaceWriter { return faceRepo },
+	)
 
 	// Connect to PhotoPrism
 	if !jsonOutput {
@@ -327,22 +365,14 @@ func runPhotoMatch(cmd *cobra.Command, args []string) error {
 	}
 	defer pp.Logout()
 
-	// Connect to PostgreSQL
-	if !jsonOutput {
-		fmt.Println("Connecting to PostgreSQL...")
-	}
-	pool, err := database.Connect(ctx, &cfg.Postgres)
+	// Get face reader from PostgreSQL
+	faceReader, err := database.GetFaceReader(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to connect to PostgreSQL: %w", err)
+		return fmt.Errorf("failed to get face reader: %w", err)
 	}
-	defer pool.Close()
-
-	// Run migrations
-	if err := database.Migrate(ctx, pool, cfg.Embedding.Dim); err != nil {
-		return fmt.Errorf("failed to run migrations: %w", err)
+	if !jsonOutput {
+		fmt.Println("Using PostgreSQL data source")
 	}
-
-	faceRepo := database.NewFaceRepository(pool)
 
 	// Fetch photos for the person from PhotoPrism
 	query := fmt.Sprintf("person:%s", personName)
@@ -351,7 +381,7 @@ func runPhotoMatch(cmd *cobra.Command, args []string) error {
 	}
 
 	var sourcePhotos []photoprism.Photo
-	pageSize := 1000
+	pageSize := constants.DefaultPageSize
 	offset := 0
 
 	for {
@@ -385,7 +415,7 @@ func runPhotoMatch(cmd *cobra.Command, args []string) error {
 		fmt.Printf("Found %d source photos for %s\n", len(sourcePhotos), personName)
 	}
 
-	// Get face embeddings for source photos from PostgreSQL
+	// Get face embeddings for source photos from datafile
 	// Only use the face that matches the person's marker (by bounding box IoU)
 	type sourceData struct {
 		PhotoUID  string
@@ -393,11 +423,11 @@ func runPhotoMatch(cmd *cobra.Command, args []string) error {
 		BBox      []float64 // pixel coordinates for saving
 	}
 	var sourceFaces []sourceData
-	var actualPersonName string // The real display name from PhotoPrism (e.g., "Tomáš Kozák")
+	var actualPersonName string // The real display name from PhotoPrism (e.g., "Jan Novák")
 
 	for _, photo := range sourcePhotos {
 		// Get faces from our database
-		faces, err := faceRepo.GetFaces(ctx, photo.UID)
+		faces, err := faceReader.GetFaces(ctx, photo.UID)
 		if err != nil {
 			if !jsonOutput {
 				fmt.Printf("Warning: could not get faces for photo %s: %v\n", photo.UID, err)
@@ -419,38 +449,7 @@ func runPhotoMatch(cmd *cobra.Command, args []string) error {
 		}
 
 		// Find the marker that belongs to our person
-		// Normalize names for comparison (remove diacritics, lowercase, dashes to spaces)
-		var personMarker *photoprism.Marker
-		personNameNorm := normalizePersonName(personName)
-
-		for i := range markers {
-			if markers[i].Type != "face" {
-				continue
-			}
-			markerNameNorm := normalizePersonName(markers[i].Name)
-
-			// Exact match after normalization
-			if markerNameNorm == personNameNorm {
-				personMarker = &markers[i]
-				break
-			}
-			// Contains match - all parts of person name must be in marker name
-			parts := strings.Split(personNameNorm, " ")
-			allMatch := true
-			for _, part := range parts {
-				if part == "" {
-					continue
-				}
-				if !strings.Contains(markerNameNorm, part) {
-					allMatch = false
-					break
-				}
-			}
-			if allMatch && len(parts) > 0 {
-				personMarker = &markers[i]
-				break
-			}
-		}
+		personMarker := findPersonMarker(markers, personName)
 
 		if personMarker == nil {
 			if !jsonOutput {
@@ -505,21 +504,7 @@ func runPhotoMatch(cmd *cobra.Command, args []string) error {
 		}
 
 		// Find the face in our database that best matches this person's marker
-		markerBBox := markerToRelativeBBox(*personMarker)
-		var bestFace *database.StoredFace
-		bestIoU := -1.0
-
-		for i := range faces {
-			if len(faces[i].BBox) != 4 {
-				continue
-			}
-			faceBBoxRel := convertPixelBBoxToRelative(faces[i].BBox, width, height)
-			iou := computeIoU(markerBBox, faceBBoxRel)
-			if iou > bestIoU {
-				bestIoU = iou
-				bestFace = &faces[i]
-			}
-		}
+		bestFace, _ := findBestFaceForMarker(faces, personMarker, width, height)
 
 		if bestFace != nil {
 			sourceFaces = append(sourceFaces, sourceData{
@@ -567,7 +552,7 @@ func runPhotoMatch(cmd *cobra.Command, args []string) error {
 			threshold, minMatchCount, len(sourceEmbeddings))
 	}
 
-	// Search for similar faces using each source embedding
+	// Search for similar faces using each source embedding (parallelized)
 	// Track how many source embeddings match each candidate
 	type matchCandidate struct {
 		PhotoUID   string
@@ -576,24 +561,54 @@ func runPhotoMatch(cmd *cobra.Command, args []string) error {
 		BBox       []float64
 		MatchCount int // Number of source embeddings that matched
 	}
-	matchMap := make(map[string]*matchCandidate)
+
 	sourcePhotoSet := make(map[string]bool)
 	for _, uid := range sourcePhotoUIDs {
 		sourcePhotoSet[uid] = true
 	}
 
-	searchLimit := 1000 // Search limit per embedding
+	searchLimit := constants.DefaultSearchLimit // Search limit per embedding
 	if limit > 0 && limit < searchLimit {
 		searchLimit = limit * 10 // Get more results to allow for dedup
 	}
 
+	// Run similarity searches in parallel
+	type searchResult struct {
+		faces     []database.StoredFace
+		distances []float64
+		err       error
+	}
+	resultsChan := make(chan searchResult, len(sourceEmbeddings))
+
+	var wg sync.WaitGroup
 	for _, embedding := range sourceEmbeddings {
-		faces, distances, err := faceRepo.FindSimilarWithDistance(ctx, embedding, searchLimit, threshold)
-		if err != nil {
-			return fmt.Errorf("failed to search for similar faces: %w", err)
+		if len(embedding) == 0 {
+			continue
+		}
+		wg.Add(1)
+		go func(emb []float32) {
+			defer wg.Done()
+			faces, distances, err := faceReader.FindSimilarWithDistance(ctx, emb, searchLimit, threshold)
+			resultsChan <- searchResult{faces: faces, distances: distances, err: err}
+		}(embedding)
+	}
+
+	// Close channel when all goroutines complete
+	go func() {
+		wg.Wait()
+		close(resultsChan)
+	}()
+
+	// Collect results
+	matchMap := make(map[string]*matchCandidate)
+	var searchErr error
+	for result := range resultsChan {
+		if result.err != nil {
+			searchErr = result.err
+			continue
 		}
 
-		for i, face := range faces {
+		for i, face := range result.faces {
 			// Skip source photos
 			if sourcePhotoSet[face.PhotoUID] {
 				continue
@@ -602,21 +617,26 @@ func runPhotoMatch(cmd *cobra.Command, args []string) error {
 			// Track match count and keep best distance
 			if existing, ok := matchMap[face.PhotoUID]; ok {
 				existing.MatchCount++
-				if distances[i] < existing.Distance {
-					existing.Distance = distances[i]
+				if result.distances[i] < existing.Distance {
+					existing.Distance = result.distances[i]
 					existing.FaceIndex = face.FaceIndex
 					existing.BBox = face.BBox
 				}
 			} else {
 				matchMap[face.PhotoUID] = &matchCandidate{
 					PhotoUID:   face.PhotoUID,
-					Distance:   distances[i],
+					Distance:   result.distances[i],
 					FaceIndex:  face.FaceIndex,
 					BBox:       face.BBox,
 					MatchCount: 1,
 				}
 			}
 		}
+	}
+
+	// Report first error if all searches failed
+	if len(matchMap) == 0 && searchErr != nil {
+		return fmt.Errorf("failed to search for similar faces: %w", searchErr)
 	}
 
 	// Filter: only keep candidates that matched at least half of source embeddings
@@ -651,7 +671,6 @@ func runPhotoMatch(cmd *cobra.Command, args []string) error {
 	}
 
 	// For each candidate, fetch markers from PhotoPrism and determine action
-	const iouThreshold = 0.3 // IoU threshold to consider markers as matching
 	matches := make([]MatchResult, 0, len(candidates))
 	summary := MatchSummary{}
 
@@ -661,7 +680,7 @@ func runPhotoMatch(cmd *cobra.Command, args []string) error {
 			Distance:  c.Distance,
 			FaceIndex: c.FaceIndex,
 			BBox:      c.BBox,
-			Action:    ActionCreateMarker, // Default: no marker found
+			Action:    facematch.ActionCreateMarker, // Default: no marker found
 		}
 
 		// Get photo details for dimensions and file UID
@@ -693,15 +712,15 @@ func runPhotoMatch(cmd *cobra.Command, args []string) error {
 				faceWidth := c.BBox[2] - c.BBox[0]
 				faceWidthRel := (c.BBox[2] - c.BBox[0]) / float64(width)
 
-				// Skip faces smaller than 1.5% of photo width or 35px
-				if faceWidth < 35 || faceWidthRel < 0.015 {
+				// Skip faces smaller than minimum size
+				if faceWidth < database.MinFaceWidthPx || faceWidthRel < database.MinFaceWidthRel {
 					if !jsonOutput {
 						fmt.Printf("  Skipping %s: face too small (%.0fpx, %.1f%%)\n", c.PhotoUID, faceWidth, faceWidthRel*100)
 					}
 					continue
 				}
 
-				relBBox := convertPixelBBoxToRelative(c.BBox, width, height)
+				relBBox := facematch.ConvertPixelBBoxToRelative(c.BBox, width, height)
 				// Store as [x, y, w, h] format for marker creation
 				result.BBoxRel = []float64{
 					relBBox[0],
@@ -710,40 +729,25 @@ func runPhotoMatch(cmd *cobra.Command, args []string) error {
 					relBBox[3] - relBBox[1], // height
 				}
 
-				// Fetch markers from PhotoPrism
+				// Fetch markers from PhotoPrism and find best match
 				markers, err := pp.GetPhotoMarkers(c.PhotoUID)
 				if err != nil {
 					if !jsonOutput {
 						fmt.Fprintf(os.Stderr, "Warning: could not get markers for %s: %v\n", c.PhotoUID, err)
 					}
 				} else if len(markers) > 0 {
-					// Find best matching marker by IoU
-					var bestMarker *photoprism.Marker
-					bestIoU := 0.0
-
-					for i := range markers {
-						if markers[i].Type != "face" {
-							continue
-						}
-						markerBBox := markerToRelativeBBox(markers[i])
-						iou := computeIoU(relBBox, markerBBox)
-						if iou > bestIoU {
-							bestIoU = iou
-							bestMarker = &markers[i]
-						}
-					}
-
-					if bestMarker != nil && bestIoU >= iouThreshold {
+					bestMarker, bestIoU := findBestMarkerForBBox(markers, result.BBoxRel)
+					if bestMarker != nil {
 						result.MarkerUID = bestMarker.UID
 						result.MarkerName = bestMarker.Name
 						result.IoU = bestIoU
 
 						if bestMarker.Name != "" && bestMarker.SubjUID != "" {
 							// Marker exists and has a person assigned
-							result.Action = ActionAlreadyDone
+							result.Action = facematch.ActionAlreadyDone
 						} else {
 							// Marker exists but no person assigned
-							result.Action = ActionAssignPerson
+							result.Action = facematch.ActionAssignPerson
 						}
 					}
 				}
@@ -752,11 +756,11 @@ func runPhotoMatch(cmd *cobra.Command, args []string) error {
 
 		// Update summary
 		switch result.Action {
-		case ActionCreateMarker:
+		case facematch.ActionCreateMarker:
 			summary.CreateMarker++
-		case ActionAssignPerson:
+		case facematch.ActionAssignPerson:
 			summary.AssignPerson++
-		case ActionAlreadyDone:
+		case facematch.ActionAlreadyDone:
 			summary.AlreadyDone++
 		}
 
@@ -786,7 +790,7 @@ func runPhotoMatch(cmd *cobra.Command, args []string) error {
 			m := &matches[i]
 
 			// Skip already done
-			if m.Action == ActionAlreadyDone {
+			if m.Action == facematch.ActionAlreadyDone {
 				continue
 			}
 
@@ -794,9 +798,9 @@ func runPhotoMatch(cmd *cobra.Command, args []string) error {
 				// Just mark as would be applied
 				if !jsonOutput {
 					switch m.Action {
-					case ActionCreateMarker:
+					case facematch.ActionCreateMarker:
 						fmt.Printf("  [DRY-RUN] Would create marker for %s and assign %s\n", m.PhotoUID, nameToApply)
-					case ActionAssignPerson:
+					case facematch.ActionAssignPerson:
 						fmt.Printf("  [DRY-RUN] Would assign %s to marker %s on %s\n", nameToApply, m.MarkerUID, m.PhotoUID)
 					}
 				}
@@ -805,7 +809,7 @@ func runPhotoMatch(cmd *cobra.Command, args []string) error {
 
 			// Actually apply
 			switch m.Action {
-			case ActionCreateMarker:
+			case facematch.ActionCreateMarker:
 				if m.FileUID == "" || len(m.BBoxRel) != 4 {
 					m.ApplyError = "missing file UID or bounding box"
 					errorCount++
@@ -843,7 +847,7 @@ func runPhotoMatch(cmd *cobra.Command, args []string) error {
 					}
 				}
 
-			case ActionAssignPerson:
+			case facematch.ActionAssignPerson:
 				if m.MarkerUID == "" {
 					m.ApplyError = "missing marker UID"
 					errorCount++
@@ -877,76 +881,6 @@ func runPhotoMatch(cmd *cobra.Command, args []string) error {
 
 		if !jsonOutput && !dryRun {
 			fmt.Printf("\nApplied: %d, Errors: %d\n", appliedCount, errorCount)
-		}
-
-		// Add successfully applied photos to album "Osoba <name>"
-		if !dryRun && appliedCount > 0 {
-			// Collect applied photo UIDs
-			var appliedPhotoUIDs []string
-			for _, m := range matches {
-				if m.Applied {
-					appliedPhotoUIDs = append(appliedPhotoUIDs, m.PhotoUID)
-				}
-			}
-
-			if len(appliedPhotoUIDs) > 0 {
-				albumTitle := fmt.Sprintf("Osoba %s", nameToApply)
-
-				// Search for existing album
-				var albumUID string
-				albums, err := pp.GetAlbums(100, 0, "", albumTitle)
-				if err != nil {
-					if !jsonOutput {
-						fmt.Fprintf(os.Stderr, "Warning: could not search for album: %v\n", err)
-					}
-				} else {
-					// Find exact match
-					for _, a := range albums {
-						if a.Title == albumTitle {
-							albumUID = a.UID
-							break
-						}
-					}
-				}
-
-				// Create album if not found
-				if albumUID == "" {
-					if !jsonOutput {
-						fmt.Printf("Creating album %q...\n", albumTitle)
-					}
-					album, err := pp.CreateAlbum(albumTitle)
-					if err != nil {
-						if !jsonOutput {
-							fmt.Fprintf(os.Stderr, "Error creating album: %v\n", err)
-						}
-					} else {
-						albumUID = album.UID
-						if !jsonOutput {
-							fmt.Printf("Created album %s\n", albumUID)
-						}
-					}
-				} else {
-					if !jsonOutput {
-						fmt.Printf("Using existing album %q (%s)\n", albumTitle, albumUID)
-					}
-				}
-
-				// Add photos to album
-				if albumUID != "" {
-					if !jsonOutput {
-						fmt.Printf("Adding %d photos to album...\n", len(appliedPhotoUIDs))
-					}
-					if err := pp.AddPhotosToAlbum(albumUID, appliedPhotoUIDs); err != nil {
-						if !jsonOutput {
-							fmt.Fprintf(os.Stderr, "Error adding photos to album: %v\n", err)
-						}
-					} else {
-						if !jsonOutput {
-							fmt.Printf("Added %d photos to album %q\n", len(appliedPhotoUIDs), albumTitle)
-						}
-					}
-				}
-			}
 		}
 	}
 
@@ -1001,10 +935,14 @@ func runPhotoMatch(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Found %d photos matching %s:\n\n", len(matches), personName)
 
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "PHOTO UID\tDISTANCE\tACTION\tMARKER UID\tMARKER NAME\tIoU")
-	fmt.Fprintln(w, "---------\t--------\t------\t----------\t-----------\t---")
+	fmt.Fprintln(w, "PHOTO\tDISTANCE\tACTION\tMARKER UID\tMARKER NAME\tIoU")
+	fmt.Fprintln(w, "-----\t--------\t------\t----------\t-----------\t---")
 
 	for _, m := range matches {
+		photoRef := m.PhotoUID
+		if url := cfg.PhotoPrism.PhotoURL(m.PhotoUID); url != "" {
+			photoRef = url
+		}
 		markerUID := "-"
 		if m.MarkerUID != "" {
 			markerUID = m.MarkerUID
@@ -1018,7 +956,7 @@ func runPhotoMatch(cmd *cobra.Command, args []string) error {
 			iouStr = fmt.Sprintf("%.2f", m.IoU)
 		}
 		fmt.Fprintf(w, "%s\t%.4f\t%s\t%s\t%s\t%s\n",
-			m.PhotoUID, m.Distance, m.Action, markerUID, markerName, iouStr)
+			photoRef, m.Distance, m.Action, markerUID, markerName, iouStr)
 	}
 
 	w.Flush()

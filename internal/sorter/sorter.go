@@ -8,13 +8,22 @@ import (
 	"time"
 
 	"github.com/schollz/progressbar/v3"
-	"github.com/tomas/photo-sorter/internal/ai"
-	"github.com/tomas/photo-sorter/internal/photoprism"
+	"github.com/kozaktomas/photo-sorter/internal/ai"
+	"github.com/kozaktomas/photo-sorter/internal/photoprism"
 )
 
 type Sorter struct {
 	photoprism *photoprism.PhotoPrism
 	aiProvider ai.Provider
+}
+
+// ProgressInfo contains progress information for callbacks
+type ProgressInfo struct {
+	Phase           string // "analyzing", "applying", "estimating_date"
+	Current         int
+	Total           int
+	PhotoUID        string
+	Message         string
 }
 
 type SortOptions struct {
@@ -24,6 +33,7 @@ type SortOptions struct {
 	BatchMode       bool // Use batch API for 50% cost savings
 	ForceDate       bool // Overwrite existing dates with AI estimates
 	Concurrency     int  // Number of parallel requests in standard mode
+	OnProgress      func(ProgressInfo) // Optional progress callback for web UI
 }
 
 type SortResult struct {
@@ -134,6 +144,25 @@ func (s *Sorter) sortImmediate(ctx context.Context, albumUID string, albumTitle 
 	resultsChan := make(chan photoResult, len(photos))
 	semaphore := make(chan struct{}, concurrency)
 	var wg sync.WaitGroup
+	var processedCount int
+	var progressMu sync.Mutex
+
+	// Helper to report progress
+	reportProgress := func(photoUID string) {
+		progressMu.Lock()
+		processedCount++
+		current := processedCount
+		progressMu.Unlock()
+		bar.Add(1)
+		if opts.OnProgress != nil {
+			opts.OnProgress(ProgressInfo{
+				Phase:    "analyzing",
+				Current:  current,
+				Total:    len(photos),
+				PhotoUID: photoUID,
+			})
+		}
+	}
 
 	// Process photos concurrently
 	for i, photo := range photos {
@@ -148,7 +177,7 @@ func (s *Sorter) sortImmediate(ctx context.Context, albumUID string, albumTitle 
 			// Check if context is cancelled
 			if ctx.Err() != nil {
 				resultsChan <- photoResult{index: idx, err: ctx.Err()}
-				bar.Add(1)
+				reportProgress(p.UID)
 				return
 			}
 
@@ -156,7 +185,7 @@ func (s *Sorter) sortImmediate(ctx context.Context, albumUID string, albumTitle 
 			imageData, _, err := s.photoprism.GetPhotoDownload(p.UID)
 			if err != nil {
 				resultsChan <- photoResult{index: idx, err: fmt.Errorf("failed to download photo %s: %w", p.UID, err)}
-				bar.Add(1)
+				reportProgress(p.UID)
 				return
 			}
 
@@ -165,7 +194,7 @@ func (s *Sorter) sortImmediate(ctx context.Context, albumUID string, albumTitle 
 			analysis, err := s.aiProvider.AnalyzePhoto(ctx, imageData, metadata, availableLabels, opts.IndividualDates)
 			if err != nil {
 				resultsChan <- photoResult{index: idx, err: fmt.Errorf("failed to analyze photo %s: %w", p.UID, err)}
-				bar.Add(1)
+				reportProgress(p.UID)
 				return
 			}
 
@@ -176,7 +205,7 @@ func (s *Sorter) sortImmediate(ctx context.Context, albumUID string, albumTitle 
 				EstimatedDate: analysis.EstimatedDate,
 			}
 			resultsChan <- photoResult{index: idx, suggestion: suggestion}
-			bar.Add(1)
+			reportProgress(p.UID)
 		}(i, photo)
 	}
 

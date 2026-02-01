@@ -17,8 +17,8 @@ type Config struct {
 	Gemini     GeminiConfig
 	Ollama     OllamaConfig
 	LlamaCpp   LlamaCppConfig
-	Postgres   PostgresConfig
 	Embedding  EmbeddingConfig
+	Database   DatabaseConfig
 	Prices     PricesConfig
 }
 
@@ -26,6 +26,19 @@ type PhotoPrismConfig struct {
 	URL      string
 	Username string
 	Password string
+	Domain   string // public domain for generating photo links (e.g., https://photos.example.com)
+}
+
+// PhotoURL returns an OSC 8 hyperlink for terminal emulators (iTerm2, etc.)
+// Displays the UID but makes it clickable to open the photo in PhotoPrism
+// Returns empty string if Domain is not set
+func (c *PhotoPrismConfig) PhotoURL(uid string) string {
+	if c.Domain == "" {
+		return ""
+	}
+	url := c.Domain + "/library/browse?view=cards&order=oldest&q=uid:" + uid
+	// OSC 8 hyperlink format: \e]8;;URL\e\\TEXT\e]8;;\e\\
+	return "\x1b]8;;" + url + "\x1b\\" + uid + "\x1b]8;;\x1b\\"
 }
 
 type OpenAIConfig struct {
@@ -46,17 +59,17 @@ type LlamaCppConfig struct {
 	Model string // defaults to llava
 }
 
-type PostgresConfig struct {
-	Host     string
-	Port     string
-	User     string
-	Password string
-	Database string
+type EmbeddingConfig struct {
+	URL string // defaults to http://localhost:8000
+	Dim int    // defaults to 768
 }
 
-type EmbeddingConfig struct {
-	URL string // defaults to http://100.94.61.29:8000
-	Dim int    // defaults to 768
+type DatabaseConfig struct {
+	URL                    string // PostgreSQL connection URL
+	MaxOpenConns           int    // Maximum open connections (default 25)
+	MaxIdleConns           int    // Maximum idle connections (default 5)
+	HNSWIndexPath          string // Path to persist face HNSW index (optional, if empty index is rebuilt on startup)
+	HNSWEmbeddingIndexPath string // Path to persist embedding HNSW index (optional, if empty index is rebuilt on startup)
 }
 
 type PricesConfig struct {
@@ -75,7 +88,11 @@ type RequestPricing struct {
 
 func Load() *Config {
 	var prices PricesConfig
-	_ = yaml.Unmarshal(pricesYAML, &prices)
+	if err := yaml.Unmarshal(pricesYAML, &prices); err != nil {
+		// Log error but continue - prices will be zero which is safe
+		// This is an embedded file so this error should never happen in practice
+		panic("failed to unmarshal embedded prices.yaml: " + err.Error())
+	}
 
 	// Parse embedding dimension with default
 	embeddingDim := 768
@@ -85,11 +102,26 @@ func Load() *Config {
 		}
 	}
 
+	// Parse database pool settings with defaults
+	dbMaxOpen := 25
+	if s := os.Getenv("DATABASE_MAX_OPEN_CONNS"); s != "" {
+		if n, err := strconv.Atoi(s); err == nil && n > 0 {
+			dbMaxOpen = n
+		}
+	}
+	dbMaxIdle := 5
+	if s := os.Getenv("DATABASE_MAX_IDLE_CONNS"); s != "" {
+		if n, err := strconv.Atoi(s); err == nil && n > 0 {
+			dbMaxIdle = n
+		}
+	}
+
 	return &Config{
 		PhotoPrism: PhotoPrismConfig{
 			URL:      os.Getenv("PHOTOPRISM_URL"),
 			Username: os.Getenv("PHOTOPRISM_USERNAME"),
 			Password: os.Getenv("PHOTOPRISM_PASSWORD"),
+			Domain:   os.Getenv("PHOTOPRISM_DOMAIN"),
 		},
 		OpenAI: OpenAIConfig{
 			Token: os.Getenv("OPENAI_TOKEN"),
@@ -105,16 +137,16 @@ func Load() *Config {
 			URL:   os.Getenv("LLAMACPP_URL"),
 			Model: os.Getenv("LLAMACPP_MODEL"),
 		},
-		Postgres: PostgresConfig{
-			Host:     os.Getenv("POSTGRES_HOST"),
-			Port:     os.Getenv("POSTGRES_PORT"),
-			User:     os.Getenv("POSTGRES_USER"),
-			Password: os.Getenv("POSTGRES_PASSWORD"),
-			Database: os.Getenv("POSTGRES_DB"),
-		},
 		Embedding: EmbeddingConfig{
 			URL: os.Getenv("EMBEDDING_URL"),
 			Dim: embeddingDim,
+		},
+		Database: DatabaseConfig{
+			URL:                    os.Getenv("DATABASE_URL"),
+			MaxOpenConns:           dbMaxOpen,
+			MaxIdleConns:           dbMaxIdle,
+			HNSWIndexPath:          os.Getenv("HNSW_INDEX_PATH"),
+			HNSWEmbeddingIndexPath: os.Getenv("HNSW_EMBEDDING_INDEX_PATH"),
 		},
 		Prices: prices,
 	}

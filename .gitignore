@@ -1,2 +1,22 @@
 .env
+.envrc
+.claude/
+.tom/
+.idea/
+*.http
 photo-sorter
+docker-compose.yml
+
+# Web frontend
+web/node_modules/
+internal/web/static/dist/*
+!internal/web/static/dist/.gitkeep
+
+# Embedded database exports
+internal/database/data/embeddings.gob
+
+# Swagger API definition
+internal/photoprism/swagger.yaml
+
+# Screenshots for AI sharing
+screenshots/

@@ -6,8 +6,8 @@ import (
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
-	"github.com/tomas/photo-sorter/internal/config"
-	"github.com/tomas/photo-sorter/internal/photoprism"
+	"github.com/kozaktomas/photo-sorter/internal/config"
+	"github.com/kozaktomas/photo-sorter/internal/photoprism"
 )
 
 var albumsCmd = &cobra.Command{
@@ -29,10 +29,10 @@ func init() {
 func runAlbums(cmd *cobra.Command, args []string) error {
 	cfg := config.Load()
 
-	count, _ := cmd.Flags().GetInt("count")
-	offset, _ := cmd.Flags().GetInt("offset")
-	order, _ := cmd.Flags().GetString("order")
-	query, _ := cmd.Flags().GetString("query")
+	count := mustGetInt(cmd, "count")
+	offset := mustGetInt(cmd, "offset")
+	order := mustGetString(cmd, "order")
+	query := mustGetString(cmd, "query")
 
 	pp, err := photoprism.NewPhotoPrismWithCapture(cfg.PhotoPrism.URL, cfg.PhotoPrism.Username, cfg.PhotoPrism.Password, captureDir)
 	if err != nil {
@@ -40,7 +40,7 @@ func runAlbums(cmd *cobra.Command, args []string) error {
 	}
 	defer pp.Logout()
 
-	albums, err := pp.GetAlbums(count, offset, order, query)
+	albums, err := pp.GetAlbums(count, offset, order, query, "")
 	if err != nil {
 		return fmt.Errorf("failed to get albums: %w", err)
 	}

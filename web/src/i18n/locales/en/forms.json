@@ -1,0 +1,34 @@
+{
+  "labels": {
+    "album": "Album",
+    "provider": "AI Provider",
+    "person": "Person",
+    "limit": "Limit",
+    "concurrency": "Concurrency",
+    "threshold": "Threshold",
+    "confidence": "Confidence",
+    "query": "Query",
+    "photoUid": "Photo UID",
+    "sourceType": "Source Type",
+    "name": "Name"
+  },
+  "placeholders": {
+    "selectAlbum": "Select an album...",
+    "selectPerson": "Select a person...",
+    "selectLabel": "Select label...",
+    "enterName": "Enter name...",
+    "enterLabel": "Enter label...",
+    "searchAlbums": "Search albums...",
+    "searchLabels": "Search labels...",
+    "searchPhotos": "Search photos..."
+  },
+  "validation": {
+    "required": "This field is required",
+    "minLength": "Minimum {{count}} characters required"
+  },
+  "messages": {
+    "addedToAlbum": "Added {{count}} photos to album",
+    "addedLabel": "Added label to {{count}} photos",
+    "updatedWithErrors": "Updated {{updated}} photos, {{errors}} errors"
+  }
+}

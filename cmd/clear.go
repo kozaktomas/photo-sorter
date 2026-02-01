@@ -7,8 +7,8 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
-	"github.com/tomas/photo-sorter/internal/config"
-	"github.com/tomas/photo-sorter/internal/photoprism"
+	"github.com/kozaktomas/photo-sorter/internal/config"
+	"github.com/kozaktomas/photo-sorter/internal/photoprism"
 )
 
 var clearCmd = &cobra.Command{
@@ -33,7 +33,7 @@ func init() {
 
 func runClear(cmd *cobra.Command, args []string) error {
 	albumUID := args[0]
-	skipConfirm, _ := cmd.Flags().GetBool("yes")
+	skipConfirm := mustGetBool(cmd, "yes")
 
 	cfg := config.Load()
 

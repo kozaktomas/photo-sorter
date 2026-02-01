@@ -9,8 +9,8 @@ import (
 
 	"github.com/schollz/progressbar/v3"
 	"github.com/spf13/cobra"
-	"github.com/tomas/photo-sorter/internal/config"
-	"github.com/tomas/photo-sorter/internal/photoprism"
+	"github.com/kozaktomas/photo-sorter/internal/config"
+	"github.com/kozaktomas/photo-sorter/internal/photoprism"
 )
 
 var uploadCmd = &cobra.Command{
@@ -61,7 +61,7 @@ func isImageFile(name string) bool {
 func runUpload(cmd *cobra.Command, args []string) error {
 	albumUID := args[0]
 	folderPaths := args[1:]
-	recursive, _ := cmd.Flags().GetBool("recursive")
+	recursive := mustGetBool(cmd, "recursive")
 
 	cfg := config.Load()
 

@@ -1,0 +1,38 @@
+# Git
+.git
+.gitignore
+
+# Build artifacts
+photo-sorter
+*.exe
+
+# Dependencies (will be installed in container)
+web/node_modules
+vendor
+
+# Development files
+.env
+.envrc
+*.log
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Test data
+testdata
+*_test.go
+
+# Documentation
+*.md
+!web/*.md
+docs/
+
+# Docker
+Dockerfile
+.dockerignore
+
+# CI
+.github

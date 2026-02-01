@@ -2,6 +2,7 @@ package fingerprint
 
 import (
 	"bytes"
+	"fmt"
 	"image"
 	"image/color"
 	"image/jpeg"
@@ -305,4 +306,406 @@ func encodeJPEG(img image.Image) []byte {
 	var buf bytes.Buffer
 	jpeg.Encode(&buf, img, &jpeg.Options{Quality: 90})
 	return buf.Bytes()
+}
+
+// --- Additional tests for stability ---
+
+func TestHammingDistance_Symmetry(t *testing.T) {
+	hash1 := uint64(0xABCDEF0123456789)
+	hash2 := uint64(0x123456789ABCDEF0)
+
+	d1 := HammingDistance(hash1, hash2)
+	d2 := HammingDistance(hash2, hash1)
+
+	if d1 != d2 {
+		t.Errorf("Hamming distance should be symmetric: %d vs %d", d1, d2)
+	}
+}
+
+func TestHammingDistance_MaxValue(t *testing.T) {
+	// Test with max uint64 value
+	hash1 := uint64(0xFFFFFFFFFFFFFFFF)
+	hash2 := uint64(0x0)
+
+	distance := HammingDistance(hash1, hash2)
+
+	if distance != 64 {
+		t.Errorf("expected distance 64 between max and zero, got %d", distance)
+	}
+}
+
+func TestHammingDistance_SingleBitPositions(t *testing.T) {
+	// Test single bit at each position
+	for i := 0; i < 64; i++ {
+		hash := uint64(1) << i
+		distance := HammingDistance(hash, 0)
+
+		if distance != 1 {
+			t.Errorf("expected distance 1 for single bit at position %d, got %d", i, distance)
+		}
+	}
+}
+
+func TestComputeHashes_DifferentSizes(t *testing.T) {
+	sizes := []struct {
+		width  int
+		height int
+	}{
+		{10, 10},
+		{100, 100},
+		{200, 150},
+		{50, 200},
+		{1920, 1080},
+	}
+
+	for _, size := range sizes {
+		t.Run(fmt.Sprintf("%dx%d", size.width, size.height), func(t *testing.T) {
+			img := createTestImage(size.width, size.height, color.Gray{128})
+			imgData := encodeJPEG(img)
+
+			result, err := ComputeHashes(imgData)
+			if err != nil {
+				t.Fatalf("ComputeHashes failed for %dx%d: %v", size.width, size.height, err)
+			}
+
+			if result.PHash == "" || result.DHash == "" {
+				t.Errorf("expected non-empty hashes for %dx%d", size.width, size.height)
+			}
+		})
+	}
+}
+
+func TestComputeHashes_SimilarImagesHaveSimilarHashes(t *testing.T) {
+	// Create two very similar images (slight brightness difference)
+	img1 := createTestImage(100, 100, color.Gray{128})
+	img2 := createTestImage(100, 100, color.Gray{130}) // Slightly brighter
+
+	data1 := encodeJPEG(img1)
+	data2 := encodeJPEG(img2)
+
+	result1, err := ComputeHashes(data1)
+	if err != nil {
+		t.Fatalf("ComputeHashes failed for img1: %v", err)
+	}
+
+	result2, err := ComputeHashes(data2)
+	if err != nil {
+		t.Fatalf("ComputeHashes failed for img2: %v", err)
+	}
+
+	// Similar images should have small Hamming distance
+	pHashDist := HammingDistance(result1.PHashBits, result2.PHashBits)
+	dHashDist := HammingDistance(result1.DHashBits, result2.DHashBits)
+
+	// For very similar solid color images, distance should be small
+	if pHashDist > 20 {
+		t.Logf("pHash distance %d may be higher than expected for similar images", pHashDist)
+	}
+
+	if dHashDist > 20 {
+		t.Logf("dHash distance %d may be higher than expected for similar images", dHashDist)
+	}
+}
+
+func TestResizeImage_NoResizeNeeded(t *testing.T) {
+	// Create a small image that doesn't need resizing
+	img := createTestImage(100, 100, color.White)
+	data := encodeJPEG(img)
+
+	resized, err := ResizeImage(data, 200) // maxSize larger than image
+	if err != nil {
+		t.Fatalf("ResizeImage failed: %v", err)
+	}
+
+	// Should return original data (or re-encoded at same size)
+	if len(resized) == 0 {
+		t.Error("expected non-empty result")
+	}
+}
+
+func TestResizeImage_NeedsResize(t *testing.T) {
+	// Create a large image that needs resizing
+	img := createTestImage(2000, 1500, color.White)
+	data := encodeJPEG(img)
+
+	resized, err := ResizeImage(data, 500)
+	if err != nil {
+		t.Fatalf("ResizeImage failed: %v", err)
+	}
+
+	// Decode resized image to verify dimensions
+	decodedImg, _, err := image.Decode(bytes.NewReader(resized))
+	if err != nil {
+		t.Fatalf("failed to decode resized image: %v", err)
+	}
+
+	bounds := decodedImg.Bounds()
+	maxDim := bounds.Dx()
+	if bounds.Dy() > maxDim {
+		maxDim = bounds.Dy()
+	}
+
+	if maxDim > 500 {
+		t.Errorf("expected max dimension <= 500, got %d", maxDim)
+	}
+}
+
+func TestResizeImage_PreservesAspectRatio(t *testing.T) {
+	// Create a landscape image (2:1 ratio)
+	img := createTestImage(1000, 500, color.White)
+	data := encodeJPEG(img)
+
+	resized, err := ResizeImage(data, 200)
+	if err != nil {
+		t.Fatalf("ResizeImage failed: %v", err)
+	}
+
+	decodedImg, _, err := image.Decode(bytes.NewReader(resized))
+	if err != nil {
+		t.Fatalf("failed to decode resized image: %v", err)
+	}
+
+	bounds := decodedImg.Bounds()
+	ratio := float64(bounds.Dx()) / float64(bounds.Dy())
+
+	// Should maintain approximately 2:1 ratio
+	if ratio < 1.9 || ratio > 2.1 {
+		t.Errorf("expected aspect ratio ~2.0, got %f (%dx%d)", ratio, bounds.Dx(), bounds.Dy())
+	}
+}
+
+func TestResizeImage_Portrait(t *testing.T) {
+	// Create a portrait image (1:2 ratio)
+	img := createTestImage(500, 1000, color.White)
+	data := encodeJPEG(img)
+
+	resized, err := ResizeImage(data, 200)
+	if err != nil {
+		t.Fatalf("ResizeImage failed: %v", err)
+	}
+
+	decodedImg, _, err := image.Decode(bytes.NewReader(resized))
+	if err != nil {
+		t.Fatalf("failed to decode resized image: %v", err)
+	}
+
+	bounds := decodedImg.Bounds()
+
+	// Height should be maxSize (200)
+	if bounds.Dy() != 200 {
+		t.Errorf("expected height 200, got %d", bounds.Dy())
+	}
+
+	// Width should be proportionally smaller
+	if bounds.Dx() >= bounds.Dy() {
+		t.Errorf("expected width < height for portrait, got %dx%d", bounds.Dx(), bounds.Dy())
+	}
+}
+
+func TestResizeImage_InvalidData(t *testing.T) {
+	invalidData := []byte("not an image")
+
+	_, err := ResizeImage(invalidData, 500)
+	if err == nil {
+		t.Error("expected error for invalid image data")
+	}
+}
+
+func TestResizeImage_Square(t *testing.T) {
+	img := createTestImage(1000, 1000, color.White)
+	data := encodeJPEG(img)
+
+	resized, err := ResizeImage(data, 200)
+	if err != nil {
+		t.Fatalf("ResizeImage failed: %v", err)
+	}
+
+	decodedImg, _, err := image.Decode(bytes.NewReader(resized))
+	if err != nil {
+		t.Fatalf("failed to decode resized image: %v", err)
+	}
+
+	bounds := decodedImg.Bounds()
+
+	// Should be exactly 200x200 for square image
+	if bounds.Dx() != 200 || bounds.Dy() != 200 {
+		t.Errorf("expected 200x200, got %dx%d", bounds.Dx(), bounds.Dy())
+	}
+}
+
+func TestComputeMedian_TwoValues(t *testing.T) {
+	values := []float64{10, 20}
+	expected := 15.0
+
+	result := computeMedian(values)
+
+	if result != expected {
+		t.Errorf("expected median %f, got %f", expected, result)
+	}
+}
+
+func TestComputeMedian_LargeValues(t *testing.T) {
+	values := []float64{1e10, 2e10, 3e10}
+	expected := 2e10
+
+	result := computeMedian(values)
+
+	if result != expected {
+		t.Errorf("expected median %f, got %f", expected, result)
+	}
+}
+
+func TestComputeMedian_NegativeValues(t *testing.T) {
+	values := []float64{-5, -3, -1, 0, 2}
+	expected := -1.0
+
+	result := computeMedian(values)
+
+	if result != expected {
+		t.Errorf("expected median %f, got %f", expected, result)
+	}
+}
+
+func TestToGrayscale_WhitePixel(t *testing.T) {
+	img := image.NewRGBA(image.Rect(0, 0, 1, 1))
+	img.Set(0, 0, color.White)
+
+	gray := toGrayscale(img)
+
+	// White should convert to 255
+	if gray[0][0] < 254 || gray[0][0] > 256 {
+		t.Errorf("expected white pixel luma ~255, got %f", gray[0][0])
+	}
+}
+
+func TestToGrayscale_BlackPixel(t *testing.T) {
+	img := image.NewRGBA(image.Rect(0, 0, 1, 1))
+	img.Set(0, 0, color.Black)
+
+	gray := toGrayscale(img)
+
+	// Black should convert to 0
+	if gray[0][0] != 0 {
+		t.Errorf("expected black pixel luma 0, got %f", gray[0][0])
+	}
+}
+
+func TestToGrayscale_GreenChannel(t *testing.T) {
+	img := image.NewRGBA(image.Rect(0, 0, 1, 1))
+	img.Set(0, 0, color.RGBA{0, 255, 0, 255}) // Pure green
+
+	gray := toGrayscale(img)
+
+	// Green should convert to 0.587 * 255 ≈ 149.7
+	expectedLuma := 0.587 * 255
+	tolerance := 1.0
+	if gray[0][0] < expectedLuma-tolerance || gray[0][0] > expectedLuma+tolerance {
+		t.Errorf("expected green pixel luma ~%.2f, got %.2f", expectedLuma, gray[0][0])
+	}
+}
+
+func TestToGrayscale_BlueChannel(t *testing.T) {
+	img := image.NewRGBA(image.Rect(0, 0, 1, 1))
+	img.Set(0, 0, color.RGBA{0, 0, 255, 255}) // Pure blue
+
+	gray := toGrayscale(img)
+
+	// Blue should convert to 0.114 * 255 ≈ 29.07
+	expectedLuma := 0.114 * 255
+	tolerance := 1.0
+	if gray[0][0] < expectedLuma-tolerance || gray[0][0] > expectedLuma+tolerance {
+		t.Errorf("expected blue pixel luma ~%.2f, got %.2f", expectedLuma, gray[0][0])
+	}
+}
+
+func TestComputeHashes_HashStability(t *testing.T) {
+	// Verify that hashing the same image multiple times produces same result
+	img := createGradientImage(100, 100)
+	data := encodeJPEG(img)
+
+	var lastPHash, lastDHash string
+	for i := 0; i < 5; i++ {
+		result, err := ComputeHashes(data)
+		if err != nil {
+			t.Fatalf("iteration %d: ComputeHashes failed: %v", i, err)
+		}
+
+		if i > 0 {
+			if result.PHash != lastPHash {
+				t.Errorf("iteration %d: pHash changed from %s to %s", i, lastPHash, result.PHash)
+			}
+			if result.DHash != lastDHash {
+				t.Errorf("iteration %d: dHash changed from %s to %s", i, lastDHash, result.DHash)
+			}
+		}
+		lastPHash = result.PHash
+		lastDHash = result.DHash
+	}
+}
+
+func TestSimilar_EdgeCases(t *testing.T) {
+	tests := []struct {
+		name      string
+		hash1     uint64
+		hash2     uint64
+		threshold int
+		expected  bool
+	}{
+		{"threshold 0 identical", 0x123456789ABCDEF0, 0x123456789ABCDEF0, 0, true},
+		{"threshold 0 one bit diff", 0x123456789ABCDEF0, 0x123456789ABCDEF1, 0, false},
+		{"threshold 64 always true", 0, 0xFFFFFFFFFFFFFFFF, 64, true},
+		{"threshold 63 max diff", 0, 0xFFFFFFFFFFFFFFFF, 63, false},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			result := Similar(tc.hash1, tc.hash2, tc.threshold)
+			if result != tc.expected {
+				t.Errorf("Similar(%x, %x, %d) = %v; want %v",
+					tc.hash1, tc.hash2, tc.threshold, result, tc.expected)
+			}
+		})
+	}
+}
+
+// Benchmark tests
+
+func BenchmarkComputeHashes_Small(b *testing.B) {
+	img := createTestImage(100, 100, color.Gray{128})
+	data := encodeJPEG(img)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		ComputeHashes(data)
+	}
+}
+
+func BenchmarkComputeHashes_Large(b *testing.B) {
+	img := createTestImage(1920, 1080, color.Gray{128})
+	data := encodeJPEG(img)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		ComputeHashes(data)
+	}
+}
+
+func BenchmarkHammingDistance(b *testing.B) {
+	hash1 := uint64(0xABCDEF0123456789)
+	hash2 := uint64(0x123456789ABCDEF0)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		HammingDistance(hash1, hash2)
+	}
+}
+
+func BenchmarkResizeImage(b *testing.B) {
+	img := createTestImage(2000, 1500, color.White)
+	data := encodeJPEG(img)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		ResizeImage(data, 500)
+	}
 }

@@ -11,17 +11,16 @@ import (
 
 	"github.com/schollz/progressbar/v3"
 	"github.com/spf13/cobra"
-	"github.com/tomas/photo-sorter/internal/config"
-	"github.com/tomas/photo-sorter/internal/database"
-	"github.com/tomas/photo-sorter/internal/fingerprint"
-	"github.com/tomas/photo-sorter/internal/photoprism"
+	"github.com/kozaktomas/photo-sorter/internal/config"
+	"github.com/kozaktomas/photo-sorter/internal/fingerprint"
+	"github.com/kozaktomas/photo-sorter/internal/photoprism"
 )
 
 var photoInfoCmd = &cobra.Command{
 	Use:   "info [photo-uid]",
-	Short: "Display photo information including perceptual hashes and embeddings",
-	Long: `Display detailed information about a photo including metadata, perceptual
-hashes (pHash and dHash), and optionally image embeddings for similarity matching.
+	Short: "Display photo information including perceptual hashes",
+	Long: `Display detailed information about a photo including metadata and
+perceptual hashes (pHash and dHash) for similarity matching.
 
 Examples:
   # Get info for a single photo
@@ -30,11 +29,8 @@ Examples:
   # Get info for all photos in an album
   photo-sorter photo info --album aq8xyz789ghi
 
-  # Include image embeddings (requires llama.cpp with Qwen2.5-VL model)
-  photo-sorter photo info --embedding pq8abc123def
-
-  # Output as JSON with embeddings
-  photo-sorter photo info --json --embedding pq8abc123def
+  # Output as JSON
+  photo-sorter photo info --json pq8abc123def
 
   # Process album with limited concurrency
   photo-sorter photo info --album aq8xyz789ghi --concurrency 3`,
@@ -49,15 +45,13 @@ func init() {
 	photoInfoCmd.Flags().Bool("json", false, "Output as JSON")
 	photoInfoCmd.Flags().Int("limit", 0, "Limit number of photos (0 = no limit)")
 	photoInfoCmd.Flags().Int("concurrency", 5, "Number of parallel workers")
-	photoInfoCmd.Flags().Bool("embedding", false, "Compute image embeddings using llama.cpp (Qwen2.5-VL model)")
 }
 
 func runPhotoInfo(cmd *cobra.Command, args []string) error {
-	albumUID, _ := cmd.Flags().GetString("album")
-	jsonOutput, _ := cmd.Flags().GetBool("json")
-	limit, _ := cmd.Flags().GetInt("limit")
-	concurrency, _ := cmd.Flags().GetInt("concurrency")
-	computeEmbedding, _ := cmd.Flags().GetBool("embedding")
+	albumUID := mustGetString(cmd, "album")
+	jsonOutput := mustGetBool(cmd, "json")
+	limit := mustGetInt(cmd, "limit")
+	concurrency := mustGetInt(cmd, "concurrency")
 
 	// Validate args
 	if albumUID == "" && len(args) == 0 {
@@ -67,7 +61,6 @@ func runPhotoInfo(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("cannot specify both photo UID and --album flag")
 	}
 
-	ctx := context.Background()
 	cfg := config.Load()
 
 	// Connect to PhotoPrism
@@ -82,46 +75,13 @@ func runPhotoInfo(cmd *cobra.Command, args []string) error {
 	}
 	defer pp.Logout()
 
-	// Create embedding client and repository if needed
-	var embClient *fingerprint.EmbeddingClient
-	var embRepo *database.EmbeddingRepository
-	if computeEmbedding {
-		// Use embedding URL from config, fall back to llama.cpp URL for backwards compatibility
-		embURL := cfg.Embedding.URL
-		if embURL == "" {
-			embURL = cfg.LlamaCpp.URL
-		}
-		embClient = fingerprint.NewEmbeddingClient(embURL, "clip")
-
-		// Connect to PostgreSQL
-		pool, err := database.Connect(ctx, &cfg.Postgres)
-		if err != nil {
-			return fmt.Errorf("failed to connect to PostgreSQL: %w", err)
-		}
-		defer pool.Close()
-
-		// Run migrations
-		if err := database.Migrate(ctx, pool, cfg.Embedding.Dim); err != nil {
-			return fmt.Errorf("failed to run migrations: %w", err)
-		}
-
-		embRepo = database.NewEmbeddingRepository(pool)
-
-		if !jsonOutput {
-			count, _ := embRepo.Count(ctx)
-			fmt.Printf("Embedding database: %d entries\n\n", count)
-		}
-	}
-
 	if albumUID != "" {
-		return runPhotoInfoAlbum(pp, albumUID, limit, concurrency, jsonOutput, embClient, embRepo)
+		return runPhotoInfoAlbum(pp, albumUID, limit, concurrency, jsonOutput, &cfg.PhotoPrism)
 	}
-	return runPhotoInfoSingle(pp, args[0], jsonOutput, embClient, embRepo)
+	return runPhotoInfoSingle(pp, args[0], jsonOutput, &cfg.PhotoPrism)
 }
 
-func runPhotoInfoSingle(pp *photoprism.PhotoPrism, photoUID string, jsonOutput bool, embClient *fingerprint.EmbeddingClient, embRepo *database.EmbeddingRepository) error {
-	ctx := context.Background()
-
+func runPhotoInfoSingle(pp *photoprism.PhotoPrism, photoUID string, jsonOutput bool, ppCfg *config.PhotoPrismConfig) error {
 	// Get photo metadata
 	details, err := pp.GetPhotoDetails(photoUID)
 	if err != nil {
@@ -143,43 +103,14 @@ func runPhotoInfoSingle(pp *photoprism.PhotoPrism, photoUID string, jsonOutput b
 	// Build PhotoInfo from details map
 	info := buildPhotoInfo(details, hashes)
 
-	// Compute embedding if client is provided
-	if embClient != nil {
-		// Check database first
-		if embRepo != nil {
-			if stored, err := embRepo.Get(ctx, photoUID); err == nil && stored != nil {
-				info.Embedding = stored.Embedding
-				info.EmbeddingTime = 0 // cached, no time
-			}
-		}
-
-		// Compute if not in database
-		if info.Embedding == nil {
-			startTime := time.Now()
-			result, err := embClient.ComputeEmbeddingWithMetadata(ctx, imageData)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "Warning: failed to compute embedding: %v\n", err)
-			} else {
-				info.Embedding = result.Embedding
-				info.EmbeddingTime = time.Since(startTime).Seconds()
-				// Save to database
-				if embRepo != nil {
-					if err := embRepo.Save(ctx, photoUID, result.Embedding, result.Model, result.Pretrained, result.Dim); err != nil {
-						fmt.Fprintf(os.Stderr, "Warning: failed to save embedding: %v\n", err)
-					}
-				}
-			}
-		}
-	}
-
 	if jsonOutput {
 		return outputJSON(info)
 	}
 
-	return outputHumanReadableSingle(info)
+	return outputHumanReadableSingle(info, ppCfg)
 }
 
-func runPhotoInfoAlbum(pp *photoprism.PhotoPrism, albumUID string, limit, concurrency int, jsonOutput bool, embClient *fingerprint.EmbeddingClient, embRepo *database.EmbeddingRepository) error {
+func runPhotoInfoAlbum(pp *photoprism.PhotoPrism, albumUID string, limit, concurrency int, jsonOutput bool, ppCfg *config.PhotoPrismConfig) error {
 	ctx := context.Background()
 
 	// Get album info
@@ -218,12 +149,8 @@ func runPhotoInfoAlbum(pp *photoprism.PhotoPrism, albumUID string, limit, concur
 	// Create progress bar (only for non-JSON output)
 	var bar *progressbar.ProgressBar
 	if !jsonOutput {
-		description := "Computing hashes"
-		if embClient != nil {
-			description = "Computing hashes + embeddings"
-		}
 		bar = progressbar.NewOptions(len(photos),
-			progressbar.OptionSetDescription(description),
+			progressbar.OptionSetDescription("Computing hashes"),
 			progressbar.OptionShowCount(),
 			progressbar.OptionShowIts(),
 			progressbar.OptionSetItsString("photos"),
@@ -271,39 +198,6 @@ func runPhotoInfoAlbum(pp *photoprism.PhotoPrism, albumUID string, limit, concur
 			// Build info from Photo struct
 			info := buildPhotoInfoFromPhoto(p, hashes)
 
-			// Compute embedding if client is provided
-			if embClient != nil {
-				// Check database first
-				if embRepo != nil {
-					if stored, err := embRepo.Get(ctx, p.UID); err == nil && stored != nil {
-						info.Embedding = stored.Embedding
-						info.EmbeddingTime = 0 // cached
-					}
-				}
-
-				// Compute if not in database
-				if info.Embedding == nil {
-					startTime := time.Now()
-					result, err := embClient.ComputeEmbeddingWithMetadata(ctx, imageData)
-					if err != nil {
-						mu.Lock()
-						errors = append(errors, fmt.Errorf("photo %s embedding: %v", p.UID, err))
-						mu.Unlock()
-					} else {
-						info.Embedding = result.Embedding
-						info.EmbeddingTime = time.Since(startTime).Seconds()
-						// Save to database
-						if embRepo != nil {
-							if err := embRepo.Save(ctx, p.UID, result.Embedding, result.Model, result.Pretrained, result.Dim); err != nil {
-								mu.Lock()
-								errors = append(errors, fmt.Errorf("photo %s save: %v", p.UID, err))
-								mu.Unlock()
-							}
-						}
-					}
-				}
-			}
-
 			mu.Lock()
 			results[idx] = info
 			mu.Unlock()
@@ -315,6 +209,7 @@ func runPhotoInfoAlbum(pp *photoprism.PhotoPrism, albumUID string, limit, concur
 	}
 
 	wg.Wait()
+	_ = ctx // silence unused warning
 
 	if bar != nil {
 		fmt.Println()
@@ -337,7 +232,7 @@ func runPhotoInfoAlbum(pp *photoprism.PhotoPrism, albumUID string, limit, concur
 	}
 
 	// Output table
-	outputHumanReadableBatch(validResults, embClient != nil)
+	outputHumanReadableBatch(validResults, ppCfg)
 
 	// Report errors
 	if len(errors) > 0 {
@@ -444,8 +339,12 @@ func outputJSON(data interface{}) error {
 	return encoder.Encode(data)
 }
 
-func outputHumanReadableSingle(info fingerprint.PhotoInfo) error {
-	fmt.Printf("Photo: %s\n", info.UID)
+func outputHumanReadableSingle(info fingerprint.PhotoInfo, ppCfg *config.PhotoPrismConfig) error {
+	if url := ppCfg.PhotoURL(info.UID); url != "" {
+		fmt.Printf("Photo: %s\n", url)
+	} else {
+		fmt.Printf("Photo: %s\n", info.UID)
+	}
 	fmt.Println("────────────────────────────────────────")
 
 	fmt.Println("\nMetadata:")
@@ -489,29 +388,13 @@ func outputHumanReadableSingle(info fingerprint.PhotoInfo) error {
 		fmt.Printf("  PhotoPrism:     %s\n", info.Hash)
 	}
 
-	if len(info.Embedding) > 0 {
-		fmt.Println("\nEmbedding:")
-		fmt.Printf("  Dimensions:     %d\n", len(info.Embedding))
-		fmt.Printf("  Model:          Qwen2.5-VL-7B-Instruct\n")
-		if info.EmbeddingTime > 0 {
-			fmt.Printf("  Time:           %.2fs\n", info.EmbeddingTime)
-		} else {
-			fmt.Printf("  Time:           (cached)\n")
-		}
-	}
-
 	return nil
 }
 
-func outputHumanReadableBatch(results []fingerprint.PhotoInfo, hasEmbedding bool) {
+func outputHumanReadableBatch(results []fingerprint.PhotoInfo, ppCfg *config.PhotoPrismConfig) {
 	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	if hasEmbedding {
-		fmt.Fprintln(w, "UID\tDIMENSIONS\tTAKEN\tPHASH\tDHASH\tEMBEDDING")
-		fmt.Fprintln(w, "---\t----------\t-----\t-----\t-----\t---------")
-	} else {
-		fmt.Fprintln(w, "UID\tDIMENSIONS\tTAKEN\tPHASH\tDHASH")
-		fmt.Fprintln(w, "---\t----------\t-----\t-----\t-----")
-	}
+	fmt.Fprintln(w, "PHOTO\tDIMENSIONS\tTAKEN\tPHASH\tDHASH")
+	fmt.Fprintln(w, "-----\t----------\t-----\t-----\t-----")
 
 	for _, info := range results {
 		taken := ""
@@ -522,17 +405,12 @@ func outputHumanReadableBatch(results []fingerprint.PhotoInfo, hasEmbedding bool
 		if info.Width > 0 && info.Height > 0 {
 			dims = fmt.Sprintf("%dx%d", info.Width, info.Height)
 		}
-		if hasEmbedding {
-			embDim := "-"
-			if len(info.Embedding) > 0 {
-				embDim = fmt.Sprintf("%d dims", len(info.Embedding))
-			}
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\t%s\n",
-				info.UID, dims, taken, info.PHash, info.DHash, embDim)
-		} else {
-			fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
-				info.UID, dims, taken, info.PHash, info.DHash)
+		photoRef := info.UID
+		if url := ppCfg.PhotoURL(info.UID); url != "" {
+			photoRef = url
 		}
+		fmt.Fprintf(w, "%s\t%s\t%s\t%s\t%s\n",
+			photoRef, dims, taken, info.PHash, info.DHash)
 	}
 
 	w.Flush()

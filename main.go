@@ -1,6 +1,6 @@
 package main
 
-import "github.com/tomas/photo-sorter/cmd"
+import "github.com/kozaktomas/photo-sorter/cmd"
 
 func main() {
 	cmd.Execute()

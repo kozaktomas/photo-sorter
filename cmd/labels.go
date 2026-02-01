@@ -9,8 +9,8 @@ import (
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
-	"github.com/tomas/photo-sorter/internal/config"
-	"github.com/tomas/photo-sorter/internal/photoprism"
+	"github.com/kozaktomas/photo-sorter/internal/config"
+	"github.com/kozaktomas/photo-sorter/internal/photoprism"
 )
 
 var labelsCmd = &cobra.Command{
@@ -49,10 +49,10 @@ func init() {
 func runLabelsList(cmd *cobra.Command, args []string) error {
 	cfg := config.Load()
 
-	count, _ := cmd.Flags().GetInt("count")
-	all, _ := cmd.Flags().GetBool("all")
-	sortBy, _ := cmd.Flags().GetString("sort")
-	minPhotos, _ := cmd.Flags().GetInt("min-photos")
+	count := mustGetInt(cmd, "count")
+	all := mustGetBool(cmd, "all")
+	sortBy := mustGetString(cmd, "sort")
+	minPhotos := mustGetInt(cmd, "min-photos")
 
 	pp, err := photoprism.NewPhotoPrismWithCapture(cfg.PhotoPrism.URL, cfg.PhotoPrism.Username, cfg.PhotoPrism.Password, captureDir)
 	if err != nil {
@@ -105,7 +105,7 @@ func runLabelsList(cmd *cobra.Command, args []string) error {
 
 func runLabelsDelete(cmd *cobra.Command, args []string) error {
 	cfg := config.Load()
-	skipConfirm, _ := cmd.Flags().GetBool("yes")
+	skipConfirm := mustGetBool(cmd, "yes")
 
 	pp, err := photoprism.NewPhotoPrismWithCapture(cfg.PhotoPrism.URL, cfg.PhotoPrism.Username, cfg.PhotoPrism.Password, captureDir)
 	if err != nil {

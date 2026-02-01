@@ -9,10 +9,10 @@ import (
 	"syscall"
 
 	"github.com/spf13/cobra"
-	"github.com/tomas/photo-sorter/internal/ai"
-	"github.com/tomas/photo-sorter/internal/config"
-	"github.com/tomas/photo-sorter/internal/photoprism"
-	"github.com/tomas/photo-sorter/internal/sorter"
+	"github.com/kozaktomas/photo-sorter/internal/ai"
+	"github.com/kozaktomas/photo-sorter/internal/config"
+	"github.com/kozaktomas/photo-sorter/internal/photoprism"
+	"github.com/kozaktomas/photo-sorter/internal/sorter"
 )
 
 var sortCmd = &cobra.Command{
@@ -42,13 +42,13 @@ func runSort(cmd *cobra.Command, args []string) error {
 
 	cfg := config.Load()
 
-	dryRun, _ := cmd.Flags().GetBool("dry-run")
-	limit, _ := cmd.Flags().GetInt("limit")
-	individualDates, _ := cmd.Flags().GetBool("individual-dates")
-	batchMode, _ := cmd.Flags().GetBool("batch")
-	providerName, _ := cmd.Flags().GetString("provider")
-	forceDate, _ := cmd.Flags().GetBool("force-date")
-	concurrency, _ := cmd.Flags().GetInt("concurrency")
+	dryRun := mustGetBool(cmd, "dry-run")
+	limit := mustGetInt(cmd, "limit")
+	individualDates := mustGetBool(cmd, "individual-dates")
+	batchMode := mustGetBool(cmd, "batch")
+	providerName := mustGetString(cmd, "provider")
+	forceDate := mustGetBool(cmd, "force-date")
+	concurrency := mustGetInt(cmd, "concurrency")
 
 	// Create AI provider based on selection
 	var aiProvider ai.Provider
@@ -169,7 +169,11 @@ func runSort(cmd *cobra.Command, args []string) error {
 	if len(result.Suggestions) > 0 {
 		fmt.Println("\nPhoto details:")
 		for _, s := range result.Suggestions {
-			fmt.Printf("  %s:\n", s.PhotoUID)
+			photoRef := s.PhotoUID
+			if url := cfg.PhotoPrism.PhotoURL(s.PhotoUID); url != "" {
+				photoRef = url
+			}
+			fmt.Printf("  %s:\n", photoRef)
 			if len(s.Labels) > 0 {
 				var labelStrs []string
 				for _, l := range s.Labels {

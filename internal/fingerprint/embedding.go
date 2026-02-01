@@ -13,7 +13,7 @@ import (
 )
 
 const (
-	defaultEmbeddingURL   = "http://100.94.61.29:8000"
+	defaultEmbeddingURL   = "http://localhost:8000"
 	defaultEmbeddingModel = "clip" // model name for reference only
 )
 
@@ -215,6 +215,51 @@ type FaceResponse struct {
 	FacesCount int             `json:"faces_count"`
 	Faces      []FaceDetection `json:"faces"`
 	Model      string          `json:"model"`
+}
+
+// textEmbeddingRequest represents the request body for text embedding
+type textEmbeddingRequest struct {
+	Text string `json:"text"`
+}
+
+// ComputeTextEmbedding computes the CLIP embedding for a text query
+func (c *EmbeddingClient) ComputeTextEmbedding(ctx context.Context, text string) ([]float32, error) {
+	reqBody, err := json.Marshal(textEmbeddingRequest{Text: text})
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/embed/text", bytes.NewReader(reqBody))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("API error (status %d): %s", resp.StatusCode, string(body))
+	}
+
+	var embResp embeddingResponse
+	if err := json.Unmarshal(body, &embResp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	if len(embResp.Embedding) == 0 {
+		return nil, fmt.Errorf("empty embedding returned")
+	}
+
+	return embResp.Embedding, nil
 }
 
 // ComputeFaceEmbeddings detects faces and computes their embeddings

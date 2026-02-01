@@ -1,0 +1,4 @@
+# This directory is kept for backwards compatibility.
+# The embeddings.gob file is no longer embedded in the binary.
+# Instead, configure EMBEDDINGS_DATA_PATH to point to the file
+# (supports http:// URLs or absolute file paths).

@@ -1,0 +1,34 @@
+{
+  "labels": {
+    "album": "Album",
+    "provider": "AI Poskytovatel",
+    "person": "Osoba",
+    "limit": "Limit",
+    "concurrency": "Souběžnost",
+    "threshold": "Práh",
+    "confidence": "Spolehlivost",
+    "query": "Dotaz",
+    "photoUid": "UID fotky",
+    "sourceType": "Typ zdroje",
+    "name": "Název"
+  },
+  "placeholders": {
+    "selectAlbum": "Vyberte album...",
+    "selectPerson": "Vyberte osobu...",
+    "selectLabel": "Vyberte štítek...",
+    "enterName": "Zadejte jméno...",
+    "enterLabel": "Zadejte štítek...",
+    "searchAlbums": "Hledat alba...",
+    "searchLabels": "Hledat štítky...",
+    "searchPhotos": "Hledat fotky..."
+  },
+  "validation": {
+    "required": "Toto pole je povinné",
+    "minLength": "Vyžadováno minimálně {{count}} znaků"
+  },
+  "messages": {
+    "addedToAlbum": "Přidáno {{count}} fotek do alba",
+    "addedLabel": "Štítek přidán k {{count}} fotkám",
+    "updatedWithErrors": "Aktualizováno {{updated}} fotek, {{errors}} chyb"
+  }
+}
