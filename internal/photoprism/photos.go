@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 )
 
 // GetPhotos retrieves all photos from PhotoPrism
@@ -23,10 +24,10 @@ func (pp *PhotoPrism) GetPhotosWithQuery(count int, offset int, query string) ([
 func (pp *PhotoPrism) GetPhotosWithQueryAndOrder(count int, offset int, query string, order string) ([]Photo, error) {
 	endpoint := fmt.Sprintf("photos?count=%d&offset=%d", count, offset)
 	if query != "" {
-		endpoint += fmt.Sprintf("&q=%s", query)
+		endpoint += fmt.Sprintf("&q=%s", url.QueryEscape(query))
 	}
 	if order != "" {
-		endpoint += fmt.Sprintf("&order=%s", order)
+		endpoint += fmt.Sprintf("&order=%s", url.QueryEscape(order))
 	}
 
 	result, err := doGetJSON[[]Photo](pp, endpoint)

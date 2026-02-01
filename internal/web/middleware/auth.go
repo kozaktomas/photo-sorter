@@ -34,3 +34,9 @@ func GetSessionFromContext(ctx context.Context) *Session {
 	}
 	return session
 }
+
+// SetSessionInContext adds a session to the context.
+// This is primarily for testing - use RequireAuth middleware in production.
+func SetSessionInContext(ctx context.Context, session *Session) context.Context {
+	return context.WithValue(ctx, sessionContextKey, session)
+}

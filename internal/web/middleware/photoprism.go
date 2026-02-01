@@ -55,3 +55,9 @@ func MustGetPhotoPrism(ctx context.Context, w http.ResponseWriter) *photoprism.P
 	}
 	return pp
 }
+
+// SetPhotoPrismInContext adds a PhotoPrism client to the context.
+// This is primarily for testing - use WithPhotoPrismClient middleware in production.
+func SetPhotoPrismInContext(ctx context.Context, pp *photoprism.PhotoPrism) context.Context {
+	return context.WithValue(ctx, photoPrismContextKey, pp)
+}
