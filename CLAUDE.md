@@ -35,6 +35,30 @@ go run . <command>
 go run . serve
 ```
 
+## Development Environment
+
+**IMPORTANT:** After every code change, run the dev script to rebuild and restart the server:
+
+```bash
+./dev.sh
+```
+
+This script:
+1. Stops any running photo-sorter process
+2. Builds the frontend (npm install + build)
+3. Builds the Go binary
+4. Starts the server on port 8085 using test services (PhotoPrism + pgvector)
+
+To check server logs:
+```bash
+tail -f /app/photo-sorter.log
+```
+
+The dev environment uses:
+- PhotoPrism: `http://photoprism-test:2342` (admin/photoprism)
+- PostgreSQL: `pgvector:5432` (postgres/photoprism)
+- Embeddings: configured in `.env.dev`
+
 ## Architecture
 
 This is a CLI tool that sorts photos in PhotoPrism using AI providers. Built with Cobra for CLI and Viper for configuration.

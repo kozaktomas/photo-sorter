@@ -1,11 +1,13 @@
 .env
+.env.dev
 .envrc
+photo-sorter.log
 .claude/
 .tom/
 .idea/
 *.http
 photo-sorter
-docker-compose.yml
+/volumes
 
 # Web frontend
 web/node_modules/

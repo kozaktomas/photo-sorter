@@ -1,0 +1,84 @@
+services:
+  photoprism-test:
+    image: photoprism/photoprism:latest
+    container_name: photoprism-test
+    security_opt:
+      - seccomp:unconfined
+      - apparmor:unconfined
+    ports:
+      - "2342:2342"
+    environment:
+      PHOTOPRISM_ADMIN_USER: "admin"
+      PHOTOPRISM_ADMIN_PASSWORD: "photoprism"
+      PHOTOPRISM_AUTH_MODE: "password"
+      PHOTOPRISM_SITE_URL: "http://localhost:2342/"
+      PHOTOPRISM_ORIGINALS_LIMIT: 5000
+      PHOTOPRISM_HTTP_COMPRESSION: "gzip"
+      PHOTOPRISM_LOG_LEVEL: "info"
+      PHOTOPRISM_READONLY: "false"
+      PHOTOPRISM_EXPERIMENTAL: "false"
+      PHOTOPRISM_DISABLE_CHOWN: "false"
+      PHOTOPRISM_DISABLE_WEBDAV: "false"
+      PHOTOPRISM_DISABLE_SETTINGS: "false"
+      PHOTOPRISM_DISABLE_TENSORFLOW: "false"
+      PHOTOPRISM_DISABLE_FACES: "false"
+      PHOTOPRISM_DISABLE_CLASSIFICATION: "false"
+      PHOTOPRISM_DISABLE_VECTORS: "false"
+      PHOTOPRISM_DISABLE_RAW: "false"
+      PHOTOPRISM_RAW_PRESETS: "false"
+      PHOTOPRISM_SIDECAR_YAML: "true"
+      PHOTOPRISM_BACKUP_ALBUMS: "true"
+      PHOTOPRISM_BACKUP_DATABASE: "true"
+      PHOTOPRISM_BACKUP_SCHEDULE: "daily"
+      PHOTOPRISM_INDEX_SCHEDULE: ""
+      PHOTOPRISM_AUTO_INDEX: 300
+      PHOTOPRISM_AUTO_IMPORT: -1
+      PHOTOPRISM_DETECT_NSFW: "false"
+      PHOTOPRISM_UPLOAD_NSFW: "true"
+      PHOTOPRISM_DATABASE_DRIVER: "mysql"
+      PHOTOPRISM_DATABASE_SERVER: "mariadb-test:3306"
+      PHOTOPRISM_DATABASE_NAME: "photoprism"
+      PHOTOPRISM_DATABASE_USER: "photoprism"
+      PHOTOPRISM_DATABASE_PASSWORD: "photoprism"
+      PHOTOPRISM_SITE_CAPTION: "Test Instance"
+      PHOTOPRISM_SITE_DESCRIPTION: "Testing PhotoPrism for Photo Sorter"
+      PHOTOPRISM_SITE_AUTHOR: ""
+      HOME: "/photoprism"
+    working_dir: "/photoprism"
+    volumes:
+      - "./volumes/photoprism-test-originals:/photoprism/originals"
+      - "./volumes/photoprism-test-storage:/photoprism/storage"
+
+  mariadb-test:
+    image: mariadb:11
+    container_name: mariadb-test
+    security_opt:
+      - seccomp:unconfined
+      - apparmor:unconfined
+    command: >
+      --innodb-buffer-pool-size=512M
+      --transaction-isolation=READ-COMMITTED
+      --character-set-server=utf8mb4
+      --collation-server=utf8mb4_unicode_ci
+      --max-connections=512
+      --innodb-rollback-on-timeout=OFF
+      --innodb-lock-wait-timeout=120
+    volumes:
+      - "./volumes/mariadb-test-data:/var/lib/mysql"
+    environment:
+      MARIADB_AUTO_UPGRADE: "1"
+      MARIADB_INITDB_SKIP_TZINFO: "1"
+      MARIADB_DATABASE: "photoprism"
+      MARIADB_USER: "photoprism"
+      MARIADB_PASSWORD: "photoprism"
+      MARIADB_ROOT_PASSWORD: "photoprism"
+
+  pgvector-test:
+    container_name: pgvector
+    image: pgvector/pgvector:pg17
+    volumes:
+      - ./volumes/pgvector_data:/var/lib/postgresql/data
+    environment:
+      PGDATA: "/var/lib/postgresql/data/pgdata"
+      POSTGRES_PASSWORD: "photoprism"
+

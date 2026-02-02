@@ -377,6 +377,7 @@ func TestMigrations(t *testing.T) {
 		"002_create_faces.sql",
 		"003_create_faces_processed.sql",
 		"004_create_indexes.sql",
+		"005_create_unaccent.sql",
 	}
 
 	if len(applied) != len(expectedMigrations) {
