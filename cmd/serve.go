@@ -99,6 +99,10 @@ func runServe(cmd *cobra.Command, args []string) error {
 	database.RegisterEmbeddingHNSWRebuilder(embeddingRepo)
 	fmt.Printf("Using PostgreSQL backend\n")
 
+	// Create session repository for persistent sessions
+	sessionRepo := postgres.NewSessionRepository(pool)
+	fmt.Printf("Session persistence enabled (PostgreSQL)\n")
+
 	port := mustGetInt(cmd, "port")
 	host := mustGetString(cmd, "host")
 	sessionSecret := mustGetString(cmd, "session-secret")
@@ -122,7 +126,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 
 	// Create and start server
-	server := web.NewServer(cfg, port, host, sessionSecret)
+	server := web.NewServer(cfg, port, host, sessionSecret, sessionRepo)
 
 	// Handle graceful shutdown
 	ctx, cancel := context.WithCancel(context.Background())

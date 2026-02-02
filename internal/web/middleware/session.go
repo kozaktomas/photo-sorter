@@ -1,11 +1,13 @@
 package middleware
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -15,6 +17,7 @@ import (
 const (
 	sessionCookieName = "photo_sorter_session"
 	sessionDuration   = 24 * time.Hour
+	cleanupInterval   = 10 * time.Minute
 )
 
 // Session represents a user session
@@ -26,22 +29,79 @@ type Session struct {
 	ExpiresAt     time.Time `json:"expires_at"`
 }
 
+// SessionRepository defines the interface for persistent session storage
+type SessionRepository interface {
+	Save(ctx context.Context, id, token, downloadToken string, createdAt, expiresAt time.Time) error
+	Get(ctx context.Context, sessionID string) (*StoredSession, error)
+	Delete(ctx context.Context, sessionID string) error
+	DeleteExpired(ctx context.Context) (int64, error)
+}
+
+// StoredSession represents session data from the repository
+type StoredSession struct {
+	ID            string
+	Token         string
+	DownloadToken string
+	CreatedAt     time.Time
+	ExpiresAt     time.Time
+}
+
 // SessionManager handles session creation and validation
 type SessionManager struct {
 	secret   []byte
 	sessions map[string]*Session
 	mu       sync.RWMutex
+	repo     SessionRepository // optional persistent storage
+	stopCh   chan struct{}     // channel to stop cleanup goroutine
 }
 
 // NewSessionManager creates a new session manager
-func NewSessionManager(secret string) *SessionManager {
+func NewSessionManager(secret string, repo SessionRepository) *SessionManager {
 	// Use a default secret if none provided (for development)
 	if secret == "" {
 		secret = "photo-sorter-dev-secret-change-in-production"
 	}
-	return &SessionManager{
+	sm := &SessionManager{
 		secret:   []byte(secret),
 		sessions: make(map[string]*Session),
+		repo:     repo,
+		stopCh:   make(chan struct{}),
+	}
+
+	// Start background cleanup goroutine if we have a repository
+	if repo != nil {
+		go sm.cleanupLoop()
+	}
+
+	return sm
+}
+
+// cleanupLoop periodically removes expired sessions from the database
+func (sm *SessionManager) cleanupLoop() {
+	ticker := time.NewTicker(cleanupInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			deleted, err := sm.repo.DeleteExpired(ctx)
+			cancel()
+			if err != nil {
+				log.Printf("Failed to cleanup expired sessions: %v", err)
+			} else if deleted > 0 {
+				log.Printf("Cleaned up %d expired sessions", deleted)
+			}
+		case <-sm.stopCh:
+			return
+		}
+	}
+}
+
+// Stop stops the cleanup goroutine
+func (sm *SessionManager) Stop() {
+	if sm.stopCh != nil {
+		close(sm.stopCh)
 	}
 }
 
@@ -54,45 +114,97 @@ func (sm *SessionManager) CreateSession(token, downloadToken string) (*Session, 
 	}
 	sessionID := base64.URLEncoding.EncodeToString(idBytes)
 
+	now := time.Now()
 	session := &Session{
 		ID:            sessionID,
 		Token:         token,
 		DownloadToken: downloadToken,
-		CreatedAt:     time.Now(),
-		ExpiresAt:     time.Now().Add(sessionDuration),
+		CreatedAt:     now,
+		ExpiresAt:     now.Add(sessionDuration),
 	}
 
+	// Store in memory
 	sm.mu.Lock()
 	sm.sessions[sessionID] = session
 	sm.mu.Unlock()
+
+	// Persist to database if available
+	if sm.repo != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := sm.repo.Save(ctx, session.ID, session.Token, session.DownloadToken, session.CreatedAt, session.ExpiresAt); err != nil {
+			log.Printf("Warning: failed to persist session to database: %v", err)
+			// Continue anyway - session is still in memory
+		}
+	}
 
 	return session, nil
 }
 
 // GetSession retrieves a session by ID
 func (sm *SessionManager) GetSession(sessionID string) *Session {
+	// Check memory first
 	sm.mu.RLock()
-	defer sm.mu.RUnlock()
-
 	session, ok := sm.sessions[sessionID]
-	if !ok {
-		return nil
+	sm.mu.RUnlock()
+
+	if ok {
+		// Check if session has expired
+		if time.Now().After(session.ExpiresAt) {
+			go sm.DeleteSession(sessionID)
+			return nil
+		}
+		return session
 	}
 
-	// Check if session has expired
-	if time.Now().After(session.ExpiresAt) {
-		go sm.DeleteSession(sessionID)
-		return nil
+	// Not in memory - try database if available
+	if sm.repo != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		stored, err := sm.repo.Get(ctx, sessionID)
+		if err != nil {
+			log.Printf("Warning: failed to get session from database: %v", err)
+			return nil
+		}
+		if stored == nil {
+			return nil
+		}
+
+		// Restore to memory cache
+		session = &Session{
+			ID:            stored.ID,
+			Token:         stored.Token,
+			DownloadToken: stored.DownloadToken,
+			CreatedAt:     stored.CreatedAt,
+			ExpiresAt:     stored.ExpiresAt,
+		}
+
+		sm.mu.Lock()
+		sm.sessions[sessionID] = session
+		sm.mu.Unlock()
+
+		return session
 	}
 
-	return session
+	return nil
 }
 
 // DeleteSession removes a session
 func (sm *SessionManager) DeleteSession(sessionID string) {
+	// Remove from memory
 	sm.mu.Lock()
 	delete(sm.sessions, sessionID)
 	sm.mu.Unlock()
+
+	// Remove from database if available
+	if sm.repo != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := sm.repo.Delete(ctx, sessionID); err != nil {
+			log.Printf("Warning: failed to delete session from database: %v", err)
+		}
+	}
 }
 
 // SetSessionCookie sets the session cookie on the response
@@ -165,15 +277,15 @@ func (sm *SessionManager) verifySignature(data, signature string) bool {
 	return hmac.Equal([]byte(signature), []byte(expected))
 }
 
-// SessionData is a helper struct for JSON responses
-type SessionData struct {
+// SessionJSONData is a helper struct for JSON responses
+type SessionJSONData struct {
 	SessionID string `json:"session_id"`
 	ExpiresAt string `json:"expires_at"`
 }
 
 // ToJSON returns the session data for JSON response
-func (s *Session) ToJSON() SessionData {
-	return SessionData{
+func (s *Session) ToJSON() SessionJSONData {
+	return SessionJSONData{
 		SessionID: s.ID,
 		ExpiresAt: s.ExpiresAt.Format(time.RFC3339),
 	}

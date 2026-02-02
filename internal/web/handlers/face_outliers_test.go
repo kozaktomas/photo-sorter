@@ -89,7 +89,7 @@ func TestFacesHandler_FindOutliers_Success(t *testing.T) {
 	})
 
 	cfg := testConfig()
-	sm := middleware.NewSessionManager("test-secret")
+	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := &FacesHandler{
 		config:         cfg,
 		sessionManager: sm,
@@ -127,7 +127,7 @@ func TestFacesHandler_FindOutliers_Success(t *testing.T) {
 func TestFacesHandler_FindOutliers_MissingPersonName(t *testing.T) {
 	mockReader := mock.NewMockFaceReader()
 	cfg := testConfig()
-	sm := middleware.NewSessionManager("test-secret")
+	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := &FacesHandler{
 		config:         cfg,
 		sessionManager: sm,
@@ -148,7 +148,7 @@ func TestFacesHandler_FindOutliers_MissingPersonName(t *testing.T) {
 func TestFacesHandler_FindOutliers_InvalidJSON(t *testing.T) {
 	mockReader := mock.NewMockFaceReader()
 	cfg := testConfig()
-	sm := middleware.NewSessionManager("test-secret")
+	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := &FacesHandler{
 		config:         cfg,
 		sessionManager: sm,
@@ -168,7 +168,7 @@ func TestFacesHandler_FindOutliers_InvalidJSON(t *testing.T) {
 
 func TestFacesHandler_FindOutliers_NoFaceReader(t *testing.T) {
 	cfg := testConfig()
-	sm := middleware.NewSessionManager("test-secret")
+	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := &FacesHandler{
 		config:         cfg,
 		sessionManager: sm,
@@ -196,7 +196,7 @@ func TestFacesHandler_FindOutliers_PersonNotFound(t *testing.T) {
 	// No faces for "unknown-person"
 
 	cfg := testConfig()
-	sm := middleware.NewSessionManager("test-secret")
+	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := &FacesHandler{
 		config:         cfg,
 		sessionManager: sm,
@@ -239,7 +239,7 @@ func TestFacesHandler_FindOutliers_DatabaseError(t *testing.T) {
 	mockReader.GetFacesBySubjectError = errMockError
 
 	cfg := testConfig()
-	sm := middleware.NewSessionManager("test-secret")
+	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := &FacesHandler{
 		config:         cfg,
 		sessionManager: sm,
@@ -297,7 +297,7 @@ func TestFacesHandler_FindOutliers_WithThreshold(t *testing.T) {
 	})
 
 	cfg := testConfig()
-	sm := middleware.NewSessionManager("test-secret")
+	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := &FacesHandler{
 		config:         cfg,
 		sessionManager: sm,
@@ -353,7 +353,7 @@ func TestFacesHandler_FindOutliers_WithLimit(t *testing.T) {
 	}
 
 	cfg := testConfig()
-	sm := middleware.NewSessionManager("test-secret")
+	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := &FacesHandler{
 		config:         cfg,
 		sessionManager: sm,
@@ -419,7 +419,7 @@ func TestFacesHandler_FindOutliers_MissingEmbeddings(t *testing.T) {
 	})
 
 	cfg := testConfig()
-	sm := middleware.NewSessionManager("test-secret")
+	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := &FacesHandler{
 		config:         cfg,
 		sessionManager: sm,

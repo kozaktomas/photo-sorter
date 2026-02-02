@@ -544,6 +544,30 @@ make dev-go    # Start Go server
 - `WEB_HOST` - Server host (default: 0.0.0.0)
 - `WEB_SESSION_SECRET` - Secret for signing session cookies
 
+**Session Persistence:**
+
+Sessions are persisted to PostgreSQL, allowing users to remain logged in across server restarts. The implementation uses a write-through cache pattern:
+
+- On login: session saved to both in-memory map and PostgreSQL
+- On request: memory checked first, then database (restored to memory if found)
+- On logout: session removed from both memory and database
+- Background cleanup: expired sessions removed every 10 minutes
+
+Schema (`internal/database/postgres/migrations/006_create_sessions.sql`):
+```sql
+CREATE TABLE sessions (
+    id VARCHAR(255) PRIMARY KEY,
+    token TEXT NOT NULL,
+    download_token TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    expires_at TIMESTAMPTZ NOT NULL
+);
+```
+
+Key files:
+- `internal/database/postgres/sessions.go` - PostgreSQL repository
+- `internal/web/middleware/session.go` - SessionManager with persistence support
+
 **API Endpoints:**
 - `POST /api/v1/auth/login` - Login with PhotoPrism credentials
 - `GET /api/v1/auth/status` - Check authentication status

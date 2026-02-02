@@ -41,7 +41,7 @@ func TestUploadHandler_Upload_Success(t *testing.T) {
 
 	cfg := testConfig()
 	cfg.PhotoPrism.URL = server.URL
-	sm := middleware.NewSessionManager("test-secret")
+	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := NewUploadHandler(cfg, sm)
 
 	// Create a temp file to upload
@@ -94,7 +94,7 @@ func TestUploadHandler_Upload_MissingAlbumUID(t *testing.T) {
 	pp := createPhotoPrismClient(t, server)
 
 	cfg := testConfig()
-	sm := middleware.NewSessionManager("test-secret")
+	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := NewUploadHandler(cfg, sm)
 
 	// Create multipart request without album_uid
@@ -126,7 +126,7 @@ func TestUploadHandler_Upload_NoFiles(t *testing.T) {
 	pp := createPhotoPrismClient(t, server)
 
 	cfg := testConfig()
-	sm := middleware.NewSessionManager("test-secret")
+	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := NewUploadHandler(cfg, sm)
 
 	// Create multipart request with album_uid but no files
@@ -150,7 +150,7 @@ func TestUploadHandler_Upload_NoFiles(t *testing.T) {
 
 func TestUploadHandler_Upload_InvalidMultipart(t *testing.T) {
 	cfg := testConfig()
-	sm := middleware.NewSessionManager("test-secret")
+	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := NewUploadHandler(cfg, sm)
 
 	// Send non-multipart request
@@ -167,7 +167,7 @@ func TestUploadHandler_Upload_InvalidMultipart(t *testing.T) {
 
 func TestUploadHandler_Upload_NoPhotoPrismClient(t *testing.T) {
 	cfg := testConfig()
-	sm := middleware.NewSessionManager("test-secret")
+	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := NewUploadHandler(cfg, sm)
 
 	// Create valid multipart request but without PhotoPrism client
@@ -207,7 +207,7 @@ func TestUploadHandler_Upload_MultipleFiles(t *testing.T) {
 
 	cfg := testConfig()
 	cfg.PhotoPrism.URL = server.URL
-	sm := middleware.NewSessionManager("test-secret")
+	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := NewUploadHandler(cfg, sm)
 
 	// Create multipart request with multiple files
@@ -251,7 +251,7 @@ func TestUploadHandler_Upload_EmptyAlbumUID(t *testing.T) {
 	pp := createPhotoPrismClient(t, server)
 
 	cfg := testConfig()
-	sm := middleware.NewSessionManager("test-secret")
+	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := NewUploadHandler(cfg, sm)
 
 	body := &bytes.Buffer{}
@@ -276,7 +276,7 @@ func TestUploadHandler_Upload_EmptyAlbumUID(t *testing.T) {
 
 func TestNewUploadHandler(t *testing.T) {
 	cfg := testConfig()
-	sm := middleware.NewSessionManager("test-secret")
+	sm := middleware.NewSessionManager("test-secret", nil)
 
 	handler := NewUploadHandler(cfg, sm)
 

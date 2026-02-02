@@ -9,7 +9,7 @@ import (
 )
 
 func TestNewSessionManager(t *testing.T) {
-	sm := NewSessionManager("test-secret")
+	sm := NewSessionManager("test-secret", nil)
 	if sm == nil {
 		t.Fatal("NewSessionManager returned nil")
 	}
@@ -19,7 +19,7 @@ func TestNewSessionManager(t *testing.T) {
 }
 
 func TestSessionManager_CreateSession(t *testing.T) {
-	sm := NewSessionManager("test-secret")
+	sm := NewSessionManager("test-secret", nil)
 
 	session, err := sm.CreateSession("token123", "download456")
 	if err != nil {
@@ -41,7 +41,7 @@ func TestSessionManager_CreateSession(t *testing.T) {
 }
 
 func TestSessionManager_GetSession(t *testing.T) {
-	sm := NewSessionManager("test-secret")
+	sm := NewSessionManager("test-secret", nil)
 
 	session, _ := sm.CreateSession("token123", "download456")
 
@@ -62,7 +62,7 @@ func TestSessionManager_GetSession(t *testing.T) {
 }
 
 func TestSessionManager_DeleteSession(t *testing.T) {
-	sm := NewSessionManager("test-secret")
+	sm := NewSessionManager("test-secret", nil)
 
 	session, _ := sm.CreateSession("token123", "download456")
 
@@ -77,7 +77,7 @@ func TestSessionManager_DeleteSession(t *testing.T) {
 }
 
 func TestSessionManager_SetAndGetSessionCookie(t *testing.T) {
-	sm := NewSessionManager("test-secret")
+	sm := NewSessionManager("test-secret", nil)
 	session, _ := sm.CreateSession("token123", "download456")
 
 	// Create a test response to capture the cookie
@@ -116,7 +116,7 @@ func TestSessionManager_SetAndGetSessionCookie(t *testing.T) {
 }
 
 func TestSessionManager_InvalidCookie(t *testing.T) {
-	sm := NewSessionManager("test-secret")
+	sm := NewSessionManager("test-secret", nil)
 
 	// Request with invalid cookie signature
 	req := httptest.NewRequest("GET", "/", nil)
@@ -132,7 +132,7 @@ func TestSessionManager_InvalidCookie(t *testing.T) {
 }
 
 func TestSessionManager_BearerAuth(t *testing.T) {
-	sm := NewSessionManager("test-secret")
+	sm := NewSessionManager("test-secret", nil)
 	session, _ := sm.CreateSession("token123", "download456")
 
 	// Request with Bearer token
@@ -149,7 +149,7 @@ func TestSessionManager_BearerAuth(t *testing.T) {
 }
 
 func TestRequireAuth(t *testing.T) {
-	sm := NewSessionManager("test-secret")
+	sm := NewSessionManager("test-secret", nil)
 	session, _ := sm.CreateSession("token123", "download456")
 
 	handlerCalled := false
@@ -222,7 +222,7 @@ func TestGetSessionFromContext(t *testing.T) {
 }
 
 func TestSessionManager_ClearSessionCookie(t *testing.T) {
-	sm := NewSessionManager("test-secret")
+	sm := NewSessionManager("test-secret", nil)
 
 	w := httptest.NewRecorder()
 	sm.ClearSessionCookie(w)

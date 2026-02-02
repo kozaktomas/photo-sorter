@@ -11,9 +11,7 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/web/static"
 )
 
-func (s *Server) setupRoutes(sessionSecret string) {
-	// Create session manager
-	sessionManager := middleware.NewSessionManager(sessionSecret)
+func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 
 	// Create handlers
 	authHandler := handlers.NewAuthHandler(s.config, sessionManager)

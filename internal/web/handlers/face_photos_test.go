@@ -71,7 +71,7 @@ func TestFacesHandler_GetPhotoFaces_Success(t *testing.T) {
 	})
 
 	cfg := testConfig()
-	sm := middleware.NewSessionManager("test-secret")
+	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := &FacesHandler{
 		config:         cfg,
 		sessionManager: sm,
@@ -114,7 +114,7 @@ func TestFacesHandler_GetPhotoFaces_Success(t *testing.T) {
 func TestFacesHandler_GetPhotoFaces_MissingPhotoUID(t *testing.T) {
 	mockReader := mock.NewMockFaceReader()
 	cfg := testConfig()
-	sm := middleware.NewSessionManager("test-secret")
+	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := &FacesHandler{
 		config:         cfg,
 		sessionManager: sm,
@@ -133,7 +133,7 @@ func TestFacesHandler_GetPhotoFaces_MissingPhotoUID(t *testing.T) {
 
 func TestFacesHandler_GetPhotoFaces_NoFaceReader(t *testing.T) {
 	cfg := testConfig()
-	sm := middleware.NewSessionManager("test-secret")
+	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := &FacesHandler{
 		config:         cfg,
 		sessionManager: sm,
@@ -153,7 +153,7 @@ func TestFacesHandler_GetPhotoFaces_NoFaceReader(t *testing.T) {
 func TestFacesHandler_GetPhotoFaces_NoPhotoPrismClient(t *testing.T) {
 	mockReader := mock.NewMockFaceReader()
 	cfg := testConfig()
-	sm := middleware.NewSessionManager("test-secret")
+	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := &FacesHandler{
 		config:         cfg,
 		sessionManager: sm,
@@ -180,7 +180,7 @@ func TestFacesHandler_GetPhotoFaces_DatabaseError(t *testing.T) {
 	mockReader.GetFacesError = errMockError
 
 	cfg := testConfig()
-	sm := middleware.NewSessionManager("test-secret")
+	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := &FacesHandler{
 		config:         cfg,
 		sessionManager: sm,
@@ -220,7 +220,7 @@ func TestFacesHandler_GetPhotoFaces_PhotoDetailsError(t *testing.T) {
 	})
 
 	cfg := testConfig()
-	sm := middleware.NewSessionManager("test-secret")
+	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := &FacesHandler{
 		config:         cfg,
 		sessionManager: sm,
@@ -272,7 +272,7 @@ func TestFacesHandler_GetPhotoFaces_NoFacesInPhoto(t *testing.T) {
 	// No faces added
 
 	cfg := testConfig()
-	sm := middleware.NewSessionManager("test-secret")
+	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := &FacesHandler{
 		config:         cfg,
 		sessionManager: sm,
@@ -346,7 +346,7 @@ func TestFacesHandler_GetPhotoFaces_WithThresholdAndLimit(t *testing.T) {
 	})
 
 	cfg := testConfig()
-	sm := middleware.NewSessionManager("test-secret")
+	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := &FacesHandler{
 		config:         cfg,
 		sessionManager: sm,
@@ -407,7 +407,7 @@ func TestFacesHandler_GetPhotoFaces_UnmatchedMarkers(t *testing.T) {
 	// No database faces, so marker should appear as unmatched
 
 	cfg := testConfig()
-	sm := middleware.NewSessionManager("test-secret")
+	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := &FacesHandler{
 		config:         cfg,
 		sessionManager: sm,

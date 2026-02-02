@@ -139,7 +139,7 @@ func TestProcessJob_Cancel(t *testing.T) {
 
 func TestProcessHandler_Start_InvalidJSON(t *testing.T) {
 	cfg := testConfig()
-	sm := middleware.NewSessionManager("test-secret")
+	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := NewProcessHandler(cfg, sm, nil, nil)
 
 	body := bytes.NewBufferString(`{invalid json}`)
@@ -156,7 +156,7 @@ func TestProcessHandler_Start_InvalidJSON(t *testing.T) {
 
 func TestProcessHandler_Start_SkipBothOptions(t *testing.T) {
 	cfg := testConfig()
-	sm := middleware.NewSessionManager("test-secret")
+	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := NewProcessHandler(cfg, sm, nil, nil)
 
 	// This test would need database to be initialized
@@ -174,7 +174,7 @@ func TestProcessHandler_Start_SkipBothOptions(t *testing.T) {
 
 func TestProcessHandler_Cancel_MissingJobID(t *testing.T) {
 	cfg := testConfig()
-	sm := middleware.NewSessionManager("test-secret")
+	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := NewProcessHandler(cfg, sm, nil, nil)
 
 	req := httptest.NewRequest("DELETE", "/api/v1/process/", nil)
@@ -189,7 +189,7 @@ func TestProcessHandler_Cancel_MissingJobID(t *testing.T) {
 
 func TestProcessHandler_Cancel_JobNotFound(t *testing.T) {
 	cfg := testConfig()
-	sm := middleware.NewSessionManager("test-secret")
+	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := NewProcessHandler(cfg, sm, nil, nil)
 
 	req := httptest.NewRequest("DELETE", "/api/v1/process/nonexistent", nil)
@@ -204,7 +204,7 @@ func TestProcessHandler_Cancel_JobNotFound(t *testing.T) {
 
 func TestProcessHandler_Cancel_Success(t *testing.T) {
 	cfg := testConfig()
-	sm := middleware.NewSessionManager("test-secret")
+	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := NewProcessHandler(cfg, sm, nil, nil)
 
 	// Create a job manually
@@ -236,7 +236,7 @@ func TestProcessHandler_Cancel_Success(t *testing.T) {
 
 func TestProcessHandler_Events_MissingJobID(t *testing.T) {
 	cfg := testConfig()
-	sm := middleware.NewSessionManager("test-secret")
+	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := NewProcessHandler(cfg, sm, nil, nil)
 
 	req := httptest.NewRequest("GET", "/api/v1/process//events", nil)
@@ -251,7 +251,7 @@ func TestProcessHandler_Events_MissingJobID(t *testing.T) {
 
 func TestProcessHandler_Events_JobNotFound(t *testing.T) {
 	cfg := testConfig()
-	sm := middleware.NewSessionManager("test-secret")
+	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := NewProcessHandler(cfg, sm, nil, nil)
 
 	req := httptest.NewRequest("GET", "/api/v1/process/nonexistent/events", nil)
@@ -266,7 +266,7 @@ func TestProcessHandler_Events_JobNotFound(t *testing.T) {
 
 func TestProcessHandler_RebuildIndex_NoRebuilder(t *testing.T) {
 	cfg := testConfig()
-	sm := middleware.NewSessionManager("test-secret")
+	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := NewProcessHandler(cfg, sm, nil, nil)
 
 	req := httptest.NewRequest("POST", "/api/v1/process/rebuild-index", nil)
@@ -279,7 +279,7 @@ func TestProcessHandler_RebuildIndex_NoRebuilder(t *testing.T) {
 
 func TestProcessHandler_SyncCache_NoClient(t *testing.T) {
 	cfg := testConfig()
-	sm := middleware.NewSessionManager("test-secret")
+	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := NewProcessHandler(cfg, sm, nil, nil)
 
 	req := httptest.NewRequest("POST", "/api/v1/process/sync-cache", nil)

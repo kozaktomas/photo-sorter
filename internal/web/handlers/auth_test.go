@@ -15,7 +15,7 @@ func TestAuthHandler_Login_Success(t *testing.T) {
 
 	cfg := testConfig()
 	cfg.PhotoPrism.URL = server.URL
-	sm := middleware.NewSessionManager("test-secret")
+	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := NewAuthHandler(cfg, sm)
 
 	body := bytes.NewBufferString(`{"username": "testuser", "password": "testpass"}`)
@@ -57,7 +57,7 @@ func TestAuthHandler_Login_MissingCredentials(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := testConfig()
-			sm := middleware.NewSessionManager("test-secret")
+			sm := middleware.NewSessionManager("test-secret", nil)
 			handler := NewAuthHandler(cfg, sm)
 
 			body := bytes.NewBufferString(tt.body)
@@ -75,7 +75,7 @@ func TestAuthHandler_Login_MissingCredentials(t *testing.T) {
 
 func TestAuthHandler_Login_InvalidJSON(t *testing.T) {
 	cfg := testConfig()
-	sm := middleware.NewSessionManager("test-secret")
+	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := NewAuthHandler(cfg, sm)
 
 	body := bytes.NewBufferString(`{invalid json}`)
@@ -101,7 +101,7 @@ func TestAuthHandler_Login_AuthFailure(t *testing.T) {
 
 	cfg := testConfig()
 	cfg.PhotoPrism.URL = server.URL
-	sm := middleware.NewSessionManager("test-secret")
+	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := NewAuthHandler(cfg, sm)
 
 	body := bytes.NewBufferString(`{"username": "baduser", "password": "badpass"}`)
@@ -138,7 +138,7 @@ func TestAuthHandler_Logout_Success(t *testing.T) {
 
 	cfg := testConfig()
 	cfg.PhotoPrism.URL = server.URL
-	sm := middleware.NewSessionManager("test-secret")
+	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := NewAuthHandler(cfg, sm)
 
 	// Create a session first
@@ -172,7 +172,7 @@ func TestAuthHandler_Logout_Success(t *testing.T) {
 
 func TestAuthHandler_Logout_NoSession(t *testing.T) {
 	cfg := testConfig()
-	sm := middleware.NewSessionManager("test-secret")
+	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := NewAuthHandler(cfg, sm)
 
 	req := httptest.NewRequest("POST", "/api/v1/auth/logout", nil)
@@ -192,7 +192,7 @@ func TestAuthHandler_Logout_NoSession(t *testing.T) {
 
 func TestAuthHandler_Status_Authenticated(t *testing.T) {
 	cfg := testConfig()
-	sm := middleware.NewSessionManager("test-secret")
+	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := NewAuthHandler(cfg, sm)
 
 	// Create a session
@@ -226,7 +226,7 @@ func TestAuthHandler_Status_Authenticated(t *testing.T) {
 
 func TestAuthHandler_Status_Unauthenticated(t *testing.T) {
 	cfg := testConfig()
-	sm := middleware.NewSessionManager("test-secret")
+	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := NewAuthHandler(cfg, sm)
 
 	req := httptest.NewRequest("GET", "/api/v1/auth/status", nil)
@@ -250,7 +250,7 @@ func TestAuthHandler_Status_Unauthenticated(t *testing.T) {
 
 func TestAuthHandler_Status_ExpiredSession(t *testing.T) {
 	cfg := testConfig()
-	sm := middleware.NewSessionManager("test-secret")
+	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := NewAuthHandler(cfg, sm)
 
 	// Create a session but don't add it to the manager

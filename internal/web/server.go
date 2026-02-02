@@ -16,23 +16,28 @@ import (
 
 // Server represents the web server
 type Server struct {
-	config     *config.Config
-	router     *chi.Mux
-	httpServer *http.Server
-	jobManager *handlers.JobManager
+	config         *config.Config
+	router         *chi.Mux
+	httpServer     *http.Server
+	jobManager     *handlers.JobManager
+	sessionManager *middleware.SessionManager
 }
 
 // NewServer creates a new web server
-func NewServer(cfg *config.Config, port int, host string, sessionSecret string) *Server {
+func NewServer(cfg *config.Config, port int, host string, sessionSecret string, sessionRepo middleware.SessionRepository) *Server {
 	r := chi.NewRouter()
 
 	// Create job manager for async operations
 	jobManager := handlers.NewJobManager()
 
+	// Create session manager with optional persistence
+	sessionManager := middleware.NewSessionManager(sessionSecret, sessionRepo)
+
 	s := &Server{
-		config:     cfg,
-		router:     r,
-		jobManager: jobManager,
+		config:         cfg,
+		router:         r,
+		jobManager:     jobManager,
+		sessionManager: sessionManager,
 	}
 
 	// Set up middleware stack
@@ -44,7 +49,7 @@ func NewServer(cfg *config.Config, port int, host string, sessionSecret string) 
 	r.Use(middleware.CORS())
 
 	// Set up routes
-	s.setupRoutes(sessionSecret)
+	s.setupRoutes(sessionManager)
 
 	// Create HTTP server
 	s.httpServer = &http.Server{
@@ -70,6 +75,12 @@ func (s *Server) Start() error {
 // Shutdown gracefully shuts down the server
 func (s *Server) Shutdown(ctx context.Context) error {
 	log.Println("Shutting down web server...")
+
+	// Stop the session cleanup goroutine
+	if s.sessionManager != nil {
+		s.sessionManager.Stop()
+	}
+
 	return s.httpServer.Shutdown(ctx)
 }
 
