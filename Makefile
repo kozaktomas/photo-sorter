@@ -24,6 +24,8 @@ build-go-dev:
 clean:
 	rm -f photo-sorter
 	rm -rf internal/web/static/dist
+	mkdir -p internal/web/static/dist
+	touch internal/web/static/dist/.gitkeep
 	rm -rf web/node_modules
 
 # Run frontend in development mode (with hot reload)
