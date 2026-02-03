@@ -59,6 +59,32 @@ The dev environment uses:
 - PostgreSQL: `pgvector:5432` (postgres/photoprism)
 - Embeddings: configured in `.env.dev`
 
+## Direct PhotoPrism API Auth (for Playwright/curl)
+
+When testing the PhotoPrism API directly (not through photo-sorter), authentication works as follows:
+
+1. **Login:** `POST http://photoprism-test:2342/api/v1/session` with body `{"username":"admin","password":"photoprism"}`
+2. **Session ID:** The response JSON contains an `id` field (same value as `access_token`) — use either as the session token. Do NOT use the `session_id` field (it's a different value and won't work).
+3. **Subsequent requests:** Pass the session ID via the `X-Session-ID` header
+
+```bash
+# Login and extract session ID
+TOKEN=$(curl -s -X POST http://photoprism-test:2342/api/v1/session \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"photoprism"}' | jq -r '.id')
+
+# Use the token
+curl -s -H "X-Session-ID: $TOKEN" "http://photoprism-test:2342/api/v1/photos?count=10"
+```
+
+**Photo-sorter's own API** uses cookie-based auth instead:
+```bash
+curl -c cookies.txt -X POST http://localhost:8085/api/v1/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"username":"admin","password":"photoprism"}'
+curl -b cookies.txt "http://localhost:8085/api/v1/albums"
+```
+
 ## Architecture
 
 This is a CLI tool that sorts photos in PhotoPrism using AI providers. Built with Cobra for CLI and Viper for configuration.
