@@ -23,10 +23,11 @@ type Config struct {
 }
 
 type PhotoPrismConfig struct {
-	URL      string
-	Username string
-	Password string
-	Domain   string // public domain for generating photo links (e.g., https://photos.example.com)
+	URL         string
+	Username    string
+	Password    string
+	Domain      string // public domain for generating photo links (e.g., https://photos.example.com)
+	DatabaseURL string // MariaDB DSN for direct database access (e.g., photoprism:photoprism@tcp(mariadb:3306)/photoprism)
 }
 
 // PhotoURL returns an OSC 8 hyperlink for terminal emulators (iTerm2, etc.)
@@ -118,10 +119,11 @@ func Load() *Config {
 
 	return &Config{
 		PhotoPrism: PhotoPrismConfig{
-			URL:      os.Getenv("PHOTOPRISM_URL"),
-			Username: os.Getenv("PHOTOPRISM_USERNAME"),
-			Password: os.Getenv("PHOTOPRISM_PASSWORD"),
-			Domain:   os.Getenv("PHOTOPRISM_DOMAIN"),
+			URL:         os.Getenv("PHOTOPRISM_URL"),
+			Username:    os.Getenv("PHOTOPRISM_USERNAME"),
+			Password:    os.Getenv("PHOTOPRISM_PASSWORD"),
+			Domain:      os.Getenv("PHOTOPRISM_DOMAIN"),
+			DatabaseURL: os.Getenv("PHOTOPRISM_DATABASE_URL"),
 		},
 		OpenAI: OpenAIConfig{
 			Token: os.Getenv("OPENAI_TOKEN"),

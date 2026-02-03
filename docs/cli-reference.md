@@ -457,6 +457,49 @@ Use `cache sync` when faces have been assigned or unassigned directly in PhotoPr
 
 ---
 
+### cache push-embeddings
+
+Push InsightFace embeddings from PostgreSQL to PhotoPrism's MariaDB, replacing the default TensorFlow embeddings.
+
+```bash
+photo-sorter cache push-embeddings [flags]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--dry-run` | bool | false | Preview changes without writing to MariaDB |
+| `--recompute-centroids` | bool | false | Recompute face cluster centroids from new embeddings |
+| `--json` | bool | false | Output as JSON |
+
+**Examples:**
+```bash
+# Preview changes
+photo-sorter cache push-embeddings --dry-run
+
+# Push embeddings
+photo-sorter cache push-embeddings
+
+# Push and recompute centroids
+photo-sorter cache push-embeddings --recompute-centroids
+
+# JSON output
+photo-sorter cache push-embeddings --json
+```
+
+#### What It Does
+
+1. Fetches all faces from PostgreSQL that have a `marker_uid` linkage
+2. For each face, writes its InsightFace embedding to MariaDB `markers.embeddings_json` as `[[e1,...,e512]]`
+3. If `--recompute-centroids`: for each face cluster, averages all linked marker embeddings and writes the centroid to `faces.embedding_json`
+
+#### Prerequisites
+
+- `DATABASE_URL` environment variable must be set (PostgreSQL)
+- `PHOTOPRISM_DATABASE_URL` environment variable must be set (MariaDB DSN, e.g., `photoprism:photoprism@tcp(mariadb:3306)/photoprism`)
+- Faces already detected and linked to markers (run `cache sync` first)
+
+---
+
 ### version
 
 Print the version number.

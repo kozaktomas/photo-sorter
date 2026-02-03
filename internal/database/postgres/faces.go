@@ -162,6 +162,25 @@ func (r *FaceRepository) GetUniquePhotoUIDs(ctx context.Context) ([]string, erro
 	return uids, nil
 }
 
+// GetFacesWithMarkerUID returns all faces that have a non-empty marker_uid
+func (r *FaceRepository) GetFacesWithMarkerUID(ctx context.Context) ([]database.StoredFace, error) {
+	query := `
+		SELECT id, photo_uid, face_index, embedding, bbox, det_score, model, dim, created_at,
+		       marker_uid, subject_uid, subject_name, photo_width, photo_height, orientation, file_uid
+		FROM faces
+		WHERE marker_uid IS NOT NULL AND marker_uid != ''
+		ORDER BY id
+	`
+
+	rows, err := r.pool.Query(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("query faces with marker UID: %w", err)
+	}
+	defer rows.Close()
+
+	return scanFaces(rows)
+}
+
 // CountProcessed returns the number of photos that have been processed for face detection
 func (r *FaceRepository) CountProcessed(ctx context.Context) (int, error) {
 	var count int

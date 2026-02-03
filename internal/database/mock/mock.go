@@ -328,6 +328,22 @@ func (m *MockFaceReader) GetUniquePhotoUIDs(ctx context.Context) ([]string, erro
 	return uids, nil
 }
 
+// GetFacesWithMarkerUID returns all faces that have a non-empty marker_uid
+func (m *MockFaceReader) GetFacesWithMarkerUID(ctx context.Context) ([]database.StoredFace, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	var result []database.StoredFace
+	for _, faces := range m.faces {
+		for _, face := range faces {
+			if face.MarkerUID != "" {
+				result = append(result, face)
+			}
+		}
+	}
+	return result, nil
+}
+
 // MockFaceWriter is a mock implementation of database.FaceWriter
 type MockFaceWriter struct {
 	*MockFaceReader

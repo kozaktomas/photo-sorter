@@ -48,6 +48,8 @@ type FaceReader interface {
 	FindSimilarWithDistance(ctx context.Context, embedding []float32, limit int, maxDistance float64) ([]StoredFace, []float64, error)
 	// GetUniquePhotoUIDs returns all unique photo UIDs that have faces
 	GetUniquePhotoUIDs(ctx context.Context) ([]string, error)
+	// GetFacesWithMarkerUID returns all faces that have a non-empty marker_uid
+	GetFacesWithMarkerUID(ctx context.Context) ([]StoredFace, error)
 }
 
 // FaceWriter provides write access to face data

@@ -159,6 +159,7 @@ Environment variables (loaded from `.env`):
 - `DATABASE_MAX_IDLE_CONNS` (optional, defaults to 5)
 - `HNSW_INDEX_PATH` (optional, path to persist face HNSW index, e.g., `/data/faces.pg.hnsw`)
 - `HNSW_EMBEDDING_INDEX_PATH` (optional, path to persist embedding HNSW index, e.g., `/data/embeddings.pg.hnsw`)
+- `PHOTOPRISM_DATABASE_URL` (optional, MariaDB DSN for direct database access, e.g., `photoprism:photoprism@tcp(mariadb:3306)/photoprism`)
 
 ### AI Provider API Calls
 
@@ -310,6 +311,31 @@ go run . cache sync --concurrency 5
 
 # JSON output for scripting
 go run . cache sync --json
+```
+
+### Cache Push-Embeddings Command
+
+```bash
+go run . cache push-embeddings [flags]
+
+Flags:
+  --dry-run               Preview changes without writing to MariaDB
+  --recompute-centroids   Recompute face cluster centroids from new embeddings
+  --json                  Output as JSON
+```
+
+Pushes InsightFace (buffalo_l/ResNet100) face embeddings from the local PostgreSQL cache to PhotoPrism's MariaDB `markers.embeddings_json`, replacing the default TensorFlow embeddings. Requires `PHOTOPRISM_DATABASE_URL` to be set.
+
+Examples:
+```bash
+# Preview what would be updated
+go run . cache push-embeddings --dry-run
+
+# Push embeddings to MariaDB
+go run . cache push-embeddings
+
+# Push and recompute face cluster centroids
+go run . cache push-embeddings --recompute-centroids
 ```
 
 ### Database Package
