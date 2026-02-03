@@ -66,6 +66,26 @@ func (m *MockEmbeddingReader) Count(ctx context.Context) (int, error) {
 	return len(m.embeddings), nil
 }
 
+// CountByUIDs returns the number of embeddings whose photo_uid is in the given list
+func (m *MockEmbeddingReader) CountByUIDs(ctx context.Context, uids []string) (int, error) {
+	if m.CountError != nil {
+		return 0, m.CountError
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	uidSet := make(map[string]struct{}, len(uids))
+	for _, uid := range uids {
+		uidSet[uid] = struct{}{}
+	}
+	count := 0
+	for uid := range m.embeddings {
+		if _, ok := uidSet[uid]; ok {
+			count++
+		}
+	}
+	return count, nil
+}
+
 // FindSimilar finds similar embeddings
 func (m *MockEmbeddingReader) FindSimilar(ctx context.Context, embedding []float32, limit int) ([]database.StoredEmbedding, error) {
 	if m.FindSimilarError != nil {
@@ -201,6 +221,26 @@ func (m *MockFaceReader) Count(ctx context.Context) (int, error) {
 	return count, nil
 }
 
+// CountByUIDs returns the number of faces whose photo_uid is in the given list
+func (m *MockFaceReader) CountByUIDs(ctx context.Context, uids []string) (int, error) {
+	if m.CountError != nil {
+		return 0, m.CountError
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	uidSet := make(map[string]struct{}, len(uids))
+	for _, uid := range uids {
+		uidSet[uid] = struct{}{}
+	}
+	count := 0
+	for uid, faces := range m.faces {
+		if _, ok := uidSet[uid]; ok {
+			count += len(faces)
+		}
+	}
+	return count, nil
+}
+
 // CountPhotos returns the number of distinct photos with faces
 func (m *MockFaceReader) CountPhotos(ctx context.Context) (int, error) {
 	if m.CountPhotosError != nil {
@@ -209,6 +249,26 @@ func (m *MockFaceReader) CountPhotos(ctx context.Context) (int, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return len(m.faces), nil
+}
+
+// CountPhotosByUIDs returns the number of distinct photos with faces whose photo_uid is in the given list
+func (m *MockFaceReader) CountPhotosByUIDs(ctx context.Context, uids []string) (int, error) {
+	if m.CountPhotosError != nil {
+		return 0, m.CountPhotosError
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	uidSet := make(map[string]struct{}, len(uids))
+	for _, uid := range uids {
+		uidSet[uid] = struct{}{}
+	}
+	count := 0
+	for uid := range m.faces {
+		if _, ok := uidSet[uid]; ok {
+			count++
+		}
+	}
+	return count, nil
 }
 
 // FindSimilar finds similar faces

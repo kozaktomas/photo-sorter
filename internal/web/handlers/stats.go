@@ -107,20 +107,26 @@ func (h *StatsHandler) Get(w http.ResponseWriter, r *http.Request) {
 	}
 	totalPhotos := len(allPhotos)
 
-	// Get embedding and face stats from PostgreSQL
+	// Collect photo UIDs for filtered counting
+	photoUIDs := make([]string, len(allPhotos))
+	for i, p := range allPhotos {
+		photoUIDs[i] = p.UID
+	}
+
+	// Get embedding and face stats from PostgreSQL, filtered to only existing photos
 	var photosProcessed, photosWithEmbed, photosWithFaces, totalFaces, totalEmbeddings int
 
 	if embRepo, err := database.GetEmbeddingReader(ctx); err == nil {
-		if count, err := embRepo.Count(ctx); err == nil {
+		if count, err := embRepo.CountByUIDs(ctx, photoUIDs); err == nil {
 			totalEmbeddings = count
 			photosWithEmbed = count
 		}
 	}
 	if faceRepo, err := database.GetFaceReader(ctx); err == nil {
-		if count, err := faceRepo.Count(ctx); err == nil {
+		if count, err := faceRepo.CountByUIDs(ctx, photoUIDs); err == nil {
 			totalFaces = count
 		}
-		if count, err := faceRepo.CountPhotos(ctx); err == nil {
+		if count, err := faceRepo.CountPhotosByUIDs(ctx, photoUIDs); err == nil {
 			photosWithFaces = count
 		}
 	}

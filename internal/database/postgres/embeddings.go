@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/lib/pq"
 	"github.com/pgvector/pgvector-go"
 	"github.com/kozaktomas/photo-sorter/internal/database"
 )
@@ -70,6 +71,19 @@ func (r *EmbeddingRepository) Count(ctx context.Context) (int, error) {
 	err := r.pool.QueryRow(ctx, "SELECT COUNT(*) FROM embeddings").Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("count embeddings: %w", err)
+	}
+	return count, nil
+}
+
+// CountByUIDs returns the number of embeddings whose photo_uid is in the given list
+func (r *EmbeddingRepository) CountByUIDs(ctx context.Context, uids []string) (int, error) {
+	if len(uids) == 0 {
+		return 0, nil
+	}
+	var count int
+	err := r.pool.QueryRow(ctx, "SELECT COUNT(*) FROM embeddings WHERE photo_uid = ANY($1)", pq.Array(uids)).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count embeddings by UIDs: %w", err)
 	}
 	return count, nil
 }

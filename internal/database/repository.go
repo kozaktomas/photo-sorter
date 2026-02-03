@@ -12,6 +12,8 @@ type EmbeddingReader interface {
 	Has(ctx context.Context, photoUID string) (bool, error)
 	// Count returns the total number of embeddings stored
 	Count(ctx context.Context) (int, error)
+	// CountByUIDs returns the number of embeddings whose photo_uid is in the given list
+	CountByUIDs(ctx context.Context, uids []string) (int, error)
 	// FindSimilar finds the most similar embeddings using cosine distance
 	FindSimilar(ctx context.Context, embedding []float32, limit int) ([]StoredEmbedding, error)
 	// FindSimilarWithDistance finds similar embeddings and returns distances
@@ -34,8 +36,12 @@ type FaceReader interface {
 	IsFacesProcessed(ctx context.Context, photoUID string) (bool, error)
 	// Count returns the total number of faces stored
 	Count(ctx context.Context) (int, error)
+	// CountByUIDs returns the number of faces whose photo_uid is in the given list
+	CountByUIDs(ctx context.Context, uids []string) (int, error)
 	// CountPhotos returns the number of distinct photos with faces
 	CountPhotos(ctx context.Context) (int, error)
+	// CountPhotosByUIDs returns the number of distinct photos with faces whose photo_uid is in the given list
+	CountPhotosByUIDs(ctx context.Context, uids []string) (int, error)
 	// FindSimilar finds faces with similar embeddings using cosine distance
 	FindSimilar(ctx context.Context, embedding []float32, limit int) ([]StoredFace, error)
 	// FindSimilarWithDistance finds similar faces and returns distances

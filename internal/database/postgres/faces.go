@@ -102,12 +102,38 @@ func (r *FaceRepository) Count(ctx context.Context) (int, error) {
 	return count, nil
 }
 
+// CountByUIDs returns the number of faces whose photo_uid is in the given list
+func (r *FaceRepository) CountByUIDs(ctx context.Context, uids []string) (int, error) {
+	if len(uids) == 0 {
+		return 0, nil
+	}
+	var count int
+	err := r.pool.QueryRow(ctx, "SELECT COUNT(*) FROM faces WHERE photo_uid = ANY($1)", pq.Array(uids)).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count faces by UIDs: %w", err)
+	}
+	return count, nil
+}
+
 // CountPhotos returns the number of distinct photos with faces
 func (r *FaceRepository) CountPhotos(ctx context.Context) (int, error) {
 	var count int
 	err := r.pool.QueryRow(ctx, "SELECT COUNT(DISTINCT photo_uid) FROM faces").Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("count photos: %w", err)
+	}
+	return count, nil
+}
+
+// CountPhotosByUIDs returns the number of distinct photos with faces whose photo_uid is in the given list
+func (r *FaceRepository) CountPhotosByUIDs(ctx context.Context, uids []string) (int, error) {
+	if len(uids) == 0 {
+		return 0, nil
+	}
+	var count int
+	err := r.pool.QueryRow(ctx, "SELECT COUNT(DISTINCT photo_uid) FROM faces WHERE photo_uid = ANY($1)", pq.Array(uids)).Scan(&count)
+	if err != nil {
+		return 0, fmt.Errorf("count photos by UIDs: %w", err)
 	}
 	return count, nil
 }
