@@ -38,6 +38,12 @@ func (c *statsCache) set(data *StatsResponse) {
 	c.expiresAt = time.Now().Add(statsCacheTTL)
 }
 
+func (c *statsCache) invalidate() {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.data = nil
+}
+
 // StatsHandler handles statistics endpoints
 type StatsHandler struct {
 	config         *config.Config
@@ -51,6 +57,11 @@ func NewStatsHandler(cfg *config.Config, sm *middleware.SessionManager) *StatsHa
 		config:         cfg,
 		sessionManager: sm,
 	}
+}
+
+// InvalidateCache clears the cached stats so the next request fetches fresh data
+func (h *StatsHandler) InvalidateCache() {
+	h.cache.invalidate()
 }
 
 // StatsResponse represents the statistics response

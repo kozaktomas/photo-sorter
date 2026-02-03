@@ -153,16 +153,18 @@ type ProcessHandler struct {
 	jobManager     *ProcessJobManager
 	facesHandler   *FacesHandler
 	photosHandler  *PhotosHandler
+	statsHandler   *StatsHandler
 }
 
 // NewProcessHandler creates a new process handler
-func NewProcessHandler(cfg *config.Config, sm *middleware.SessionManager, fh *FacesHandler, ph *PhotosHandler) *ProcessHandler {
+func NewProcessHandler(cfg *config.Config, sm *middleware.SessionManager, fh *FacesHandler, ph *PhotosHandler, sh *StatsHandler) *ProcessHandler {
 	return &ProcessHandler{
 		config:         cfg,
 		sessionManager: sm,
 		jobManager:     NewProcessJobManager(),
 		facesHandler:   fh,
 		photosHandler:  ph,
+		statsHandler:   sh,
 	}
 }
 
@@ -583,6 +585,9 @@ func (h *ProcessHandler) completeJob(job *ProcessJob, embRepo database.Embedding
 	if h.photosHandler != nil {
 		h.photosHandler.RefreshReader()
 	}
+	if h.statsHandler != nil {
+		h.statsHandler.InvalidateCache()
+	}
 
 	// Gather stats
 	ctx := context.Background()
@@ -826,6 +831,10 @@ func (h *ProcessHandler) SyncCache(w http.ResponseWriter, r *http.Request) {
 	}
 
 	wg.Wait()
+
+	if h.statsHandler != nil {
+		h.statsHandler.InvalidateCache()
+	}
 
 	durationMs := time.Since(startTime).Milliseconds()
 

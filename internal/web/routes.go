@@ -23,7 +23,7 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 	configHandler := handlers.NewConfigHandler(s.config)
 	facesHandler := handlers.NewFacesHandler(s.config, sessionManager)
 	statsHandler := handlers.NewStatsHandler(s.config, sessionManager)
-	processHandler := handlers.NewProcessHandler(s.config, sessionManager, facesHandler, photosHandler)
+	processHandler := handlers.NewProcessHandler(s.config, sessionManager, facesHandler, photosHandler, statsHandler)
 
 	// Health check (no auth required)
 	s.router.Get("/api/v1/health", handlers.HealthCheck)
