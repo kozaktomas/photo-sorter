@@ -122,6 +122,7 @@
       "success": "Cache synced successfully",
       "photosScanned": "{{count}} photos scanned",
       "facesUpdated": "{{count}} faces updated",
+      "photosDeleted": "{{count}} deleted photos cleaned up",
       "duration": "Completed in {{ms}}ms"
     }
   },

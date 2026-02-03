@@ -957,6 +957,61 @@ func (r *FaceRepository) SaveHNSWIndex() error {
 	return nil
 }
 
+// DeleteFacesByPhoto removes all faces and faces_processed records for a photo.
+// Returns the deleted face IDs for HNSW cleanup.
+func (r *FaceRepository) DeleteFacesByPhoto(ctx context.Context, photoUID string) ([]int64, error) {
+	tx, err := r.pool.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback()
+
+	// Get face IDs before deleting (for HNSW cleanup)
+	rows, err := tx.QueryContext(ctx, "SELECT id FROM faces WHERE photo_uid = $1", photoUID)
+	if err != nil {
+		return nil, fmt.Errorf("query face IDs: %w", err)
+	}
+	var faceIDs []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return nil, fmt.Errorf("scan face ID: %w", err)
+		}
+		faceIDs = append(faceIDs, id)
+	}
+	rows.Close()
+
+	// Delete faces
+	if _, err := tx.ExecContext(ctx, "DELETE FROM faces WHERE photo_uid = $1", photoUID); err != nil {
+		return nil, fmt.Errorf("delete faces: %w", err)
+	}
+
+	// Delete faces_processed record
+	if _, err := tx.ExecContext(ctx, "DELETE FROM faces_processed WHERE photo_uid = $1", photoUID); err != nil {
+		return nil, fmt.Errorf("delete faces_processed: %w", err)
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("commit transaction: %w", err)
+	}
+
+	// Remove from HNSW index
+	r.hnswMu.RLock()
+	hnswEnabled := r.hnswEnabled && r.hnswIndex != nil
+	r.hnswMu.RUnlock()
+
+	if hnswEnabled {
+		r.hnswMu.Lock()
+		for _, id := range faceIDs {
+			r.hnswIndex.Delete(id)
+		}
+		r.hnswMu.Unlock()
+	}
+
+	return faceIDs, nil
+}
+
 // Verify interface compliance
 var _ database.FaceReader = (*FaceRepository)(nil)
 var _ database.FaceWriter = (*FaceRepository)(nil)

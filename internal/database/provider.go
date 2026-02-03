@@ -19,6 +19,7 @@ type HNSWRebuilder interface {
 
 var (
 	postgresEmbeddingReader func() EmbeddingReader
+	postgresEmbeddingWriter func() EmbeddingWriter
 	postgresFaceReader      func() FaceReader
 	postgresFaceWriter      func() FaceWriter
 	postgresFaceHNSW        HNSWRebuilder // Singleton for face HNSW rebuilding
@@ -97,4 +98,21 @@ func GetFaceWriter(ctx context.Context) (FaceWriter, error) {
 		return nil, fmt.Errorf("PostgreSQL face writer not registered")
 	}
 	return postgresFaceWriter(), nil
+}
+
+// RegisterEmbeddingWriter registers the EmbeddingWriter constructor.
+// Separate from RegisterPostgresBackend to avoid changing all existing callers.
+func RegisterEmbeddingWriter(writer func() EmbeddingWriter) {
+	postgresEmbeddingWriter = writer
+}
+
+// GetEmbeddingWriter returns an EmbeddingWriter from the PostgreSQL backend
+func GetEmbeddingWriter(ctx context.Context) (EmbeddingWriter, error) {
+	if !postgresInitialized {
+		return nil, fmt.Errorf("PostgreSQL backend not initialized: DATABASE_URL is required")
+	}
+	if postgresEmbeddingWriter == nil {
+		return nil, fmt.Errorf("PostgreSQL embedding writer not registered")
+	}
+	return postgresEmbeddingWriter(), nil
 }

@@ -277,12 +277,14 @@ type MockFaceWriter struct {
 	MarkProcessedCalls     []MarkProcessedCall
 	UpdateMarkerCalls      []UpdateMarkerCall
 	UpdatePhotoInfoCalls   []UpdatePhotoInfoCall
+	DeleteFacesCalls       []string
 
 	// Error injection
 	SaveFacesError         error
 	MarkProcessedError     error
 	UpdateMarkerError      error
 	UpdatePhotoInfoError   error
+	DeleteFacesError       error
 }
 
 // SaveFacesCall tracks a SaveFaces call
@@ -371,7 +373,71 @@ func (m *MockFaceWriter) UpdateFacePhotoInfo(ctx context.Context, photoUID strin
 	return nil
 }
 
+// DeleteFacesByPhoto removes all faces for a photo
+func (m *MockFaceWriter) DeleteFacesByPhoto(ctx context.Context, photoUID string) ([]int64, error) {
+	if m.DeleteFacesError != nil {
+		return nil, m.DeleteFacesError
+	}
+	m.DeleteFacesCalls = append(m.DeleteFacesCalls, photoUID)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	faces := m.faces[photoUID]
+	var ids []int64
+	for _, f := range faces {
+		ids = append(ids, f.ID)
+	}
+	delete(m.faces, photoUID)
+	return ids, nil
+}
+
+// MockEmbeddingWriter is a mock implementation of database.EmbeddingWriter
+type MockEmbeddingWriter struct {
+	*MockEmbeddingReader
+
+	// Track calls
+	DeleteEmbeddingCalls []string
+
+	// Error injection
+	DeleteEmbeddingError       error
+	GetUniquePhotoUIDsError    error
+}
+
+// NewMockEmbeddingWriter creates a new mock embedding writer
+func NewMockEmbeddingWriter() *MockEmbeddingWriter {
+	return &MockEmbeddingWriter{
+		MockEmbeddingReader: NewMockEmbeddingReader(),
+	}
+}
+
+// DeleteEmbedding removes an embedding for a photo
+func (m *MockEmbeddingWriter) DeleteEmbedding(ctx context.Context, photoUID string) error {
+	if m.DeleteEmbeddingError != nil {
+		return m.DeleteEmbeddingError
+	}
+	m.DeleteEmbeddingCalls = append(m.DeleteEmbeddingCalls, photoUID)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.embeddings, photoUID)
+	return nil
+}
+
+// GetUniquePhotoUIDs returns all unique photo UIDs that have embeddings
+func (m *MockEmbeddingWriter) GetUniquePhotoUIDs(ctx context.Context) ([]string, error) {
+	if m.GetUniquePhotoUIDsError != nil {
+		return nil, m.GetUniquePhotoUIDsError
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	var uids []string
+	for uid := range m.embeddings {
+		uids = append(uids, uid)
+	}
+	return uids, nil
+}
+
 // Verify interface compliance
 var _ database.EmbeddingReader = (*MockEmbeddingReader)(nil)
+var _ database.EmbeddingWriter = (*MockEmbeddingWriter)(nil)
 var _ database.FaceReader = (*MockFaceReader)(nil)
 var _ database.FaceWriter = (*MockFaceWriter)(nil)

@@ -341,6 +341,7 @@ export interface SyncCacheResponse {
   success: boolean;
   photos_scanned: number;
   faces_updated: number;
+  photos_deleted: number;
   duration_ms: number;
   error?: string;
 }

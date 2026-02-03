@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 )
 
 // doGetJSON performs a GET request and unmarshals the JSON response into the result type.
@@ -267,4 +268,9 @@ func doRequestRaw(pp *PhotoPrism, method, endpoint string, requestBody interface
 	}
 
 	return body, nil
+}
+
+// IsNotFoundError returns true if the error indicates a 404 Not Found response.
+func IsNotFoundError(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "status 404")
 }

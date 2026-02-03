@@ -100,6 +100,15 @@ func (h *HNSWEmbeddingIndex) GetEmbedding(photoUID string) *StoredEmbedding {
 	return h.idToEmb[photoUID]
 }
 
+// Delete removes an embedding from the index by photo UID
+func (h *HNSWEmbeddingIndex) Delete(photoUID string) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	delete(h.idToEmb, photoUID)
+	// Note: HNSW doesn't support true deletion, but removing from idToEmb
+	// means it won't appear in search results since we filter through idToEmb
+}
+
 // SetPath sets the path for saving/loading the index
 func (h *HNSWEmbeddingIndex) SetPath(path string) {
 	h.mu.Lock()

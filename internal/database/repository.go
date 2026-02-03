@@ -61,5 +61,20 @@ type FaceWriter interface {
 	// UpdateFacePhotoInfo updates the cached photo dimensions and file info for all faces of a photo.
 	// Used during processing or backfill to populate cached PhotoPrism data.
 	UpdateFacePhotoInfo(ctx context.Context, photoUID string, width, height, orientation int, fileUID string) error
+
+	// DeleteFacesByPhoto removes all faces and faces_processed records for a photo.
+	// Returns the deleted face IDs for HNSW cleanup.
+	DeleteFacesByPhoto(ctx context.Context, photoUID string) ([]int64, error)
+}
+
+// EmbeddingWriter provides write access to image embeddings
+type EmbeddingWriter interface {
+	EmbeddingReader
+
+	// DeleteEmbedding removes the embedding for a photo
+	DeleteEmbedding(ctx context.Context, photoUID string) error
+
+	// GetUniquePhotoUIDs returns all unique photo UIDs that have embeddings
+	GetUniquePhotoUIDs(ctx context.Context) ([]string, error)
 }
 

@@ -94,6 +94,8 @@ func runServe(cmd *cobra.Command, args []string) error {
 		func() database.FaceReader { return faceRepo },
 		func() database.FaceWriter { return faceRepo },
 	)
+	// Register embedding writer for sync cache cleanup
+	database.RegisterEmbeddingWriter(func() database.EmbeddingWriter { return embeddingRepo })
 	// Register HNSW rebuilders for the Rebuild Index feature
 	database.RegisterFaceHNSWRebuilder(faceRepo)
 	database.RegisterEmbeddingHNSWRebuilder(embeddingRepo)

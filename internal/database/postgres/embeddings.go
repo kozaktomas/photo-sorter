@@ -524,5 +524,48 @@ func (r *EmbeddingRepository) SaveHNSWIndex() error {
 	return nil
 }
 
+// DeleteEmbedding removes the embedding for a photo and cleans up the HNSW index
+func (r *EmbeddingRepository) DeleteEmbedding(ctx context.Context, photoUID string) error {
+	if _, err := r.pool.Exec(ctx, "DELETE FROM embeddings WHERE photo_uid = $1", photoUID); err != nil {
+		return fmt.Errorf("delete embedding: %w", err)
+	}
+
+	// Remove from HNSW index
+	r.hnswMu.RLock()
+	hnswEnabled := r.hnswEnabled && r.hnswIndex != nil
+	r.hnswMu.RUnlock()
+
+	if hnswEnabled {
+		r.hnswIndex.Delete(photoUID)
+	}
+
+	return nil
+}
+
+// GetUniquePhotoUIDs returns all unique photo UIDs that have embeddings
+func (r *EmbeddingRepository) GetUniquePhotoUIDs(ctx context.Context) ([]string, error) {
+	rows, err := r.pool.Query(ctx, "SELECT photo_uid FROM embeddings ORDER BY photo_uid")
+	if err != nil {
+		return nil, fmt.Errorf("query embedding photo UIDs: %w", err)
+	}
+	defer rows.Close()
+
+	var uids []string
+	for rows.Next() {
+		var uid string
+		if err := rows.Scan(&uid); err != nil {
+			return nil, fmt.Errorf("scan photo UID: %w", err)
+		}
+		uids = append(uids, uid)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate photo UIDs: %w", err)
+	}
+
+	return uids, nil
+}
+
 // Verify interface compliance
 var _ database.EmbeddingReader = (*EmbeddingRepository)(nil)
+var _ database.EmbeddingWriter = (*EmbeddingRepository)(nil)

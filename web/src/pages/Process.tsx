@@ -477,6 +477,9 @@ export function ProcessPage() {
               <div className="text-slate-400 pl-6 space-y-0.5">
                 <div>{t('pages:process.syncCache.photosScanned', { count: syncResult.photos_scanned })}</div>
                 <div>{t('pages:process.syncCache.facesUpdated', { count: syncResult.faces_updated })}</div>
+                {syncResult.photos_deleted > 0 && (
+                  <div>{t('pages:process.syncCache.photosDeleted', { count: syncResult.photos_deleted })}</div>
+                )}
                 <div>{t('pages:process.syncCache.duration', { ms: syncResult.duration_ms })}</div>
               </div>
             </div>
