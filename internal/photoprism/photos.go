@@ -22,7 +22,7 @@ func (pp *PhotoPrism) GetPhotosWithQuery(count int, offset int, query string) ([
 // Query examples: "person:jan-novak", "label:cat", "year:2024"
 // Order examples: "newest", "oldest", "added", "edited", "name", "title", "size", "random"
 func (pp *PhotoPrism) GetPhotosWithQueryAndOrder(count int, offset int, query string, order string) ([]Photo, error) {
-	endpoint := fmt.Sprintf("photos?count=%d&offset=%d", count, offset)
+	endpoint := fmt.Sprintf("photos?count=%d&offset=%d&quality=3", count, offset)
 	if query != "" {
 		endpoint += fmt.Sprintf("&q=%s", url.QueryEscape(query))
 	}
