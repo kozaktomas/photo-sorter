@@ -76,7 +76,7 @@ func (pp *PhotoPrism) RemovePhotosFromAlbum(albumUID string, photoUIDs []string)
 
 // GetAlbumPhotos retrieves photos from a specific album
 func (pp *PhotoPrism) GetAlbumPhotos(albumUID string, count int, offset int) ([]Photo, error) {
-	endpoint := fmt.Sprintf("photos?count=%d&offset=%d&s=%s&quality=3", count, offset, albumUID)
+	endpoint := fmt.Sprintf("photos?count=%d&offset=%d&s=%s", count, offset, albumUID)
 	result, err := doGetJSON[[]Photo](pp, endpoint)
 	if err != nil {
 		return nil, err
