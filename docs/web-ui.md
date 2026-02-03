@@ -84,6 +84,8 @@ Browse and manage your PhotoPrism albums.
 
 Browse all photos in your library with powerful filtering.
 
+**Quality Filtering:** The Photos page only shows photos with quality score >= 3, matching PhotoPrism's default behavior. Photos with lower quality (e.g., missing EXIF metadata) appear in PhotoPrism's Review section and are hidden here. Album views show all photos regardless of quality.
+
 **Features:**
 - **Search** - Full-text search across photo metadata
 - **Filter by Year** - Dropdown to filter by year

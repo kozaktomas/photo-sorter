@@ -3,6 +3,10 @@ package constants
 
 // Handler pagination constants
 const (
+	// DefaultPhotoQuality is the minimum quality score for photo queries in the web UI.
+	// Matches PhotoPrism's default (quality >= 3 hides review/low-quality photos).
+	DefaultPhotoQuality = 3
+
 	// DefaultHandlerPageSize is the page size for paginated handler endpoints
 	DefaultHandlerPageSize = 100
 

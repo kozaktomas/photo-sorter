@@ -83,7 +83,7 @@ func (h *PhotosHandler) List(w http.ResponseWriter, r *http.Request) {
 		finalQuery = strings.Join(queryParts, " ")
 	}
 
-	photos, err := pp.GetPhotosWithQueryAndOrder(count, offset, finalQuery, order)
+	photos, err := pp.GetPhotosWithQueryAndOrder(count, offset, finalQuery, order, constants.DefaultPhotoQuality)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to get photos")
 		return

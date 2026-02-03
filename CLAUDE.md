@@ -598,7 +598,7 @@ Key files:
 - `POST /api/v1/auth/login` - Login with PhotoPrism credentials
 - `GET /api/v1/auth/status` - Check authentication status
 - `GET /api/v1/albums` - List albums
-- `GET /api/v1/albums/:uid/photos` - Get photos in album
+- `GET /api/v1/albums/:uid/photos` - Get photos in album (no quality filter)
 - `GET /api/v1/labels` - List labels
 - `GET /api/v1/labels/:uid` - Get single label
 - `PUT /api/v1/labels/:uid` - Update label (rename, etc.)

@@ -8,26 +8,32 @@ import (
 )
 
 // GetPhotos retrieves all photos from PhotoPrism
-func (pp *PhotoPrism) GetPhotos(count int, offset int) ([]Photo, error) {
-	return pp.GetPhotosWithQuery(count, offset, "")
+// Optional quality parameter sets minimum quality score (1-7). PhotoPrism UI defaults to 3.
+func (pp *PhotoPrism) GetPhotos(count int, offset int, quality ...int) ([]Photo, error) {
+	return pp.GetPhotosWithQuery(count, offset, "", quality...)
 }
 
 // GetPhotosWithQuery retrieves photos from PhotoPrism with an optional search query
 // Query examples: "person:jan-novak", "label:cat", "year:2024"
-func (pp *PhotoPrism) GetPhotosWithQuery(count int, offset int, query string) ([]Photo, error) {
-	return pp.GetPhotosWithQueryAndOrder(count, offset, query, "")
+// Optional quality parameter sets minimum quality score (1-7). PhotoPrism UI defaults to 3.
+func (pp *PhotoPrism) GetPhotosWithQuery(count int, offset int, query string, quality ...int) ([]Photo, error) {
+	return pp.GetPhotosWithQueryAndOrder(count, offset, query, "", quality...)
 }
 
 // GetPhotosWithQueryAndOrder retrieves photos from PhotoPrism with optional search query and ordering
 // Query examples: "person:jan-novak", "label:cat", "year:2024"
 // Order examples: "newest", "oldest", "added", "edited", "name", "title", "size", "random"
-func (pp *PhotoPrism) GetPhotosWithQueryAndOrder(count int, offset int, query string, order string) ([]Photo, error) {
+// Optional quality parameter sets minimum quality score (1-7). PhotoPrism UI defaults to 3.
+func (pp *PhotoPrism) GetPhotosWithQueryAndOrder(count int, offset int, query string, order string, quality ...int) ([]Photo, error) {
 	endpoint := fmt.Sprintf("photos?count=%d&offset=%d", count, offset)
 	if query != "" {
 		endpoint += fmt.Sprintf("&q=%s", url.QueryEscape(query))
 	}
 	if order != "" {
 		endpoint += fmt.Sprintf("&order=%s", url.QueryEscape(order))
+	}
+	if len(quality) > 0 && quality[0] > 0 {
+		endpoint += fmt.Sprintf("&quality=%d", quality[0])
 	}
 
 	result, err := doGetJSON[[]Photo](pp, endpoint)

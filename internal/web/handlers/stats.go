@@ -84,7 +84,7 @@ func (h *StatsHandler) Get(w http.ResponseWriter, r *http.Request) {
 	pageSize := constants.DefaultPageSize
 	offset := 0
 	for {
-		photos, err := pp.GetPhotos(pageSize, offset)
+		photos, err := pp.GetPhotos(pageSize, offset, constants.DefaultPhotoQuality)
 		if err != nil {
 			break
 		}

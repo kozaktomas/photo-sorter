@@ -75,8 +75,12 @@ func (pp *PhotoPrism) RemovePhotosFromAlbum(albumUID string, photoUIDs []string)
 }
 
 // GetAlbumPhotos retrieves photos from a specific album
-func (pp *PhotoPrism) GetAlbumPhotos(albumUID string, count int, offset int) ([]Photo, error) {
+// Optional quality parameter sets minimum quality score (1-7). PhotoPrism UI defaults to 3.
+func (pp *PhotoPrism) GetAlbumPhotos(albumUID string, count int, offset int, quality ...int) ([]Photo, error) {
 	endpoint := fmt.Sprintf("photos?count=%d&offset=%d&s=%s", count, offset, albumUID)
+	if len(quality) > 0 && quality[0] > 0 {
+		endpoint += fmt.Sprintf("&quality=%d", quality[0])
+	}
 	result, err := doGetJSON[[]Photo](pp, endpoint)
 	if err != nil {
 		return nil, err
