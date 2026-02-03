@@ -52,6 +52,7 @@ type Photo struct {
 	Path         string  `json:"Path"`         // File path
 	CameraModel  string  `json:"CameraModel"`  // Camera model name
 	Scan         bool    `json:"Scan"`         // True if photo was scanned
+	DeletedAt    string  `json:"DeletedAt"`    // Non-empty if soft-deleted/archived
 }
 
 // PhotoDetails represents additional photo details like notes

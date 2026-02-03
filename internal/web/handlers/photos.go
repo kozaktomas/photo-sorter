@@ -89,9 +89,13 @@ func (h *PhotosHandler) List(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := make([]PhotoResponse, len(photos))
-	for i, p := range photos {
-		response[i] = photoToResponse(p)
+	// Filter out soft-deleted (archived) photos
+	response := make([]PhotoResponse, 0, len(photos))
+	for _, p := range photos {
+		if p.DeletedAt != "" {
+			continue
+		}
+		response = append(response, photoToResponse(p))
 	}
 
 	respondJSON(w, http.StatusOK, response)
