@@ -258,11 +258,11 @@ Use this when you've modified face data directly in PostgreSQL outside of Photo 
 
 **Sync Cache:**
 
-Syncs face marker data from PhotoPrism to the local cache without recomputing embeddings. This is useful when faces have been assigned or unassigned directly in PhotoPrism's native UI, and you want the Photo Sorter cache to reflect those changes.
+Syncs face marker data from PhotoPrism to the local cache without recomputing embeddings. This is useful when faces have been assigned or unassigned directly in PhotoPrism's native UI, and you want the Photo Sorter cache to reflect those changes. Also cleans up orphaned data for photos that have been deleted or archived in PhotoPrism — detects both hard-deleted photos (404) and soft-deleted photos (with `DeletedAt` timestamp set).
 
 - **Description** - Explains when to use sync
-- **Sync Cache** button - Syncs marker data for all photos with faces
-- **Success message** - Shows photos scanned, faces updated, and duration
+- **Sync Cache** button - Syncs marker data for all photos with faces/embeddings
+- **Success message** - Shows photos scanned, faces updated, deleted photos cleaned up, and duration
 - **Error handling** - Displays any errors that occur during sync
 
 **What gets synced:**

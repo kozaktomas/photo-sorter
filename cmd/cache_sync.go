@@ -52,6 +52,7 @@ type SyncCacheResult struct {
 	Success       bool   `json:"success"`
 	PhotosScanned int    `json:"photos_scanned"`
 	FacesUpdated  int    `json:"faces_updated"`
+	PhotosDeleted int    `json:"photos_deleted"`
 	Errors        int    `json:"errors"`
 	DurationMs    int64  `json:"duration_ms"`
 	DurationHuman string `json:"duration_human,omitempty"`
@@ -76,11 +77,13 @@ func runCacheSync(cmd *cobra.Command, args []string) error {
 	// Create singleton repositories and register with database package
 	pool := postgres.GetGlobalPool()
 	faceRepo := postgres.NewFaceRepository(pool)
+	embeddingRepo := postgres.NewEmbeddingRepository(pool)
 	database.RegisterPostgresBackend(
-		func() database.EmbeddingReader { return nil },
+		func() database.EmbeddingReader { return embeddingRepo },
 		func() database.FaceReader { return faceRepo },
 		func() database.FaceWriter { return faceRepo },
 	)
+	database.RegisterEmbeddingWriter(func() database.EmbeddingWriter { return embeddingRepo })
 
 	// Connect to PhotoPrism
 	if !jsonOutput {
@@ -103,13 +106,37 @@ func runCacheSync(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get face writer: %w", err)
 	}
 
-	// Get all unique photo UIDs with faces
+	// Get embedding writer
+	embWriter, err := database.GetEmbeddingWriter(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get embedding writer: %w", err)
+	}
+
+	// Get union of photo UIDs from faces and embeddings tables
 	if !jsonOutput {
 		fmt.Println("Fetching photo UIDs from database...")
 	}
-	photoUIDs, err := faceWriter.GetUniquePhotoUIDs(ctx)
+	faceUIDs, err := faceWriter.GetUniquePhotoUIDs(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get photo UIDs: %w", err)
+		return fmt.Errorf("failed to get face photo UIDs: %w", err)
+	}
+
+	uidSet := make(map[string]struct{}, len(faceUIDs))
+	for _, uid := range faceUIDs {
+		uidSet[uid] = struct{}{}
+	}
+
+	embUIDs, err := embWriter.GetUniquePhotoUIDs(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get embedding photo UIDs: %w", err)
+	}
+	for _, uid := range embUIDs {
+		uidSet[uid] = struct{}{}
+	}
+
+	photoUIDs := make([]string, 0, len(uidSet))
+	for uid := range uidSet {
+		photoUIDs = append(photoUIDs, uid)
 	}
 
 	if len(photoUIDs) == 0 {
@@ -147,6 +174,7 @@ func runCacheSync(cmd *cobra.Command, args []string) error {
 
 	// Process photos with concurrency
 	var facesUpdated int64
+	var photosDeleted int64
 	var errorCount int64
 	sem := make(chan struct{}, concurrency)
 	var wg sync.WaitGroup
@@ -159,11 +187,16 @@ func runCacheSync(cmd *cobra.Command, args []string) error {
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			updated, err := syncPhotoCache(ctx, pp, faceWriter, uid)
+			updated, deleted, err := syncPhotoCache(ctx, pp, faceWriter, embWriter, uid)
 			if err != nil {
 				atomic.AddInt64(&errorCount, 1)
-			} else if updated > 0 {
-				atomic.AddInt64(&facesUpdated, int64(updated))
+			} else {
+				if updated > 0 {
+					atomic.AddInt64(&facesUpdated, int64(updated))
+				}
+				if deleted {
+					atomic.AddInt64(&photosDeleted, 1)
+				}
 			}
 
 			if bar != nil {
@@ -183,6 +216,7 @@ func runCacheSync(cmd *cobra.Command, args []string) error {
 		Success:       true,
 		PhotosScanned: len(photoUIDs),
 		FacesUpdated:  int(facesUpdated),
+		PhotosDeleted: int(photosDeleted),
 		Errors:        int(errorCount),
 		DurationMs:    duration.Milliseconds(),
 		DurationHuman: formatDuration(duration),
@@ -198,6 +232,9 @@ func runCacheSync(cmd *cobra.Command, args []string) error {
 	fmt.Println("\nSync complete!")
 	fmt.Printf("  Photos scanned: %d\n", result.PhotosScanned)
 	fmt.Printf("  Faces updated:  %d\n", result.FacesUpdated)
+	if result.PhotosDeleted > 0 {
+		fmt.Printf("  Photos deleted: %d\n", result.PhotosDeleted)
+	}
 	if result.Errors > 0 {
 		fmt.Printf("  Errors:         %d\n", result.Errors)
 	}
@@ -206,17 +243,35 @@ func runCacheSync(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-// syncPhotoCache syncs the cache for a single photo and returns the number of faces updated
-func syncPhotoCache(ctx context.Context, pp *photoprism.PhotoPrism, faceWriter database.FaceWriter, photoUID string) (int, error) {
+// syncPhotoCache syncs the cache for a single photo and returns the number of faces updated,
+// whether the photo was deleted/archived in PhotoPrism (404 or DeletedAt set), and any error.
+func syncPhotoCache(ctx context.Context, pp *photoprism.PhotoPrism, faceWriter database.FaceWriter, embWriter database.EmbeddingWriter, photoUID string) (int, bool, error) {
 	// Get photo details for dimensions
 	details, err := pp.GetPhotoDetails(photoUID)
 	if err != nil {
-		return 0, fmt.Errorf("failed to get photo details: %w", err)
+		// If photo is gone (404), clean up all cached data
+		if photoprism.IsNotFoundError(err) {
+			faceWriter.DeleteFacesByPhoto(ctx, photoUID)
+			if embWriter != nil {
+				embWriter.DeleteEmbedding(ctx, photoUID)
+			}
+			return 0, true, nil
+		}
+		return 0, false, fmt.Errorf("failed to get photo details: %w", err)
+	}
+
+	// Check for soft-deleted photos (200 but DeletedAt populated)
+	if photoprism.IsPhotoDeleted(details) {
+		faceWriter.DeleteFacesByPhoto(ctx, photoUID)
+		if embWriter != nil {
+			embWriter.DeleteEmbedding(ctx, photoUID)
+		}
+		return 0, true, nil
 	}
 
 	fileInfo := facematch.ExtractPrimaryFileInfo(details)
 	if fileInfo == nil || fileInfo.Width == 0 || fileInfo.Height == 0 {
-		return 0, nil
+		return 0, false, nil
 	}
 
 	// Update photo dimensions for all faces
@@ -225,17 +280,17 @@ func syncPhotoCache(ctx context.Context, pp *photoprism.PhotoPrism, faceWriter d
 	// Get markers from PhotoPrism
 	markers, err := pp.GetPhotoMarkers(photoUID)
 	if err != nil {
-		return 0, fmt.Errorf("failed to get markers: %w", err)
+		return 0, false, fmt.Errorf("failed to get markers: %w", err)
 	}
 
 	// Get faces for this photo from database
 	faces, err := faceWriter.GetFaces(ctx, photoUID)
 	if err != nil {
-		return 0, fmt.Errorf("failed to get faces: %w", err)
+		return 0, false, fmt.Errorf("failed to get faces: %w", err)
 	}
 
 	if len(faces) == 0 {
-		return 0, nil
+		return 0, false, nil
 	}
 
 	// If no markers, clear any existing marker assignments
@@ -247,7 +302,7 @@ func syncPhotoCache(ctx context.Context, pp *photoprism.PhotoPrism, faceWriter d
 				updated++
 			}
 		}
-		return updated, nil
+		return updated, false, nil
 	}
 
 	// Convert markers to facematch.MarkerInfo
@@ -285,7 +340,7 @@ func syncPhotoCache(ctx context.Context, pp *photoprism.PhotoPrism, faceWriter d
 		}
 	}
 
-	return updated, nil
+	return updated, false, nil
 }
 
 // formatDuration formats a duration as a human-readable string

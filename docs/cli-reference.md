@@ -441,11 +441,13 @@ Use `cache sync` when faces have been assigned or unassigned directly in PhotoPr
 
 1. Gets all photos with detected faces from the database
 2. For each photo (parallelized):
+   - Fetches current photo details from PhotoPrism
+   - Detects deleted photos: hard-deleted (404) or soft-deleted (`DeletedAt` field set) — removes their faces, embeddings, and processing records
    - Fetches current markers from PhotoPrism
    - Matches database faces to markers using IoU
    - Updates cached marker UID, subject UID, and subject name
    - Updates cached photo dimensions and orientation
-3. Reports how many faces were updated
+3. Reports how many faces were updated and photos cleaned up
 
 #### Prerequisites
 

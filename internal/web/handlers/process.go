@@ -684,6 +684,7 @@ type SyncCacheResponse struct {
 	Success       bool   `json:"success"`
 	PhotosScanned int    `json:"photos_scanned"`
 	FacesUpdated  int    `json:"faces_updated"`
+	PhotosDeleted int    `json:"photos_deleted"`
 	DurationMs    int64  `json:"duration_ms"`
 	Error         string `json:"error,omitempty"`
 }
@@ -752,7 +753,8 @@ func (h *ProcessHandler) RebuildIndex(w http.ResponseWriter, r *http.Request) {
 
 // SyncCache syncs face marker data from PhotoPrism to the local cache
 // without recomputing embeddings. This is useful when faces are assigned/unassigned
-// directly in PhotoPrism's native UI.
+// directly in PhotoPrism's native UI. Also cleans up data for photos that have
+// been deleted or archived in PhotoPrism.
 func (h *ProcessHandler) SyncCache(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 	startTime := time.Now()
@@ -770,15 +772,38 @@ func (h *ProcessHandler) SyncCache(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get all unique photo UIDs with faces
-	photoUIDs, err := faceWriter.GetUniquePhotoUIDs(ctx)
+	// Get embedding writer (optional — may not be registered)
+	embWriter, _ := database.GetEmbeddingWriter(ctx)
+
+	// Get union of photo UIDs from faces and embeddings tables
+	faceUIDs, err := faceWriter.GetUniquePhotoUIDs(ctx)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to get photo UIDs: %v", err))
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to get face photo UIDs: %v", err))
 		return
+	}
+
+	uidSet := make(map[string]struct{}, len(faceUIDs))
+	for _, uid := range faceUIDs {
+		uidSet[uid] = struct{}{}
+	}
+
+	if embWriter != nil {
+		embUIDs, err := embWriter.GetUniquePhotoUIDs(ctx)
+		if err == nil {
+			for _, uid := range embUIDs {
+				uidSet[uid] = struct{}{}
+			}
+		}
+	}
+
+	photoUIDs := make([]string, 0, len(uidSet))
+	for uid := range uidSet {
+		photoUIDs = append(photoUIDs, uid)
 	}
 
 	// Process each photo
 	var facesUpdated int64
+	var photosDeleted int64
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, constants.WorkerPoolSize)
 
@@ -790,9 +815,12 @@ func (h *ProcessHandler) SyncCache(w http.ResponseWriter, r *http.Request) {
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			updated := h.syncPhotoCache(ctx, pp, faceWriter, uid)
+			updated, deleted := h.syncPhotoCache(ctx, pp, faceWriter, embWriter, uid)
 			if updated > 0 {
 				atomic.AddInt64(&facesUpdated, int64(updated))
+			}
+			if deleted {
+				atomic.AddInt64(&photosDeleted, 1)
 			}
 		}(photoUID)
 	}
@@ -805,21 +833,40 @@ func (h *ProcessHandler) SyncCache(w http.ResponseWriter, r *http.Request) {
 		Success:       true,
 		PhotosScanned: len(photoUIDs),
 		FacesUpdated:  int(facesUpdated),
+		PhotosDeleted: int(photosDeleted),
 		DurationMs:    durationMs,
 	})
 }
 
 // syncPhotoCache syncs the cache for a single photo and returns the number of faces updated
-func (h *ProcessHandler) syncPhotoCache(ctx context.Context, pp *photoprism.PhotoPrism, faceWriter database.FaceWriter, photoUID string) int {
+// and whether the photo was deleted/archived in PhotoPrism (404 or DeletedAt set).
+func (h *ProcessHandler) syncPhotoCache(ctx context.Context, pp *photoprism.PhotoPrism, faceWriter database.FaceWriter, embWriter database.EmbeddingWriter, photoUID string) (int, bool) {
 	// Get photo details for dimensions
 	details, err := pp.GetPhotoDetails(photoUID)
 	if err != nil {
-		return 0
+		// If photo is gone (404), clean up all cached data
+		if photoprism.IsNotFoundError(err) {
+			faceWriter.DeleteFacesByPhoto(ctx, photoUID)
+			if embWriter != nil {
+				embWriter.DeleteEmbedding(ctx, photoUID)
+			}
+			return 0, true
+		}
+		return 0, false
+	}
+
+	// Check for soft-deleted photos (200 but DeletedAt populated)
+	if photoprism.IsPhotoDeleted(details) {
+		faceWriter.DeleteFacesByPhoto(ctx, photoUID)
+		if embWriter != nil {
+			embWriter.DeleteEmbedding(ctx, photoUID)
+		}
+		return 0, true
 	}
 
 	fileInfo := facematch.ExtractPrimaryFileInfo(details)
 	if fileInfo == nil || fileInfo.Width == 0 || fileInfo.Height == 0 {
-		return 0
+		return 0, false
 	}
 
 	// Update photo dimensions for all faces
@@ -828,13 +875,13 @@ func (h *ProcessHandler) syncPhotoCache(ctx context.Context, pp *photoprism.Phot
 	// Get markers from PhotoPrism
 	markers, err := pp.GetPhotoMarkers(photoUID)
 	if err != nil || len(markers) == 0 {
-		return 0
+		return 0, false
 	}
 
 	// Get faces for this photo from database
 	faces, err := faceWriter.GetFaces(ctx, photoUID)
 	if err != nil || len(faces) == 0 {
-		return 0
+		return 0, false
 	}
 
 	// Convert markers to facematch.MarkerInfo
@@ -872,5 +919,5 @@ func (h *ProcessHandler) syncPhotoCache(ctx context.Context, pp *photoprism.Phot
 		}
 	}
 
-	return updated
+	return updated, false
 }

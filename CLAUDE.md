@@ -298,7 +298,7 @@ Flags:
   --json            Output as JSON instead of progress bar
 ```
 
-Syncs face marker data from PhotoPrism to the local PostgreSQL cache. Useful when faces are assigned/unassigned directly in PhotoPrism's native UI.
+Syncs face marker data from PhotoPrism to the local PostgreSQL cache. Useful when faces are assigned/unassigned directly in PhotoPrism's native UI. Also cleans up orphaned data (faces, embeddings, processing records) for photos that have been deleted or archived in PhotoPrism.
 
 Examples:
 ```bash
@@ -445,6 +445,7 @@ type FaceWriter interface {
     MarkFacesProcessed(ctx context.Context, photoUID string, faceCount int) error
     UpdateFaceMarker(ctx context.Context, photoUID string, faceIndex int, markerUID, subjectUID, subjectName string) error
     UpdateFacePhotoInfo(ctx context.Context, photoUID string, width, height, orientation int, fileUID string) error
+    DeleteFacesByPhoto(ctx context.Context, photoUID string) ([]int64, error)
 }
 ```
 
@@ -454,10 +455,11 @@ The `UpdateFaceMarker` method keeps the cache synchronized when faces are assign
 
 The cache stays in sync automatically when faces are assigned through Photo Sorter's UI. However, if faces are assigned/unassigned directly in PhotoPrism's native UI, the cache becomes stale. Use the **Sync Cache** feature (Tools → Process → Sync Cache) to re-sync:
 
-- Scans all photos with faces in the database
+- Scans all photos with faces or embeddings in the database
 - Fetches current marker data from PhotoPrism
 - Updates cached `marker_uid`, `subject_uid`, `subject_name`, dimensions, and orientation
 - Only updates faces where data has changed
+- Detects deleted/archived photos (hard-deleted via 404 or soft-deleted via `DeletedAt` field) and removes their faces, embeddings, and processing records
 
 **Face Name Normalization:**
 

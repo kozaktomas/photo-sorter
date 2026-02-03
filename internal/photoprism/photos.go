@@ -57,6 +57,20 @@ func (pp *PhotoPrism) GetPhotoDetails(photoUID string) (map[string]interface{}, 
 	return *result, nil
 }
 
+// IsPhotoDeleted checks if a photo details response indicates the photo has been soft-deleted.
+// PhotoPrism sets DeletedAt to a non-empty timestamp string when a photo is archived/deleted.
+func IsPhotoDeleted(details map[string]interface{}) bool {
+	deletedAt, ok := details["DeletedAt"]
+	if !ok {
+		return false
+	}
+	// DeletedAt is a string timestamp; empty or missing means not deleted
+	if str, ok := deletedAt.(string); ok && str != "" {
+		return true
+	}
+	return false
+}
+
 // GetPhotoDownload downloads the primary file content for a photo
 // Returns the image data as bytes and the content type
 //
