@@ -8,9 +8,9 @@ Photo era estimation uses CLIP cross-modal embeddings to predict when a photo wa
 
 For each of 16 eras (1900s through 2025-2029), the system:
 
-1. Generates 20 descriptive text prompts per era (e.g., "A photograph from the 1980s with typical grain and color palette")
+1. Generates 30 descriptive text prompts per era (e.g., "A photograph from the 1980s with typical grain and color palette")
 2. Computes CLIP text embeddings (768-dim) for each prompt via `POST /embed/text`
-3. Averages all 20 embeddings into a single centroid vector
+3. Averages all 30 embeddings into a single centroid vector
 4. L2-normalizes the centroid
 5. Stores the result in the `era_embeddings` PostgreSQL table
 
@@ -65,7 +65,7 @@ CREATE TABLE era_embeddings (
     era_slug VARCHAR(64) PRIMARY KEY,
     era_name VARCHAR(255) NOT NULL,
     representative_date DATE NOT NULL,
-    prompt_count INTEGER NOT NULL DEFAULT 20,
+    prompt_count INTEGER NOT NULL DEFAULT 30,
     embedding VECTOR(768) NOT NULL,
     model VARCHAR(64) NOT NULL,
     pretrained VARCHAR(64) NOT NULL,
@@ -149,4 +149,4 @@ web/src/pages/PhotoDetail/
 
 - **Low absolute confidence values** — CLIP cross-modal similarity (image vs text) produces lower raw cosine similarity scores (typically 10-30%) compared to same-modality comparisons. The relative ranking between eras is more meaningful than the absolute percentages.
 - **Visual bias** — The model estimates based on visual characteristics (film grain, color palette, clothing, resolution) rather than actual date metadata. A modern photo styled to look vintage may be classified as an older era.
-- **Centroid quality** — Results depend on the quality and diversity of the 20 text prompts per era. Re-running `cache compute-eras` with improved prompts will update the centroids.
+- **Centroid quality** — Results depend on the quality and diversity of the 30 text prompts per era. Re-running `cache compute-eras` with improved prompts will update the centroids.
