@@ -38,7 +38,7 @@ export function usePhotoData(uid: string | undefined) {
     // Check embedding status
     getPhotoFaces(uid)
       .then(resp => {
-        setEmbeddingsStatus(resp.embeddings_count > 0 ? 'available' : 'missing');
+        setEmbeddingsStatus(resp.faces_processed ? 'available' : 'missing');
       })
       .catch(() => {
         setEmbeddingsStatus('missing');

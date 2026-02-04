@@ -56,7 +56,7 @@ export function useFacesData(
       setFacesData(facesResponse);
       setSubjects(subjectsResponse);
       setFacesLoaded(true);
-      onEmbeddingsStatusChange(facesResponse.embeddings_count > 0 ? 'available' : 'missing');
+      onEmbeddingsStatusChange(facesResponse.faces_processed ? 'available' : 'missing');
     } catch (err) {
       const errorMsg = err instanceof Error ? err.message : 'Failed to load faces';
       if (errorMsg.includes('face data not available') || errorMsg.includes('not available')) {

@@ -193,6 +193,7 @@ export interface PhotoFacesResponse {
   orientation: number;
   embeddings_count: number;
   markers_count: number;
+  faces_processed: boolean;
   faces: PhotoFace[];
 }
 

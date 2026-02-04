@@ -21,6 +21,7 @@ type PhotoFacesResponse struct {
 	Orientation     int         `json:"orientation"`
 	EmbeddingsCount int         `json:"embeddings_count"`
 	MarkersCount    int         `json:"markers_count"`
+	FacesProcessed  bool        `json:"faces_processed"`
 	Faces           []PhotoFace `json:"faces"`
 }
 
@@ -207,6 +208,9 @@ func (h *FacesHandler) GetPhotoFaces(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Check if face detection has been run for this photo
+	facesProcessed, _ := faceRepo.IsFacesProcessed(ctx, photoUID)
+
 	respondJSON(w, http.StatusOK, PhotoFacesResponse{
 		PhotoUID:        photoUID,
 		FileUID:         fileUID,
@@ -215,6 +219,7 @@ func (h *FacesHandler) GetPhotoFaces(w http.ResponseWriter, r *http.Request) {
 		Orientation:     orientation,
 		EmbeddingsCount: len(dbFaces),
 		MarkersCount:    faceMarkerCount,
+		FacesProcessed:  facesProcessed,
 		Faces:           faces,
 	})
 }
