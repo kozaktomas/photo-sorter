@@ -348,7 +348,7 @@ Flags:
   --json      Output as JSON
 ```
 
-Computes CLIP text embedding centroids for photo era estimation. For each of 16 eras (1900s through 2025-2029), generates 30 text prompts, computes their CLIP text embeddings via `POST /embed/text`, averages them into a single L2-normalized centroid, and stores in the `era_embeddings` table.
+Computes CLIP text embedding centroids for photo era estimation. For each of 12 eras (1900s through 2005+), generates 30 text prompts, computes their CLIP text embeddings via `POST /embed/text`, averages them into a single L2-normalized centroid, and stores in the `era_embeddings` table.
 
 These centroids are used by the **Era Estimation** feature in the Photo Detail page sidebar (`GET /api/v1/photos/:uid/estimate-era`), which compares a photo's 768-dim CLIP image embedding against all era centroids via cosine similarity and displays the ranked results.
 

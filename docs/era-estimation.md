@@ -1,12 +1,12 @@
 # Era Estimation
 
-Photo era estimation uses CLIP cross-modal embeddings to predict when a photo was taken based on its visual characteristics. It compares a photo's CLIP image embedding against pre-computed text embedding centroids for 16 historical eras.
+Photo era estimation uses CLIP cross-modal embeddings to predict when a photo was taken based on its visual characteristics. It compares a photo's CLIP image embedding against pre-computed text embedding centroids for 12 historical eras.
 
 ## How It Works
 
 ### 1. Era Centroid Computation (`cache compute-eras`)
 
-For each of 16 eras (1900s through 2025-2029), the system:
+For each of 12 eras (1900s through 2005+), the system:
 
 1. Generates 30 descriptive text prompts per era (e.g., "A photograph from the 1980s with typical grain and color palette")
 2. Computes CLIP text embeddings (768-dim) for each prompt via `POST /embed/text`
@@ -50,13 +50,9 @@ When a user views a photo, the `GET /api/v1/photos/:uid/estimate-era` endpoint:
 | 1980s | 1980s (1980-1989) | 1985-01-01 |
 | 1990s | 1990s (1990-1999) | 1995-01-01 |
 | 2000-2004 | 2000-2004 | 2002-06-15 |
-| 2005-2009 | 2005-2009 | 2007-06-15 |
-| 2010-2014 | 2010-2014 | 2012-06-15 |
-| 2015-2019 | 2015-2019 | 2017-06-15 |
-| 2020-2024 | 2020-2024 | 2022-06-15 |
-| 2025-2029 | 2025-2029 | 2027-06-15 |
+| 2005-plus | 2005+ | 2015-06-15 |
 
-Eras from 2000 onward use 5-year ranges for finer resolution. Earlier decades use 10-year ranges.
+Eras up to 2000 use 10-year ranges. 2000-2004 is a separate era for early digital photography. 2005+ is a single era because photos from this period typically have EXIF date metadata, making era estimation unnecessary.
 
 ## Database Schema
 

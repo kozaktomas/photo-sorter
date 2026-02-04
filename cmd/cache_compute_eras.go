@@ -239,88 +239,20 @@ var eras = []eraDef{
 		},
 	},
 	{
-		Slug: "2005-2009", Name: "2005-2009", RepresentativeDate: "2007-06-15",
+		Slug: "2005-plus", Name: "2005+", RepresentativeDate: "2015-06-15",
 		Cues: []string{
-			"improved digital compact camera sharpness",
-			"bathroom mirror selfie with flash glare",
-			"early smartphone grainy low-light photos",
-			"HDR over-processed glowing halos",
-			"party photos with red cups and flash",
-			"point-and-shoot digital compact camera look",
-			"noisy high-ISO indoor color grain",
-			"flat screen LCD TV on wall in background",
-			"skinny jeans and side-swept emo bangs",
-			"rubber clogs and chunky plastic sandals",
-			"barrel distortion on wide-angle phone lens",
-			"group pose with arm-extended selfie angle",
-		},
-	},
-	{
-		Slug: "2010-2014", Name: "2010-2014", RepresentativeDate: "2012-06-15",
-		Cues: []string{
-			"faded vintage filter with raised black levels",
+			"improved digital camera sharpness and resolution",
 			"smartphone camera sharp detailed photos",
-			"cross-processed teal and orange color grade",
-			"selfie stick and group selfie angles",
-			"shallow depth of field blurred backgrounds",
-			"clean overhead flat-lay food photography",
-			"tablets and thin smartphones in frame",
-			"high-resolution crisp detailed images",
-			"undercut and top-knot hairstyles",
-			"mason jar drinks and reclaimed wood decor",
-			"square cropped social media format",
-			"warm golden-hour backlit portrait style",
-		},
-	},
-	{
-		Slug: "2015-2019", Name: "2015-2019", RepresentativeDate: "2017-06-15",
-		Cues: []string{
-			"dual-camera synthetic bokeh portrait blur",
-			"computational HDR balanced highlights",
-			"clean modern minimalist white aesthetic",
-			"drone aerial overhead landscape photos",
-			"ultra-wide angle smartphone lens distortion",
-			"night mode bright handheld low-light shots",
-			"centered subject social media composition",
-			"ring light circular catchlights in eyes",
-			"athleisure yoga pants and sneakers",
-			"rose gold smartphone in hand or frame",
-			"moody desaturated teal shadow grading",
-			"geometric flat-lay desk arrangement photos",
-		},
-	},
-	{
-		Slug: "2020-2024", Name: "2020-2024", RepresentativeDate: "2022-06-15",
-		Cues: []string{
-			"face masks and plexiglass barriers visible",
-			"webcam video call screenshot on laptop",
-			"computational photography sharp and clean",
-			"LED color strip lighting in room background",
-			"periscope telephoto tight crop portraits",
-			"cinematic shallow focus video frame grab",
+			"computational photography HDR balanced highlights",
+			"bathroom mirror selfie with flash glare",
 			"high megapixel fine texture detail",
 			"vertical 9:16 tall framing for stories",
-			"chunky white platform sneakers",
-			"ring light and streaming setup visible",
-			"pastel gradient wall and neon signs",
-			"wide 0.5x ultra-wide selfie group shot",
-		},
-	},
-	{
-		Slug: "2025-2029", Name: "2025-2029", RepresentativeDate: "2027-06-15",
-		Cues: []string{
-			"AI painterly smoothing artifacts on skin",
-			"translucent smart glasses on face",
-			"holographic iridescent fashion fabric",
-			"spatial 3D depth-map layered photo",
-			"extreme dynamic range shadow detail",
-			"fisheye wearable camera wide distortion",
-			"AI-generated surreal background elements",
-			"transparent flexible display screens",
-			"metallic chrome and liquid silver clothing",
-			"micro-LED volumetric display glow",
-			"neural radiance field soft 3D rendering",
-			"ultra-wide 200MP fine grain detail",
+			"dual-camera synthetic bokeh portrait blur",
+			"night mode bright handheld low-light shots",
+			"selfie stick and group selfie angles",
+			"noisy high-ISO indoor color grain",
+			"faded vintage filter with raised black levels",
+			"ultra-wide 0.5x group selfie shot",
 		},
 	},
 }
@@ -544,6 +476,35 @@ func runCacheComputeEras(cmd *cobra.Command, args []string) error {
 			RepresentativeDate: era.RepresentativeDate,
 			PromptsUsed:        len(prompts),
 		})
+	}
+
+	// Clean up stale era embeddings not in the current list
+	if !dryRun {
+		eraWriter, err := database.GetEraEmbeddingWriter(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to get era embedding writer for cleanup: %w", err)
+		}
+
+		allStored, err := eraWriter.GetAllEras(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to list stored eras for cleanup: %w", err)
+		}
+
+		currentSlugs := make(map[string]bool, len(eras))
+		for _, era := range eras {
+			currentSlugs[era.Slug] = true
+		}
+
+		for _, stored := range allStored {
+			if !currentSlugs[stored.EraSlug] {
+				if err := eraWriter.DeleteEra(ctx, stored.EraSlug); err != nil {
+					return fmt.Errorf("failed to delete stale era %s: %w", stored.EraSlug, err)
+				}
+				if !jsonOutput {
+					fmt.Printf("Deleted stale era: %s\n", stored.EraSlug)
+				}
+			}
+		}
 	}
 
 	duration := time.Since(startTime)
