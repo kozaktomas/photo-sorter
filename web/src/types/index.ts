@@ -336,6 +336,21 @@ export interface RebuildIndexResponse {
   duration_ms: number;
 }
 
+// Era estimation types
+export interface EraMatch {
+  era_slug: string;
+  era_name: string;
+  representative_date: string;
+  similarity: number;
+  confidence: number;
+}
+
+export interface EraEstimateResponse {
+  photo_uid: string;
+  best_match: EraMatch | null;
+  top_matches: EraMatch[];
+}
+
 // Sync cache response
 export interface SyncCacheResponse {
   success: boolean;

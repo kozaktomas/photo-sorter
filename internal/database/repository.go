@@ -86,3 +86,22 @@ type EmbeddingWriter interface {
 	GetUniquePhotoUIDs(ctx context.Context) ([]string, error)
 }
 
+// EraEmbeddingReader provides read-only access to era embedding centroids
+type EraEmbeddingReader interface {
+	// GetEra retrieves an era embedding by slug, returns nil if not found
+	GetEra(ctx context.Context, eraSlug string) (*StoredEraEmbedding, error)
+	// GetAllEras retrieves all era embeddings
+	GetAllEras(ctx context.Context) ([]StoredEraEmbedding, error)
+	// CountEras returns the total number of era embeddings stored
+	CountEras(ctx context.Context) (int, error)
+}
+
+// EraEmbeddingWriter provides write access to era embedding centroids
+type EraEmbeddingWriter interface {
+	EraEmbeddingReader
+	// SaveEra stores an era embedding centroid (upsert)
+	SaveEra(ctx context.Context, era StoredEraEmbedding) error
+	// DeleteEra removes an era embedding by slug
+	DeleteEra(ctx context.Context, eraSlug string) error
+}
+

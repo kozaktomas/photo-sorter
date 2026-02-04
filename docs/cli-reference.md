@@ -457,6 +457,47 @@ Use `cache sync` when faces have been assigned or unassigned directly in PhotoPr
 
 ---
 
+### cache compute-eras
+
+Compute CLIP text embedding centroids for photo era estimation.
+
+```bash
+photo-sorter cache compute-eras [flags]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--dry-run` | bool | false | Compute embeddings but don't save to database |
+| `--json` | bool | false | Output as JSON |
+
+**Examples:**
+```bash
+# Preview without saving
+photo-sorter cache compute-eras --dry-run
+
+# Compute and save era embeddings
+photo-sorter cache compute-eras
+
+# JSON output
+photo-sorter cache compute-eras --json
+```
+
+#### What It Does
+
+1. For each of 16 eras (1900s through 2025-2029), generates 20 text prompts describing typical visual characteristics of photos from that era
+2. Computes CLIP text embeddings for each prompt via the embedding service (`POST /embed/text`)
+3. Averages the 20 embeddings into a single L2-normalized centroid per era
+4. Stores the centroids in the `era_embeddings` PostgreSQL table
+
+The resulting centroids can be compared against photo image embeddings using cosine distance to estimate which era a photo belongs to.
+
+#### Prerequisites
+
+- `DATABASE_URL` environment variable must be set
+- `EMBEDDING_URL` environment variable must be set (or defaults to `http://localhost:8000`)
+
+---
+
 ### cache push-embeddings
 
 Push InsightFace embeddings from PostgreSQL to PhotoPrism's MariaDB, replacing the default TensorFlow embeddings.

@@ -8,6 +8,7 @@ import { useFacesData } from './hooks/useFacesData';
 import { useFaceAssignment } from './hooks/useFaceAssignment';
 import { usePhotoNavigation } from './hooks/usePhotoNavigation';
 import { EmbeddingsStatus } from './EmbeddingsStatus';
+import { EraEstimate } from './EraEstimate';
 import { PhotoDisplay } from './PhotoDisplay';
 import { FacesList } from './FacesList';
 import { FaceAssignmentPanel } from './FaceAssignmentPanel';
@@ -239,6 +240,9 @@ export function PhotoDetailPage() {
               <p className="text-red-400 text-xs mt-2">{computeError}</p>
             )}
           </div>
+
+          {/* Era estimate */}
+          <EraEstimate uid={uid} />
 
           {/* Not loaded yet */}
           {!facesLoading && !facesLoaded && !facesError && (

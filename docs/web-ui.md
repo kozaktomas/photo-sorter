@@ -125,6 +125,13 @@ When accessing a photo from an album or label, navigation controls are available
 - Clicking "Calculate Embeddings" triggers face detection and embedding computation via `POST /api/v1/photos/:uid/faces/compute`
 - The banner disappears once embeddings are successfully computed
 
+**Era Estimation:**
+- Automatically displayed in the right sidebar when the photo has a CLIP image embedding
+- Shows the best-matching era (e.g., "2015-2019") with a confidence percentage
+- Click the chevron to expand and see all 16 eras ranked by similarity with proportional bars
+- Computation: the photo's 768-dim CLIP image embedding is compared via cosine similarity against pre-computed era text embedding centroids (see `cache compute-eras` command)
+- Returns silently if the photo has no embedding or era centroids haven't been computed
+
 **Face Assignment:**
 - Click "Faces" to load face data with bounding boxes overlaid on the photo
 - Select a face to see AI-powered person suggestions with confidence scores
@@ -432,6 +439,7 @@ The Web UI communicates with these backend endpoints:
 | POST | `/api/v1/photos/search-by-text` | Text-to-image similarity search |
 | GET | `/api/v1/photos/:uid/faces` | Get faces in a photo |
 | POST | `/api/v1/photos/:uid/faces/compute` | Compute face embeddings for a photo |
+| GET | `/api/v1/photos/:uid/estimate-era` | Estimate photo era from CLIP embeddings |
 | POST | `/api/v1/albums/:uid/photos` | Add photos to album |
 | POST | `/api/v1/process` | Start photo processing job |
 | GET | `/api/v1/process/:jobId/events` | SSE stream for process job |

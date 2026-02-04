@@ -262,6 +262,51 @@ func (c *EmbeddingClient) ComputeTextEmbedding(ctx context.Context, text string)
 	return embResp.Embedding, nil
 }
 
+// ComputeTextEmbeddingWithMetadata computes the CLIP embedding for a text query and returns full metadata
+func (c *EmbeddingClient) ComputeTextEmbeddingWithMetadata(ctx context.Context, text string) (*EmbeddingResult, error) {
+	reqBody, err := json.Marshal(textEmbeddingRequest{Text: text})
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/embed/text", bytes.NewReader(reqBody))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("API error (status %d): %s", resp.StatusCode, string(body))
+	}
+
+	var embResp embeddingResponse
+	if err := json.Unmarshal(body, &embResp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	if len(embResp.Embedding) == 0 {
+		return nil, fmt.Errorf("empty embedding returned")
+	}
+
+	return &EmbeddingResult{
+		Embedding:  embResp.Embedding,
+		Model:      embResp.Model,
+		Pretrained: embResp.Pretrained,
+		Dim:        embResp.Dim,
+	}, nil
+}
+
 // ComputeFaceEmbeddings detects faces and computes their embeddings
 func (c *EmbeddingClient) ComputeFaceEmbeddings(ctx context.Context, imageData []byte) (*FaceResponse, error) {
 	// Detect MIME type

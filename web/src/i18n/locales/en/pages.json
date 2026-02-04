@@ -288,7 +288,9 @@
     "noSuggestions": "No suggestions available",
     "facesList": "All Faces",
     "unassigned": "Unassigned",
-    "assigned": "Assigned"
+    "assigned": "Assigned",
+    "estimatedEra": "Era",
+    "eraRunnerUp": "Runner-up"
   },
   "subjectDetail": {
     "backToSubjects": "Back to Subjects",

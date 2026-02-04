@@ -19,6 +19,7 @@ import type {
   TextSearchResponse,
   RebuildIndexResponse,
   SyncCacheResponse,
+  EraEstimateResponse,
 } from '../types';
 
 const API_BASE = '/api/v1';
@@ -457,4 +458,9 @@ export async function syncCache(): Promise<SyncCacheResponse> {
   return request<SyncCacheResponse>('/process/sync-cache', {
     method: 'POST',
   });
+}
+
+// Era estimation
+export async function estimateEra(photoUID: string): Promise<EraEstimateResponse> {
+  return request<EraEstimateResponse>(`/photos/${photoUID}/estimate-era`);
 }

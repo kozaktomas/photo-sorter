@@ -18,13 +18,14 @@ type HNSWRebuilder interface {
 }
 
 var (
-	postgresEmbeddingReader func() EmbeddingReader
-	postgresEmbeddingWriter func() EmbeddingWriter
-	postgresFaceReader      func() FaceReader
-	postgresFaceWriter      func() FaceWriter
-	postgresFaceHNSW        HNSWRebuilder // Singleton for face HNSW rebuilding
-	postgresEmbeddingHNSW   HNSWRebuilder // Singleton for embedding HNSW rebuilding
-	postgresInitialized     bool
+	postgresEmbeddingReader    func() EmbeddingReader
+	postgresEmbeddingWriter    func() EmbeddingWriter
+	postgresFaceReader         func() FaceReader
+	postgresFaceWriter         func() FaceWriter
+	postgresEraEmbeddingWriter func() EraEmbeddingWriter
+	postgresFaceHNSW           HNSWRebuilder // Singleton for face HNSW rebuilding
+	postgresEmbeddingHNSW      HNSWRebuilder // Singleton for embedding HNSW rebuilding
+	postgresInitialized        bool
 )
 
 // RegisterPostgresBackend registers PostgreSQL repository constructors.
@@ -115,4 +116,31 @@ func GetEmbeddingWriter(ctx context.Context) (EmbeddingWriter, error) {
 		return nil, fmt.Errorf("PostgreSQL embedding writer not registered")
 	}
 	return postgresEmbeddingWriter(), nil
+}
+
+// RegisterEraEmbeddingWriter registers the EraEmbeddingWriter constructor.
+func RegisterEraEmbeddingWriter(writer func() EraEmbeddingWriter) {
+	postgresEraEmbeddingWriter = writer
+}
+
+// GetEraEmbeddingWriter returns an EraEmbeddingWriter from the PostgreSQL backend
+func GetEraEmbeddingWriter(ctx context.Context) (EraEmbeddingWriter, error) {
+	if !postgresInitialized {
+		return nil, fmt.Errorf("PostgreSQL backend not initialized: DATABASE_URL is required")
+	}
+	if postgresEraEmbeddingWriter == nil {
+		return nil, fmt.Errorf("PostgreSQL era embedding writer not registered")
+	}
+	return postgresEraEmbeddingWriter(), nil
+}
+
+// GetEraEmbeddingReader returns an EraEmbeddingReader from the PostgreSQL backend
+func GetEraEmbeddingReader(ctx context.Context) (EraEmbeddingReader, error) {
+	if !postgresInitialized {
+		return nil, fmt.Errorf("PostgreSQL backend not initialized: DATABASE_URL is required")
+	}
+	if postgresEraEmbeddingWriter == nil {
+		return nil, fmt.Errorf("PostgreSQL era embedding writer not registered")
+	}
+	return postgresEraEmbeddingWriter(), nil
 }

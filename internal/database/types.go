@@ -43,6 +43,19 @@ type FaceProcessedRecord struct {
 	CreatedAt time.Time
 }
 
+// StoredEraEmbedding represents a CLIP text embedding centroid for a photo era
+type StoredEraEmbedding struct {
+	EraSlug            string
+	EraName            string
+	RepresentativeDate string // "YYYY-MM-DD"
+	PromptCount        int
+	Embedding          []float32
+	Model              string
+	Pretrained         string
+	Dim                int
+	CreatedAt          time.Time
+}
+
 // ExportData contains all embeddings and faces data for export/storage
 type ExportData struct {
 	Version        int

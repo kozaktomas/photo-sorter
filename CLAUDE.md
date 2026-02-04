@@ -338,6 +338,32 @@ go run . cache push-embeddings
 go run . cache push-embeddings --recompute-centroids
 ```
 
+### Cache Compute-Eras Command
+
+```bash
+go run . cache compute-eras [flags]
+
+Flags:
+  --dry-run   Compute embeddings but don't save to database
+  --json      Output as JSON
+```
+
+Computes CLIP text embedding centroids for photo era estimation. For each of 16 eras (1900s through 2025-2029), generates 20 text prompts, computes their CLIP text embeddings via `POST /embed/text`, averages them into a single L2-normalized centroid, and stores in the `era_embeddings` table.
+
+These centroids are used by the **Era Estimation** feature in the Photo Detail page sidebar (`GET /api/v1/photos/:uid/estimate-era`), which compares a photo's 768-dim CLIP image embedding against all era centroids via cosine similarity and displays the ranked results.
+
+Examples:
+```bash
+# Preview without saving
+go run . cache compute-eras --dry-run
+
+# Compute and save
+go run . cache compute-eras
+
+# JSON output
+go run . cache compute-eras --json
+```
+
 ### Database Package
 
 The `internal/database/` package provides storage for embeddings and faces data using PostgreSQL with pgvector.
@@ -386,8 +412,9 @@ internal/database/
     ├── postgres.go     # Connection pool management
     ├── migrations.go   # Auto-apply migrations on startup
     ├── embeddings.go   # EmbeddingReader implementation with pgvector
-    ├── faces.go        # FaceReader/FaceWriter implementation with pgvector
-    └── migrations/     # SQL migration files (embedded)
+    ├── faces.go           # FaceReader/FaceWriter implementation with pgvector
+    ├── era_embeddings.go  # EraEmbeddingReader/Writer implementation with pgvector
+    └── migrations/        # SQL migration files (embedded)
 ```
 
 **PostgreSQL Schema:**
@@ -419,6 +446,19 @@ CREATE TABLE faces (
     orientation INTEGER,
     file_uid VARCHAR(32),
     UNIQUE(photo_uid, face_index)
+);
+
+-- Era embedding centroids (768-dim CLIP text embeddings)
+CREATE TABLE era_embeddings (
+    era_slug VARCHAR(64) PRIMARY KEY,
+    era_name VARCHAR(255) NOT NULL,
+    representative_date DATE NOT NULL,
+    prompt_count INTEGER NOT NULL DEFAULT 20,
+    embedding VECTOR(768) NOT NULL,
+    model VARCHAR(64) NOT NULL,
+    pretrained VARCHAR(64) NOT NULL,
+    dim INTEGER NOT NULL DEFAULT 768,
+    created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 -- HNSW indexes (auto-updating on INSERT)
@@ -638,6 +678,7 @@ Key files:
 - `GET /api/v1/stats` - Get processing statistics (processed count uses OR of embeddings/faces-processed per photo)
 - `GET /api/v1/photos/:uid/faces` - Get faces in a photo with suggestions
 - `POST /api/v1/photos/:uid/faces/compute` - Compute face embeddings for a photo
+- `GET /api/v1/photos/:uid/estimate-era` - Estimate photo era from CLIP embeddings vs era centroids
 - `GET /api/v1/subjects/:uid` - Get single subject
 - `PUT /api/v1/subjects/:uid` - Update subject (rename, etc.)
 - `POST /api/v1/faces/match` - Find photos matching a person's face
@@ -1026,6 +1067,7 @@ When adding or modifying features, update the relevant documentation:
 - **`docs/web-ui.md`** - Update when adding/changing Web UI pages or features
 - **`docs/postgresql-migration.md`** - Update when changing database schema or migration process
 - **`docs/markers.md`** - Update when changing marker/face matching logic or coordinate handling
+- **`docs/era-estimation.md`** - Update when changing era estimation logic, centroids, or UI
 - **`README.md`** - Update for major feature additions or architectural changes
 
 Documentation files:
@@ -1034,5 +1076,6 @@ docs/
 ├── cli-reference.md        # Complete CLI command reference
 ├── web-ui.md               # Web UI features and API endpoints
 ├── postgresql-migration.md # PostgreSQL setup and migration guide
-└── markers.md              # Marker system and face-to-marker matching
+├── markers.md              # Marker system and face-to-marker matching
+└── era-estimation.md       # Era estimation: centroids, API, and UI
 ```

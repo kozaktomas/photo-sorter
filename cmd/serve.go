@@ -96,6 +96,9 @@ func runServe(cmd *cobra.Command, args []string) error {
 	)
 	// Register embedding writer for sync cache cleanup
 	database.RegisterEmbeddingWriter(func() database.EmbeddingWriter { return embeddingRepo })
+	// Register era embedding reader for era estimation
+	eraRepo := postgres.NewEraEmbeddingRepository(pool)
+	database.RegisterEraEmbeddingWriter(func() database.EraEmbeddingWriter { return eraRepo })
 	// Register HNSW rebuilders for the Rebuild Index feature
 	database.RegisterFaceHNSWRebuilder(faceRepo)
 	database.RegisterEmbeddingHNSWRebuilder(embeddingRepo)

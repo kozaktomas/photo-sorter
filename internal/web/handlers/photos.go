@@ -3,7 +3,9 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"net/http"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -711,5 +713,102 @@ func (h *PhotosHandler) SearchByText(w http.ResponseWriter, r *http.Request) {
 		Threshold:        req.Threshold,
 		Results:          results,
 		Count:            len(results),
+	})
+}
+
+// EraMatch represents a single era match result
+type EraMatch struct {
+	EraSlug            string  `json:"era_slug"`
+	EraName            string  `json:"era_name"`
+	RepresentativeDate string  `json:"representative_date"`
+	Similarity         float64 `json:"similarity"`  // 0-1 (cosine similarity)
+	Confidence         float64 `json:"confidence"`   // 0-100 percentage
+}
+
+// EraEstimateResponse represents the era estimation result for a photo
+type EraEstimateResponse struct {
+	PhotoUID   string    `json:"photo_uid"`
+	BestMatch  *EraMatch `json:"best_match"`
+	TopMatches []EraMatch `json:"top_matches"`
+}
+
+// EstimateEra estimates the era of a photo by comparing its CLIP image embedding
+// against pre-computed era text embedding centroids
+func (h *PhotosHandler) EstimateEra(w http.ResponseWriter, r *http.Request) {
+	uid := chi.URLParam(r, "uid")
+	if uid == "" {
+		respondError(w, http.StatusBadRequest, "missing photo UID")
+		return
+	}
+
+	ctx := context.Background()
+
+	// Use cached embedding reader, fall back to fetching
+	embRepo := h.embeddingReader
+	if embRepo == nil {
+		var err error
+		embRepo, err = database.GetEmbeddingReader(ctx)
+		if err != nil {
+			respondError(w, http.StatusServiceUnavailable, "embeddings not available")
+			return
+		}
+	}
+
+	// Get the photo's image embedding
+	photoEmb, err := embRepo.Get(ctx, uid)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to get embedding")
+		return
+	}
+	if photoEmb == nil {
+		respondError(w, http.StatusNotFound, "no embedding found for this photo")
+		return
+	}
+
+	// Get all era centroids
+	eraReader, err := database.GetEraEmbeddingReader(ctx)
+	if err != nil {
+		respondError(w, http.StatusServiceUnavailable, "era embeddings not available")
+		return
+	}
+
+	eras, err := eraReader.GetAllEras(ctx)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to get era embeddings")
+		return
+	}
+
+	if len(eras) == 0 {
+		respondJSON(w, http.StatusOK, EraEstimateResponse{
+			PhotoUID:   uid,
+			BestMatch:  nil,
+			TopMatches: []EraMatch{},
+		})
+		return
+	}
+
+	// Compute cosine similarity for each era
+	matches := make([]EraMatch, 0, len(eras))
+	for _, era := range eras {
+		sim := fingerprint.CosineSimilarity(photoEmb.Embedding, era.Embedding)
+		confidence := math.Max(0, math.Min(100, sim*100))
+		matches = append(matches, EraMatch{
+			EraSlug:            era.EraSlug,
+			EraName:            era.EraName,
+			RepresentativeDate: era.RepresentativeDate,
+			Similarity:         sim,
+			Confidence:         confidence,
+		})
+	}
+
+	// Sort by similarity descending
+	sort.Slice(matches, func(i, j int) bool {
+		return matches[i].Similarity > matches[j].Similarity
+	})
+
+	respondJSON(w, http.StatusOK, EraEstimateResponse{
+		PhotoUID:   uid,
+		BestMatch:  &matches[0],
+		TopMatches: matches,
 	})
 }

@@ -288,7 +288,9 @@
     "noSuggestions": "Žádné návrhy nejsou k dispozici",
     "facesList": "Všechny obličeje",
     "unassigned": "Nepřiřazeno",
-    "assigned": "Přiřazeno"
+    "assigned": "Přiřazeno",
+    "estimatedEra": "Období",
+    "eraRunnerUp": "Druhé v pořadí"
   },
   "subjectDetail": {
     "backToSubjects": "Zpět na osoby",
