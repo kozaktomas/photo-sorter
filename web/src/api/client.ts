@@ -501,10 +501,8 @@ export async function findDuplicates(params: {
   });
 }
 
-// Suggest albums for photos
+// Find photos missing from existing albums (album completion)
 export async function suggestAlbums(params: {
-  photo_uids?: string[];
-  source_album_uid?: string;
   threshold?: number;
   top_k?: number;
 }): Promise<SuggestAlbumsResponse> {

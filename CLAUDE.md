@@ -692,7 +692,7 @@ Key files:
 - `POST /api/v1/process/sync-cache` - Sync face marker data from PhotoPrism to local cache
 - `POST /api/v1/photos/batch/edit` - Batch edit photos (favorite, private)
 - `POST /api/v1/photos/duplicates` - Find near-duplicate photos via embedding similarity
-- `POST /api/v1/photos/suggest-albums` - Suggest albums for photos via centroid similarity
+- `POST /api/v1/photos/suggest-albums` - Album completion: find photos missing from existing albums via HNSW centroid search
 - `DELETE /api/v1/albums/{uid}/photos/batch` - Remove specific photos from album
 
 **Frontend Structure:**
@@ -757,7 +757,7 @@ web/src/
 │   │   └── index.tsx
 │   ├── Duplicates/            # Near-duplicate photo detection
 │   │   └── index.tsx
-│   └── SuggestAlbums/         # Smart album suggestions
+│   └── SuggestAlbums/         # Album completion
 │       └── index.tsx
 └── types/
     ├── events.ts              # Typed SSE events

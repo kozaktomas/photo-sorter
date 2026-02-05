@@ -327,25 +327,22 @@
     "lowerThreshold": "Try lowering the similarity threshold to find more matches"
   },
   "suggestAlbums": {
-    "title": "Smart Album Suggestions",
-    "subtitle": "Suggest which albums unsorted photos belong to via embedding similarity",
+    "title": "Album Completion",
+    "subtitle": "Find photos that belong in existing albums but aren't there yet",
     "configuration": "Configuration",
-    "sourceAlbum": "Source Album",
-    "selectSourceAlbum": "Select source album...",
-    "sourceHelp": "Photos from this album will be matched against other albums",
     "minSimilarity": "Min similarity",
     "moreResults": "More suggestions",
     "betterMatches": "Stronger matches",
-    "topK": "Top K albums per photo",
-    "suggest": "Suggest Albums",
+    "topK": "Max photos per album",
+    "suggest": "Scan Library",
     "results": "Results",
-    "clickToSuggest": "Select a source album and click \"Suggest Albums\"",
+    "clickToSuggest": "Click \"Scan Library\" to find missing album photos",
     "albumsAnalyzed": "Albums Analyzed",
-    "photosAnalyzed": "Photos Analyzed",
-    "skipped": "Skipped (no embedding)",
-    "matchingPhotos": "Matching photos",
+    "photosAnalyzed": "Photos Suggested",
+    "skipped": "Albums Skipped",
+    "matchingPhotos": "Suggested photos",
     "addAllToAlbum": "Add All to Album",
     "noSuggestions": "No album suggestions found",
-    "lowerThreshold": "Try lowering the similarity threshold or using a different source album"
+    "lowerThreshold": "Try lowering the similarity threshold"
   }
 }

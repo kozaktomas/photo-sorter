@@ -51,12 +51,12 @@ const (
 	DefaultDuplicateLimit = 100
 )
 
-// Album suggestion constants
+// Album completion constants
 const (
-	// DefaultSuggestAlbumThreshold is the default min cosine similarity for album suggestions
-	DefaultSuggestAlbumThreshold = 0.30
-	// DefaultSuggestAlbumTopK is the default number of top album suggestions per photo
-	DefaultSuggestAlbumTopK = 3
+	// DefaultSuggestAlbumThreshold is the default min cosine similarity for album completion
+	DefaultSuggestAlbumThreshold = 0.70
+	// DefaultSuggestAlbumTopK is the default max photos suggested per album
+	DefaultSuggestAlbumTopK = 20
 	// MinAlbumPhotosForCentroid is the minimum number of photos in an album to compute a centroid
 	MinAlbumPhotosForCentroid = 2
 )

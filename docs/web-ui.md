@@ -55,7 +55,7 @@ The header navigation groups items to reduce clutter:
 - **Primary** (always visible): Dashboard, Albums, Photos, Labels
 - **AI** dropdown: Analyze, Text Search
 - **Faces** dropdown: Faces, Recognition, Outliers
-- **Tools** dropdown: Similar, Expand, Duplicates, Suggest Albums, Process
+- **Tools** dropdown: Similar, Expand, Duplicates, Album Completion, Process
 
 Dropdown buttons highlight when one of their child pages is active. Dropdowns close when clicking outside.
 
@@ -418,23 +418,23 @@ Uses union-find (disjoint set) to build connected components of similar photos. 
 - **Groups** - Each group shows a card with photos and their similarity scores
 - **Actions** - Select photos within groups for bulk actions (add to album, add label, favorite)
 
-### Smart Album Suggestions
+### Album Completion
 
-Suggest which albums unsorted photos belong to by comparing photo embeddings against album centroids.
+Find photos that belong in existing albums but aren't there yet by searching the HNSW embedding index.
 
 **Configuration:**
-- **Source Album** - Select album containing photos to sort
 - **Min Similarity** - Slider from 50% to 90% (default 70%). Converted to cosine similarity threshold
-- **Top K** - Maximum number of album suggestions per photo (1-10, default 3)
+- **Max Photos Per Album** - Maximum number of suggested photos per album (1-50, default 20)
 
 **Algorithm:**
-1. Computes centroid (mean + L2-normalize) for each album's photo embeddings
-2. For each source photo, computes cosine similarity to all album centroids
-3. Returns top-K albums above the similarity threshold, grouped by suggested album
+1. For each album with enough photos, computes centroid (mean + L2-normalize) of its photo embeddings
+2. Searches the HNSW index with the centroid to find similar photos (O(log N))
+3. Filters out photos already in the album
+4. Returns albums with suggested photos, sorted by suggestion count
 
 **Results:**
-- **Stats** - Albums analyzed, photos analyzed, skipped (no embedding)
-- **Suggestions** - One card per suggested target album, showing matched photos with similarity scores
+- **Stats** - Albums analyzed, photos suggested, albums skipped (no embeddings)
+- **Suggestions** - One card per album with suggested photos and similarity scores
 - **Actions** - "Add All to Album" button per suggestion to add all matched photos at once
 
 ## Keyboard Shortcuts
@@ -490,7 +490,7 @@ The Web UI communicates with these backend endpoints:
 | POST | `/api/v1/process/sync-cache` | Sync face marker data from PhotoPrism |
 | POST | `/api/v1/photos/batch/edit` | Batch edit photos (favorite, private) |
 | POST | `/api/v1/photos/duplicates` | Find near-duplicate photos |
-| POST | `/api/v1/photos/suggest-albums` | Suggest albums for photos |
+| POST | `/api/v1/photos/suggest-albums` | Album completion — find missing photos for existing albums |
 | DELETE | `/api/v1/albums/:uid/photos/batch` | Remove specific photos from album |
 
 ## Frontend Architecture
@@ -569,7 +569,7 @@ web/src/
 │   │   └── index.tsx
 │   ├── Duplicates/          # Near-duplicate detection
 │   │   └── index.tsx
-│   └── SuggestAlbums/       # Smart album suggestions
+│   └── SuggestAlbums/       # Album completion
 │       └── index.tsx
 └── types/
     ├── events.ts           # Typed SSE events

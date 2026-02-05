@@ -1101,12 +1101,10 @@ func (h *PhotosHandler) FindDuplicates(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// SuggestAlbumsRequest represents a request to suggest albums for photos
+// SuggestAlbumsRequest represents a request to find photos missing from existing albums
 type SuggestAlbumsRequest struct {
-	PhotoUIDs      []string `json:"photo_uids,omitempty"`
-	SourceAlbumUID string   `json:"source_album_uid,omitempty"`
-	Threshold      float64  `json:"threshold,omitempty"` // Min cosine similarity (0-1)
-	TopK           int      `json:"top_k,omitempty"`     // Top K album suggestions per photo
+	Threshold float64 `json:"threshold,omitempty"` // Min cosine similarity (0-1)
+	TopK      int     `json:"top_k,omitempty"`     // Max photos suggested per album
 }
 
 // AlbumPhotoSuggestion represents a single photo's suggestion for an album
@@ -1126,20 +1124,15 @@ type AlbumSuggestion struct {
 type SuggestAlbumsResponse struct {
 	AlbumsAnalyzed  int               `json:"albums_analyzed"`
 	PhotosAnalyzed  int               `json:"photos_analyzed"`
-	Skipped         int               `json:"skipped"` // Photos without embeddings
+	Skipped         int               `json:"skipped"` // Albums skipped (no embeddings)
 	Suggestions     []AlbumSuggestion `json:"suggestions"`
 }
 
-// SuggestAlbums suggests which albums unsorted photos belong to via CLIP embedding similarity
+// SuggestAlbums finds photos that belong in existing albums but aren't there yet (album completion)
 func (h *PhotosHandler) SuggestAlbums(w http.ResponseWriter, r *http.Request) {
 	var req SuggestAlbumsRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-
-	if len(req.PhotoUIDs) == 0 && req.SourceAlbumUID == "" {
-		respondError(w, http.StatusBadRequest, "photo_uids or source_album_uid is required")
 		return
 	}
 
@@ -1167,59 +1160,6 @@ func (h *PhotosHandler) SuggestAlbums(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Resolve input photo UIDs
-	inputUIDs := req.PhotoUIDs
-	if req.SourceAlbumUID != "" {
-		offset := 0
-		pageSize := constants.DefaultHandlerPageSize
-		for {
-			photos, err := pp.GetAlbumPhotos(req.SourceAlbumUID, pageSize, offset)
-			if err != nil {
-				respondError(w, http.StatusInternalServerError, "failed to get source album photos")
-				return
-			}
-			for _, p := range photos {
-				inputUIDs = append(inputUIDs, p.UID)
-			}
-			if len(photos) < pageSize {
-				break
-			}
-			offset += pageSize
-		}
-	}
-
-	if len(inputUIDs) == 0 {
-		respondJSON(w, http.StatusOK, SuggestAlbumsResponse{
-			AlbumsAnalyzed: 0,
-			PhotosAnalyzed: 0,
-			Skipped:        0,
-			Suggestions:    []AlbumSuggestion{},
-		})
-		return
-	}
-
-	// Get embeddings for input photos
-	type photoEmb struct {
-		uid       string
-		embedding []float32
-	}
-	var inputEmbeddings []photoEmb
-	skipped := 0
-	for _, uid := range inputUIDs {
-		emb, err := embRepo.Get(ctx, uid)
-		if err != nil || emb == nil {
-			skipped++
-			continue
-		}
-		inputEmbeddings = append(inputEmbeddings, photoEmb{uid: uid, embedding: emb.Embedding})
-	}
-
-	// Build set of input UIDs to exclude from album analysis
-	inputUIDSet := make(map[string]bool, len(inputUIDs))
-	for _, uid := range inputUIDs {
-		inputUIDSet[uid] = true
-	}
-
 	// Fetch all albums
 	albums, err := pp.GetAlbums(constants.MaxPhotosPerFetch, 0, "", "", "album")
 	if err != nil {
@@ -1227,29 +1167,27 @@ func (h *PhotosHandler) SuggestAlbums(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Filter albums with enough photos and exclude source album
+	// Filter albums with enough photos
 	var candidateAlbums []photoprism.Album
 	for _, album := range albums {
-		if album.PhotoCount < constants.MinAlbumPhotosForCentroid {
-			continue
+		if album.PhotoCount >= constants.MinAlbumPhotosForCentroid {
+			candidateAlbums = append(candidateAlbums, album)
 		}
-		if album.UID == req.SourceAlbumUID {
-			continue
-		}
-		candidateAlbums = append(candidateAlbums, album)
 	}
 
-	// Compute centroids for each album (parallelized)
-	type albumCentroid struct {
-		albumUID   string
-		albumTitle string
-		centroid   []float32
+	// For each album: compute centroid, HNSW search, filter members
+	type albumResult struct {
+		suggestion AlbumSuggestion
+		skipped    bool
 	}
 
 	var mu sync.Mutex
-	var centroids []albumCentroid
+	var results []albumResult
+	skipped := 0
 	var wg sync.WaitGroup
 	sem := make(chan struct{}, 10) // Limit concurrency to 10
+
+	maxDistance := 1.0 - req.Threshold // Convert similarity threshold to distance
 
 	for _, album := range candidateAlbums {
 		wg.Add(1)
@@ -1258,8 +1196,8 @@ func (h *PhotosHandler) SuggestAlbums(w http.ResponseWriter, r *http.Request) {
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			// Fetch album photos
-			var albumPhotoUIDs []string
+			// Fetch album photo UIDs (paginated)
+			albumMemberSet := make(map[string]bool)
 			offset := 0
 			pageSize := constants.DefaultHandlerPageSize
 			for {
@@ -1268,7 +1206,7 @@ func (h *PhotosHandler) SuggestAlbums(w http.ResponseWriter, r *http.Request) {
 					return
 				}
 				for _, p := range photos {
-					albumPhotoUIDs = append(albumPhotoUIDs, p.UID)
+					albumMemberSet[p.UID] = true
 				}
 				if len(photos) < pageSize {
 					break
@@ -1276,13 +1214,13 @@ func (h *PhotosHandler) SuggestAlbums(w http.ResponseWriter, r *http.Request) {
 				offset += pageSize
 			}
 
-			if len(albumPhotoUIDs) < constants.MinAlbumPhotosForCentroid {
+			if len(albumMemberSet) < constants.MinAlbumPhotosForCentroid {
 				return
 			}
 
-			// Get embeddings and compute centroid
+			// Get embeddings for album photos
 			var embeddings [][]float32
-			for _, uid := range albumPhotoUIDs {
+			for uid := range albumMemberSet {
 				emb, err := embRepo.Get(ctx, uid)
 				if err != nil || emb == nil {
 					continue
@@ -1291,84 +1229,75 @@ func (h *PhotosHandler) SuggestAlbums(w http.ResponseWriter, r *http.Request) {
 			}
 
 			if len(embeddings) < constants.MinAlbumPhotosForCentroid {
+				mu.Lock()
+				skipped++
+				mu.Unlock()
 				return
 			}
 
+			// Compute centroid
 			centroid := computeCentroid(embeddings)
 			if centroid == nil {
+				mu.Lock()
+				skipped++
+				mu.Unlock()
 				return
 			}
 
-			mu.Lock()
-			centroids = append(centroids, albumCentroid{
-				albumUID:   a.UID,
-				albumTitle: a.Title,
-				centroid:   centroid,
-			})
-			mu.Unlock()
+			// HNSW search for similar photos (request extra to account for album members being filtered out)
+			similar, distances, err := embRepo.FindSimilarWithDistance(ctx, centroid, req.TopK*3, maxDistance)
+			if err != nil {
+				return
+			}
+
+			// Filter out photos already in the album, convert to suggestions
+			var photos []AlbumPhotoSuggestion
+			for i, emb := range similar {
+				if albumMemberSet[emb.PhotoUID] {
+					continue
+				}
+				similarity := 1.0 - distances[i]
+				photos = append(photos, AlbumPhotoSuggestion{
+					PhotoUID:   emb.PhotoUID,
+					Similarity: similarity,
+				})
+				if len(photos) >= req.TopK {
+					break
+				}
+			}
+
+			if len(photos) > 0 {
+				mu.Lock()
+				results = append(results, albumResult{
+					suggestion: AlbumSuggestion{
+						AlbumUID:   a.UID,
+						AlbumTitle: a.Title,
+						Photos:     photos,
+					},
+				})
+				mu.Unlock()
+			}
 		}(album)
 	}
 	wg.Wait()
 
-	// For each input photo, find top-K album suggestions
-	suggestionMap := make(map[string]*AlbumSuggestion)
-	for _, pe := range inputEmbeddings {
-		type albumScore struct {
-			albumUID   string
-			albumTitle string
-			similarity float64
-		}
-		var scores []albumScore
-
-		for _, ac := range centroids {
-			sim := cosineSimilarity(pe.embedding, ac.centroid)
-			if sim >= req.Threshold {
-				scores = append(scores, albumScore{
-					albumUID:   ac.albumUID,
-					albumTitle: ac.albumTitle,
-					similarity: sim,
-				})
-			}
-		}
-
-		// Sort by similarity descending
-		sort.Slice(scores, func(i, j int) bool {
-			return scores[i].similarity > scores[j].similarity
-		})
-
-		// Take top K
-		topK := req.TopK
-		if topK > len(scores) {
-			topK = len(scores)
-		}
-
-		for _, s := range scores[:topK] {
-			if _, ok := suggestionMap[s.albumUID]; !ok {
-				suggestionMap[s.albumUID] = &AlbumSuggestion{
-					AlbumUID:   s.albumUID,
-					AlbumTitle: s.albumTitle,
-					Photos:     []AlbumPhotoSuggestion{},
-				}
-			}
-			suggestionMap[s.albumUID].Photos = append(suggestionMap[s.albumUID].Photos, AlbumPhotoSuggestion{
-				PhotoUID:   pe.uid,
-				Similarity: s.similarity,
-			})
-		}
-	}
-
-	// Convert to slice and sort by number of suggested photos descending
-	suggestions := make([]AlbumSuggestion, 0, len(suggestionMap))
-	for _, s := range suggestionMap {
-		suggestions = append(suggestions, *s)
-	}
-	sort.Slice(suggestions, func(i, j int) bool {
-		return len(suggestions[i].Photos) > len(suggestions[j].Photos)
+	// Sort suggestions by photo count descending
+	sort.Slice(results, func(i, j int) bool {
+		return len(results[i].suggestion.Photos) > len(results[j].suggestion.Photos)
 	})
 
+	suggestions := make([]AlbumSuggestion, 0, len(results))
+	uniquePhotos := make(map[string]bool)
+	for _, r := range results {
+		suggestions = append(suggestions, r.suggestion)
+		for _, p := range r.suggestion.Photos {
+			uniquePhotos[p.PhotoUID] = true
+		}
+	}
+
 	respondJSON(w, http.StatusOK, SuggestAlbumsResponse{
-		AlbumsAnalyzed: len(centroids),
-		PhotosAnalyzed: len(inputEmbeddings),
+		AlbumsAnalyzed: len(candidateAlbums) - skipped,
+		PhotosAnalyzed: len(uniquePhotos),
 		Skipped:        skipped,
 		Suggestions:    suggestions,
 	})

@@ -5,19 +5,17 @@ import { Card, CardContent, CardHeader } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { PhotoCard } from '../../components/PhotoCard';
 import { StatsGrid } from '../../components/StatsGrid';
-import { suggestAlbums, addPhotosToAlbum, getAlbums, getConfig } from '../../api/client';
-import { DEFAULT_SUGGEST_ALBUM_THRESHOLD, DEFAULT_SUGGEST_ALBUM_TOP_K, MAX_ALBUMS_FETCH } from '../../constants';
-import type { SuggestAlbumsResponse, Config, Album } from '../../types';
+import { suggestAlbums, addPhotosToAlbum, getConfig } from '../../api/client';
+import { DEFAULT_SUGGEST_ALBUM_THRESHOLD, DEFAULT_SUGGEST_ALBUM_TOP_K } from '../../constants';
+import type { SuggestAlbumsResponse, Config } from '../../types';
 
 export function SuggestAlbumsPage() {
   const { t } = useTranslation(['pages', 'common']);
   const [config, setConfig] = useState<Config | null>(null);
 
   // Form state
-  const [sourceAlbum, setSourceAlbum] = useState('');
   const [threshold, setThreshold] = useState(DEFAULT_SUGGEST_ALBUM_THRESHOLD);
   const [topK, setTopK] = useState(DEFAULT_SUGGEST_ALBUM_TOP_K);
-  const [availableAlbums, setAvailableAlbums] = useState<Album[]>([]);
 
   // Results state
   const [result, setResult] = useState<SuggestAlbumsResponse | null>(null);
@@ -28,26 +26,12 @@ export function SuggestAlbumsPage() {
   const [addingAlbum, setAddingAlbum] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string; albumUid?: string } | null>(null);
 
-  // Load albums + config on mount
+  // Load config on mount
   useEffect(() => {
-    async function loadData() {
-      try {
-        const [albumsData, configData] = await Promise.all([
-          getAlbums({ count: MAX_ALBUMS_FETCH, order: 'name' }),
-          getConfig().catch(() => null),
-        ]);
-        setAvailableAlbums(albumsData);
-        setConfig(configData);
-      } catch (err) {
-        console.error('Failed to load data:', err);
-      }
-    }
-    loadData();
+    getConfig().then(setConfig).catch(() => null);
   }, []);
 
   const handleSuggest = async () => {
-    if (!sourceAlbum) return;
-
     setIsSearching(true);
     setSearchError(null);
     setResult(null);
@@ -55,13 +39,12 @@ export function SuggestAlbumsPage() {
 
     try {
       const data = await suggestAlbums({
-        source_album_uid: sourceAlbum,
         threshold: threshold / 100, // Convert percentage to cosine similarity
         top_k: topK,
       });
       setResult(data);
     } catch (err) {
-      console.error('Album suggestion failed:', err);
+      console.error('Album completion failed:', err);
       setSearchError(
         err instanceof Error ? err.message : t('common:errors.searchFailed')
       );
@@ -106,29 +89,6 @@ export function SuggestAlbumsPage() {
             <h2 className="text-lg font-semibold text-white">{t('pages:suggestAlbums.configuration')}</h2>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Source album selector */}
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-2">
-                {t('pages:suggestAlbums.sourceAlbum')}
-              </label>
-              <select
-                value={sourceAlbum}
-                onChange={(e) => setSourceAlbum(e.target.value)}
-                disabled={isSearching}
-                className="w-full px-4 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
-              >
-                <option value="">{t('pages:suggestAlbums.selectSourceAlbum')}</option>
-                {availableAlbums.map((album) => (
-                  <option key={album.uid} value={album.uid}>
-                    {album.title} ({album.photo_count})
-                  </option>
-                ))}
-              </select>
-              <p className="text-xs text-slate-500 mt-1">
-                {t('pages:suggestAlbums.sourceHelp')}
-              </p>
-            </div>
-
             {/* Threshold slider */}
             <div>
               <label className="block text-sm font-medium text-slate-300 mb-2">
@@ -161,15 +121,15 @@ export function SuggestAlbumsPage() {
                 onChange={(e) => setTopK(parseInt(e.target.value) || DEFAULT_SUGGEST_ALBUM_TOP_K)}
                 disabled={isSearching}
                 min={1}
-                max={10}
+                max={50}
                 className="w-full px-4 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
               />
             </div>
 
-            {/* Suggest button */}
+            {/* Scan button */}
             <Button
               onClick={handleSuggest}
-              disabled={!sourceAlbum}
+              disabled={isSearching}
               isLoading={isSearching}
               className="w-full"
             >
