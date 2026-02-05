@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft, Loader2, AlertCircle, Images, ScanFace, Copy, ExternalLink, User, RefreshCw } from 'lucide-react';
 import { Button } from '../../components/Button';
+import { colorMap } from '../../constants/pageConfig';
 import { usePhotoData } from './hooks/usePhotoData';
 import { useFacesData } from './hooks/useFacesData';
 import { useFaceAssignment } from './hooks/useFaceAssignment';
@@ -142,6 +143,8 @@ export function PhotoDetailPage() {
 
   return (
     <div className="h-full flex flex-col">
+      {/* Accent line */}
+      <div className={`h-0.5 ${colorMap.indigo.gradient} shrink-0`} />
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-slate-700 shrink-0">
         <div className="flex items-center gap-4">

@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { ArrowLeft, Pencil, Check, X, User, Star } from 'lucide-react';
 import { Card, CardContent } from '../components/Card';
 import { Button } from '../components/Button';
+import { colorMap } from '../constants/pageConfig';
 import { getSubject, updateSubject, getPhotos, getThumbnailUrl } from '../api/client';
 import type { Subject, Photo } from '../types';
 
@@ -98,14 +99,16 @@ export function SubjectDetailPage() {
 
   return (
     <div className="space-y-6">
+      {/* Accent line */}
+      <div className={`h-0.5 ${colorMap.amber.gradient} rounded-full`} />
       {/* Header */}
       <div className="flex items-center space-x-4">
         <Button variant="ghost" size="sm" onClick={() => navigate(-1)}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div className="flex items-center space-x-3 flex-1">
-          <div className="h-10 w-10 rounded-full bg-slate-700 flex items-center justify-center shrink-0">
-            <User className="h-5 w-5 text-slate-400" />
+          <div className="h-10 w-10 rounded-full bg-amber-500/15 flex items-center justify-center shrink-0">
+            <User className="h-5 w-5 text-amber-400" />
           </div>
           {isEditing ? (
             <div className="flex items-center space-x-2">

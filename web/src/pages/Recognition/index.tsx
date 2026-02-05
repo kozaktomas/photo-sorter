@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertCircle, ShieldCheck } from 'lucide-react';
 import { applyFaceMatch } from '../../api/client';
+import { PageHeader } from '../../components/PageHeader';
+import { PAGE_CONFIGS } from '../../constants/pageConfig';
 import { useSubjectsAndConfig } from '../../hooks/useSubjectsAndConfig';
 import { useScanAll } from './hooks/useScanAll';
 import { ScanConfigPanel } from './ScanConfigPanel';
@@ -132,10 +134,13 @@ export function RecognitionPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-white">{t('pages:recognition.title')}</h1>
-        <p className="text-slate-400 mt-1">{t('pages:recognition.subtitle')}</p>
-      </div>
+      <PageHeader
+        icon={PAGE_CONFIGS.recognition.icon}
+        title={t('pages:recognition.title')}
+        subtitle={t('pages:recognition.subtitle')}
+        color="yellow"
+        category="faces"
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <ScanConfigPanel

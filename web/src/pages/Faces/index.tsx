@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertCircle } from 'lucide-react';
 import { applyFaceMatch } from '../../api/client';
+import { PageHeader } from '../../components/PageHeader';
+import { PAGE_CONFIGS } from '../../constants/pageConfig';
 import { useSubjectsAndConfig } from '../../hooks/useSubjectsAndConfig';
 import { useFaceSearch } from './hooks/useFaceSearch';
 import { FacesConfigPanel } from './FacesConfigPanel';
@@ -135,10 +137,13 @@ export function FacesPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-white">{t('faces.title')}</h1>
-        <p className="text-slate-400 mt-1">{t('faces.subtitle')}</p>
-      </div>
+      <PageHeader
+        icon={PAGE_CONFIGS.faces.icon}
+        title={t('faces.title')}
+        subtitle={t('faces.subtitle')}
+        color="amber"
+        category="faces"
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <FacesConfigPanel

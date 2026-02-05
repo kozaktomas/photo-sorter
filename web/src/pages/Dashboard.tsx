@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { FolderOpen, Tags, Sparkles, Image, Users, Clock } from 'lucide-react';
 import { Card, CardContent } from '../components/Card';
+import { PageHeader } from '../components/PageHeader';
+import { PAGE_CONFIGS } from '../constants/pageConfig';
 import { getAlbums, getLabels, getConfig, getStats } from '../api/client';
 import type { Config, StatsResponse } from '../types';
 
@@ -38,15 +40,20 @@ export function DashboardPage() {
 
   return (
     <div className="space-y-8">
-      <div>
-        <h1 className="text-3xl font-bold text-white">{t('pages:dashboard.title')}</h1>
-        <p className="text-slate-400 mt-2">{t('pages:dashboard.welcome')}</p>
+      <div className="rounded-xl bg-gradient-to-br from-sky-500/5 via-transparent to-indigo-500/5 -mx-4 -mt-4 px-4 pt-4 pb-2">
+        <PageHeader
+          icon={PAGE_CONFIGS.dashboard.icon}
+          title={t('pages:dashboard.title')}
+          subtitle={t('pages:dashboard.welcome')}
+          color="sky"
+          category="browse"
+        />
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Link to="/albums">
-          <Card className="hover:border-blue-500 transition-colors cursor-pointer">
+          <Card className="hover:border-blue-500 transition-colors cursor-pointer border-t-2 border-t-blue-500">
             <CardContent className="flex items-center space-x-4">
               <div className="p-3 bg-blue-500/10 rounded-lg">
                 <FolderOpen className="h-8 w-8 text-blue-500" />
@@ -62,7 +69,7 @@ export function DashboardPage() {
         </Link>
 
         <Link to="/labels">
-          <Card className="hover:border-green-500 transition-colors cursor-pointer">
+          <Card className="hover:border-green-500 transition-colors cursor-pointer border-t-2 border-t-cyan-500">
             <CardContent className="flex items-center space-x-4">
               <div className="p-3 bg-green-500/10 rounded-lg">
                 <Tags className="h-8 w-8 text-green-500" />
@@ -78,7 +85,7 @@ export function DashboardPage() {
         </Link>
 
         <Link to="/similar">
-          <Card className="hover:border-purple-500 transition-colors cursor-pointer">
+          <Card className="hover:border-purple-500 transition-colors cursor-pointer border-t-2 border-t-purple-500">
             <CardContent className="flex items-center space-x-4">
               <div className="p-3 bg-purple-500/10 rounded-lg">
                 <Image className="h-8 w-8 text-purple-500" />
@@ -94,7 +101,7 @@ export function DashboardPage() {
         </Link>
 
         <Link to="/recognition">
-          <Card className="hover:border-amber-500 transition-colors cursor-pointer">
+          <Card className="hover:border-amber-500 transition-colors cursor-pointer border-t-2 border-t-amber-500">
             <CardContent className="flex items-center space-x-4">
               <div className="p-3 bg-amber-500/10 rounded-lg">
                 <Users className="h-8 w-8 text-amber-500" />
@@ -110,7 +117,7 @@ export function DashboardPage() {
         </Link>
 
         <Link to="/process">
-          <Card className="hover:border-orange-500 transition-colors cursor-pointer">
+          <Card className="hover:border-orange-500 transition-colors cursor-pointer border-t-2 border-t-rose-500">
             <CardContent className="flex items-center space-x-4">
               <div className="p-3 bg-orange-500/10 rounded-lg">
                 <Clock className="h-8 w-8 text-orange-500" />
@@ -131,7 +138,7 @@ export function DashboardPage() {
         <h2 className="text-xl font-semibold text-white mb-4">{t('pages:dashboard.quickActions')}</h2>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <Link to="/albums">
-            <Card className="hover:border-blue-500 transition-colors cursor-pointer">
+            <Card className="hover:border-blue-500 transition-colors cursor-pointer border-l-2 border-l-blue-500">
               <CardContent className="flex items-center space-x-3">
                 <FolderOpen className="h-5 w-5 text-blue-500" />
                 <span className="text-white">{t('pages:dashboard.browseAlbums')}</span>
@@ -140,18 +147,18 @@ export function DashboardPage() {
           </Link>
 
           <Link to="/analyze">
-            <Card className="hover:border-purple-500 transition-colors cursor-pointer">
+            <Card className="hover:border-violet-500 transition-colors cursor-pointer border-l-2 border-l-violet-500">
               <CardContent className="flex items-center space-x-3">
-                <Sparkles className="h-5 w-5 text-purple-500" />
+                <Sparkles className="h-5 w-5 text-violet-500" />
                 <span className="text-white">{t('pages:dashboard.analyzePhotos')}</span>
               </CardContent>
             </Card>
           </Link>
 
           <Link to="/labels">
-            <Card className="hover:border-green-500 transition-colors cursor-pointer">
+            <Card className="hover:border-cyan-500 transition-colors cursor-pointer border-l-2 border-l-cyan-500">
               <CardContent className="flex items-center space-x-3">
-                <Tags className="h-5 w-5 text-green-500" />
+                <Tags className="h-5 w-5 text-cyan-500" />
                 <span className="text-white">{t('pages:dashboard.manageLabels')}</span>
               </CardContent>
             </Card>

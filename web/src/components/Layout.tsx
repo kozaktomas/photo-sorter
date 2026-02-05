@@ -4,6 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { FolderOpen, Tags, Sparkles, Home, Users, Images, Camera, Maximize2, AlertTriangle, Type, ShieldCheck, Cpu, ChevronDown, LogOut, Copy, FolderSearch } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { LanguageSwitcher } from './LanguageSwitcher';
+import { getPageConfigForPath, colorMap } from '../constants/pageConfig';
+import type { ColorClasses } from '../constants/pageConfig';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -20,11 +22,19 @@ interface NavGroup {
   items: NavItem[];
 }
 
+function getColorForPath(pathname: string): ColorClasses | null {
+  const config = getPageConfigForPath(pathname);
+  return config ? colorMap[config.color] : null;
+}
+
 function NavDropdown({ group, isActive }: { group: NavGroup; isActive: (path: string) => boolean }) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   const hasActiveChild = group.items.some(item => isActive(item.path));
+  // Get the active child's color for the group button
+  const activeChild = group.items.find(item => isActive(item.path));
+  const activeColor = activeChild ? getColorForPath(activeChild.path) : null;
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -41,8 +51,8 @@ function NavDropdown({ group, isActive }: { group: NavGroup; isActive: (path: st
       <button
         onClick={() => setOpen(!open)}
         className={`flex items-center space-x-1.5 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-          hasActiveChild
-            ? 'bg-slate-700 text-white'
+          hasActiveChild && activeColor
+            ? `${activeColor.navActiveBg} ${activeColor.navActive}`
             : 'text-slate-300 hover:bg-slate-700 hover:text-white'
         }`}
       >
@@ -51,21 +61,28 @@ function NavDropdown({ group, isActive }: { group: NavGroup; isActive: (path: st
       </button>
       {open && (
         <div className="absolute top-full left-0 mt-1 w-44 bg-slate-800 border border-slate-700 rounded-md shadow-lg py-1 z-50">
-          {group.items.map(({ path, icon: Icon, label }) => (
-            <Link
-              key={path}
-              to={path}
-              onClick={() => setOpen(false)}
-              className={`flex items-center space-x-2 px-3 py-2 text-sm transition-colors ${
-                isActive(path)
-                  ? 'bg-slate-700 text-white'
-                  : 'text-slate-300 hover:bg-slate-700 hover:text-white'
-              }`}
-            >
-              <Icon className="h-4 w-4" />
-              <span>{label}</span>
-            </Link>
-          ))}
+          {group.items.map(({ path, icon: Icon, label }) => {
+            const itemActive = isActive(path);
+            const itemColor = itemActive ? getColorForPath(path) : null;
+            return (
+              <Link
+                key={path}
+                to={path}
+                onClick={() => setOpen(false)}
+                className={`flex items-center space-x-2 px-3 py-2 text-sm transition-colors ${
+                  itemActive && itemColor
+                    ? `${itemColor.navActiveBg} ${itemColor.navActive}`
+                    : 'text-slate-300 hover:bg-slate-700 hover:text-white'
+                }`}
+              >
+                {itemActive && itemColor && (
+                  <span className={`w-1 h-1 rounded-full ${itemColor.buttonBg} shrink-0`} />
+                )}
+                <Icon className="h-4 w-4" />
+                <span>{label}</span>
+              </Link>
+            );
+          })}
         </div>
       )}
     </div>
@@ -127,20 +144,24 @@ export function Layout({ children }: LayoutProps) {
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <nav className="flex items-center space-x-1">
-              {primaryItems.map(({ path, icon: Icon, label }) => (
-                <Link
-                  key={path}
-                  to={path}
-                  className={`flex items-center space-x-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
-                    isActive(path)
-                      ? 'bg-slate-700 text-white'
-                      : 'text-slate-300 hover:bg-slate-700 hover:text-white'
-                  }`}
-                >
-                  <Icon className="h-4 w-4" />
-                  <span>{label}</span>
-                </Link>
-              ))}
+              {primaryItems.map(({ path, icon: Icon, label }) => {
+                const active = isActive(path);
+                const c = active ? getColorForPath(path) : null;
+                return (
+                  <Link
+                    key={path}
+                    to={path}
+                    className={`flex items-center space-x-2 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
+                      active && c
+                        ? `${c.navActiveBg} ${c.navActive}`
+                        : 'text-slate-300 hover:bg-slate-700 hover:text-white'
+                    }`}
+                  >
+                    <Icon className="h-4 w-4" />
+                    <span>{label}</span>
+                  </Link>
+                );
+              })}
 
               <div className="w-px h-6 bg-slate-600 mx-2" />
 

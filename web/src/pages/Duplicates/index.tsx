@@ -4,6 +4,8 @@ import { useNavigate } from 'react-router-dom';
 import { Search, AlertCircle, Check, X, ArrowLeftRight } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '../../components/Card';
 import { Button } from '../../components/Button';
+import { PageHeader } from '../../components/PageHeader';
+import { PAGE_CONFIGS } from '../../constants/pageConfig';
 import { PhotoCard } from '../../components/PhotoCard';
 import { BulkActionBar } from '../../components/BulkActionBar';
 import { StatsGrid } from '../../components/StatsGrid';
@@ -73,10 +75,13 @@ export function DuplicatesPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-white">{t('pages:duplicates.title')}</h1>
-        <p className="text-slate-400 mt-1">{t('pages:duplicates.subtitle')}</p>
-      </div>
+      <PageHeader
+        icon={PAGE_CONFIGS.duplicates.icon}
+        title={t('pages:duplicates.title')}
+        subtitle={t('pages:duplicates.subtitle')}
+        color="lime"
+        category="tools"
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Configuration Panel */}

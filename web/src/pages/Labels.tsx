@@ -4,6 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { Tags, Trash2, Search, ChevronUp, ChevronDown } from 'lucide-react';
 import { Card, CardContent } from '../components/Card';
 import { Button } from '../components/Button';
+import { PageHeader } from '../components/PageHeader';
+import { PAGE_CONFIGS } from '../constants/pageConfig';
 import { getLabels, deleteLabels } from '../api/client';
 import type { Label } from '../types';
 
@@ -102,18 +104,21 @@ export function LabelsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-white">{t('pages:labels.title')}</h1>
-          <p className="text-slate-400 mt-1">{t('common:units.label', { count: labels.length })}</p>
-        </div>
-        {selectedLabels.size > 0 && (
-          <Button variant="danger" onClick={handleDelete} isLoading={isDeleting}>
-            <Trash2 className="h-4 w-4 mr-2" />
-            {t('common:buttons.delete')} {selectedLabels.size}
-          </Button>
-        )}
-      </div>
+      <PageHeader
+        icon={PAGE_CONFIGS.labels.icon}
+        title={t('pages:labels.title')}
+        subtitle={t('common:units.label', { count: labels.length })}
+        color="cyan"
+        category="browse"
+        actions={
+          selectedLabels.size > 0 ? (
+            <Button variant="danger" onClick={handleDelete} isLoading={isDeleting}>
+              <Trash2 className="h-4 w-4 mr-2" />
+              {t('common:buttons.delete')} {selectedLabels.size}
+            </Button>
+          ) : undefined
+        }
+      />
 
       {/* Search */}
       <div className="relative">

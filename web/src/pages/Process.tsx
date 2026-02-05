@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { Cpu, Play, Square, CheckCircle, XCircle, AlertCircle, Database, RefreshCw, RefreshCcw } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '../components/Card';
 import { Button } from '../components/Button';
+import { PageHeader } from '../components/PageHeader';
+import { PAGE_CONFIGS } from '../constants/pageConfig';
 import { FormInput } from '../components/FormInput';
 import { FormCheckbox } from '../components/FormCheckbox';
 import { getConfig, startProcess, cancelProcessJob, rebuildIndex, syncCache } from '../api/client';
@@ -175,10 +177,13 @@ export function ProcessPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-white">{t('pages:process.title')}</h1>
-        <p className="text-slate-400 mt-1">{t('pages:process.subtitle')}</p>
-      </div>
+      <PageHeader
+        icon={PAGE_CONFIGS.process.icon}
+        title={t('pages:process.title')}
+        subtitle={t('pages:process.subtitle')}
+        color="rose"
+        category="tools"
+      />
 
       {!isWritable && (
         <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg text-yellow-400">

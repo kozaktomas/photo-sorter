@@ -97,6 +97,12 @@
     "selected_few": "{{count}} fotky vybrány",
     "selected_many": "{{count}} fotek vybráno"
   },
+  "categories": {
+    "browse": "Proch\u00e1zet",
+    "ai": "AI",
+    "faces": "Obli\u010deje",
+    "tools": "N\u00e1stroje"
+  },
   "time": {
     "noDate": "Bez data"
   }

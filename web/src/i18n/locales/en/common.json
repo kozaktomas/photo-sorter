@@ -89,6 +89,12 @@
     "selected_one": "{{count}} photo selected",
     "selected_other": "{{count}} photos selected"
   },
+  "categories": {
+    "browse": "Browse",
+    "ai": "AI",
+    "faces": "Faces",
+    "tools": "Tools"
+  },
   "time": {
     "noDate": "No date"
   }

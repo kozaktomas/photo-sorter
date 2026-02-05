@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { AlertTriangle, Search, AlertCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '../components/Card';
 import { Button } from '../components/Button';
+import { PageHeader } from '../components/PageHeader';
+import { PAGE_CONFIGS } from '../constants/pageConfig';
 import { PhotoCard } from '../components/PhotoCard';
 import { StatsGrid } from '../components/StatsGrid';
 import { FormInput } from '../components/FormInput';
@@ -114,10 +116,13 @@ export function OutliersPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-white">{t('pages:outliers.title')}</h1>
-        <p className="text-slate-400 mt-1">{t('pages:outliers.subtitle')}</p>
-      </div>
+      <PageHeader
+        icon={PAGE_CONFIGS.outliers.icon}
+        title={t('pages:outliers.title')}
+        subtitle={t('pages:outliers.subtitle')}
+        color="orange"
+        category="faces"
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Configuration Panel */}

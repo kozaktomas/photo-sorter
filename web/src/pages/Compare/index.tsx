@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Loader2 } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '../../components/Card';
+import { colorMap } from '../../constants/pageConfig';
 import { getPhoto } from '../../api/client';
 import { CompareView } from './CompareView';
 import { CompareSummary } from './CompareSummary';
@@ -148,8 +149,10 @@ function ComparePageContent({
 
   return (
     <div className="space-y-6">
+      {/* Accent line */}
+      <div className={`h-0.5 ${colorMap.lime.gradient} rounded-full`} />
       <div>
-        <h1 className="text-3xl font-bold text-white">
+        <h1 className="text-2xl font-bold text-white">
           {t('pages:duplicates.compare.title')}
         </h1>
         <p className="text-slate-400 mt-1">

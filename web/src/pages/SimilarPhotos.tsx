@@ -4,6 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { Search, AlertCircle, Check, X, Copy, ExternalLink } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '../components/Card';
 import { Button } from '../components/Button';
+import { PageHeader } from '../components/PageHeader';
+import { PAGE_CONFIGS } from '../constants/pageConfig';
 import { PhotoCard } from '../components/PhotoCard';
 import { BulkActionBar } from '../components/BulkActionBar';
 import { findSimilarPhotos, getThumbnailUrl, getConfig } from '../api/client';
@@ -109,10 +111,13 @@ export function SimilarPhotosPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-white">{t('pages:similar.title')}</h1>
-        <p className="text-slate-400 mt-1">{t('pages:similar.subtitle')}</p>
-      </div>
+      <PageHeader
+        icon={PAGE_CONFIGS.similar.icon}
+        title={t('pages:similar.title')}
+        subtitle={t('pages:similar.subtitle')}
+        color="teal"
+        category="tools"
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Configuration Panel */}

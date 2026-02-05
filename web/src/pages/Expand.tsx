@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { Search, AlertCircle, Check, X } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '../components/Card';
 import { Button } from '../components/Button';
+import { PageHeader } from '../components/PageHeader';
+import { PAGE_CONFIGS } from '../constants/pageConfig';
 import { PhotoCard } from '../components/PhotoCard';
 import { BulkActionBar } from '../components/BulkActionBar';
 import { findSimilarToCollection, getConfig, getAlbums, getLabels } from '../api/client';
@@ -108,10 +110,13 @@ export function ExpandPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-white">{t('pages:expand.title')}</h1>
-        <p className="text-slate-400 mt-1">{t('pages:expand.subtitle')}</p>
-      </div>
+      <PageHeader
+        icon={PAGE_CONFIGS.expand.icon}
+        title={t('pages:expand.title')}
+        subtitle={t('pages:expand.subtitle')}
+        color="emerald"
+        category="tools"
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Configuration Panel */}

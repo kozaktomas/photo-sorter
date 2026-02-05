@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { Search, AlertCircle, FolderPlus } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '../../components/Card';
 import { Button } from '../../components/Button';
+import { PageHeader } from '../../components/PageHeader';
+import { PAGE_CONFIGS } from '../../constants/pageConfig';
 import { PhotoCard } from '../../components/PhotoCard';
 import { StatsGrid } from '../../components/StatsGrid';
 import { suggestAlbums, addPhotosToAlbum, getConfig } from '../../api/client';
@@ -77,10 +79,13 @@ export function SuggestAlbumsPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-white">{t('pages:suggestAlbums.title')}</h1>
-        <p className="text-slate-400 mt-1">{t('pages:suggestAlbums.subtitle')}</p>
-      </div>
+      <PageHeader
+        icon={PAGE_CONFIGS.suggestAlbums.icon}
+        title={t('pages:suggestAlbums.title')}
+        subtitle={t('pages:suggestAlbums.subtitle')}
+        color="green"
+        category="tools"
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Configuration Panel */}

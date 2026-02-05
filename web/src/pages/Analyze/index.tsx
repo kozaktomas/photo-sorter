@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { getAlbums, getConfig } from '../../api/client';
+import { PageHeader } from '../../components/PageHeader';
+import { PAGE_CONFIGS } from '../../constants/pageConfig';
 import { useSortJob } from './hooks/useSortJob';
 import { AnalyzeForm } from './AnalyzeForm';
 import { AnalyzeStatus } from './AnalyzeStatus';
@@ -90,10 +92,13 @@ export function AnalyzePage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-white">{t('analyze.title')}</h1>
-        <p className="text-slate-400 mt-1">{t('analyze.subtitle')}</p>
-      </div>
+      <PageHeader
+        icon={PAGE_CONFIGS.analyze.icon}
+        title={t('analyze.title')}
+        subtitle={t('analyze.subtitle')}
+        color="violet"
+        category="ai"
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <AnalyzeForm

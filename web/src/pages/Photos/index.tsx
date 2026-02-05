@@ -1,9 +1,11 @@
 import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Camera, Loader2, Check, X } from 'lucide-react';
+import { Loader2, Check, X } from 'lucide-react';
 import { Card, CardContent } from '../../components/Card';
 import { Button } from '../../components/Button';
+import { PageHeader } from '../../components/PageHeader';
+import { PAGE_CONFIGS } from '../../constants/pageConfig';
 import { PhotoGrid } from '../../components/PhotoGrid';
 import { BulkActionBar } from '../../components/BulkActionBar';
 import { getLabels, getAlbums, getConfig } from '../../api/client';
@@ -85,18 +87,14 @@ export function PhotosPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-white flex items-center gap-2">
-            <Camera className="h-8 w-8" />
-            {t('pages:photos.title')}
-          </h1>
-          <p className="text-slate-400 mt-1">
-            {t('pages:photos.photosLoaded', { count: pagination.photos.length, more: pagination.hasMore ? '+' : '' })}
-          </p>
-        </div>
-        <div className="flex gap-2">
-          {selectionMode ? (
+      <PageHeader
+        icon={PAGE_CONFIGS.photos.icon}
+        title={t('pages:photos.title')}
+        subtitle={t('pages:photos.photosLoaded', { count: pagination.photos.length, more: pagination.hasMore ? '+' : '' })}
+        color="indigo"
+        category="browse"
+        actions={
+          selectionMode ? (
             <Button variant="secondary" size="sm" onClick={exitSelectionMode}>
               <X className="h-4 w-4 mr-1" />
               {t('common:buttons.cancel')}
@@ -106,9 +104,9 @@ export function PhotosPage() {
               <Check className="h-4 w-4 mr-1" />
               {t('common:buttons.select')}
             </Button>
-          )}
-        </div>
-      </div>
+          )
+        }
+      />
 
       {/* Filters */}
       <PhotosFilters

@@ -1,22 +1,33 @@
 import { forwardRef } from 'react';
 import type { ButtonHTMLAttributes } from 'react';
+import type { AccentColor } from '../constants/pageConfig';
+import { colorMap } from '../constants/pageConfig';
 
 interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
-  variant?: 'primary' | 'secondary' | 'danger' | 'ghost';
+  variant?: 'primary' | 'secondary' | 'danger' | 'ghost' | 'accent';
   size?: 'sm' | 'md' | 'lg';
   isLoading?: boolean;
+  accentColor?: AccentColor;
 }
 
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className = '', variant = 'primary', size = 'md', isLoading, children, disabled, ...props }, ref) => {
+  ({ className = '', variant = 'primary', size = 'md', isLoading, accentColor, children, disabled, ...props }, ref) => {
     const baseStyles = 'inline-flex items-center justify-center font-medium rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-900 disabled:opacity-50 disabled:cursor-not-allowed';
 
-    const variantStyles = {
+    const variantStyles: Record<string, string> = {
       primary: 'bg-blue-600 text-white hover:bg-blue-700 focus:ring-blue-500',
       secondary: 'bg-slate-700 text-white hover:bg-slate-600 focus:ring-slate-500',
       danger: 'bg-red-600 text-white hover:bg-red-700 focus:ring-red-500',
       ghost: 'text-slate-300 hover:bg-slate-800 hover:text-white focus:ring-slate-500',
     };
+
+    // Build accent variant dynamically from colorMap
+    if (variant === 'accent' && accentColor) {
+      const c = colorMap[accentColor];
+      variantStyles.accent = `${c.buttonBg} text-white ${c.buttonHover} focus:ring-slate-500`;
+    } else {
+      variantStyles.accent = variantStyles.primary; // fallback
+    }
 
     const sizeStyles = {
       sm: 'px-3 py-1.5 text-sm',

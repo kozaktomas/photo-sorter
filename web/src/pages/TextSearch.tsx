@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { Search, AlertCircle, Check, X, FolderPlus, Tag } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '../components/Card';
 import { Button } from '../components/Button';
+import { PageHeader } from '../components/PageHeader';
+import { PAGE_CONFIGS } from '../constants/pageConfig';
 import { PhotoCard } from '../components/PhotoCard';
 import { searchByText, getConfig, getAlbums, getLabels, addPhotosToAlbum, batchAddLabels } from '../api/client';
 import type { TextSearchResponse, Config, Album, Label } from '../types';
@@ -162,10 +164,13 @@ export function TextSearchPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-white">{t('pages:textSearch.title')}</h1>
-        <p className="text-slate-400 mt-1">{t('pages:textSearch.subtitle')}</p>
-      </div>
+      <PageHeader
+        icon={PAGE_CONFIGS.textSearch.icon}
+        title={t('pages:textSearch.title')}
+        subtitle={t('pages:textSearch.subtitle')}
+        color="purple"
+        category="ai"
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Search Panel */}

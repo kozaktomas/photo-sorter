@@ -4,6 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { FolderOpen, ArrowLeft, Image, Sparkles, Search } from 'lucide-react';
 import { Card, CardContent } from '../components/Card';
 import { Button } from '../components/Button';
+import { PageHeader } from '../components/PageHeader';
+import { PAGE_CONFIGS } from '../constants/pageConfig';
 import { PhotoGrid } from '../components/PhotoGrid';
 import { getAlbums, getAlbum, getAlbumPhotos, getThumbnailUrl, getConfig } from '../api/client';
 import { ALBUM_PHOTOS_CACHE_KEY } from '../constants';
@@ -47,12 +49,13 @@ function AlbumListPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold text-white">{t('pages:albums.title')}</h1>
-          <p className="text-slate-400 mt-1">{t('common:units.album', { count: albums.length })}</p>
-        </div>
-      </div>
+      <PageHeader
+        icon={PAGE_CONFIGS.albums.icon}
+        title={t('pages:albums.title')}
+        subtitle={t('common:units.album', { count: albums.length })}
+        color="blue"
+        category="browse"
+      />
 
       {/* Search */}
       <div className="relative">

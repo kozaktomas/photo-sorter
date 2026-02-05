@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { ArrowLeft, Pencil, Check, X, Tags, Star } from 'lucide-react';
 import { Card, CardContent } from '../components/Card';
 import { Button } from '../components/Button';
+import { colorMap } from '../constants/pageConfig';
 import { getLabel, updateLabel, getPhotos, getThumbnailUrl } from '../api/client';
 import { LABEL_PHOTOS_CACHE_KEY } from '../constants';
 import type { Label, Photo } from '../types';
@@ -109,13 +110,15 @@ export function LabelDetailPage() {
 
   return (
     <div className="space-y-6">
+      {/* Accent line */}
+      <div className={`h-0.5 ${colorMap.cyan.gradient} rounded-full`} />
       {/* Header */}
       <div className="flex items-center space-x-4">
         <Button variant="ghost" size="sm" onClick={() => navigate('/labels')}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
         <div className="flex items-center space-x-3 flex-1">
-          <Tags className="h-6 w-6 text-blue-400" />
+          <Tags className="h-6 w-6 text-cyan-400" />
           {isEditing ? (
             <div className="flex items-center space-x-2">
               <input
