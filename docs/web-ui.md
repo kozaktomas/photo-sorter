@@ -417,6 +417,26 @@ Uses union-find (disjoint set) to build connected components of similar photos. 
 - **Stats** - Photos scanned, groups found, total duplicates
 - **Groups** - Each group shows a card with photos and their similarity scores
 - **Actions** - Select photos within groups for bulk actions (add to album, add label, favorite)
+- **Compare** - Side-by-side comparison view for each duplicate group
+
+### Compare View
+
+The Compare page (`/compare`) provides a side-by-side photo comparison interface for resolving duplicate groups.
+
+**How to access:** Click the "Compare" button on any duplicate group in the Duplicates page.
+
+**Features:**
+- **Side-by-side display** - Two photos shown at `fit_1280` resolution
+- **Metadata diff table** - Compares dimensions, megapixels, date taken, camera model, filename, original name, type, country, and favorite status. Differences highlighted in amber; better values (e.g., higher resolution) in green
+- **Actions per pair:**
+  - **Keep Left** (key: `1`) - Archives the right photo
+  - **Keep Right** (key: `2`) - Archives the left photo
+  - **Keep Both** (key: `Space`) - Skips to next pair without archiving
+- **Navigation** - Arrow keys (`←`/`→`) to move between pairs
+- **Smart pair management** - When a photo is archived, all remaining pairs involving it are automatically removed
+- **Summary screen** - Shows archived/skipped counts when all pairs are resolved
+
+**Pair generation:** For a group of N photos, generates all unique pairs: N*(N-1)/2 combinations.
 
 ### Album Completion
 
@@ -490,6 +510,7 @@ The Web UI communicates with these backend endpoints:
 | POST | `/api/v1/process/sync-cache` | Sync face marker data from PhotoPrism |
 | POST | `/api/v1/photos/batch/edit` | Batch edit photos (favorite, private) |
 | POST | `/api/v1/photos/duplicates` | Find near-duplicate photos |
+| POST | `/api/v1/photos/batch/archive` | Archive (soft-delete) photos |
 | POST | `/api/v1/photos/suggest-albums` | Album completion — find missing photos for existing albums |
 | DELETE | `/api/v1/albums/:uid/photos/batch` | Remove specific photos from album |
 
@@ -568,6 +589,12 @@ web/src/
 │   │   ├── ScanResultsSummary.tsx
 │   │   └── index.tsx
 │   ├── Duplicates/          # Near-duplicate detection
+│   │   └── index.tsx
+│   ├── Compare/             # Side-by-side photo comparison
+│   │   ├── hooks/useCompareState.ts
+│   │   ├── CompareView.tsx
+│   │   ├── MetadataDiff.tsx
+│   │   ├── CompareSummary.tsx
 │   │   └── index.tsx
 │   └── SuggestAlbums/       # Album completion
 │       └── index.tsx

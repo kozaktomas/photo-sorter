@@ -196,6 +196,22 @@ func (pp *PhotoPrism) GetFileDownload(fileHash string) ([]byte, string, error) {
 	return data, contentType, nil
 }
 
+// ArchivePhotos archives (soft-deletes) multiple photos by their UIDs
+func (pp *PhotoPrism) ArchivePhotos(photoUIDs []string) error {
+	if len(photoUIDs) == 0 {
+		return nil
+	}
+
+	selection := struct {
+		Photos []string `json:"photos"`
+	}{
+		Photos: photoUIDs,
+	}
+
+	_, err := doRequestRaw(pp, "POST", "batch/photos/archive", selection, http.StatusOK)
+	return err
+}
+
 // ApprovePhoto marks a photo in review as approved, allowing it to be downloaded
 func (pp *PhotoPrism) ApprovePhoto(photoUID string) (*Photo, error) {
 	return doPostJSON[Photo](pp, fmt.Sprintf("photos/%s/approve", photoUID), nil)

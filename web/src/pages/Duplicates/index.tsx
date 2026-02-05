@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Search, AlertCircle, Check, X } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Search, AlertCircle, Check, X, ArrowLeftRight } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { PhotoCard } from '../../components/PhotoCard';
@@ -13,6 +14,7 @@ import type { DuplicatesResponse, Config, Album } from '../../types';
 
 export function DuplicatesPage() {
   const { t } = useTranslation(['pages', 'common']);
+  const navigate = useNavigate();
   const [config, setConfig] = useState<Config | null>(null);
 
   // Form state
@@ -198,6 +200,16 @@ export function DuplicatesPage() {
                   {t('pages:duplicates.group')} {groupIdx + 1} ({group.photo_count} {t('pages:labels.photos').toLowerCase()}, {t('pages:duplicates.avgDistance')}: {group.avg_distance.toFixed(3)})
                 </h3>
                 <div className="flex gap-2">
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => navigate('/compare', {
+                      state: { photoUids: group.photos.map(p => p.photo_uid), groupIndex: groupIdx + 1 }
+                    })}
+                  >
+                    <ArrowLeftRight className="h-3 w-3 mr-1" />
+                    {t('pages:duplicates.compare.compare')}
+                  </Button>
                   <Button
                     variant="secondary"
                     size="sm"

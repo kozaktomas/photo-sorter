@@ -67,6 +67,7 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 			r.Post("/photos/similar/collection", photosHandler.FindSimilarToCollection)
 			r.Post("/photos/batch/labels", photosHandler.BatchAddLabels)
 			r.Post("/photos/batch/edit", photosHandler.BatchEdit)
+			r.Post("/photos/batch/archive", photosHandler.BatchArchive)
 			r.Post("/photos/duplicates", photosHandler.FindDuplicates)
 			r.Post("/photos/suggest-albums", photosHandler.SuggestAlbums)
 			r.Post("/photos/search-by-text", photosHandler.SearchByText)

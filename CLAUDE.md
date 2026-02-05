@@ -691,6 +691,7 @@ Key files:
 - `POST /api/v1/process/rebuild-index` - Rebuild HNSW indexes and reload in memory
 - `POST /api/v1/process/sync-cache` - Sync face marker data from PhotoPrism to local cache
 - `POST /api/v1/photos/batch/edit` - Batch edit photos (favorite, private)
+- `POST /api/v1/photos/batch/archive` - Archive (soft-delete) photos
 - `POST /api/v1/photos/duplicates` - Find near-duplicate photos via embedding similarity
 - `POST /api/v1/photos/suggest-albums` - Album completion: find photos missing from existing albums via HNSW centroid search
 - `DELETE /api/v1/albums/{uid}/photos/batch` - Remove specific photos from album
@@ -756,6 +757,12 @@ web/src/
 │   │   ├── ScanResultsSummary.tsx
 │   │   └── index.tsx
 │   ├── Duplicates/            # Near-duplicate photo detection
+│   │   └── index.tsx
+│   ├── Compare/               # Side-by-side photo comparison
+│   │   ├── hooks/useCompareState.ts
+│   │   ├── CompareView.tsx
+│   │   ├── MetadataDiff.tsx
+│   │   ├── CompareSummary.tsx
 │   │   └── index.tsx
 │   └── SuggestAlbums/         # Album completion
 │       └── index.tsx

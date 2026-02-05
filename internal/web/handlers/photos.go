@@ -287,6 +287,37 @@ func (h *PhotosHandler) BatchAddLabels(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// BatchArchiveRequest represents a request to archive multiple photos
+type BatchArchiveRequest struct {
+	PhotoUIDs []string `json:"photo_uids"`
+}
+
+// BatchArchive archives (soft-deletes) multiple photos
+func (h *PhotosHandler) BatchArchive(w http.ResponseWriter, r *http.Request) {
+	var req BatchArchiveRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if len(req.PhotoUIDs) == 0 {
+		respondError(w, http.StatusBadRequest, "photo_uids is required")
+		return
+	}
+
+	pp := middleware.MustGetPhotoPrism(r.Context(), w)
+	if pp == nil {
+		return
+	}
+
+	if err := pp.ArchivePhotos(req.PhotoUIDs); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to archive photos")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]int{"archived": len(req.PhotoUIDs)})
+}
+
 // SimilarRequest represents a similar photos search request
 type SimilarRequest struct {
 	PhotoUID  string  `json:"photo_uid"`

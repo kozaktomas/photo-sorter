@@ -489,6 +489,16 @@ export async function removePhotosFromAlbum(
   });
 }
 
+// Archive (soft-delete) photos
+export async function archivePhotos(
+  photoUids: string[]
+): Promise<{ archived: number }> {
+  return request<{ archived: number }>('/photos/batch/archive', {
+    method: 'POST',
+    body: JSON.stringify({ photo_uids: photoUids }),
+  });
+}
+
 // Find duplicate photos
 export async function findDuplicates(params: {
   album_uid?: string;

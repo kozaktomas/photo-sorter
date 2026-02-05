@@ -157,6 +157,7 @@ type PhotoResponse struct {
 	Type         string  `json:"type"`
 	OriginalName string  `json:"original_name"`
 	FileName     string  `json:"file_name"`
+	CameraModel  string  `json:"camera_model"`
 }
 
 func photoToResponse(p photoprism.Photo) PhotoResponse {
@@ -179,6 +180,7 @@ func photoToResponse(p photoprism.Photo) PhotoResponse {
 		Type:         p.Type,
 		OriginalName: p.OriginalName,
 		FileName:     p.FileName,
+		CameraModel:  p.CameraModel,
 	}
 }
 

@@ -34,6 +34,7 @@ export interface Photo {
   type: string;
   original_name: string;
   file_name: string;
+  camera_model: string;
 }
 
 export interface Label {
