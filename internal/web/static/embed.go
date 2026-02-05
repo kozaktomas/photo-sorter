@@ -6,7 +6,7 @@ import (
 	"net/http"
 )
 
-//go:embed dist/*
+//go:embed all:dist/*
 var distFS embed.FS
 
 // GetFileSystem returns an http.FileSystem for the embedded dist directory
