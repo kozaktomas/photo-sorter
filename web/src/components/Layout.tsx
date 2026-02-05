@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { FolderOpen, Tags, Sparkles, Home, Users, Images, Camera, Maximize2, AlertTriangle, Type, ShieldCheck, Cpu, ChevronDown, LogOut, Copy, FolderSearch } from 'lucide-react';
+import { FolderOpen, Tags, Sparkles, Home, Users, Images, Camera, Maximize2, AlertTriangle, Type, ShieldCheck, Cpu, ChevronDown, LogOut, Copy, FolderSearch, Github } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { getPageConfigForPath, colorMap } from '../constants/pageConfig';
@@ -171,6 +171,15 @@ export function Layout({ children }: LayoutProps) {
             </nav>
 
             <div className="flex items-center space-x-2">
+              <a
+                href="https://github.com/kozaktomas/photo-sorter"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center px-2 py-2 rounded-md text-slate-300 hover:bg-slate-700 hover:text-white transition-colors"
+                title="GitHub"
+              >
+                <Github className="h-5 w-5" />
+              </a>
               <LanguageSwitcher />
               <button
                 onClick={handleLogout}
