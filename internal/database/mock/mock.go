@@ -14,11 +14,12 @@ type MockEmbeddingReader struct {
 	embeddings map[string]*database.StoredEmbedding
 
 	// Error injection
-	GetError          error
-	HasError          error
-	CountError        error
-	FindSimilarError  error
-	FindSimilarWDError error
+	GetError                error
+	HasError                error
+	CountError              error
+	FindSimilarError        error
+	FindSimilarWDError      error
+	GetUniquePhotoUIDsError error
 }
 
 // NewMockEmbeddingReader creates a new mock embedding reader
@@ -122,6 +123,21 @@ func (m *MockEmbeddingReader) FindSimilarWithDistance(ctx context.Context, embed
 		}
 	}
 	return results, distances, nil
+}
+
+// GetUniquePhotoUIDs returns all unique photo UIDs that have embeddings
+func (m *MockEmbeddingReader) GetUniquePhotoUIDs(ctx context.Context) ([]string, error) {
+	if m.GetUniquePhotoUIDsError != nil {
+		return nil, m.GetUniquePhotoUIDsError
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	var uids []string
+	for uid := range m.embeddings {
+		uids = append(uids, uid)
+	}
+	return uids, nil
 }
 
 // MockFaceReader is a mock implementation of database.FaceReader
@@ -474,8 +490,7 @@ type MockEmbeddingWriter struct {
 	DeleteEmbeddingCalls []string
 
 	// Error injection
-	DeleteEmbeddingError       error
-	GetUniquePhotoUIDsError    error
+	DeleteEmbeddingError error
 }
 
 // NewMockEmbeddingWriter creates a new mock embedding writer
@@ -497,20 +512,6 @@ func (m *MockEmbeddingWriter) DeleteEmbedding(ctx context.Context, photoUID stri
 	return nil
 }
 
-// GetUniquePhotoUIDs returns all unique photo UIDs that have embeddings
-func (m *MockEmbeddingWriter) GetUniquePhotoUIDs(ctx context.Context) ([]string, error) {
-	if m.GetUniquePhotoUIDsError != nil {
-		return nil, m.GetUniquePhotoUIDsError
-	}
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-
-	var uids []string
-	for uid := range m.embeddings {
-		uids = append(uids, uid)
-	}
-	return uids, nil
-}
 
 // Verify interface compliance
 var _ database.EmbeddingReader = (*MockEmbeddingReader)(nil)

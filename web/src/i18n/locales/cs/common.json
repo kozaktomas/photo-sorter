@@ -14,6 +14,8 @@
     "similar": "Podobné",
     "expand": "Rozšířit",
     "process": "Zpracování",
+    "duplicates": "Duplikáty",
+    "suggestAlbums": "Navrhnout alba",
     "signOut": "Odhlásit se"
   },
   "buttons": {
@@ -39,9 +41,12 @@
     "acceptAll": "Přijmout vše",
     "addToAlbum": "Přidat do alba",
     "addLabel": "Přidat štítek",
+    "removeFromAlbum": "Odebrat z alba",
+    "setFavorite": "Oblíbené",
     "detectFaces": "Detekovat obličeje",
     "rescan": "Znovu skenovat",
-    "scanAllPeople": "Skenovat všechny osoby"
+    "scanAllPeople": "Skenovat všechny osoby",
+    "select": "Vybrat"
   },
   "status": {
     "loading": "Načítání...",

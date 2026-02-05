@@ -18,6 +18,8 @@ type EmbeddingReader interface {
 	FindSimilar(ctx context.Context, embedding []float32, limit int) ([]StoredEmbedding, error)
 	// FindSimilarWithDistance finds similar embeddings and returns distances
 	FindSimilarWithDistance(ctx context.Context, embedding []float32, limit int, maxDistance float64) ([]StoredEmbedding, []float64, error)
+	// GetUniquePhotoUIDs returns all unique photo UIDs that have embeddings
+	GetUniquePhotoUIDs(ctx context.Context) ([]string, error)
 }
 
 // FaceReader provides read-only access to face embeddings
@@ -81,9 +83,6 @@ type EmbeddingWriter interface {
 
 	// DeleteEmbedding removes the embedding for a photo
 	DeleteEmbedding(ctx context.Context, photoUID string) error
-
-	// GetUniquePhotoUIDs returns all unique photo UIDs that have embeddings
-	GetUniquePhotoUIDs(ctx context.Context) ([]string, error)
 }
 
 // EraEmbeddingReader provides read-only access to era embedding centroids

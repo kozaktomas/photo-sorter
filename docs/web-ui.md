@@ -55,7 +55,7 @@ The header navigation groups items to reduce clutter:
 - **Primary** (always visible): Dashboard, Albums, Photos, Labels
 - **AI** dropdown: Analyze, Text Search
 - **Faces** dropdown: Faces, Recognition, Outliers
-- **Tools** dropdown: Similar, Expand, Process
+- **Tools** dropdown: Similar, Expand, Duplicates, Suggest Albums, Process
 
 Dropdown buttons highlight when one of their child pages is active. Dropdowns close when clicking outside.
 
@@ -94,6 +94,12 @@ Browse all photos in your library with powerful filtering.
 - **Filter by Label** - Select a label to show only photos with that label
 - **Filter by Album** - Show photos from a specific album
 - **Sort Options** - Date (newest/oldest), recently added, recently edited, name, title
+- **Selection Mode** - Click "Select" to enter multi-select mode:
+  - Click photos to select/deselect
+  - "Select All" / "Deselect" buttons for batch selection
+  - Bulk actions: Add to Album, Add Label, Favorite
+  - When viewing album filter: Remove from Album action
+  - Click "Cancel" to exit selection mode
 - **Photo Detail Modal** - Click any photo to see full details
   - Photo metadata (date, camera, location)
   - Applied labels
@@ -395,6 +401,42 @@ Each person with actionable matches gets their own card showing:
 **Empty State:**
 When no actionable matches are found after scanning, displays "All matches already assigned".
 
+### Duplicate Detection
+
+Find near-duplicate photos in your library using CLIP embedding similarity.
+
+**Configuration:**
+- **Scope** - All photos or filter by album
+- **Similarity Threshold** - Slider from 80% to 99% (default 90%). Maps to cosine distance: `distance = 1 - (percentage / 100)`
+- **Max Groups** - Maximum number of duplicate groups to return (default 100)
+
+**Algorithm:**
+Uses union-find (disjoint set) to build connected components of similar photos. For each photo, finds neighbors within the cosine distance threshold using HNSW index, then groups connected photos together.
+
+**Results:**
+- **Stats** - Photos scanned, groups found, total duplicates
+- **Groups** - Each group shows a card with photos and their similarity scores
+- **Actions** - Select photos within groups for bulk actions (add to album, add label, favorite)
+
+### Smart Album Suggestions
+
+Suggest which albums unsorted photos belong to by comparing photo embeddings against album centroids.
+
+**Configuration:**
+- **Source Album** - Select album containing photos to sort
+- **Min Similarity** - Slider from 50% to 90% (default 70%). Converted to cosine similarity threshold
+- **Top K** - Maximum number of album suggestions per photo (1-10, default 3)
+
+**Algorithm:**
+1. Computes centroid (mean + L2-normalize) for each album's photo embeddings
+2. For each source photo, computes cosine similarity to all album centroids
+3. Returns top-K albums above the similarity threshold, grouped by suggested album
+
+**Results:**
+- **Stats** - Albums analyzed, photos analyzed, skipped (no embedding)
+- **Suggestions** - One card per suggested target album, showing matched photos with similarity scores
+- **Actions** - "Add All to Album" button per suggestion to add all matched photos at once
+
 ## Keyboard Shortcuts
 
 ### Photo Detail Page
@@ -446,6 +488,10 @@ The Web UI communicates with these backend endpoints:
 | DELETE | `/api/v1/process/:jobId` | Cancel process job |
 | POST | `/api/v1/process/rebuild-index` | Rebuild HNSW indexes |
 | POST | `/api/v1/process/sync-cache` | Sync face marker data from PhotoPrism |
+| POST | `/api/v1/photos/batch/edit` | Batch edit photos (favorite, private) |
+| POST | `/api/v1/photos/duplicates` | Find near-duplicate photos |
+| POST | `/api/v1/photos/suggest-albums` | Suggest albums for photos |
+| DELETE | `/api/v1/albums/:uid/photos/batch` | Remove specific photos from album |
 
 ## Frontend Architecture
 
@@ -465,8 +511,9 @@ web/src/
 │   ├── LazyImage.tsx
 │   ├── Layout.tsx
 │   ├── LoadingState.tsx    # Unified loading/error/empty states
+│   ├── BulkActionBar.tsx   # Bulk action panel for photo selection
 │   ├── PhotoCard.tsx
-│   ├── PhotoGrid.tsx
+│   ├── PhotoGrid.tsx       # Supports optional selection mode
 │   └── PhotoWithBBox.tsx
 ├── constants/              # Shared constants
 │   ├── actions.ts          # Face action styling
@@ -474,6 +521,7 @@ web/src/
 ├── hooks/                  # Global hooks
 │   ├── useAuth.tsx
 │   ├── useFaceApproval.ts  # Face approval logic
+│   ├── usePhotoSelection.ts # Shared photo selection + bulk actions
 │   ├── useSSE.ts           # Server-Sent Events
 │   └── useSubjectsAndConfig.ts
 ├── i18n/                   # Internationalization
@@ -513,11 +561,15 @@ web/src/
 │   │   ├── FacesList.tsx
 │   │   ├── PhotoDisplay.tsx
 │   │   └── index.tsx
-│   └── Recognition/        # Split into components
-│       ├── hooks/useScanAll.ts
-│       ├── PersonResultCard.tsx
-│       ├── ScanConfigPanel.tsx
-│       ├── ScanResultsSummary.tsx
+│   ├── Recognition/        # Split into components
+│   │   ├── hooks/useScanAll.ts
+│   │   ├── PersonResultCard.tsx
+│   │   ├── ScanConfigPanel.tsx
+│   │   ├── ScanResultsSummary.tsx
+│   │   └── index.tsx
+│   ├── Duplicates/          # Near-duplicate detection
+│   │   └── index.tsx
+│   └── SuggestAlbums/       # Smart album suggestions
 │       └── index.tsx
 └── types/
     ├── events.ts           # Typed SSE events
@@ -540,6 +592,15 @@ Handles single and batch face approval with progress tracking.
 const { approveMatch, approveAll, isApproving, batchProgress } = useFaceApproval({
   onApprovalSuccess: (match) => updateUI(match),
 });
+```
+
+#### `usePhotoSelection`
+Shared photo selection with bulk actions. Used by Photos, SimilarPhotos, Expand, and Duplicates pages.
+
+```typescript
+const selection = usePhotoSelection();
+// selection.selectedPhotos, selection.toggleSelection, selection.selectAll, selection.deselectAll
+// selection.handleAddToAlbum, selection.handleAddLabel, selection.handleBatchEdit, selection.handleRemoveFromAlbum
 ```
 
 #### `useSSE`

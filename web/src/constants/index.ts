@@ -24,5 +24,13 @@ export const LABEL_PHOTOS_CACHE_KEY = 'label_photos_cache';
 export const DEFAULT_FACE_THRESHOLD = 50; // percentage
 export const DEFAULT_RECOGNITION_CONFIDENCE = 75; // percentage
 
+// Duplicate detection defaults
+export const DEFAULT_DUPLICATE_THRESHOLD = 90; // percentage (maps to 0.10 cosine distance)
+export const DEFAULT_DUPLICATE_LIMIT = 100;
+
+// Album suggestion defaults
+export const DEFAULT_SUGGEST_ALBUM_THRESHOLD = 70; // percentage (maps to 0.30 cosine similarity)
+export const DEFAULT_SUGGEST_ALBUM_TOP_K = 3;
+
 // Re-export action constants for convenience
 export * from './actions';

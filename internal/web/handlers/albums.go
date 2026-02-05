@@ -292,3 +292,40 @@ func (h *AlbumsHandler) ClearPhotos(w http.ResponseWriter, r *http.Request) {
 
 	respondJSON(w, http.StatusOK, map[string]int{"removed": len(photoUIDs)})
 }
+
+// RemovePhotosRequest represents a request to remove specific photos from an album
+type RemovePhotosRequest struct {
+	PhotoUIDs []string `json:"photo_uids"`
+}
+
+// RemovePhotos removes specific photos from an album
+func (h *AlbumsHandler) RemovePhotos(w http.ResponseWriter, r *http.Request) {
+	uid := chi.URLParam(r, "uid")
+	if uid == "" {
+		respondError(w, http.StatusBadRequest, "missing album UID")
+		return
+	}
+
+	var req RemovePhotosRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if len(req.PhotoUIDs) == 0 {
+		respondError(w, http.StatusBadRequest, "photo_uids is required")
+		return
+	}
+
+	pp := middleware.MustGetPhotoPrism(r.Context(), w)
+	if pp == nil {
+		return
+	}
+
+	if err := pp.RemovePhotosFromAlbum(uid, req.PhotoUIDs); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to remove photos from album")
+		return
+	}
+
+	respondJSON(w, http.StatusOK, map[string]int{"removed": len(req.PhotoUIDs)})
+}

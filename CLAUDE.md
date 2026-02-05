@@ -690,6 +690,10 @@ Key files:
 - `DELETE /api/v1/process/{jobId}` - Cancel process job
 - `POST /api/v1/process/rebuild-index` - Rebuild HNSW indexes and reload in memory
 - `POST /api/v1/process/sync-cache` - Sync face marker data from PhotoPrism to local cache
+- `POST /api/v1/photos/batch/edit` - Batch edit photos (favorite, private)
+- `POST /api/v1/photos/duplicates` - Find near-duplicate photos via embedding similarity
+- `POST /api/v1/photos/suggest-albums` - Suggest albums for photos via centroid similarity
+- `DELETE /api/v1/albums/{uid}/photos/batch` - Remove specific photos from album
 
 **Frontend Structure:**
 ```
@@ -706,8 +710,9 @@ web/src/
 │   ├── LazyImage.tsx
 │   ├── Layout.tsx
 │   ├── LoadingState.tsx       # Unified loading/error/empty states
+│   ├── BulkActionBar.tsx      # Bulk action panel for photo selection
 │   ├── PhotoCard.tsx
-│   ├── PhotoGrid.tsx
+│   ├── PhotoGrid.tsx          # Supports optional selection mode
 │   ├── PhotoWithBBox.tsx
 │   └── StatsGrid.tsx          # Stats display grid (configurable columns/colors)
 ├── constants/                 # Shared constants
@@ -716,6 +721,7 @@ web/src/
 ├── hooks/                     # Global hooks
 │   ├── useAuth.tsx
 │   ├── useFaceApproval.ts     # Face approval logic (single + batch)
+│   ├── usePhotoSelection.ts   # Shared photo selection + bulk actions
 │   ├── useSSE.ts              # Server-Sent Events
 │   └── useSubjectsAndConfig.ts # Shared data loading
 ├── pages/                     # Page components (folder-based)
@@ -743,11 +749,15 @@ web/src/
 │   │   ├── FacesList.tsx
 │   │   ├── PhotoDisplay.tsx
 │   │   └── index.tsx
-│   └── Recognition/           # Bulk face recognition
-│       ├── hooks/useScanAll.ts
-│       ├── PersonResultCard.tsx
-│       ├── ScanConfigPanel.tsx
-│       ├── ScanResultsSummary.tsx
+│   ├── Recognition/           # Bulk face recognition
+│   │   ├── hooks/useScanAll.ts
+│   │   ├── PersonResultCard.tsx
+│   │   ├── ScanConfigPanel.tsx
+│   │   ├── ScanResultsSummary.tsx
+│   │   └── index.tsx
+│   ├── Duplicates/            # Near-duplicate photo detection
+│   │   └── index.tsx
+│   └── SuggestAlbums/         # Smart album suggestions
 │       └── index.tsx
 └── types/
     ├── events.ts              # Typed SSE events
@@ -757,6 +767,7 @@ web/src/
 **Shared Hooks:**
 
 - `useFaceApproval` - Handles single and batch face approval with progress tracking. Used by Faces, Recognition, and PhotoDetail pages.
+- `usePhotoSelection` - Shared photo selection with bulk actions (add to album, add label, favorite, remove from album). Used by Photos, SimilarPhotos, Expand, and Duplicates pages.
 - `useSubjectsAndConfig` - Loads subjects (people) and config in parallel. Used by Faces, Recognition, and Outliers pages.
 - `useSSE` - Server-Sent Events hook for real-time job progress. Used by Analyze and Process pages.
 

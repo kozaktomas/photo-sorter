@@ -20,6 +20,8 @@ import type {
   RebuildIndexResponse,
   SyncCacheResponse,
   EraEstimateResponse,
+  DuplicatesResponse,
+  SuggestAlbumsResponse,
 } from '../types';
 
 const API_BASE = '/api/v1';
@@ -463,4 +465,51 @@ export async function syncCache(): Promise<SyncCacheResponse> {
 // Era estimation
 export async function estimateEra(photoUID: string): Promise<EraEstimateResponse> {
   return request<EraEstimateResponse>(`/photos/${photoUID}/estimate-era`);
+}
+
+// Batch edit photos (favorite, private)
+export async function batchEditPhotos(
+  photoUids: string[],
+  updates: { favorite?: boolean; private?: boolean }
+): Promise<{ updated: number; errors?: string[] }> {
+  return request<{ updated: number; errors?: string[] }>('/photos/batch/edit', {
+    method: 'POST',
+    body: JSON.stringify({ photo_uids: photoUids, ...updates }),
+  });
+}
+
+// Remove specific photos from album
+export async function removePhotosFromAlbum(
+  albumUid: string,
+  photoUids: string[]
+): Promise<{ removed: number }> {
+  return request<{ removed: number }>(`/albums/${albumUid}/photos/batch`, {
+    method: 'DELETE',
+    body: JSON.stringify({ photo_uids: photoUids }),
+  });
+}
+
+// Find duplicate photos
+export async function findDuplicates(params: {
+  album_uid?: string;
+  threshold?: number;
+  limit?: number;
+}): Promise<DuplicatesResponse> {
+  return request<DuplicatesResponse>('/photos/duplicates', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  });
+}
+
+// Suggest albums for photos
+export async function suggestAlbums(params: {
+  photo_uids?: string[];
+  source_album_uid?: string;
+  threshold?: number;
+  top_k?: number;
+}): Promise<SuggestAlbumsResponse> {
+  return request<SuggestAlbumsResponse>('/photos/suggest-albums', {
+    method: 'POST',
+    body: JSON.stringify(params),
+  });
 }

@@ -8,6 +8,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/kozaktomas/photo-sorter/internal/ai"
@@ -811,4 +812,611 @@ func (h *PhotosHandler) EstimateEra(w http.ResponseWriter, r *http.Request) {
 		BestMatch:  &matches[0],
 		TopMatches: matches,
 	})
+}
+
+// BatchEditRequest represents a request to edit multiple photos
+type BatchEditRequest struct {
+	PhotoUIDs []string `json:"photo_uids"`
+	Favorite  *bool    `json:"favorite,omitempty"`
+	Private   *bool    `json:"private,omitempty"`
+}
+
+// BatchEditResponse represents the response from batch editing photos
+type BatchEditResponse struct {
+	Updated int      `json:"updated"`
+	Errors  []string `json:"errors,omitempty"`
+}
+
+// BatchEdit edits multiple photos at once (favorite, private)
+func (h *PhotosHandler) BatchEdit(w http.ResponseWriter, r *http.Request) {
+	var req BatchEditRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if len(req.PhotoUIDs) == 0 {
+		respondError(w, http.StatusBadRequest, "photo_uids is required")
+		return
+	}
+
+	if req.Favorite == nil && req.Private == nil {
+		respondError(w, http.StatusBadRequest, "at least one field (favorite, private) is required")
+		return
+	}
+
+	pp := middleware.MustGetPhotoPrism(r.Context(), w)
+	if pp == nil {
+		return
+	}
+
+	var errors []string
+	updated := 0
+
+	for _, photoUID := range req.PhotoUIDs {
+		update := photoprism.PhotoUpdate{
+			Favorite: req.Favorite,
+			Private:  req.Private,
+		}
+		_, err := pp.EditPhoto(photoUID, update)
+		if err != nil {
+			errors = append(errors, photoUID+": "+err.Error())
+		} else {
+			updated++
+		}
+	}
+
+	respondJSON(w, http.StatusOK, BatchEditResponse{
+		Updated: updated,
+		Errors:  errors,
+	})
+}
+
+// DuplicatesRequest represents a request to find duplicate photos
+type DuplicatesRequest struct {
+	AlbumUID  string  `json:"album_uid,omitempty"`
+	Threshold float64 `json:"threshold,omitempty"` // Max cosine distance
+	Limit     int     `json:"limit,omitempty"`     // Max number of groups to return
+}
+
+// DuplicatePhoto represents a single photo in a duplicate group
+type DuplicatePhoto struct {
+	PhotoUID string  `json:"photo_uid"`
+	Distance float64 `json:"distance"` // Distance from group representative
+}
+
+// DuplicateGroup represents a group of similar/duplicate photos
+type DuplicateGroup struct {
+	Photos      []DuplicatePhoto `json:"photos"`
+	AvgDistance  float64          `json:"avg_distance"`
+	PhotoCount  int              `json:"photo_count"`
+}
+
+// DuplicatesResponse represents the full duplicates response
+type DuplicatesResponse struct {
+	TotalPhotosScanned int              `json:"total_photos_scanned"`
+	DuplicateGroups    []DuplicateGroup `json:"duplicate_groups"`
+	TotalGroups        int              `json:"total_groups"`
+	TotalDuplicates    int              `json:"total_duplicates"`
+}
+
+// FindDuplicates finds near-duplicate photos using CLIP embedding similarity
+func (h *PhotosHandler) FindDuplicates(w http.ResponseWriter, r *http.Request) {
+	var req DuplicatesRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if req.Threshold <= 0 {
+		req.Threshold = constants.DefaultDuplicateThreshold
+	}
+	if req.Limit <= 0 {
+		req.Limit = constants.DefaultDuplicateLimit
+	}
+
+	ctx := context.Background()
+
+	embRepo := h.embeddingReader
+	if embRepo == nil {
+		var err error
+		embRepo, err = database.GetEmbeddingReader(ctx)
+		if err != nil {
+			respondError(w, http.StatusServiceUnavailable, "embeddings not available")
+			return
+		}
+	}
+
+	// Get photo UIDs in scope
+	var photoUIDs []string
+	if req.AlbumUID != "" {
+		pp := middleware.MustGetPhotoPrism(r.Context(), w)
+		if pp == nil {
+			return
+		}
+		offset := 0
+		pageSize := constants.DefaultHandlerPageSize
+		for {
+			photos, err := pp.GetAlbumPhotos(req.AlbumUID, pageSize, offset)
+			if err != nil {
+				respondError(w, http.StatusInternalServerError, "failed to get album photos")
+				return
+			}
+			for _, p := range photos {
+				photoUIDs = append(photoUIDs, p.UID)
+			}
+			if len(photos) < pageSize {
+				break
+			}
+			offset += pageSize
+		}
+	} else {
+		var err error
+		photoUIDs, err = embRepo.GetUniquePhotoUIDs(ctx)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "failed to get photo UIDs")
+			return
+		}
+	}
+
+	if len(photoUIDs) == 0 {
+		respondJSON(w, http.StatusOK, DuplicatesResponse{
+			TotalPhotosScanned: 0,
+			DuplicateGroups:    []DuplicateGroup{},
+			TotalGroups:        0,
+			TotalDuplicates:    0,
+		})
+		return
+	}
+
+	// Build set for quick lookup
+	uidSet := make(map[string]bool, len(photoUIDs))
+	for _, uid := range photoUIDs {
+		uidSet[uid] = true
+	}
+
+	// Union-Find data structure
+	parent := make(map[string]string)
+	rank := make(map[string]int)
+	// Track best distance between pairs in same group
+	pairDistances := make(map[string][]float64)
+
+	var find func(string) string
+	find = func(x string) string {
+		if parent[x] != x {
+			parent[x] = find(parent[x])
+		}
+		return parent[x]
+	}
+
+	union := func(x, y string) {
+		px, py := find(x), find(y)
+		if px == py {
+			return
+		}
+		if rank[px] < rank[py] {
+			px, py = py, px
+		}
+		parent[py] = px
+		if rank[px] == rank[py] {
+			rank[px]++
+		}
+	}
+
+	// Initialize parent for all UIDs
+	for _, uid := range photoUIDs {
+		parent[uid] = uid
+		rank[uid] = 0
+	}
+
+	// For each photo, find neighbors and union them
+	for _, uid := range photoUIDs {
+		emb, err := embRepo.Get(ctx, uid)
+		if err != nil || emb == nil {
+			continue
+		}
+
+		neighbors, distances, err := embRepo.FindSimilarWithDistance(ctx, emb.Embedding, 20, req.Threshold)
+		if err != nil {
+			continue
+		}
+
+		for i, neighbor := range neighbors {
+			if neighbor.PhotoUID == uid {
+				continue
+			}
+			if !uidSet[neighbor.PhotoUID] {
+				continue
+			}
+			union(uid, neighbor.PhotoUID)
+			// Track distance
+			rootUID := find(uid)
+			pairDistances[rootUID] = append(pairDistances[rootUID], distances[i])
+		}
+	}
+
+	// Extract groups
+	groups := make(map[string][]string)
+	for _, uid := range photoUIDs {
+		root := find(uid)
+		groups[root] = append(groups[root], uid)
+	}
+
+	// Build result groups (size >= 2 only)
+	var resultGroups []DuplicateGroup
+	totalDuplicates := 0
+
+	for root, members := range groups {
+		if len(members) < 2 {
+			continue
+		}
+
+		// Compute average distance for group
+		distances := pairDistances[root]
+		avgDist := 0.0
+		if len(distances) > 0 {
+			sum := 0.0
+			for _, d := range distances {
+				sum += d
+			}
+			avgDist = sum / float64(len(distances))
+		}
+
+		photos := make([]DuplicatePhoto, len(members))
+		for i, uid := range members {
+			// Find best distance for this photo within the group
+			bestDist := avgDist
+			photos[i] = DuplicatePhoto{
+				PhotoUID: uid,
+				Distance: bestDist,
+			}
+		}
+
+		resultGroups = append(resultGroups, DuplicateGroup{
+			Photos:     photos,
+			AvgDistance: avgDist,
+			PhotoCount: len(members),
+		})
+		totalDuplicates += len(members)
+	}
+
+	// Sort by group size descending, then avg distance ascending
+	sort.Slice(resultGroups, func(i, j int) bool {
+		if resultGroups[i].PhotoCount != resultGroups[j].PhotoCount {
+			return resultGroups[i].PhotoCount > resultGroups[j].PhotoCount
+		}
+		return resultGroups[i].AvgDistance < resultGroups[j].AvgDistance
+	})
+
+	// Apply limit
+	if len(resultGroups) > req.Limit {
+		resultGroups = resultGroups[:req.Limit]
+	}
+
+	respondJSON(w, http.StatusOK, DuplicatesResponse{
+		TotalPhotosScanned: len(photoUIDs),
+		DuplicateGroups:    resultGroups,
+		TotalGroups:        len(resultGroups),
+		TotalDuplicates:    totalDuplicates,
+	})
+}
+
+// SuggestAlbumsRequest represents a request to suggest albums for photos
+type SuggestAlbumsRequest struct {
+	PhotoUIDs      []string `json:"photo_uids,omitempty"`
+	SourceAlbumUID string   `json:"source_album_uid,omitempty"`
+	Threshold      float64  `json:"threshold,omitempty"` // Min cosine similarity (0-1)
+	TopK           int      `json:"top_k,omitempty"`     // Top K album suggestions per photo
+}
+
+// AlbumPhotoSuggestion represents a single photo's suggestion for an album
+type AlbumPhotoSuggestion struct {
+	PhotoUID   string  `json:"photo_uid"`
+	Similarity float64 `json:"similarity"`
+}
+
+// AlbumSuggestion represents a suggested album with matching photos
+type AlbumSuggestion struct {
+	AlbumUID   string                 `json:"album_uid"`
+	AlbumTitle string                 `json:"album_title"`
+	Photos     []AlbumPhotoSuggestion `json:"photos"`
+}
+
+// SuggestAlbumsResponse represents the full album suggestion response
+type SuggestAlbumsResponse struct {
+	AlbumsAnalyzed  int               `json:"albums_analyzed"`
+	PhotosAnalyzed  int               `json:"photos_analyzed"`
+	Skipped         int               `json:"skipped"` // Photos without embeddings
+	Suggestions     []AlbumSuggestion `json:"suggestions"`
+}
+
+// SuggestAlbums suggests which albums unsorted photos belong to via CLIP embedding similarity
+func (h *PhotosHandler) SuggestAlbums(w http.ResponseWriter, r *http.Request) {
+	var req SuggestAlbumsRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, "invalid request body")
+		return
+	}
+
+	if len(req.PhotoUIDs) == 0 && req.SourceAlbumUID == "" {
+		respondError(w, http.StatusBadRequest, "photo_uids or source_album_uid is required")
+		return
+	}
+
+	if req.Threshold <= 0 {
+		req.Threshold = constants.DefaultSuggestAlbumThreshold
+	}
+	if req.TopK <= 0 {
+		req.TopK = constants.DefaultSuggestAlbumTopK
+	}
+
+	ctx := context.Background()
+
+	embRepo := h.embeddingReader
+	if embRepo == nil {
+		var err error
+		embRepo, err = database.GetEmbeddingReader(ctx)
+		if err != nil {
+			respondError(w, http.StatusServiceUnavailable, "embeddings not available")
+			return
+		}
+	}
+
+	pp := middleware.MustGetPhotoPrism(r.Context(), w)
+	if pp == nil {
+		return
+	}
+
+	// Resolve input photo UIDs
+	inputUIDs := req.PhotoUIDs
+	if req.SourceAlbumUID != "" {
+		offset := 0
+		pageSize := constants.DefaultHandlerPageSize
+		for {
+			photos, err := pp.GetAlbumPhotos(req.SourceAlbumUID, pageSize, offset)
+			if err != nil {
+				respondError(w, http.StatusInternalServerError, "failed to get source album photos")
+				return
+			}
+			for _, p := range photos {
+				inputUIDs = append(inputUIDs, p.UID)
+			}
+			if len(photos) < pageSize {
+				break
+			}
+			offset += pageSize
+		}
+	}
+
+	if len(inputUIDs) == 0 {
+		respondJSON(w, http.StatusOK, SuggestAlbumsResponse{
+			AlbumsAnalyzed: 0,
+			PhotosAnalyzed: 0,
+			Skipped:        0,
+			Suggestions:    []AlbumSuggestion{},
+		})
+		return
+	}
+
+	// Get embeddings for input photos
+	type photoEmb struct {
+		uid       string
+		embedding []float32
+	}
+	var inputEmbeddings []photoEmb
+	skipped := 0
+	for _, uid := range inputUIDs {
+		emb, err := embRepo.Get(ctx, uid)
+		if err != nil || emb == nil {
+			skipped++
+			continue
+		}
+		inputEmbeddings = append(inputEmbeddings, photoEmb{uid: uid, embedding: emb.Embedding})
+	}
+
+	// Build set of input UIDs to exclude from album analysis
+	inputUIDSet := make(map[string]bool, len(inputUIDs))
+	for _, uid := range inputUIDs {
+		inputUIDSet[uid] = true
+	}
+
+	// Fetch all albums
+	albums, err := pp.GetAlbums(constants.MaxPhotosPerFetch, 0, "", "", "album")
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to get albums")
+		return
+	}
+
+	// Filter albums with enough photos and exclude source album
+	var candidateAlbums []photoprism.Album
+	for _, album := range albums {
+		if album.PhotoCount < constants.MinAlbumPhotosForCentroid {
+			continue
+		}
+		if album.UID == req.SourceAlbumUID {
+			continue
+		}
+		candidateAlbums = append(candidateAlbums, album)
+	}
+
+	// Compute centroids for each album (parallelized)
+	type albumCentroid struct {
+		albumUID   string
+		albumTitle string
+		centroid   []float32
+	}
+
+	var mu sync.Mutex
+	var centroids []albumCentroid
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 10) // Limit concurrency to 10
+
+	for _, album := range candidateAlbums {
+		wg.Add(1)
+		go func(a photoprism.Album) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			// Fetch album photos
+			var albumPhotoUIDs []string
+			offset := 0
+			pageSize := constants.DefaultHandlerPageSize
+			for {
+				photos, err := pp.GetAlbumPhotos(a.UID, pageSize, offset)
+				if err != nil {
+					return
+				}
+				for _, p := range photos {
+					albumPhotoUIDs = append(albumPhotoUIDs, p.UID)
+				}
+				if len(photos) < pageSize {
+					break
+				}
+				offset += pageSize
+			}
+
+			if len(albumPhotoUIDs) < constants.MinAlbumPhotosForCentroid {
+				return
+			}
+
+			// Get embeddings and compute centroid
+			var embeddings [][]float32
+			for _, uid := range albumPhotoUIDs {
+				emb, err := embRepo.Get(ctx, uid)
+				if err != nil || emb == nil {
+					continue
+				}
+				embeddings = append(embeddings, emb.Embedding)
+			}
+
+			if len(embeddings) < constants.MinAlbumPhotosForCentroid {
+				return
+			}
+
+			centroid := computeCentroid(embeddings)
+			if centroid == nil {
+				return
+			}
+
+			mu.Lock()
+			centroids = append(centroids, albumCentroid{
+				albumUID:   a.UID,
+				albumTitle: a.Title,
+				centroid:   centroid,
+			})
+			mu.Unlock()
+		}(album)
+	}
+	wg.Wait()
+
+	// For each input photo, find top-K album suggestions
+	suggestionMap := make(map[string]*AlbumSuggestion)
+	for _, pe := range inputEmbeddings {
+		type albumScore struct {
+			albumUID   string
+			albumTitle string
+			similarity float64
+		}
+		var scores []albumScore
+
+		for _, ac := range centroids {
+			sim := cosineSimilarity(pe.embedding, ac.centroid)
+			if sim >= req.Threshold {
+				scores = append(scores, albumScore{
+					albumUID:   ac.albumUID,
+					albumTitle: ac.albumTitle,
+					similarity: sim,
+				})
+			}
+		}
+
+		// Sort by similarity descending
+		sort.Slice(scores, func(i, j int) bool {
+			return scores[i].similarity > scores[j].similarity
+		})
+
+		// Take top K
+		topK := req.TopK
+		if topK > len(scores) {
+			topK = len(scores)
+		}
+
+		for _, s := range scores[:topK] {
+			if _, ok := suggestionMap[s.albumUID]; !ok {
+				suggestionMap[s.albumUID] = &AlbumSuggestion{
+					AlbumUID:   s.albumUID,
+					AlbumTitle: s.albumTitle,
+					Photos:     []AlbumPhotoSuggestion{},
+				}
+			}
+			suggestionMap[s.albumUID].Photos = append(suggestionMap[s.albumUID].Photos, AlbumPhotoSuggestion{
+				PhotoUID:   pe.uid,
+				Similarity: s.similarity,
+			})
+		}
+	}
+
+	// Convert to slice and sort by number of suggested photos descending
+	suggestions := make([]AlbumSuggestion, 0, len(suggestionMap))
+	for _, s := range suggestionMap {
+		suggestions = append(suggestions, *s)
+	}
+	sort.Slice(suggestions, func(i, j int) bool {
+		return len(suggestions[i].Photos) > len(suggestions[j].Photos)
+	})
+
+	respondJSON(w, http.StatusOK, SuggestAlbumsResponse{
+		AlbumsAnalyzed: len(centroids),
+		PhotosAnalyzed: len(inputEmbeddings),
+		Skipped:        skipped,
+		Suggestions:    suggestions,
+	})
+}
+
+// computeCentroid computes the mean of a set of embeddings and L2-normalizes it
+func computeCentroid(embeddings [][]float32) []float32 {
+	if len(embeddings) == 0 {
+		return nil
+	}
+	dim := len(embeddings[0])
+	centroid := make([]float32, dim)
+	for _, emb := range embeddings {
+		for i, v := range emb {
+			centroid[i] += v
+		}
+	}
+	n := float32(len(embeddings))
+	for i := range centroid {
+		centroid[i] /= n
+	}
+	// L2 normalize
+	var norm float64
+	for _, v := range centroid {
+		norm += float64(v) * float64(v)
+	}
+	norm = math.Sqrt(norm)
+	if norm > 0 {
+		for i := range centroid {
+			centroid[i] = float32(float64(centroid[i]) / norm)
+		}
+	}
+	return centroid
+}
+
+// cosineSimilarity computes the cosine similarity between two vectors
+func cosineSimilarity(a, b []float32) float64 {
+	if len(a) != len(b) || len(a) == 0 {
+		return 0
+	}
+	var dot, normA, normB float64
+	for i := range a {
+		dot += float64(a[i]) * float64(b[i])
+		normA += float64(a[i]) * float64(a[i])
+		normB += float64(b[i]) * float64(b[i])
+	}
+	if normA == 0 || normB == 0 {
+		return 0
+	}
+	return dot / (math.Sqrt(normA) * math.Sqrt(normB))
 }

@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Search, AlertCircle, Check, X, FolderPlus, Tag } from 'lucide-react';
+import { Search, AlertCircle, Check, X } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '../components/Card';
 import { Button } from '../components/Button';
 import { PhotoCard } from '../components/PhotoCard';
-import { findSimilarToCollection, getConfig, getAlbums, getLabels, addPhotosToAlbum, batchAddLabels } from '../api/client';
+import { BulkActionBar } from '../components/BulkActionBar';
+import { findSimilarToCollection, getConfig, getAlbums, getLabels } from '../api/client';
+import { usePhotoSelection } from '../hooks/usePhotoSelection';
 import type { CollectionSimilarResponse, Config, Album, Label } from '../types';
 
 export function ExpandPage() {
@@ -28,15 +30,8 @@ export function ExpandPage() {
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
 
-  // Selection state
-  const [selectedPhotos, setSelectedPhotos] = useState<Set<string>>(new Set());
-  const [albumsForAction, setAlbumsForAction] = useState<Album[]>([]);
-  const [labelsForAction, setLabelsForAction] = useState<Label[]>([]);
-  const [selectedAlbum, setSelectedAlbum] = useState('');
-  const [labelInput, setLabelInput] = useState('');
-  const [isAddingToAlbum, setIsAddingToAlbum] = useState(false);
-  const [isAddingLabel, setIsAddingLabel] = useState(false);
-  const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  // Selection state (shared hook)
+  const selection = usePhotoSelection();
 
   // Load labels and albums for dropdowns on mount
   useEffect(() => {
@@ -80,7 +75,7 @@ export function ExpandPage() {
     setIsSearching(true);
     setSearchError(null);
     setResult(null);
-    setSelectedPhotos(new Set());
+    selection.deselectAll();
 
     try {
       const searchResult = await findSimilarToCollection({
@@ -97,93 +92,6 @@ export function ExpandPage() {
       );
     } finally {
       setIsSearching(false);
-    }
-  };
-
-  // Load albums and labels for batch actions
-  const loadAlbumsAndLabelsForAction = async () => {
-    try {
-      const [albumsData, labelsData] = await Promise.all([
-        getAlbums({ count: 500, order: 'name' }),
-        getLabels({ count: 500, all: true }),
-      ]);
-      setAlbumsForAction(albumsData);
-      setLabelsForAction(labelsData);
-    } catch (err) {
-      console.error('Failed to load albums/labels:', err);
-    }
-  };
-
-  // Toggle photo selection
-  const toggleSelection = (photoUID: string) => {
-    const newSelection = new Set(selectedPhotos);
-    if (newSelection.has(photoUID)) {
-      newSelection.delete(photoUID);
-    } else {
-      newSelection.add(photoUID);
-    }
-    setSelectedPhotos(newSelection);
-
-    // Load albums and labels when first photo is selected
-    if (newSelection.size === 1 && albumsForAction.length === 0) {
-      loadAlbumsAndLabelsForAction();
-    }
-  };
-
-  // Select all photos in results
-  const selectAll = () => {
-    if (!result?.results) return;
-    const allUIDs = new Set(result.results.map((p) => p.photo_uid));
-    setSelectedPhotos(allUIDs);
-    if (albumsForAction.length === 0) {
-      loadAlbumsAndLabelsForAction();
-    }
-  };
-
-  // Deselect all photos
-  const deselectAll = () => {
-    setSelectedPhotos(new Set());
-  };
-
-  // Add selected photos to album
-  const handleAddToAlbum = async () => {
-    if (!selectedAlbum || selectedPhotos.size === 0) return;
-
-    setIsAddingToAlbum(true);
-    setActionMessage(null);
-
-    try {
-      const result = await addPhotosToAlbum(selectedAlbum, Array.from(selectedPhotos));
-      setActionMessage({ type: 'success', text: `Added ${result.added} photos to album` });
-      setSelectedPhotos(new Set());
-      setSelectedAlbum('');
-    } catch (err) {
-      setActionMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to add to album' });
-    } finally {
-      setIsAddingToAlbum(false);
-    }
-  };
-
-  // Add label to selected photos
-  const handleAddLabel = async () => {
-    if (!labelInput.trim() || selectedPhotos.size === 0) return;
-
-    setIsAddingLabel(true);
-    setActionMessage(null);
-
-    try {
-      const result = await batchAddLabels(Array.from(selectedPhotos), labelInput.trim());
-      if (result.errors && result.errors.length > 0) {
-        setActionMessage({ type: 'error', text: `Updated ${result.updated} photos, ${result.errors.length} errors` });
-      } else {
-        setActionMessage({ type: 'success', text: `Added label to ${result.updated} photos` });
-      }
-      setSelectedPhotos(new Set());
-      setLabelInput('');
-    } catch (err) {
-      setActionMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to add label' });
-    } finally {
-      setIsAddingLabel(false);
     }
   };
 
@@ -405,8 +313,8 @@ export function ExpandPage() {
               <Button
                 variant="secondary"
                 size="sm"
-                onClick={selectAll}
-                disabled={selectedPhotos.size === result.results.length}
+                onClick={() => selection.selectAll(result.results.map(p => p.photo_uid))}
+                disabled={selection.selectedPhotos.size === result.results.length}
               >
                 <Check className="h-3 w-3 mr-1" />
                 {t('common:buttons.selectAll')}
@@ -414,8 +322,8 @@ export function ExpandPage() {
               <Button
                 variant="secondary"
                 size="sm"
-                onClick={deselectAll}
-                disabled={selectedPhotos.size === 0}
+                onClick={selection.deselectAll}
+                disabled={selection.selectedPhotos.size === 0}
               >
                 <X className="h-3 w-3 mr-1" />
                 {t('common:buttons.deselect')}
@@ -423,85 +331,10 @@ export function ExpandPage() {
             </div>
           </CardHeader>
 
-          {/* Action Panel - shown when photos are selected */}
-          {selectedPhotos.size > 0 && (
-            <div className="mx-4 mb-4 p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-              <div className="flex flex-wrap items-center gap-4">
-                <span className="text-blue-400 font-medium">
-                  {t('common:units.selected', { count: selectedPhotos.size })}
-                </span>
-
-                {/* Add to Album */}
-                <div className="flex items-center gap-2">
-                  <select
-                    value={selectedAlbum}
-                    onChange={(e) => setSelectedAlbum(e.target.value)}
-                    className="px-3 py-1.5 bg-slate-900 border border-slate-600 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">{t('pages:similar.selectAlbum')}</option>
-                    {albumsForAction.map((album) => (
-                      <option key={album.uid} value={album.uid}>
-                        {album.title}
-                      </option>
-                    ))}
-                  </select>
-                  <Button
-                    size="sm"
-                    onClick={handleAddToAlbum}
-                    disabled={!selectedAlbum || isAddingToAlbum}
-                    isLoading={isAddingToAlbum}
-                  >
-                    <FolderPlus className="h-3 w-3 mr-1" />
-                    {t('common:buttons.addToAlbum')}
-                  </Button>
-                </div>
-
-                {/* Add Label */}
-                <div className="flex items-center gap-2">
-                  <input
-                    type="text"
-                    value={labelInput}
-                    onChange={(e) => setLabelInput(e.target.value)}
-                    placeholder={t('pages:similar.enterLabel')}
-                    list="label-suggestions-expand"
-                    className="px-3 py-1.5 bg-slate-900 border border-slate-600 rounded text-white text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 w-40"
-                  />
-                  <datalist id="label-suggestions-expand">
-                    {labelsForAction.map((label) => (
-                      <option key={label.uid} value={label.name} />
-                    ))}
-                  </datalist>
-                  <Button
-                    size="sm"
-                    onClick={handleAddLabel}
-                    disabled={!labelInput.trim() || isAddingLabel}
-                    isLoading={isAddingLabel}
-                  >
-                    <Tag className="h-3 w-3 mr-1" />
-                    {t('common:buttons.addLabel')}
-                  </Button>
-                </div>
-
-                {/* Clear selection */}
-                <button
-                  onClick={deselectAll}
-                  className="ml-auto text-slate-400 hover:text-white transition-colors"
-                  title={t('common:buttons.deselect')}
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-
-              {/* Action message */}
-              {actionMessage && (
-                <div
-                  className={`mt-3 text-sm ${
-                    actionMessage.type === 'success' ? 'text-green-400' : 'text-red-400'
-                  }`}
-                >
-                  {actionMessage.text}
-                </div>
-              )}
+          {/* Bulk Action Bar */}
+          {selection.selectedPhotos.size > 0 && (
+            <div className="mx-4 mb-4">
+              <BulkActionBar selection={selection} datalistId="expand-label-suggestions" />
             </div>
           )}
 
@@ -516,8 +349,8 @@ export function ExpandPage() {
                   badge={`${photo.match_count} matches`}
                   thumbnailSize="tile_500"
                   selectable
-                  selected={selectedPhotos.has(photo.photo_uid)}
-                  onSelectionChange={() => toggleSelection(photo.photo_uid)}
+                  selected={selection.selectedPhotos.has(photo.photo_uid)}
+                  onSelectionChange={() => selection.toggleSelection(photo.photo_uid)}
                 />
               ))}
             </div>

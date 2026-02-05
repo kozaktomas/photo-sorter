@@ -1,14 +1,16 @@
 import { useEffect, useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Camera, Loader2 } from 'lucide-react';
+import { Camera, Loader2, Check, X } from 'lucide-react';
 import { Card, CardContent } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { PhotoGrid } from '../../components/PhotoGrid';
+import { BulkActionBar } from '../../components/BulkActionBar';
 import { getLabels, getAlbums, getConfig } from '../../api/client';
 import { MAX_LABELS_FETCH, MAX_ALBUMS_FETCH, PHOTOS_CACHE_KEY } from '../../constants';
 import { usePhotosFilters } from './hooks/usePhotosFilters';
 import { usePhotosPagination } from './hooks/usePhotosPagination';
+import { usePhotoSelection } from '../../hooks/usePhotoSelection';
 import { PhotosFilters } from './PhotosFilters';
 import type { Photo, Label, Album, Config } from '../../types';
 
@@ -29,6 +31,10 @@ export function PhotosPage() {
     filterKey: filters.filterKey,
   });
 
+  // Selection mode
+  const [selectionMode, setSelectionMode] = useState(false);
+  const selection = usePhotoSelection();
+
   // Dropdown data
   const [labels, setLabels] = useState<Label[]>([]);
   const [albums, setAlbums] = useState<Album[]>([]);
@@ -38,6 +44,11 @@ export function PhotosPage() {
     // Save current state to cache before navigating
     pagination.saveCache();
     navigate(`/photos/${photo.uid}`);
+  };
+
+  const exitSelectionMode = () => {
+    setSelectionMode(false);
+    selection.deselectAll();
   };
 
   // Load dropdown data and config
@@ -84,6 +95,19 @@ export function PhotosPage() {
             {t('pages:photos.photosLoaded', { count: pagination.photos.length, more: pagination.hasMore ? '+' : '' })}
           </p>
         </div>
+        <div className="flex gap-2">
+          {selectionMode ? (
+            <Button variant="secondary" size="sm" onClick={exitSelectionMode}>
+              <X className="h-4 w-4 mr-1" />
+              {t('common:buttons.cancel')}
+            </Button>
+          ) : (
+            <Button variant="secondary" size="sm" onClick={() => setSelectionMode(true)}>
+              <Check className="h-4 w-4 mr-1" />
+              {t('common:buttons.select')}
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Filters */}
@@ -104,6 +128,41 @@ export function PhotosPage() {
         albums={albums}
       />
 
+      {/* Bulk action bar */}
+      {selectionMode && (
+        <div className="sticky top-0 z-10">
+          {selection.selectedPhotos.size > 0 && (
+            <div className="flex gap-2 mb-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => selection.selectAll(pagination.photos.map(p => p.uid))}
+                disabled={selection.selectedPhotos.size === pagination.photos.length}
+              >
+                <Check className="h-3 w-3 mr-1" />
+                {t('common:buttons.selectAll')}
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={selection.deselectAll}
+              >
+                <X className="h-3 w-3 mr-1" />
+                {t('common:buttons.deselect')}
+              </Button>
+            </div>
+          )}
+          <BulkActionBar
+            selection={selection}
+            datalistId="photos-page-labels"
+            showFavorite
+            showRemoveFromAlbum={!!filters.selectedAlbum}
+            albumUidForRemoval={filters.selectedAlbum}
+            onRemoveSuccess={() => pagination.loadPhotos(true)}
+          />
+        </div>
+      )}
+
       {/* Photo grid */}
       {pagination.isLoading ? (
         <Card>
@@ -120,8 +179,11 @@ export function PhotosPage() {
             <CardContent>
               <PhotoGrid
                 photos={pagination.photos}
-                onPhotoClick={handlePhotoClick}
+                onPhotoClick={selectionMode ? undefined : handlePhotoClick}
                 photoprismDomain={config?.photoprism_domain}
+                selectable={selectionMode}
+                selectedPhotos={selection.selectedPhotos}
+                onSelectionChange={(uid) => selection.toggleSelection(uid)}
               />
             </CardContent>
           </Card>

@@ -13,6 +13,8 @@
     "tools": "Tools",
     "similar": "Similar",
     "expand": "Expand",
+    "duplicates": "Duplicates",
+    "suggestAlbums": "Suggest Albums",
     "process": "Process",
     "signOut": "Sign out"
   },
@@ -25,6 +27,7 @@
     "stop": "Stop",
     "analyze": "Analyze",
     "delete": "Delete",
+    "select": "Select",
     "selectAll": "Select All",
     "deselect": "Deselect",
     "clearFilters": "Clear Filters",
@@ -39,6 +42,8 @@
     "acceptAll": "Accept All",
     "addToAlbum": "Add to Album",
     "addLabel": "Add Label",
+    "removeFromAlbum": "Remove from Album",
+    "setFavorite": "Favorite",
     "detectFaces": "Detect Faces",
     "rescan": "Re-scan",
     "scanAllPeople": "Scan All People"

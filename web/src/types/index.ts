@@ -352,6 +352,44 @@ export interface EraEstimateResponse {
   top_matches: EraMatch[];
 }
 
+// Duplicate detection types
+export interface DuplicatePhoto {
+  photo_uid: string;
+  distance: number;
+}
+
+export interface DuplicateGroup {
+  photos: DuplicatePhoto[];
+  avg_distance: number;
+  photo_count: number;
+}
+
+export interface DuplicatesResponse {
+  total_photos_scanned: number;
+  duplicate_groups: DuplicateGroup[];
+  total_groups: number;
+  total_duplicates: number;
+}
+
+// Album suggestion types
+export interface AlbumPhotoSuggestion {
+  photo_uid: string;
+  similarity: number;
+}
+
+export interface AlbumSuggestion {
+  album_uid: string;
+  album_title: string;
+  photos: AlbumPhotoSuggestion[];
+}
+
+export interface SuggestAlbumsResponse {
+  albums_analyzed: number;
+  photos_analyzed: number;
+  skipped: number;
+  suggestions: AlbumSuggestion[];
+}
+
 // Sync cache response
 export interface SyncCacheResponse {
   success: boolean;

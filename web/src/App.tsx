@@ -14,6 +14,8 @@ import { OutliersPage } from './pages/Outliers';
 import { TextSearchPage } from './pages/TextSearch';
 import { RecognitionPage } from './pages/Recognition/index';
 import { ProcessPage } from './pages/Process';
+import { DuplicatesPage } from './pages/Duplicates/index';
+import { SuggestAlbumsPage } from './pages/SuggestAlbums/index';
 import { LabelDetailPage } from './pages/LabelDetail';
 import { SubjectDetailPage } from './pages/SubjectDetail';
 import { LoginPage } from './pages/Login';
@@ -198,6 +200,26 @@ function AppRoutes() {
           <ProtectedRoute>
             <Layout>
               <TextSearchPage />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/duplicates"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <DuplicatesPage />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/suggest-albums"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <SuggestAlbumsPage />
             </Layout>
           </ProtectedRoute>
         }
