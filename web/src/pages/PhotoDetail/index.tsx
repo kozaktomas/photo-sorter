@@ -58,6 +58,10 @@ export function PhotoDetailPage() {
     handleManualAssign,
     handleSelectAutocomplete,
     selectFirstUnassignedFace,
+    reassigningFaceIndex,
+    handleStartReassign,
+    handleCancelReassign,
+    handleUnassign,
   } = useFaceAssignment(uid, facesData, subjects, setFacesData);
 
   const {
@@ -309,6 +313,10 @@ export function PhotoDetailPage() {
                   onApplySuggestion={handleApplySuggestion}
                   onManualAssign={handleManualAssign}
                   onSelectAutocomplete={handleSelectAutocomplete}
+                  isReassigning={reassigningFaceIndex === selectedFaceIndex}
+                  onStartReassign={handleStartReassign}
+                  onCancelReassign={handleCancelReassign}
+                  onUnassign={handleUnassign}
                 />
               )}
 

@@ -290,7 +290,10 @@
     "unassigned": "Unassigned",
     "assigned": "Assigned",
     "estimatedEra": "Era",
-    "eraRunnerUp": "Runner-up"
+    "eraRunnerUp": "Runner-up",
+    "reassign": "Reassign",
+    "unassign": "Unassign",
+    "reassigningFrom": "Reassigning from: {{name}}"
   },
   "subjectDetail": {
     "backToSubjects": "Back to Subjects",

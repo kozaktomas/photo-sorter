@@ -144,6 +144,8 @@ When accessing a photo from an album, label, or the Photos page, navigation cont
 - Select a face to see AI-powered person suggestions with confidence scores
 - Accept a suggestion or manually type a person name (with autocomplete)
 - Color-coded bounding boxes indicate assignment status (red=unassigned, yellow=needs assignment, green=assigned, orange=outlier)
+- **Reassign** - For already-assigned faces, click "Reassign" to change the person. Shows suggestions (excluding the current person) and manual input. Cancel to return to the assigned view
+- **Unassign** - For already-assigned faces, click "Unassign" to remove the person assignment. The face reverts to unassigned status with suggestions available for re-assignment
 
 ### Labels
 

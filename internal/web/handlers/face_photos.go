@@ -169,11 +169,9 @@ func (h *FacesHandler) GetPhotoFaces(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
-		// For faces that need assignment, find suggestions
-		if face.Action != ActionAlreadyDone {
-			suggestions := h.findFaceSuggestions(ctx, faceRepo, pp, dbFace.Embedding, threshold, limit, subjectMap)
-			face.Suggestions = suggestions
-		}
+		// Find suggestions for all faces (including already-assigned ones, for reassignment)
+		suggestions := h.findFaceSuggestions(ctx, faceRepo, pp, dbFace.Embedding, threshold, limit, subjectMap)
+		face.Suggestions = suggestions
 
 		faces = append(faces, face)
 	}

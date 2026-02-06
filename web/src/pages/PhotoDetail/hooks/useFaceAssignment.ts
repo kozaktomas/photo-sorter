@@ -18,6 +18,10 @@ interface UseFaceAssignmentReturn {
   handleManualAssign: (face: PhotoFace, personName: string) => Promise<void>;
   handleSelectAutocomplete: (subject: Subject) => void;
   selectFirstUnassignedFace: (faces: PhotoFace[]) => void;
+  reassigningFaceIndex: number | null;
+  handleStartReassign: (faceIndex: number) => void;
+  handleCancelReassign: () => void;
+  handleUnassign: (face: PhotoFace) => Promise<void>;
 }
 
 export function useFaceAssignment(
@@ -33,6 +37,7 @@ export function useFaceAssignment(
   const [showManualInput, setShowManualInput] = useState(false);
   const [filteredSubjects, setFilteredSubjects] = useState<Subject[]>([]);
   const [showAutocomplete, setShowAutocomplete] = useState(false);
+  const [reassigningFaceIndex, setReassigningFaceIndex] = useState<number | null>(null);
 
   // Filter subjects based on manual name input
   useEffect(() => {
@@ -48,12 +53,13 @@ export function useFaceAssignment(
     }
   }, [manualName, subjects]);
 
-  // Reset manual input when selected face changes
+  // Reset manual input and reassign state when selected face changes
   useEffect(() => {
     setManualName('');
     setShowManualInput(false);
     setShowAutocomplete(false);
     setApplyError(null);
+    setReassigningFaceIndex(null);
   }, [selectedFaceIndex]);
 
   const selectFirstUnassignedFace = (faces: PhotoFace[]) => {
@@ -65,7 +71,23 @@ export function useFaceAssignment(
     }
   };
 
-  const handleApplySuggestion = async (face: PhotoFace, suggestion: FaceSuggestion) => {
+  const handleStartReassign = (faceIndex: number) => {
+    setReassigningFaceIndex(faceIndex);
+    setManualName('');
+    setShowManualInput(false);
+    setShowAutocomplete(false);
+    setApplyError(null);
+  };
+
+  const handleCancelReassign = () => {
+    setReassigningFaceIndex(null);
+    setManualName('');
+    setShowManualInput(false);
+    setShowAutocomplete(false);
+    setApplyError(null);
+  };
+
+  const handleUnassign = async (face: PhotoFace) => {
     if (!facesData || !uid) return;
 
     setApplyingFace(face.face_index);
@@ -73,8 +95,50 @@ export function useFaceAssignment(
     try {
       const response = await applyFaceMatch({
         photo_uid: uid,
+        person_name: face.marker_name || '',
+        action: 'unassign_person' as MatchAction,
+        marker_uid: face.marker_uid,
+        file_uid: facesData.file_uid,
+        bbox_rel: face.bbox_rel,
+        face_index: face.face_index,
+      });
+
+      if (!response.success) {
+        setApplyError(response.error || 'Failed to unassign face');
+        return;
+      }
+
+      setFacesData(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          faces: prev.faces.map(f =>
+            f.face_index === face.face_index
+              ? { ...f, action: 'assign_person' as MatchAction, marker_name: '' }
+              : f
+          ),
+        };
+      });
+    } catch (err) {
+      setApplyError(err instanceof Error ? err.message : 'Failed to unassign face');
+    } finally {
+      setApplyingFace(null);
+    }
+  };
+
+  const handleApplySuggestion = async (face: PhotoFace, suggestion: FaceSuggestion) => {
+    if (!facesData || !uid) return;
+
+    setApplyingFace(face.face_index);
+    setApplyError(null);
+    try {
+      // When reassigning, use assign_person action since marker already exists
+      const action = reassigningFaceIndex === face.face_index ? 'assign_person' as MatchAction : face.action;
+
+      const response = await applyFaceMatch({
+        photo_uid: uid,
         person_name: suggestion.person_name,
-        action: face.action,
+        action,
         marker_uid: face.marker_uid,
         file_uid: facesData.file_uid,
         bbox_rel: face.bbox_rel,
@@ -97,6 +161,11 @@ export function useFaceAssignment(
           ),
         };
       });
+
+      // Clear reassigning state after successful reassignment
+      if (reassigningFaceIndex === face.face_index) {
+        setReassigningFaceIndex(null);
+      }
     } catch (err) {
       setApplyError(err instanceof Error ? err.message : 'Failed to apply face assignment');
     } finally {
@@ -110,10 +179,13 @@ export function useFaceAssignment(
     setApplyingFace(face.face_index);
     setApplyError(null);
     try {
+      // When reassigning, use assign_person action since marker already exists
+      const action = reassigningFaceIndex === face.face_index ? 'assign_person' as MatchAction : face.action;
+
       const response = await applyFaceMatch({
         photo_uid: uid,
         person_name: personName.trim(),
-        action: face.action,
+        action,
         marker_uid: face.marker_uid,
         file_uid: facesData.file_uid,
         bbox_rel: face.bbox_rel,
@@ -140,6 +212,11 @@ export function useFaceAssignment(
       setManualName('');
       setShowManualInput(false);
       setShowAutocomplete(false);
+
+      // Clear reassigning state after successful reassignment
+      if (reassigningFaceIndex === face.face_index) {
+        setReassigningFaceIndex(null);
+      }
     } catch (err) {
       setApplyError(err instanceof Error ? err.message : 'Failed to assign face');
     } finally {
@@ -168,5 +245,9 @@ export function useFaceAssignment(
     handleManualAssign,
     handleSelectAutocomplete,
     selectFirstUnassignedFace,
+    reassigningFaceIndex,
+    handleStartReassign,
+    handleCancelReassign,
+    handleUnassign,
   };
 }

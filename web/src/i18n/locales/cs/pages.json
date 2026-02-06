@@ -290,7 +290,10 @@
     "unassigned": "Nepřiřazeno",
     "assigned": "Přiřazeno",
     "estimatedEra": "Období",
-    "eraRunnerUp": "Druhé v pořadí"
+    "eraRunnerUp": "Druhé v pořadí",
+    "reassign": "Přeřadit",
+    "unassign": "Odebrat",
+    "reassigningFrom": "Přeřazení z: {{name}}"
   },
   "duplicates": {
     "title": "Detekce duplikátů",
