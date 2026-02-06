@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Pencil, Check, X, Tags, Star } from 'lucide-react';
+import { ArrowLeft, Pencil, Check, X, Tags, Star, Play } from 'lucide-react';
 import { Card, CardContent } from '../components/Card';
 import { Button } from '../components/Button';
 import { colorMap } from '../constants/pageConfig';
@@ -117,8 +117,8 @@ export function LabelDetailPage() {
         <Button variant="ghost" size="sm" onClick={() => navigate('/labels')}>
           <ArrowLeft className="h-4 w-4" />
         </Button>
-        <div className="flex items-center space-x-3 flex-1">
-          <Tags className="h-6 w-6 text-cyan-400" />
+        <div className="flex items-center space-x-3 flex-1 min-w-0">
+          <Tags className="h-6 w-6 text-cyan-400 flex-shrink-0" />
           {isEditing ? (
             <div className="flex items-center space-x-2">
               <input
@@ -151,6 +151,14 @@ export function LabelDetailPage() {
             </div>
           )}
         </div>
+        {uid && photos.length > 0 && (
+          <Link to={`/slideshow?label=${uid}`}>
+            <Button variant="ghost" size="sm">
+              <Play className="h-4 w-4 mr-1" />
+              {t('common:buttons.slideshow')}
+            </Button>
+          </Link>
+        )}
       </div>
 
       {/* Details */}

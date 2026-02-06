@@ -46,7 +46,8 @@
     "setFavorite": "Favorite",
     "detectFaces": "Detect Faces",
     "rescan": "Re-scan",
-    "scanAllPeople": "Scan All People"
+    "scanAllPeople": "Scan All People",
+    "slideshow": "Slideshow"
   },
   "status": {
     "loading": "Loading...",

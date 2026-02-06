@@ -2,7 +2,7 @@ import type { ComponentType } from 'react';
 import {
   Home, FolderOpen, Camera, Tags, Sparkles, Type,
   Users, ShieldCheck, AlertTriangle, Images, Maximize2,
-  Copy, FolderSearch, Cpu,
+  Copy, FolderSearch, Cpu, Play,
 } from 'lucide-react';
 
 export type AccentColor =
@@ -39,6 +39,7 @@ export const PAGE_CONFIGS: Record<string, PageConfig> = {
   labelDetail:    { color: 'cyan',    icon: Tags },
   subjectDetail:  { color: 'amber',   icon: Users },
   compare:        { color: 'lime',    icon: Copy },
+  slideshow:      { color: 'indigo',  icon: Play },
 };
 
 export interface ColorClasses {
@@ -270,6 +271,7 @@ export function getPageConfigForPath(pathname: string): PageConfig | undefined {
   if (pathname.startsWith('/subjects/')) return PAGE_CONFIGS.subjectDetail;
   if (pathname.startsWith('/compare')) return PAGE_CONFIGS.compare;
   if (pathname.startsWith('/albums/')) return PAGE_CONFIGS.albums;
+  if (pathname.startsWith('/slideshow')) return PAGE_CONFIGS.slideshow;
 
   return undefined;
 }

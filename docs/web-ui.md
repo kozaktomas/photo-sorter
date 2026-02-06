@@ -100,6 +100,7 @@ Browse all photos in your library with powerful filtering.
   - Bulk actions: Add to Album, Add Label, Favorite
   - When viewing album filter: Remove from Album action
   - Click "Cancel" to exit selection mode
+- **Photo navigation context** - When clicking a photo, navigation arrows and position counter are available in Photo Detail
 - **Photo Detail Modal** - Click any photo to see full details
   - Photo metadata (date, camera, location)
   - Applied labels
@@ -117,13 +118,13 @@ Detailed view of a single photo with face management capabilities.
 - **Face detection and assignment** - Load faces to see detected faces with bounding boxes, assign people via suggestions or manual input
 
 **Photo Navigation:**
-When accessing a photo from an album or label, navigation controls are available:
+When accessing a photo from an album, label, or the Photos page, navigation controls are available:
 - **Left/Right arrows** - Semi-transparent navigation buttons appear on hover over the photo
 - **Position counter** - Shows current position (e.g., "22 / 41") at the bottom center on hover
 - **Keyboard navigation** - Use ← and → arrow keys to navigate between photos
-- URL preserves context via query parameter (`?album=xyz` or `?label=slug`)
+- URL preserves context via query parameter (`?album=xyz`, `?label=slug`, or `?source=photos`)
 - Photo list is cached in sessionStorage for fast navigation without extra API calls
-- Direct URL access (e.g., sharing a link) fetches the album/label photos from API automatically
+- Direct URL access (e.g., sharing a link) fetches the album/label photos from API automatically (Photos page uses cache only)
 
 **Embedding Status:**
 - On page load, the faces API is queried to check if embeddings exist
@@ -438,6 +439,34 @@ The Compare page (`/compare`) provides a side-by-side photo comparison interface
 
 **Pair generation:** For a group of N photos, generates all unique pairs: N*(N-1)/2 combinations.
 
+### Slideshow (`/slideshow`)
+
+Fullscreen slideshow viewer for photos in an album or label.
+
+**How to access:** Click the "Slideshow" button on an album detail page or label detail page.
+
+**URL Parameters:**
+- `?album=UID` - Show photos from an album
+- `?label=UID` - Show photos from a label
+
+**Features:**
+- Fullscreen dark background with no navigation chrome
+- Auto-play advances photos every 5 seconds by default
+- Photo info overlay (source name, photo title, date) fades in on hover
+- Controls bar fades in on hover with play/pause, speed selection, counter, and exit
+- Preloads next image for instant transitions
+- Stops at last photo (no loop); pressing play at the end restarts from the beginning
+
+**Speed Options:**
+- 3 seconds
+- 5 seconds (default)
+- 10 seconds
+
+**Keyboard Shortcuts:**
+- `←` / `→` - Previous / next photo
+- `Space` - Toggle play/pause
+- `Escape` - Exit slideshow (returns to previous page)
+
 ### Album Completion
 
 Find photos that belong in existing albums but aren't there yet by searching the HNSW embedding index.
@@ -460,11 +489,16 @@ Find photos that belong in existing albums but aren't there yet by searching the
 ## Keyboard Shortcuts
 
 ### Photo Detail Page
-- `←` / `→` - Navigate to previous/next photo (when accessed from album or label)
+- `←` / `→` - Navigate to previous/next photo (when accessed from album, label, or Photos page)
 
 ### Photo Detail Modal
 - `←` / `→` - Navigate between photos
 - `Escape` - Close modal
+
+### Slideshow
+- `←` / `→` - Previous / next photo
+- `Space` - Toggle play/pause
+- `Escape` - Exit slideshow
 
 ## API Endpoints
 
@@ -576,7 +610,7 @@ web/src/
 │   │   └── index.tsx
 │   ├── PhotoDetail/        # Split into components
 │   │   ├── hooks/
-│   │   │   └── usePhotoNavigation.ts  # Album/label navigation
+│   │   │   └── usePhotoNavigation.ts  # Album/label/photos navigation
 │   │   ├── EmbeddingsStatus.tsx
 │   │   ├── FaceAssignmentPanel.tsx
 │   │   ├── FacesList.tsx
@@ -595,6 +629,11 @@ web/src/
 │   │   ├── CompareView.tsx
 │   │   ├── MetadataDiff.tsx
 │   │   ├── CompareSummary.tsx
+│   │   └── index.tsx
+│   ├── Slideshow/            # Fullscreen slideshow
+│   │   ├── hooks/useSlideshow.ts
+│   │   ├── hooks/useSlideshowPhotos.ts
+│   │   ├── SlideshowControls.tsx
 │   │   └── index.tsx
 │   └── SuggestAlbums/       # Album completion
 │       └── index.tsx

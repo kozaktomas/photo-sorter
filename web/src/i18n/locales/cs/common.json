@@ -46,7 +46,8 @@
     "detectFaces": "Detekovat obličeje",
     "rescan": "Znovu skenovat",
     "scanAllPeople": "Skenovat všechny osoby",
-    "select": "Vybrat"
+    "select": "Vybrat",
+    "slideshow": "Prezentace"
   },
   "status": {
     "loading": "Načítání...",

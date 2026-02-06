@@ -45,7 +45,7 @@ export function PhotosPage() {
   const handlePhotoClick = (photo: Photo) => {
     // Save current state to cache before navigating
     pagination.saveCache();
-    navigate(`/photos/${photo.uid}`);
+    navigate(`/photos/${photo.uid}?source=photos`);
   };
 
   const exitSelectionMode = () => {

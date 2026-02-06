@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { getAlbumPhotos, getPhotos } from '../../../api/client';
-import { ALBUM_PHOTOS_CACHE_KEY, LABEL_PHOTOS_CACHE_KEY } from '../../../constants';
+import { ALBUM_PHOTOS_CACHE_KEY, LABEL_PHOTOS_CACHE_KEY, PHOTOS_CACHE_KEY } from '../../../constants';
+import type { Photo } from '../../../types';
 
 interface PhotosCache {
   id: string;
@@ -28,10 +29,29 @@ export function usePhotoNavigation(photoUid: string | undefined): PhotoNavigatio
 
   const albumUid = searchParams.get('album');
   const labelSlug = searchParams.get('label');
+  const source = searchParams.get('source');
 
   // Load photo list from cache or API
   useEffect(() => {
-    if (!albumUid && !labelSlug) {
+    if (!albumUid && !labelSlug && source !== 'photos') {
+      setPhotoUids([]);
+      return;
+    }
+
+    // Handle Photos page navigation (cache only, no API fallback)
+    if (source === 'photos') {
+      const cached = sessionStorage.getItem(PHOTOS_CACHE_KEY);
+      if (cached) {
+        try {
+          const data: { photos: Photo[] } = JSON.parse(cached);
+          if (data.photos && data.photos.length > 0) {
+            setPhotoUids(data.photos.map((p) => p.uid));
+            return;
+          }
+        } catch {
+          // Cache parse failed
+        }
+      }
       setPhotoUids([]);
       return;
     }
@@ -106,7 +126,7 @@ export function usePhotoNavigation(photoUid: string | undefined): PhotoNavigatio
           setIsLoading(false);
         });
     }
-  }, [albumUid, labelSlug]);
+  }, [albumUid, labelSlug, source]);
 
   // Compute current index
   const currentIndex = useMemo(() => {
@@ -117,19 +137,23 @@ export function usePhotoNavigation(photoUid: string | undefined): PhotoNavigatio
   const hasPrev = currentIndex > 0;
   const hasNext = currentIndex >= 0 && currentIndex < photoUids.length - 1;
 
+  const getQueryParam = useCallback(() => {
+    if (albumUid) return `album=${albumUid}`;
+    if (labelSlug) return `label=${labelSlug}`;
+    return 'source=photos';
+  }, [albumUid, labelSlug]);
+
   const goToPrev = useCallback(() => {
     if (!hasPrev || currentIndex <= 0) return;
     const prevUid = photoUids[currentIndex - 1];
-    const queryParam = albumUid ? `album=${albumUid}` : `label=${labelSlug}`;
-    navigate(`/photos/${prevUid}?${queryParam}`);
-  }, [hasPrev, currentIndex, photoUids, albumUid, labelSlug, navigate]);
+    navigate(`/photos/${prevUid}?${getQueryParam()}`);
+  }, [hasPrev, currentIndex, photoUids, getQueryParam, navigate]);
 
   const goToNext = useCallback(() => {
     if (!hasNext || currentIndex < 0) return;
     const nextUid = photoUids[currentIndex + 1];
-    const queryParam = albumUid ? `album=${albumUid}` : `label=${labelSlug}`;
-    navigate(`/photos/${nextUid}?${queryParam}`);
-  }, [hasNext, currentIndex, photoUids, albumUid, labelSlug, navigate]);
+    navigate(`/photos/${nextUid}?${getQueryParam()}`);
+  }, [hasNext, currentIndex, photoUids, getQueryParam, navigate]);
 
   return {
     albumUid,

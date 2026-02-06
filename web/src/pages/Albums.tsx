@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { FolderOpen, ArrowLeft, Image, Sparkles, Search } from 'lucide-react';
+import { FolderOpen, ArrowLeft, Image, Sparkles, Search, Play } from 'lucide-react';
 import { Card, CardContent } from '../components/Card';
 import { Button } from '../components/Button';
 import { PageHeader } from '../components/PageHeader';
@@ -174,12 +174,20 @@ function AlbumDetailPage({ uid }: { uid: string }) {
           )}
           <p className="text-slate-500 mt-2">{t('common:units.photo', { count: photos.length })}</p>
         </div>
-        <Link to={`/analyze?album=${uid}`}>
-          <Button>
-            <Sparkles className="h-4 w-4 mr-2" />
-            {t('common:buttons.analyze')}
-          </Button>
-        </Link>
+        <div className="flex items-center space-x-2">
+          <Link to={`/slideshow?album=${uid}`}>
+            <Button variant="ghost">
+              <Play className="h-4 w-4 mr-2" />
+              {t('common:buttons.slideshow')}
+            </Button>
+          </Link>
+          <Link to={`/analyze?album=${uid}`}>
+            <Button>
+              <Sparkles className="h-4 w-4 mr-2" />
+              {t('common:buttons.analyze')}
+            </Button>
+          </Link>
+        </div>
       </div>
 
       <Card>

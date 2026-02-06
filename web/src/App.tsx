@@ -18,6 +18,7 @@ import { DuplicatesPage } from './pages/Duplicates/index';
 import { ComparePage } from './pages/Compare/index';
 import { SuggestAlbumsPage } from './pages/SuggestAlbums/index';
 import { LabelDetailPage } from './pages/LabelDetail';
+import { SlideshowPage } from './pages/Slideshow/index';
 import { SubjectDetailPage } from './pages/SubjectDetail';
 import { LoginPage } from './pages/Login';
 import { AuthProvider, useAuth } from './hooks/useAuth';
@@ -232,6 +233,14 @@ function AppRoutes() {
             <Layout>
               <SuggestAlbumsPage />
             </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/slideshow"
+        element={
+          <ProtectedRoute>
+            <SlideshowPage />
           </ProtectedRoute>
         }
       />
