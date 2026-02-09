@@ -400,3 +400,82 @@ export interface SyncCacheResponse {
   duration_ms: number;
   error?: string;
 }
+
+// Photo Book types
+export interface PhotoBook {
+  id: string;
+  title: string;
+  description: string;
+  section_count: number;
+  page_count: number;
+  photo_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BookSection {
+  id: string;
+  title: string;
+  sort_order: number;
+  photo_count: number;
+}
+
+export interface SectionPhoto {
+  photo_uid: string;
+  description: string;
+  note: string;
+  added_at: string;
+}
+
+export interface BookPage {
+  id: string;
+  section_id: string;
+  format: PageFormat;
+  description: string;
+  sort_order: number;
+  slots: PageSlot[];
+}
+
+export interface PageSlot {
+  slot_index: number;
+  photo_uid: string;
+}
+
+export interface BookDetail {
+  id: string;
+  title: string;
+  description: string;
+  sections: BookSection[];
+  pages: BookPage[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PhotoBookMembership {
+  book_id: string;
+  book_title: string;
+  section_id: string;
+  section_title: string;
+}
+
+export type PageFormat = '4_landscape' | '2l_1p' | '1p_2l' | '2_portrait' | '1_fullscreen';
+
+export function pageFormatSlotCount(format: PageFormat): number {
+  switch (format) {
+    case '4_landscape': return 4;
+    case '2l_1p': return 3;
+    case '1p_2l': return 3;
+    case '2_portrait': return 2;
+    case '1_fullscreen': return 1;
+  }
+}
+
+export function pageFormatLabelKey(format: PageFormat): string {
+  switch (format) {
+    case '4_landscape': return 'books.editor.formatShort4Landscape';
+    case '2l_1p': return 'books.editor.formatShort2l1p';
+    case '1p_2l': return 'books.editor.formatShort1p2l';
+    case '2_portrait': return 'books.editor.formatShort2Portrait';
+    case '1_fullscreen': return 'books.editor.formatShort1Fullscreen';
+  }
+}

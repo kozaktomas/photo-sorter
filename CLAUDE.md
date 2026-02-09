@@ -679,6 +679,7 @@ Key files:
 - `GET /api/v1/photos/:uid/faces` - Get faces in a photo with suggestions
 - `POST /api/v1/photos/:uid/faces/compute` - Compute face embeddings for a photo
 - `GET /api/v1/photos/:uid/estimate-era` - Estimate photo era from CLIP embeddings vs era centroids
+- `GET /api/v1/photos/:uid/books` - Get book/section memberships for a photo
 - `GET /api/v1/subjects/:uid` - Get single subject
 - `PUT /api/v1/subjects/:uid` - Update subject (rename, etc.)
 - `POST /api/v1/faces/match` - Find photos matching a person's face
@@ -695,6 +696,26 @@ Key files:
 - `POST /api/v1/photos/duplicates` - Find near-duplicate photos via embedding similarity
 - `POST /api/v1/photos/suggest-albums` - Album completion: find photos missing from existing albums via HNSW centroid search
 - `DELETE /api/v1/albums/{uid}/photos/batch` - Remove specific photos from album
+- `GET /api/v1/books` - List all photo books
+- `POST /api/v1/books` - Create a new book
+- `GET /api/v1/books/{id}` - Get book detail with sections and pages
+- `PUT /api/v1/books/{id}` - Update book (title, description)
+- `DELETE /api/v1/books/{id}` - Delete book (cascades to sections, pages, slots)
+- `POST /api/v1/books/{id}/sections` - Create section in a book
+- `PUT /api/v1/books/{id}/sections/reorder` - Reorder sections
+- `PUT /api/v1/sections/{id}` - Update section (title)
+- `DELETE /api/v1/sections/{id}` - Delete section
+- `GET /api/v1/sections/{id}/photos` - Get photos in a section
+- `POST /api/v1/sections/{id}/photos` - Add photos to a section
+- `DELETE /api/v1/sections/{id}/photos` - Remove photos from a section
+- `PUT /api/v1/sections/{id}/photos/{photoUid}/description` - Update section photo (description, note)
+- `POST /api/v1/books/{id}/pages` - Create page in a book
+- `PUT /api/v1/books/{id}/pages/reorder` - Reorder pages
+- `PUT /api/v1/pages/{id}` - Update page (format, section, description)
+- `DELETE /api/v1/pages/{id}` - Delete page
+- `PUT /api/v1/pages/{id}/slots/{index}` - Assign photo to page slot
+- `POST /api/v1/pages/{id}/slots/swap` - Swap two slots atomically (`{ slot_a, slot_b }`)
+- `DELETE /api/v1/pages/{id}/slots/{index}` - Clear page slot
 
 **Frontend Structure:**
 ```
@@ -763,6 +784,22 @@ web/src/
 │   │   ├── CompareView.tsx
 │   │   ├── MetadataDiff.tsx
 │   │   ├── CompareSummary.tsx
+│   │   └── index.tsx
+│   ├── Books/                 # Photo books list
+│   │   └── index.tsx
+│   ├── BookEditor/             # Book editor (sections, pages, preview)
+│   │   ├── hooks/useBookData.ts
+│   │   ├── SectionsTab.tsx
+│   │   ├── SectionSidebar.tsx
+│   │   ├── SectionPhotoPool.tsx
+│   │   ├── PhotoBrowserModal.tsx
+│   │   ├── PhotoDescriptionDialog.tsx
+│   │   ├── PagesTab.tsx
+│   │   ├── PageSidebar.tsx
+│   │   ├── PageTemplate.tsx
+│   │   ├── PageSlot.tsx
+│   │   ├── UnassignedPool.tsx
+│   │   ├── PreviewTab.tsx
 │   │   └── index.tsx
 │   └── SuggestAlbums/         # Album completion
 │       └── index.tsx
@@ -880,6 +917,31 @@ internal/web/handlers/
 ├── face_photos.go     # Photo face retrieval and suggestions (GetPhotoFaces)
 └── face_helpers.go    # Shared helpers (delegating to facematch package)
 ```
+
+Photo book handlers are in a single file:
+```
+internal/web/handlers/
+└── books.go           # BooksHandler: CRUD for books, sections, pages, slots
+```
+
+**Photo Book Database:**
+
+Schema (`internal/database/postgres/migrations/008_create_photo_books.sql`):
+```sql
+photo_books       -- id, title, description, created_at, updated_at
+book_sections     -- id, book_id (FK), title, sort_order
+section_photos    -- id, section_id (FK), photo_uid, description, note, UNIQUE(section_id, photo_uid)
+book_pages        -- id, book_id (FK), section_id (FK nullable), format CHECK, description, sort_order
+page_slots        -- id, page_id (FK), slot_index, photo_uid, UNIQUE(page_id, slot_index)
+```
+
+Page formats: `4_landscape` (4 slots), `2l_1p` (3 slots), `1p_2l` (3 slots), `2_portrait` (2 slots), `1_fullscreen` (1 slot).
+
+Key files:
+- `internal/database/postgres/books.go` - BookRepository (implements BookWriter)
+- `internal/database/types.go` - PhotoBook, BookSection, SectionPhoto, BookPage, PageSlot structs
+- `internal/database/repository.go` - BookReader/BookWriter interfaces
+- `internal/database/provider.go` - RegisterBookWriter/GetBookWriter/GetBookReader
 
 **PhotoPrism Client Middleware:**
 
@@ -1086,6 +1148,7 @@ When adding or modifying features, update the relevant documentation:
 - **`docs/postgresql-migration.md`** - Update when changing database schema or migration process
 - **`docs/markers.md`** - Update when changing marker/face matching logic or coordinate handling
 - **`docs/era-estimation.md`** - Update when changing era estimation logic, centroids, or UI
+- **`docs/photo-book.md`** - Update when changing photo book feature (formats, schema, UI)
 - **`README.md`** - Update for major feature additions or architectural changes
 
 Documentation files:
@@ -1095,5 +1158,6 @@ docs/
 ├── web-ui.md               # Web UI features and API endpoints
 ├── postgresql-migration.md # PostgreSQL setup and migration guide
 ├── markers.md              # Marker system and face-to-marker matching
-└── era-estimation.md       # Era estimation: centroids, API, and UI
+├── era-estimation.md       # Era estimation: centroids, API, and UI
+└── photo-book.md           # Photo book planning tool
 ```

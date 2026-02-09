@@ -2,7 +2,7 @@ import type { ComponentType } from 'react';
 import {
   Home, FolderOpen, Camera, Tags, Sparkles, Type,
   Users, ShieldCheck, AlertTriangle, Images, Maximize2,
-  Copy, FolderSearch, Cpu, Play,
+  Copy, FolderSearch, Cpu, Play, BookOpen,
 } from 'lucide-react';
 
 export type AccentColor =
@@ -34,12 +34,14 @@ export const PAGE_CONFIGS: Record<string, PageConfig> = {
   duplicates:     { color: 'lime',    icon: Copy,           category: 'tools' },
   suggestAlbums:  { color: 'green',   icon: FolderSearch,   category: 'tools' },
   process:        { color: 'rose',    icon: Cpu,            category: 'tools' },
+  books:          { color: 'rose',    icon: BookOpen,       category: 'tools' },
   // Detail pages inherit parent colors
   photoDetail:    { color: 'indigo',  icon: Camera },
   labelDetail:    { color: 'cyan',    icon: Tags },
   subjectDetail:  { color: 'amber',   icon: Users },
   compare:        { color: 'lime',    icon: Copy },
   slideshow:      { color: 'indigo',  icon: Play },
+  bookEditor:     { color: 'rose',    icon: BookOpen },
 };
 
 export interface ColorClasses {
@@ -258,6 +260,7 @@ export const PATH_TO_PAGE: Record<string, string> = {
   '/duplicates': 'duplicates',
   '/suggest-albums': 'suggestAlbums',
   '/process': 'process',
+  '/books': 'books',
 };
 
 export function getPageConfigForPath(pathname: string): PageConfig | undefined {
@@ -272,6 +275,7 @@ export function getPageConfigForPath(pathname: string): PageConfig | undefined {
   if (pathname.startsWith('/compare')) return PAGE_CONFIGS.compare;
   if (pathname.startsWith('/albums/')) return PAGE_CONFIGS.albums;
   if (pathname.startsWith('/slideshow')) return PAGE_CONFIGS.slideshow;
+  if (pathname.startsWith('/books/')) return PAGE_CONFIGS.bookEditor;
 
   return undefined;
 }

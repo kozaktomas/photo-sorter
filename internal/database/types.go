@@ -66,3 +66,78 @@ type ExportData struct {
 }
 
 const currentExportVersion = 3
+
+// PhotoBook represents a photo book project
+type PhotoBook struct {
+	ID          string
+	Title       string
+	Description string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+// BookSection represents an ordered group within a book
+type BookSection struct {
+	ID         string
+	BookID     string
+	Title      string
+	SortOrder  int
+	PhotoCount int // computed, not stored
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+}
+
+// SectionPhoto represents a photo in a section's prepick pool
+type SectionPhoto struct {
+	ID          int64
+	SectionID   string
+	PhotoUID    string
+	Description string
+	Note        string
+	AddedAt     time.Time
+}
+
+// BookPage represents a page with a specific format
+type BookPage struct {
+	ID          string
+	BookID      string
+	SectionID   string // optional, may be empty
+	Format      string
+	Description string
+	SortOrder   int
+	Slots       []PageSlot // populated on read
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+}
+
+// PageSlot represents a photo assignment to a position on a page
+type PageSlot struct {
+	SlotIndex int
+	PhotoUID  string // empty = unoccupied
+}
+
+// PhotoBookMembership represents a book+section that contains a photo
+type PhotoBookMembership struct {
+	BookID      string
+	BookTitle   string
+	SectionID   string
+	SectionTitle string
+}
+
+// PageFormatSlotCount returns the number of slots for a given page format
+func PageFormatSlotCount(format string) int {
+	switch format {
+	case "4_landscape":
+		return 4
+	case "2l_1p":
+		return 3
+	case "1p_2l":
+		return 3
+	case "2_portrait":
+		return 2
+	case "1_fullscreen":
+		return 1
+	default:
+		return 0
+	}
+}

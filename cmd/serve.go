@@ -104,6 +104,11 @@ func runServe(cmd *cobra.Command, args []string) error {
 	database.RegisterEmbeddingHNSWRebuilder(embeddingRepo)
 	fmt.Printf("Using PostgreSQL backend\n")
 
+	// Create book repository for photo book feature
+	bookRepo := postgres.NewBookRepository(pool)
+	database.RegisterBookWriter(func() database.BookWriter { return bookRepo })
+	fmt.Printf("Photo book storage enabled (PostgreSQL)\n")
+
 	// Create session repository for persistent sessions
 	sessionRepo := postgres.NewSessionRepository(pool)
 	fmt.Printf("Session persistence enabled (PostgreSQL)\n")

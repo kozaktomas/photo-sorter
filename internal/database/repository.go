@@ -104,3 +104,39 @@ type EraEmbeddingWriter interface {
 	DeleteEra(ctx context.Context, eraSlug string) error
 }
 
+// BookReader provides read-only access to photo book data
+type BookReader interface {
+	GetBook(ctx context.Context, id string) (*PhotoBook, error)
+	ListBooks(ctx context.Context) ([]PhotoBook, error)
+	GetSections(ctx context.Context, bookID string) ([]BookSection, error)
+	GetSectionPhotos(ctx context.Context, sectionID string) ([]SectionPhoto, error)
+	CountSectionPhotos(ctx context.Context, sectionID string) (int, error)
+	GetPages(ctx context.Context, bookID string) ([]BookPage, error)
+	GetPage(ctx context.Context, pageID string) (*BookPage, error)
+	GetPageSlots(ctx context.Context, pageID string) ([]PageSlot, error)
+	GetAllPageSlots(ctx context.Context, bookID string) ([]PageSlot, error)
+	GetPhotoBookMemberships(ctx context.Context, photoUID string) ([]PhotoBookMembership, error)
+}
+
+// BookWriter provides write access to photo book data
+type BookWriter interface {
+	BookReader
+	CreateBook(ctx context.Context, book *PhotoBook) error
+	UpdateBook(ctx context.Context, book *PhotoBook) error
+	DeleteBook(ctx context.Context, id string) error
+	CreateSection(ctx context.Context, section *BookSection) error
+	UpdateSection(ctx context.Context, section *BookSection) error
+	DeleteSection(ctx context.Context, id string) error
+	ReorderSections(ctx context.Context, bookID string, sectionIDs []string) error
+	AddSectionPhotos(ctx context.Context, sectionID string, photoUIDs []string) error
+	RemoveSectionPhotos(ctx context.Context, sectionID string, photoUIDs []string) error
+	UpdateSectionPhoto(ctx context.Context, sectionID string, photoUID string, description string, note string) error
+	CreatePage(ctx context.Context, page *BookPage) error
+	UpdatePage(ctx context.Context, page *BookPage) error
+	DeletePage(ctx context.Context, id string) error
+	ReorderPages(ctx context.Context, bookID string, pageIDs []string) error
+	AssignSlot(ctx context.Context, pageID string, slotIndex int, photoUID string) error
+	ClearSlot(ctx context.Context, pageID string, slotIndex int) error
+	SwapSlots(ctx context.Context, pageID string, slotA int, slotB int) error
+}
+

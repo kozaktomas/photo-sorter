@@ -55,7 +55,7 @@ The header navigation groups items to reduce clutter:
 - **Primary** (always visible): Dashboard, Albums, Photos, Labels
 - **AI** dropdown: Analyze, Text Search
 - **Faces** dropdown: Faces, Recognition, Outliers
-- **Tools** dropdown: Similar, Expand, Duplicates, Album Completion, Process
+- **Tools** dropdown: Similar, Expand, Duplicates, Album Completion, Photo Book, Process
 
 Dropdown buttons highlight when one of their child pages is active. Dropdowns close when clicking outside.
 
@@ -113,7 +113,9 @@ Detailed view of a single photo with face management capabilities.
 **Features:**
 - Full-resolution photo display with interactive face bounding boxes
 - Photo metadata (title, date, dimensions)
-- Quick actions: Copy UID, Open in PhotoPrism, Find Similar, Load Faces
+- Quick actions: Copy UID, Open in PhotoPrism, Find Similar, Add to Book, Load Faces
+- **Book membership** - If the photo belongs to any photo book sections, a "In books" panel is shown in the right sidebar (above Era Estimation) listing each book/section as a clickable link to the book editor
+- **Add to Book dropdown** - Click "Book" in the header to open a two-step picker (book → section) to quickly add the photo to a book section without leaving the page. Shows success/error feedback and auto-closes
 - **Embeddings status banner** - Automatically checks if embeddings have been calculated for the photo on page load. Shows a yellow warning banner with a "Calculate Embeddings" button if not yet processed
 - **Face detection and assignment** - Load faces to see detected faces with bounding boxes, assign people via suggestions or manual input
 
@@ -469,6 +471,52 @@ Fullscreen slideshow viewer for photos in an album or label.
 - `Space` - Toggle play/pause
 - `Escape` - Exit slideshow (returns to previous page)
 
+### Photo Book (`/books`)
+
+Plan and organize photos into a printed landscape photo book. This is a planning-only tool (no PDF export).
+
+**Books List:**
+- Card grid of all books with title, stats (sections, pages, photos)
+- Create new books with inline title input
+- Delete books with confirmation
+- Click a book to open the editor
+
+### Book Editor (`/books/:id`)
+
+Three-tab editor for organizing a photo book.
+
+**Sections Tab:**
+- **Section Sidebar** - Sortable list of sections (drag to reorder). Create and delete sections
+- **Photo Pool** - Grid of photos in the selected section with thumbnails
+- **Description Editing** - Click a photo description to edit it inline (textarea)
+- **Bulk Selection** - Select multiple photos for batch removal
+- **Photo Browser Modal** - Full-screen modal to browse the entire library, search, and add photos to a section. Already-added photos are grayed out
+
+**Pages Tab:**
+- **Page Sidebar** - Pages grouped by section with collapsible headers. Each section header shows the section title and page count, with a chevron toggle to collapse/expand. Pages are sortable within a section (drag to reorder); cross-section drag is blocked. Global page numbering (Page 1, 2, 3...) is preserved across sections. Creating a new page auto-expands the target section if collapsed. Create pages with format selector and section assignment
+- **Page Template** - Visual CSS grid representation of the page layout with droppable slots
+- **Drag-and-Drop** - Drag photos from the unassigned pool into page slots
+- **Unassigned Pool** - Photos in the page's section not yet assigned to any page slot
+
+**Page Formats:**
+
+| Format | Slots | Layout |
+|--------|-------|--------|
+| `4_landscape` | 4 | 2x2 grid of landscape photos |
+| `2l_1p` | 3 | 2 landscape (left) + 1 portrait (right, full height) |
+| `1p_2l` | 3 | 1 portrait (left, full height) + 2 landscape (right) |
+| `2_portrait` | 2 | 2 portrait photos side by side |
+| `1_fullscreen` | 1 | Single fullscreen photo |
+
+**Preview Tab:**
+- Read-only scrollable view of the entire book
+- Section titles as dividers between page groups
+- Page numbers computed from sort order
+- Photos rendered at reasonable size with descriptions
+- Empty slots shown as gray placeholders
+
+**Dependencies:** Uses `@dnd-kit/core`, `@dnd-kit/sortable`, `@dnd-kit/utilities` for drag-and-drop.
+
 ### Album Completion
 
 Find photos that belong in existing albums but aren't there yet by searching the HNSW embedding index.
@@ -549,6 +597,27 @@ The Web UI communicates with these backend endpoints:
 | POST | `/api/v1/photos/batch/archive` | Archive (soft-delete) photos |
 | POST | `/api/v1/photos/suggest-albums` | Album completion — find missing photos for existing albums |
 | DELETE | `/api/v1/albums/:uid/photos/batch` | Remove specific photos from album |
+| GET | `/api/v1/books` | List all photo books |
+| POST | `/api/v1/books` | Create a new book |
+| GET | `/api/v1/books/:id` | Get book detail with sections and pages |
+| PUT | `/api/v1/books/:id` | Update book (title, description) |
+| DELETE | `/api/v1/books/:id` | Delete book (cascades) |
+| POST | `/api/v1/books/:id/sections` | Create a section in a book |
+| PUT | `/api/v1/books/:id/sections/reorder` | Reorder sections |
+| PUT | `/api/v1/sections/:id` | Update section (title) |
+| DELETE | `/api/v1/sections/:id` | Delete section |
+| GET | `/api/v1/sections/:id/photos` | Get photos in a section |
+| POST | `/api/v1/sections/:id/photos` | Add photos to a section |
+| DELETE | `/api/v1/sections/:id/photos` | Remove photos from a section |
+| PUT | `/api/v1/sections/:id/photos/:uid/description` | Update photo description |
+| POST | `/api/v1/books/:id/pages` | Create a page in a book |
+| PUT | `/api/v1/books/:id/pages/reorder` | Reorder pages |
+| PUT | `/api/v1/pages/:id` | Update page (format, section) |
+| DELETE | `/api/v1/pages/:id` | Delete page |
+| PUT | `/api/v1/pages/:id/slots/:index` | Assign photo to page slot |
+| POST | `/api/v1/pages/:id/slots/swap` | Swap two slots atomically |
+| DELETE | `/api/v1/pages/:id/slots/:index` | Clear page slot |
+| GET | `/api/v1/photos/:uid/books` | Get photo book/section memberships |
 
 ## Frontend Architecture
 
@@ -617,6 +686,8 @@ web/src/
 │   │   ├── FaceAssignmentPanel.tsx
 │   │   ├── FacesList.tsx
 │   │   ├── PhotoDisplay.tsx
+│   │   ├── AddToBookDropdown.tsx
+│   │   ├── BookMembership.tsx
 │   │   └── index.tsx
 │   ├── Recognition/        # Split into components
 │   │   ├── hooks/useScanAll.ts
@@ -636,6 +707,23 @@ web/src/
 │   │   ├── hooks/useSlideshow.ts
 │   │   ├── hooks/useSlideshowPhotos.ts
 │   │   ├── SlideshowControls.tsx
+│   │   └── index.tsx
+│   ├── Books/               # Photo books list
+│   │   └── index.tsx
+│   ├── BookEditor/           # Book editor (sections, pages, preview)
+│   │   ├── hooks/useBookData.ts
+│   │   ├── SectionsTab.tsx
+│   │   ├── SectionSidebar.tsx
+│   │   ├── SectionPhotoPool.tsx
+│   │   ├── PhotoBrowserModal.tsx
+│   │   ├── PhotoDescriptionDialog.tsx
+│   │   ├── PhotoActionOverlay.tsx
+│   │   ├── PagesTab.tsx
+│   │   ├── PageSidebar.tsx
+│   │   ├── PageTemplate.tsx
+│   │   ├── PageSlot.tsx
+│   │   ├── UnassignedPool.tsx
+│   │   ├── PreviewTab.tsx
 │   │   └── index.tsx
 │   └── SuggestAlbums/       # Album completion
 │       └── index.tsx

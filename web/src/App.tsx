@@ -20,6 +20,8 @@ import { SuggestAlbumsPage } from './pages/SuggestAlbums/index';
 import { LabelDetailPage } from './pages/LabelDetail';
 import { SlideshowPage } from './pages/Slideshow/index';
 import { SubjectDetailPage } from './pages/SubjectDetail';
+import { BooksPage } from './pages/Books/index';
+import { BookEditorPage } from './pages/BookEditor/index';
 import { LoginPage } from './pages/Login';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 
@@ -232,6 +234,26 @@ function AppRoutes() {
           <ProtectedRoute>
             <Layout>
               <SuggestAlbumsPage />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/books"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <BooksPage />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/books/:id"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <BookEditorPage />
             </Layout>
           </ProtectedRoute>
         }

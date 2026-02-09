@@ -23,6 +23,7 @@ var (
 	postgresFaceReader         func() FaceReader
 	postgresFaceWriter         func() FaceWriter
 	postgresEraEmbeddingWriter func() EraEmbeddingWriter
+	postgresBookWriter         func() BookWriter
 	postgresFaceHNSW           HNSWRebuilder // Singleton for face HNSW rebuilding
 	postgresEmbeddingHNSW      HNSWRebuilder // Singleton for embedding HNSW rebuilding
 	postgresInitialized        bool
@@ -143,4 +144,31 @@ func GetEraEmbeddingReader(ctx context.Context) (EraEmbeddingReader, error) {
 		return nil, fmt.Errorf("PostgreSQL era embedding writer not registered")
 	}
 	return postgresEraEmbeddingWriter(), nil
+}
+
+// RegisterBookWriter registers the BookWriter constructor.
+func RegisterBookWriter(writer func() BookWriter) {
+	postgresBookWriter = writer
+}
+
+// GetBookWriter returns a BookWriter from the PostgreSQL backend
+func GetBookWriter(ctx context.Context) (BookWriter, error) {
+	if !postgresInitialized {
+		return nil, fmt.Errorf("PostgreSQL backend not initialized: DATABASE_URL is required")
+	}
+	if postgresBookWriter == nil {
+		return nil, fmt.Errorf("PostgreSQL book writer not registered")
+	}
+	return postgresBookWriter(), nil
+}
+
+// GetBookReader returns a BookReader from the PostgreSQL backend
+func GetBookReader(ctx context.Context) (BookReader, error) {
+	if !postgresInitialized {
+		return nil, fmt.Errorf("PostgreSQL backend not initialized: DATABASE_URL is required")
+	}
+	if postgresBookWriter == nil {
+		return nil, fmt.Errorf("PostgreSQL book writer not registered")
+	}
+	return postgresBookWriter(), nil
 }

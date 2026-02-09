@@ -1,7 +1,8 @@
-import { useEffect } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft, Loader2, AlertCircle, Images, ScanFace, Copy, ExternalLink, User, RefreshCw } from 'lucide-react';
+import { AddToBookDropdown } from './AddToBookDropdown';
 import { Button } from '../../components/Button';
 import { colorMap } from '../../constants/pageConfig';
 import { usePhotoData } from './hooks/usePhotoData';
@@ -10,6 +11,7 @@ import { useFaceAssignment } from './hooks/useFaceAssignment';
 import { usePhotoNavigation } from './hooks/usePhotoNavigation';
 import { EmbeddingsStatus } from './EmbeddingsStatus';
 import { EraEstimate } from './EraEstimate';
+import { BookMembership } from './BookMembership';
 import { PhotoDisplay } from './PhotoDisplay';
 import { FacesList } from './FacesList';
 import { FaceAssignmentPanel } from './FaceAssignmentPanel';
@@ -72,6 +74,9 @@ export function PhotoDetailPage() {
     currentIndex,
     totalPhotos,
   } = usePhotoNavigation(uid);
+
+  const [bookRefreshKey, setBookRefreshKey] = useState(0);
+  const handleBookAdded = useCallback(() => setBookRefreshKey((k) => k + 1), []);
 
   // Keyboard navigation
   useEffect(() => {
@@ -179,6 +184,7 @@ export function PhotoDetailPage() {
             <Images className="h-4 w-4 mr-1" />
             {t('pages:photoDetail.similar')}
           </Button>
+          <AddToBookDropdown photoUid={uid!} onAdded={handleBookAdded} />
           <Button
             variant={facesLoaded ? 'primary' : 'ghost'}
             size="sm"
@@ -247,6 +253,9 @@ export function PhotoDetailPage() {
               <p className="text-red-400 text-xs mt-2">{computeError}</p>
             )}
           </div>
+
+          {/* Book membership */}
+          <BookMembership uid={uid} refreshKey={bookRefreshKey} />
 
           {/* Era estimate */}
           <EraEstimate uid={uid} />

@@ -22,6 +22,13 @@ import type {
   EraEstimateResponse,
   DuplicatesResponse,
   SuggestAlbumsResponse,
+  PhotoBook,
+  BookDetail,
+  BookSection,
+  SectionPhoto,
+  BookPage,
+  PageFormat,
+  PhotoBookMembership,
 } from '../types';
 
 const API_BASE = '/api/v1';
@@ -520,4 +527,129 @@ export async function suggestAlbums(params: {
     method: 'POST',
     body: JSON.stringify(params),
   });
+}
+
+// Photo Book Memberships
+export async function getPhotoBookMemberships(photoUid: string): Promise<PhotoBookMembership[]> {
+  return request<PhotoBookMembership[]>(`/photos/${photoUid}/books`);
+}
+
+// Photo Books
+export async function getBooks(): Promise<PhotoBook[]> {
+  return request<PhotoBook[]>('/books');
+}
+
+export async function createBook(title: string, description?: string): Promise<PhotoBook> {
+  return request<PhotoBook>('/books', {
+    method: 'POST',
+    body: JSON.stringify({ title, description: description || '' }),
+  });
+}
+
+export async function getBook(id: string): Promise<BookDetail> {
+  return request<BookDetail>(`/books/${id}`);
+}
+
+export async function updateBook(id: string, updates: { title?: string; description?: string }): Promise<void> {
+  await request(`/books/${id}`, {
+    method: 'PUT',
+    body: JSON.stringify(updates),
+  });
+}
+
+export async function deleteBook(id: string): Promise<void> {
+  await request(`/books/${id}`, { method: 'DELETE' });
+}
+
+export async function createSection(bookId: string, title: string): Promise<BookSection> {
+  return request<BookSection>(`/books/${bookId}/sections`, {
+    method: 'POST',
+    body: JSON.stringify({ title }),
+  });
+}
+
+export async function updateSection(sectionId: string, title: string): Promise<void> {
+  await request(`/sections/${sectionId}`, {
+    method: 'PUT',
+    body: JSON.stringify({ title }),
+  });
+}
+
+export async function deleteSection(sectionId: string): Promise<void> {
+  await request(`/sections/${sectionId}`, { method: 'DELETE' });
+}
+
+export async function reorderSections(bookId: string, sectionIds: string[]): Promise<void> {
+  await request(`/books/${bookId}/sections/reorder`, {
+    method: 'PUT',
+    body: JSON.stringify({ section_ids: sectionIds }),
+  });
+}
+
+export async function getSectionPhotos(sectionId: string): Promise<SectionPhoto[]> {
+  return request<SectionPhoto[]>(`/sections/${sectionId}/photos`);
+}
+
+export async function addSectionPhotos(sectionId: string, photoUids: string[]): Promise<void> {
+  await request(`/sections/${sectionId}/photos`, {
+    method: 'POST',
+    body: JSON.stringify({ photo_uids: photoUids }),
+  });
+}
+
+export async function removeSectionPhotos(sectionId: string, photoUids: string[]): Promise<void> {
+  await request(`/sections/${sectionId}/photos`, {
+    method: 'DELETE',
+    body: JSON.stringify({ photo_uids: photoUids }),
+  });
+}
+
+export async function updateSectionPhoto(sectionId: string, photoUid: string, description: string, note: string): Promise<void> {
+  await request(`/sections/${sectionId}/photos/${photoUid}/description`, {
+    method: 'PUT',
+    body: JSON.stringify({ description, note }),
+  });
+}
+
+export async function createPage(bookId: string, format: PageFormat, sectionId: string): Promise<BookPage> {
+  return request<BookPage>(`/books/${bookId}/pages`, {
+    method: 'POST',
+    body: JSON.stringify({ format, section_id: sectionId }),
+  });
+}
+
+export async function updatePage(pageId: string, updates: { format?: PageFormat; section_id?: string; description?: string }): Promise<void> {
+  await request(`/pages/${pageId}`, {
+    method: 'PUT',
+    body: JSON.stringify(updates),
+  });
+}
+
+export async function deletePage(pageId: string): Promise<void> {
+  await request(`/pages/${pageId}`, { method: 'DELETE' });
+}
+
+export async function reorderPages(bookId: string, pageIds: string[]): Promise<void> {
+  await request(`/books/${bookId}/pages/reorder`, {
+    method: 'PUT',
+    body: JSON.stringify({ page_ids: pageIds }),
+  });
+}
+
+export async function assignSlot(pageId: string, slotIndex: number, photoUid: string): Promise<void> {
+  await request(`/pages/${pageId}/slots/${slotIndex}`, {
+    method: 'PUT',
+    body: JSON.stringify({ photo_uid: photoUid }),
+  });
+}
+
+export async function swapSlots(pageId: string, slotA: number, slotB: number): Promise<void> {
+  await request(`/pages/${pageId}/slots/swap`, {
+    method: 'POST',
+    body: JSON.stringify({ slot_a: slotA, slot_b: slotB }),
+  });
+}
+
+export async function clearSlot(pageId: string, slotIndex: number): Promise<void> {
+  await request(`/pages/${pageId}/slots/${slotIndex}`, { method: 'DELETE' });
 }
