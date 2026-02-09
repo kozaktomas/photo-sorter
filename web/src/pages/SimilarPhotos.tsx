@@ -4,11 +4,13 @@ import { useTranslation } from 'react-i18next';
 import { Search, AlertCircle, Check, X, Copy, ExternalLink } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '../components/Card';
 import { Button } from '../components/Button';
+import { Alert } from '../components/Alert';
 import { PageHeader } from '../components/PageHeader';
 import { PAGE_CONFIGS } from '../constants/pageConfig';
 import { PhotoCard } from '../components/PhotoCard';
 import { BulkActionBar } from '../components/BulkActionBar';
 import { findSimilarPhotos, getThumbnailUrl, getConfig } from '../api/client';
+import { percentToDistance } from '../constants';
 import { usePhotoSelection } from '../hooks/usePhotoSelection';
 import type { SimilarPhotosResponse, Config } from '../types';
 
@@ -70,7 +72,7 @@ export function SimilarPhotosPage() {
     try {
       const searchResult = await findSimilarPhotos({
         photo_uid: uid.trim(),
-        threshold: 1 - threshold / 100,
+        threshold: percentToDistance(threshold),
         limit,
       });
       setResult(searchResult);
@@ -195,9 +197,7 @@ export function SimilarPhotosPage() {
 
             {/* Error */}
             {searchError && (
-              <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
-                {searchError}
-              </div>
+              <Alert variant="error">{searchError}</Alert>
             )}
           </CardContent>
         </Card>

@@ -42,6 +42,20 @@ func NewPhotosHandler(cfg *config.Config, sm *middleware.SessionManager) *Photos
 	return h
 }
 
+// getEmbeddingReader returns the cached embedding reader, falling back to fetching from the database.
+// On failure, sends an error response and returns (nil, false).
+func (h *PhotosHandler) getEmbeddingReader(w http.ResponseWriter) (database.EmbeddingReader, bool) {
+	if h.embeddingReader != nil {
+		return h.embeddingReader, true
+	}
+	reader, err := database.GetEmbeddingReader(context.Background())
+	if err != nil {
+		respondError(w, http.StatusServiceUnavailable, "embeddings not available")
+		return nil, false
+	}
+	return reader, true
+}
+
 // RefreshReader reloads the embedding reader from the database.
 // Called after processing or index rebuild to pick up new data.
 func (h *PhotosHandler) RefreshReader() {
@@ -399,15 +413,9 @@ func (h *PhotosHandler) FindSimilarToCollection(w http.ResponseWriter, r *http.R
 
 	ctx := context.Background()
 
-	// Use cached embedding reader, fall back to fetching
-	embRepo := h.embeddingReader
-	if embRepo == nil {
-		var err error
-		embRepo, err = database.GetEmbeddingReader(ctx)
-		if err != nil {
-			respondError(w, http.StatusServiceUnavailable, "embeddings not available: run 'photo info --embedding' first")
-			return
-		}
+	embRepo, ok := h.getEmbeddingReader(w)
+	if !ok {
+		return
 	}
 
 	// Get PhotoPrism client
@@ -594,15 +602,9 @@ func (h *PhotosHandler) FindSimilar(w http.ResponseWriter, r *http.Request) {
 
 	ctx := context.Background()
 
-	// Use cached embedding reader, fall back to fetching
-	embRepo := h.embeddingReader
-	if embRepo == nil {
-		var err error
-		embRepo, err = database.GetEmbeddingReader(ctx)
-		if err != nil {
-			respondError(w, http.StatusServiceUnavailable, "embeddings not available: run 'photo info --embedding' first")
-			return
-		}
+	embRepo, ok := h.getEmbeddingReader(w)
+	if !ok {
+		return
 	}
 
 	// Get the source photo's embedding
@@ -689,15 +691,9 @@ func (h *PhotosHandler) SearchByText(w http.ResponseWriter, r *http.Request) {
 
 	ctx := context.Background()
 
-	// Use cached embedding reader, fall back to fetching
-	embRepo := h.embeddingReader
-	if embRepo == nil {
-		var err error
-		embRepo, err = database.GetEmbeddingReader(ctx)
-		if err != nil {
-			respondError(w, http.StatusServiceUnavailable, "embeddings not available: run 'photo process' first")
-			return
-		}
+	embRepo, ok := h.getEmbeddingReader(w)
+	if !ok {
+		return
 	}
 
 	// Translate Czech text to CLIP-optimized English if OpenAI token is available
@@ -775,15 +771,9 @@ func (h *PhotosHandler) EstimateEra(w http.ResponseWriter, r *http.Request) {
 
 	ctx := context.Background()
 
-	// Use cached embedding reader, fall back to fetching
-	embRepo := h.embeddingReader
-	if embRepo == nil {
-		var err error
-		embRepo, err = database.GetEmbeddingReader(ctx)
-		if err != nil {
-			respondError(w, http.StatusServiceUnavailable, "embeddings not available")
-			return
-		}
+	embRepo, ok := h.getEmbeddingReader(w)
+	if !ok {
+		return
 	}
 
 	// Get the photo's image embedding
@@ -948,14 +938,9 @@ func (h *PhotosHandler) FindDuplicates(w http.ResponseWriter, r *http.Request) {
 
 	ctx := context.Background()
 
-	embRepo := h.embeddingReader
-	if embRepo == nil {
-		var err error
-		embRepo, err = database.GetEmbeddingReader(ctx)
-		if err != nil {
-			respondError(w, http.StatusServiceUnavailable, "embeddings not available")
-			return
-		}
+	embRepo, ok := h.getEmbeddingReader(w)
+	if !ok {
+		return
 	}
 
 	// Get photo UIDs in scope
@@ -1176,14 +1161,9 @@ func (h *PhotosHandler) SuggestAlbums(w http.ResponseWriter, r *http.Request) {
 
 	ctx := context.Background()
 
-	embRepo := h.embeddingReader
-	if embRepo == nil {
-		var err error
-		embRepo, err = database.GetEmbeddingReader(ctx)
-		if err != nil {
-			respondError(w, http.StatusServiceUnavailable, "embeddings not available")
-			return
-		}
+	embRepo, ok := h.getEmbeddingReader(w)
+	if !ok {
+		return
 	}
 
 	pp := middleware.MustGetPhotoPrism(r.Context(), w)

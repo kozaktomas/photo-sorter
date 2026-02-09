@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from 'react';
 import { matchFaces } from '../../../api/client';
-import { RECOGNITION_CONCURRENCY, DEFAULT_RECOGNITION_CONFIDENCE } from '../../../constants';
+import { RECOGNITION_CONCURRENCY, DEFAULT_RECOGNITION_CONFIDENCE, percentToDistance } from '../../../constants';
 import type { Subject, FaceMatch } from '../../../types';
 
 export interface PersonResult {
@@ -54,7 +54,7 @@ export function useScanAll(): UseScanAllReturn {
     setResults([]);
     cancelRef.current = false;
 
-    const distanceThreshold = 1 - confidence / 100;
+    const distanceThreshold = percentToDistance(confidence);
     const total = eligibleSubjects.length;
     let completed = 0;
 

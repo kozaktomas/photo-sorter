@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { Search, Square } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '../../components/Card';
 import { Button } from '../../components/Button';
+import { Alert } from '../../components/Alert';
 import type { Subject } from '../../types';
 
 interface ScanProgress {
@@ -103,9 +104,7 @@ export function ScanConfigPanel({
 
         {/* Error */}
         {scanError && (
-          <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
-            {scanError}
-          </div>
+          <Alert variant="error">{scanError}</Alert>
         )}
       </CardContent>
     </Card>

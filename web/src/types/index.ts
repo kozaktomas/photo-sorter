@@ -460,22 +460,4 @@ export interface PhotoBookMembership {
 
 export type PageFormat = '4_landscape' | '2l_1p' | '1p_2l' | '2_portrait' | '1_fullscreen';
 
-export function pageFormatSlotCount(format: PageFormat): number {
-  switch (format) {
-    case '4_landscape': return 4;
-    case '2l_1p': return 3;
-    case '1p_2l': return 3;
-    case '2_portrait': return 2;
-    case '1_fullscreen': return 1;
-  }
-}
-
-export function pageFormatLabelKey(format: PageFormat): string {
-  switch (format) {
-    case '4_landscape': return 'books.editor.formatShort4Landscape';
-    case '2l_1p': return 'books.editor.formatShort2l1p';
-    case '1p_2l': return 'books.editor.formatShort1p2l';
-    case '2_portrait': return 'books.editor.formatShort2Portrait';
-    case '1_fullscreen': return 'books.editor.formatShort1Fullscreen';
-  }
-}
+export { pageFormatSlotCount, pageFormatLabelKey } from '../utils/pageFormats';

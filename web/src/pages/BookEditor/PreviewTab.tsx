@@ -1,19 +1,14 @@
 import { useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getThumbnailUrl } from '../../api/client';
-import type { BookDetail, BookPage, SectionPhoto, PageFormat } from '../../types';
-import { pageFormatLabelKey, pageFormatSlotCount } from '../../types';
+import type { BookDetail, BookPage, SectionPhoto } from '../../types';
+import { pageFormatLabelKey, pageFormatSlotCount, getGridClasses, getSlotClasses, getSlotPhotoUid } from '../../utils/pageFormats';
 
 interface Props {
   book: BookDetail;
   sectionPhotos: Record<string, SectionPhoto[]>;
   loadSectionPhotos: (sectionId: string) => void;
   initialPageId?: string | null;
-}
-
-function getSlotPhotoUid(page: BookPage, slotIndex: number): string {
-  const slot = page.slots.find(s => s.slot_index === slotIndex);
-  return slot?.photo_uid || '';
 }
 
 function PreviewPageSlot({ photoUid, description, className }: {
@@ -43,27 +38,6 @@ function PreviewPageSlot({ photoUid, description, className }: {
       )}
     </div>
   );
-}
-
-function getGridClasses(format: PageFormat): string {
-  switch (format) {
-    case '4_landscape':
-      return 'grid grid-cols-2 grid-rows-2';
-    case '2l_1p':
-      return 'grid grid-cols-[2fr_1fr] grid-rows-2';
-    case '1p_2l':
-      return 'grid grid-cols-[1fr_2fr] grid-rows-2';
-    case '2_portrait':
-      return 'grid grid-cols-2 grid-rows-1';
-    case '1_fullscreen':
-      return 'grid grid-cols-1 grid-rows-1';
-  }
-}
-
-function getSlotClasses(format: PageFormat, slotIndex: number): string {
-  if (format === '2l_1p' && slotIndex === 2) return 'col-start-2 row-start-1 row-span-2';
-  if (format === '1p_2l' && slotIndex === 0) return 'row-span-2';
-  return '';
 }
 
 function PreviewPage({ page, pageNumber, sectionTitle, descriptions }: {

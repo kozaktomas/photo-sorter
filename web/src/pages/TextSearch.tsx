@@ -3,10 +3,12 @@ import { useTranslation } from 'react-i18next';
 import { Search, AlertCircle, Check, X, FolderPlus, Tag } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '../components/Card';
 import { Button } from '../components/Button';
+import { Alert } from '../components/Alert';
 import { PageHeader } from '../components/PageHeader';
 import { PAGE_CONFIGS } from '../constants/pageConfig';
 import { PhotoCard } from '../components/PhotoCard';
 import { searchByText, getConfig, getAlbums, getLabels, addPhotosToAlbum, batchAddLabels } from '../api/client';
+import { percentToDistance } from '../constants';
 import type { TextSearchResponse, Config, Album, Label } from '../types';
 
 export function TextSearchPage() {
@@ -60,7 +62,7 @@ export function TextSearchPage() {
     try {
       const searchResult = await searchByText({
         text: text.trim(),
-        threshold: 1 - threshold / 100,
+        threshold: percentToDistance(threshold),
         limit,
       });
       setResult(searchResult);
@@ -248,9 +250,7 @@ export function TextSearchPage() {
 
             {/* Error */}
             {searchError && (
-              <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
-                {searchError}
-              </div>
+              <Alert variant="error">{searchError}</Alert>
             )}
           </CardContent>
         </Card>

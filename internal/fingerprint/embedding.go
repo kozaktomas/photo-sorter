@@ -55,13 +55,23 @@ type EmbeddingResult struct {
 	Dim        int
 }
 
-// ComputeEmbedding computes the embedding for an image using the embedding server
-func (c *EmbeddingClient) ComputeEmbedding(ctx context.Context, imageData []byte) ([]float32, error) {
-	// Create multipart form with image file
+// postMultipartImage constructs a multipart form with the image data and posts it to the given endpoint.
+// If withMIME is true, the part includes an explicit Content-Type header based on magic byte detection.
+func (c *EmbeddingClient) postMultipartImage(ctx context.Context, endpoint string, imageData []byte, withMIME bool) ([]byte, error) {
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
 
-	part, err := writer.CreateFormFile("file", "image.jpg")
+	var part io.Writer
+	var err error
+	if withMIME {
+		mimeType := detectMIMEType(imageData)
+		h := make(textproto.MIMEHeader)
+		h.Set("Content-Disposition", `form-data; name="file"; filename="image.jpg"`)
+		h.Set("Content-Type", mimeType)
+		part, err = writer.CreatePart(h)
+	} else {
+		part, err = writer.CreateFormFile("file", "image.jpg")
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to create form file: %w", err)
 	}
@@ -74,7 +84,7 @@ func (c *EmbeddingClient) ComputeEmbedding(ctx context.Context, imageData []byte
 		return nil, fmt.Errorf("failed to close multipart writer: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/embed/image", &buf)
+	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+endpoint, &buf)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -93,6 +103,16 @@ func (c *EmbeddingClient) ComputeEmbedding(ctx context.Context, imageData []byte
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("API error (status %d): %s", resp.StatusCode, string(body))
+	}
+
+	return body, nil
+}
+
+// ComputeEmbedding computes the embedding for an image using the embedding server
+func (c *EmbeddingClient) ComputeEmbedding(ctx context.Context, imageData []byte) ([]float32, error) {
+	body, err := c.postMultipartImage(ctx, "/embed/image", imageData, false)
+	if err != nil {
+		return nil, err
 	}
 
 	var embResp embeddingResponse
@@ -134,49 +154,9 @@ func detectMIMEType(data []byte) string {
 
 // ComputeEmbeddingWithMetadata computes the embedding and returns full metadata
 func (c *EmbeddingClient) ComputeEmbeddingWithMetadata(ctx context.Context, imageData []byte) (*EmbeddingResult, error) {
-	// Detect MIME type
-	mimeType := detectMIMEType(imageData)
-
-	// Create multipart form with image file and explicit Content-Type
-	var buf bytes.Buffer
-	writer := multipart.NewWriter(&buf)
-
-	h := make(textproto.MIMEHeader)
-	h.Set("Content-Disposition", `form-data; name="file"; filename="image.jpg"`)
-	h.Set("Content-Type", mimeType)
-
-	part, err := writer.CreatePart(h)
+	body, err := c.postMultipartImage(ctx, "/embed/image", imageData, true)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create form file: %w", err)
-	}
-
-	if _, err := part.Write(imageData); err != nil {
-		return nil, fmt.Errorf("failed to write image data: %w", err)
-	}
-
-	if err := writer.Close(); err != nil {
-		return nil, fmt.Errorf("failed to close multipart writer: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/embed/image", &buf)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API error (status %d): %s", resp.StatusCode, string(body))
+		return nil, err
 	}
 
 	var embResp embeddingResponse
@@ -309,49 +289,9 @@ func (c *EmbeddingClient) ComputeTextEmbeddingWithMetadata(ctx context.Context, 
 
 // ComputeFaceEmbeddings detects faces and computes their embeddings
 func (c *EmbeddingClient) ComputeFaceEmbeddings(ctx context.Context, imageData []byte) (*FaceResponse, error) {
-	// Detect MIME type
-	mimeType := detectMIMEType(imageData)
-
-	// Create multipart form with image file
-	var buf bytes.Buffer
-	writer := multipart.NewWriter(&buf)
-
-	h := make(textproto.MIMEHeader)
-	h.Set("Content-Disposition", `form-data; name="file"; filename="image.jpg"`)
-	h.Set("Content-Type", mimeType)
-
-	part, err := writer.CreatePart(h)
+	body, err := c.postMultipartImage(ctx, "/embed/face", imageData, true)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create form file: %w", err)
-	}
-
-	if _, err := part.Write(imageData); err != nil {
-		return nil, fmt.Errorf("failed to write image data: %w", err)
-	}
-
-	if err := writer.Close(); err != nil {
-		return nil, fmt.Errorf("failed to close multipart writer: %w", err)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/embed/face", &buf)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-	req.Header.Set("Content-Type", writer.FormDataContentType())
-
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("API error (status %d): %s", resp.StatusCode, string(body))
+		return nil, err
 	}
 
 	var faceResp FaceResponse

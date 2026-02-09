@@ -1,12 +1,6 @@
 import { useTranslation } from 'react-i18next';
+import { ACTION_PANEL_STYLES } from '../../constants/actions';
 import type { PhotoFace, MatchAction } from '../../types';
-
-const actionBgColors: Record<MatchAction, string> = {
-  create_marker: 'bg-red-500/10 text-red-400 border-red-500/30',
-  assign_person: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30',
-  already_done: 'bg-green-500/10 text-green-400 border-green-500/30',
-  unassign_person: 'bg-orange-500/10 text-orange-400 border-orange-500/30',
-};
 
 interface FacesListProps {
   faces: PhotoFace[];
@@ -40,7 +34,7 @@ export function FacesList({ faces, selectedFaceIndex, onFaceSelect }: FacesListP
           >
             <div className="flex items-center justify-between gap-2">
               <span className="font-medium text-white text-sm shrink-0">Face #{index + 1}</span>
-              <span className={`text-xs px-1.5 py-0.5 rounded border truncate ${actionBgColors[face.action]}`}>
+              <span className={`text-xs px-1.5 py-0.5 rounded border truncate ${ACTION_PANEL_STYLES[face.action]}`}>
                 {face.marker_name || actionLabels[face.action]}
               </span>
             </div>

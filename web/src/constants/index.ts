@@ -32,5 +32,10 @@ export const DEFAULT_DUPLICATE_LIMIT = 100;
 export const DEFAULT_SUGGEST_ALBUM_THRESHOLD = 70; // percentage (maps to 0.70 cosine similarity)
 export const DEFAULT_SUGGEST_ALBUM_TOP_K = 20; // max photos suggested per album
 
+// Threshold conversion: percentage (0-100) to cosine distance (1-0)
+export function percentToDistance(percent: number): number {
+  return 1 - percent / 100;
+}
+
 // Re-export action constants for convenience
 export * from './actions';

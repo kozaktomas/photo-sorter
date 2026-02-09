@@ -487,7 +487,7 @@ func TestPhotosHandler_FindSimilar_NoEmbedding(t *testing.T) {
 	handler.FindSimilar(recorder, req)
 
 	assertStatusCode(t, recorder, http.StatusServiceUnavailable)
-	assertJSONError(t, recorder, "embeddings not available: run 'photo info --embedding' first")
+	assertJSONError(t, recorder, "embeddings not available")
 }
 
 func TestPhotosHandler_FindSimilar_MissingPhotoUID(t *testing.T) {
@@ -611,7 +611,7 @@ func TestPhotosHandler_SearchByText_NoEmbeddings(t *testing.T) {
 	handler.SearchByText(recorder, req)
 
 	assertStatusCode(t, recorder, http.StatusServiceUnavailable)
-	assertJSONError(t, recorder, "embeddings not available: run 'photo process' first")
+	assertJSONError(t, recorder, "embeddings not available")
 }
 
 func TestPhotosHandler_SearchByText_InvalidJSON(t *testing.T) {

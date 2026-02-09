@@ -125,54 +125,18 @@ func (h *SortHandler) Status(w http.ResponseWriter, r *http.Request) {
 
 // Events streams job events via SSE
 func (h *SortHandler) Events(w http.ResponseWriter, r *http.Request) {
-	jobID := chi.URLParam(r, "jobId")
-	if jobID == "" {
-		respondError(w, http.StatusBadRequest, "missing job ID")
-		return
-	}
-
-	job := h.jobManager.GetJob(jobID)
-	if job == nil {
-		respondError(w, http.StatusNotFound, "job not found")
-		return
-	}
-
-	// Set SSE headers
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		respondError(w, http.StatusInternalServerError, "streaming not supported")
-		return
-	}
-
-	// Subscribe to job events
-	eventCh := job.AddListener()
-	defer job.RemoveListener(eventCh)
-
-	// Send initial status
-	sendSSEEvent(w, flusher, "status", job)
-
-	// Stream events
-	for {
-		select {
-		case <-r.Context().Done():
-			return
-		case event, ok := <-eventCh:
-			if !ok {
-				return
+	streamSSEEvents(w, r,
+		func(id string) SSEJob {
+			job := h.jobManager.GetJob(id)
+			if job == nil {
+				return nil
 			}
-			sendSSEEvent(w, flusher, event.Type, event)
-
-			// Close connection if job is done
-			if job.Status == JobStatusCompleted || job.Status == JobStatusFailed || job.Status == JobStatusCancelled {
-				return
-			}
-		}
-	}
+			return job
+		},
+		func(job SSEJob) interface{} {
+			return job
+		},
+	)
 }
 
 // Cancel cancels a sort job

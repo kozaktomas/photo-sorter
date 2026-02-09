@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Search, ExternalLink } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '../../components/Card';
 import { Button } from '../../components/Button';
+import { Alert } from '../../components/Alert';
 import { FormInput } from '../../components/FormInput';
 import { FormSelect } from '../../components/FormSelect';
 import type { Subject } from '../../types';
@@ -115,9 +116,7 @@ export function FacesConfigPanel({
 
         {/* Error */}
         {searchError && (
-          <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
-            {searchError}
-          </div>
+          <Alert variant="error">{searchError}</Alert>
         )}
       </CardContent>
     </Card>

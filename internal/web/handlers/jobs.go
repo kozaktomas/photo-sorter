@@ -22,6 +22,8 @@ const (
 
 // SortJob represents an async sort job
 type SortJob struct {
+	EventBroadcaster
+
 	ID              string           `json:"id"`
 	AlbumUID        string           `json:"album_uid"`
 	AlbumTitle      string           `json:"album_title"`
@@ -35,11 +37,22 @@ type SortJob struct {
 	Options         SortJobOptions   `json:"options"`
 	Result          *SortJobResult   `json:"result,omitempty"`
 
-	// Internal fields
-	cancel    context.CancelFunc
-	events    chan JobEvent
-	listeners []chan JobEvent
-	mu        sync.RWMutex
+	events chan JobEvent
+}
+
+// GetStatus returns the current job status (implements SSEJob)
+func (j *SortJob) GetStatus() JobStatus {
+	j.mu.RLock()
+	defer j.mu.RUnlock()
+	return j.Status
+}
+
+// Cancel cancels the sort job
+func (j *SortJob) Cancel() {
+	j.EventBroadcaster.Cancel()
+	j.mu.Lock()
+	j.Status = JobStatusCancelled
+	j.mu.Unlock()
 }
 
 // SortJobOptions represents sort job options
@@ -78,22 +91,30 @@ type JobEvent struct {
 	Data    interface{} `json:"data,omitempty"`
 }
 
-// AddListener adds an event listener to the job
-func (j *SortJob) AddListener() chan JobEvent {
-	j.mu.Lock()
-	defer j.mu.Unlock()
+// EventBroadcaster provides listener management and event broadcasting for async jobs.
+// Embed this in job structs to get AddListener, RemoveListener, and SendEvent methods.
+type EventBroadcaster struct {
+	cancel    context.CancelFunc
+	listeners []chan JobEvent
+	mu        sync.RWMutex
+}
+
+// AddListener adds an event listener
+func (b *EventBroadcaster) AddListener() chan JobEvent {
+	b.mu.Lock()
+	defer b.mu.Unlock()
 	ch := make(chan JobEvent, constants.EventChannelBuffer)
-	j.listeners = append(j.listeners, ch)
+	b.listeners = append(b.listeners, ch)
 	return ch
 }
 
-// RemoveListener removes an event listener from the job
-func (j *SortJob) RemoveListener(ch chan JobEvent) {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	for i, listener := range j.listeners {
+// RemoveListener removes an event listener
+func (b *EventBroadcaster) RemoveListener(ch chan JobEvent) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	for i, listener := range b.listeners {
 		if listener == ch {
-			j.listeners = append(j.listeners[:i], j.listeners[i+1:]...)
+			b.listeners = append(b.listeners[:i], b.listeners[i+1:]...)
 			close(ch)
 			return
 		}
@@ -101,10 +122,10 @@ func (j *SortJob) RemoveListener(ch chan JobEvent) {
 }
 
 // SendEvent sends an event to all listeners
-func (j *SortJob) SendEvent(event JobEvent) {
-	j.mu.RLock()
-	defer j.mu.RUnlock()
-	for _, listener := range j.listeners {
+func (b *EventBroadcaster) SendEvent(event JobEvent) {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	for _, listener := range b.listeners {
 		select {
 		case listener <- event:
 		default:
@@ -113,15 +134,19 @@ func (j *SortJob) SendEvent(event JobEvent) {
 	}
 }
 
-// Cancel cancels the job
-func (j *SortJob) Cancel() {
-	if j.cancel != nil {
-		j.cancel()
+// Cancel cancels the job via context and sends a cancelled event
+func (b *EventBroadcaster) Cancel() {
+	if b.cancel != nil {
+		b.cancel()
 	}
-	j.mu.Lock()
-	j.Status = JobStatusCancelled
-	j.mu.Unlock()
-	j.SendEvent(JobEvent{Type: "cancelled", Message: "Job cancelled by user"})
+	b.SendEvent(JobEvent{Type: "cancelled", Message: "Job cancelled by user"})
+}
+
+// SSEJob is the interface required by streamSSEEvents to stream job events via SSE.
+type SSEJob interface {
+	AddListener() chan JobEvent
+	RemoveListener(ch chan JobEvent)
+	GetStatus() JobStatus
 }
 
 // JobManager manages async jobs

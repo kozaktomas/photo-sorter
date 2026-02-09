@@ -84,7 +84,7 @@ func doPostJSON[T any](pp *PhotoPrism, endpoint string, requestBody interface{})
 // doPostJSONCreated performs a POST request that accepts either 200 OK or 201 Created.
 // Useful for endpoints that may return either status code.
 func doPostJSONCreated[T any](pp *PhotoPrism, endpoint string, requestBody interface{}) (*T, error) {
-	return doRequestJSONMultiStatus[T](pp, "POST", endpoint, requestBody, []int{http.StatusOK, http.StatusCreated})
+	return doRequestJSON[T](pp, "POST", endpoint, requestBody, http.StatusOK, http.StatusCreated)
 }
 
 // doPutJSON performs a PUT request with a JSON body and unmarshals the JSON response.
@@ -127,55 +127,8 @@ func doDeleteJSON[T any](pp *PhotoPrism, endpoint string, requestBody interface{
 }
 
 // doRequestJSON is the internal helper that performs HTTP requests with JSON body and response.
-func doRequestJSON[T any](pp *PhotoPrism, method, endpoint string, requestBody interface{}, expectedStatus int) (*T, error) {
-	url := pp.Url + "/" + endpoint
-
-	var bodyReader io.Reader
-	if requestBody != nil {
-		jsonBody, err := json.Marshal(requestBody)
-		if err != nil {
-			return nil, fmt.Errorf("could not marshal request body: %w", err)
-		}
-		bodyReader = bytes.NewReader(jsonBody)
-	}
-
-	req, err := http.NewRequest(method, url, bodyReader)
-	if err != nil {
-		return nil, fmt.Errorf("could not create request: %w", err)
-	}
-
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", pp.token))
-	if requestBody != nil {
-		req.Header.Set("Content-Type", "application/json")
-	}
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("could not send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != expectedStatus {
-		return nil, fmt.Errorf("request failed with status %d: %s", resp.StatusCode, readErrorBody(resp.Body))
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("could not read response body: %w", err)
-	}
-
-	pp.captureResponse(endpoint, body)
-
-	var result T
-	if err := json.Unmarshal(body, &result); err != nil {
-		return nil, fmt.Errorf("could not unmarshal response: %w", err)
-	}
-
-	return &result, nil
-}
-
-// doRequestJSONMultiStatus performs HTTP requests accepting multiple valid status codes.
-func doRequestJSONMultiStatus[T any](pp *PhotoPrism, method, endpoint string, requestBody interface{}, validStatuses []int) (*T, error) {
+// It accepts one or more valid status codes. If the response status doesn't match any, an error is returned.
+func doRequestJSON[T any](pp *PhotoPrism, method, endpoint string, requestBody interface{}, expectedStatuses ...int) (*T, error) {
 	url := pp.Url + "/" + endpoint
 
 	var bodyReader io.Reader
@@ -204,7 +157,7 @@ func doRequestJSONMultiStatus[T any](pp *PhotoPrism, method, endpoint string, re
 	defer resp.Body.Close()
 
 	validStatus := false
-	for _, s := range validStatuses {
+	for _, s := range expectedStatuses {
 		if resp.StatusCode == s {
 			validStatus = true
 			break

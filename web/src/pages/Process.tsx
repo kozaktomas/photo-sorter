@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Cpu, Play, Square, CheckCircle, XCircle, AlertCircle, Database, RefreshCw, RefreshCcw } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '../components/Card';
 import { Button } from '../components/Button';
+import { Alert } from '../components/Alert';
 import { PageHeader } from '../components/PageHeader';
 import { PAGE_CONFIGS } from '../constants/pageConfig';
 import { FormInput } from '../components/FormInput';
@@ -186,9 +187,7 @@ export function ProcessPage() {
       />
 
       {!isWritable && (
-        <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 rounded-lg text-yellow-400">
-          {t('pages:process.unavailableMessage')}
-        </div>
+        <Alert variant="warning">{t('pages:process.unavailableMessage')}</Alert>
       )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -337,9 +336,7 @@ export function ProcessPage() {
 
                 {/* Error message */}
                 {currentJob.error && (
-                  <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
-                    {currentJob.error}
-                  </div>
+                  <Alert variant="error">{currentJob.error}</Alert>
                 )}
 
                 {/* Results */}
@@ -424,7 +421,7 @@ export function ProcessPage() {
 
           {/* Success message */}
           {rebuildResult && (
-            <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg text-green-400 text-sm space-y-1">
+            <Alert variant="success" className="space-y-1">
               <div className="flex items-center">
                 <CheckCircle className="h-4 w-4 mr-2" />
                 {t('pages:process.rebuildIndex.success')}
@@ -434,17 +431,17 @@ export function ProcessPage() {
                 <div>{t('pages:process.rebuildIndex.embeddingsIndexed', { count: rebuildResult.embedding_count })}</div>
                 <div>{t('pages:process.rebuildIndex.duration', { ms: rebuildResult.duration_ms })}</div>
               </div>
-            </div>
+            </Alert>
           )}
 
           {/* Error message */}
           {rebuildError && (
-            <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
+            <Alert variant="error">
               <div className="flex items-center">
                 <XCircle className="h-4 w-4 mr-2" />
                 {rebuildError}
               </div>
-            </div>
+            </Alert>
           )}
         </CardContent>
       </Card>
@@ -474,7 +471,7 @@ export function ProcessPage() {
 
           {/* Success message */}
           {syncResult && (
-            <div className="p-3 bg-green-500/10 border border-green-500/20 rounded-lg text-green-400 text-sm space-y-1">
+            <Alert variant="success" className="space-y-1">
               <div className="flex items-center">
                 <CheckCircle className="h-4 w-4 mr-2" />
                 {t('pages:process.syncCache.success')}
@@ -487,17 +484,17 @@ export function ProcessPage() {
                 )}
                 <div>{t('pages:process.syncCache.duration', { ms: syncResult.duration_ms })}</div>
               </div>
-            </div>
+            </Alert>
           )}
 
           {/* Error message */}
           {syncError && (
-            <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
+            <Alert variant="error">
               <div className="flex items-center">
                 <XCircle className="h-4 w-4 mr-2" />
                 {syncError}
               </div>
-            </div>
+            </Alert>
           )}
         </CardContent>
       </Card>

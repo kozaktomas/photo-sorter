@@ -1,8 +1,8 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PageSlotComponent } from './PageSlot';
-import type { BookPage, PageFormat, SectionPhoto } from '../../types';
-import { pageFormatSlotCount } from '../../types';
+import type { BookPage, SectionPhoto } from '../../types';
+import { pageFormatSlotCount, getGridClasses, getSlotClasses, getSlotPhotoUid } from '../../utils/pageFormats';
 
 interface Props {
   page: BookPage;
@@ -10,42 +10,6 @@ interface Props {
   sectionPhotos?: SectionPhoto[];
   onEditDescription?: (photoUid: string) => void;
   onUpdatePageDescription?: (desc: string) => void;
-}
-
-function getSlotPhotoUid(page: BookPage, slotIndex: number): string {
-  const slot = page.slots.find(s => s.slot_index === slotIndex);
-  return slot?.photo_uid || '';
-}
-
-function getGridClasses(format: PageFormat): string {
-  switch (format) {
-    case '4_landscape':
-      return 'grid grid-cols-2 grid-rows-2';
-    case '2l_1p':
-      return 'grid grid-cols-[2fr_1fr] grid-rows-2';
-    case '1p_2l':
-      return 'grid grid-cols-[1fr_2fr] grid-rows-2';
-    case '2_portrait':
-      return 'grid grid-cols-2 grid-rows-1';
-    case '1_fullscreen':
-      return 'grid grid-cols-1 grid-rows-1';
-  }
-}
-
-function getSlotClasses(format: PageFormat, slotIndex: number): string {
-  if (format === '2l_1p') {
-    // slots 0,1 are landscape stacked vertically on the left
-    // slot 2 is portrait on the right (full height)
-    if (slotIndex === 2) return 'col-start-2 row-start-1 row-span-2';
-    return '';
-  }
-  if (format === '1p_2l') {
-    // slot 0 is portrait on the left (full height)
-    // slots 1,2 are landscape stacked vertically on the right
-    if (slotIndex === 0) return 'row-span-2';
-    return '';
-  }
-  return '';
 }
 
 export function PageTemplate({ page, onClearSlot, sectionPhotos, onEditDescription, onUpdatePageDescription }: Props) {

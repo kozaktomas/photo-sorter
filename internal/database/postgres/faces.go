@@ -696,85 +696,17 @@ func (r *FaceRepository) MarkFacesProcessedBatch(ctx context.Context, records []
 	return nil
 }
 
-func scanFaces(rows *sql.Rows) ([]database.StoredFace, error) {
-	var faces []database.StoredFace
-
-	for rows.Next() {
-		var face database.StoredFace
-		var vec pgvector.Vector
-		var bbox pq.Float64Array
-		var markerUID, subjectUID, subjectName, fileUID sql.NullString
-		var photoWidth, photoHeight, orientation sql.NullInt32
-		var model sql.NullString
-
-		if err := rows.Scan(
-			&face.ID,
-			&face.PhotoUID,
-			&face.FaceIndex,
-			&vec,
-			&bbox,
-			&face.DetScore,
-			&model,
-			&face.Dim,
-			&face.CreatedAt,
-			&markerUID,
-			&subjectUID,
-			&subjectName,
-			&photoWidth,
-			&photoHeight,
-			&orientation,
-			&fileUID,
-		); err != nil {
-			return nil, fmt.Errorf("scan face: %w", err)
-		}
-
-		face.Embedding = vec.Slice()
-		face.BBox = []float64(bbox)
-		if model.Valid {
-			face.Model = model.String
-		}
-		if markerUID.Valid {
-			face.MarkerUID = markerUID.String
-		}
-		if subjectUID.Valid {
-			face.SubjectUID = subjectUID.String
-		}
-		if subjectName.Valid {
-			face.SubjectName = subjectName.String
-		}
-		if fileUID.Valid {
-			face.FileUID = fileUID.String
-		}
-		if photoWidth.Valid {
-			face.PhotoWidth = int(photoWidth.Int32)
-		}
-		if photoHeight.Valid {
-			face.PhotoHeight = int(photoHeight.Int32)
-		}
-		if orientation.Valid {
-			face.Orientation = int(orientation.Int32)
-		}
-
-		faces = append(faces, face)
-	}
-
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate faces: %w", err)
-	}
-
-	return faces, nil
-}
-
-func scanFaceWithDistance(rows *sql.Rows) (database.StoredFace, float64, error) {
+// scanFaceRow scans a single row into a StoredFace, with optional extra scan destinations
+// appended after the standard 16 face columns (e.g., a distance column).
+func scanFaceRow(scanner interface{ Scan(...interface{}) error }, extraDest ...interface{}) (database.StoredFace, error) {
 	var face database.StoredFace
 	var vec pgvector.Vector
 	var bbox pq.Float64Array
 	var markerUID, subjectUID, subjectName, fileUID sql.NullString
 	var photoWidth, photoHeight, orientation sql.NullInt32
 	var model sql.NullString
-	var dist float64
 
-	if err := rows.Scan(
+	dest := []interface{}{
 		&face.ID,
 		&face.PhotoUID,
 		&face.FaceIndex,
@@ -791,9 +723,11 @@ func scanFaceWithDistance(rows *sql.Rows) (database.StoredFace, float64, error) 
 		&photoHeight,
 		&orientation,
 		&fileUID,
-		&dist,
-	); err != nil {
-		return face, 0, fmt.Errorf("scan face: %w", err)
+	}
+	dest = append(dest, extraDest...)
+
+	if err := scanner.Scan(dest...); err != nil {
+		return face, fmt.Errorf("scan face: %w", err)
 	}
 
 	face.Embedding = vec.Slice()
@@ -823,7 +757,28 @@ func scanFaceWithDistance(rows *sql.Rows) (database.StoredFace, float64, error) 
 		face.Orientation = int(orientation.Int32)
 	}
 
-	return face, dist, nil
+	return face, nil
+}
+
+func scanFaces(rows *sql.Rows) ([]database.StoredFace, error) {
+	var faces []database.StoredFace
+	for rows.Next() {
+		face, err := scanFaceRow(rows)
+		if err != nil {
+			return nil, err
+		}
+		faces = append(faces, face)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate faces: %w", err)
+	}
+	return faces, nil
+}
+
+func scanFaceWithDistance(rows *sql.Rows) (database.StoredFace, float64, error) {
+	var dist float64
+	face, err := scanFaceRow(rows, &dist)
+	return face, dist, err
 }
 
 // GetAllFaces retrieves all faces from the database

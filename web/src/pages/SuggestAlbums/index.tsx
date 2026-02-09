@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Search, AlertCircle, FolderPlus } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '../../components/Card';
 import { Button } from '../../components/Button';
+import { Alert } from '../../components/Alert';
 import { PageHeader } from '../../components/PageHeader';
 import { PAGE_CONFIGS } from '../../constants/pageConfig';
 import { PhotoCard } from '../../components/PhotoCard';
@@ -143,9 +144,7 @@ export function SuggestAlbumsPage() {
             </Button>
 
             {searchError && (
-              <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
-                {searchError}
-              </div>
+              <Alert variant="error">{searchError}</Alert>
             )}
           </CardContent>
         </Card>

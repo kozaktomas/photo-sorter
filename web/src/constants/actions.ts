@@ -1,49 +1,55 @@
 import type { MatchAction } from '../types';
 
-// Action labels for display
-export const ACTION_LABELS: Record<MatchAction, string> = {
-  create_marker: 'New',
-  assign_person: 'Assign',
-  already_done: 'Done',
-  unassign_person: 'Outlier',
+interface ActionStyle {
+  label: string;
+  descriptiveLabel: string;
+  borderColor: string;
+  bgColor: string;
+  panelStyle: string;
+}
+
+const ACTION_CONFIG: Record<MatchAction, ActionStyle> = {
+  create_marker: {
+    label: 'New',
+    descriptiveLabel: 'Unassigned',
+    borderColor: 'border-red-500',
+    bgColor: 'bg-red-500',
+    panelStyle: 'bg-red-500/10 text-red-400 border-red-500/30',
+  },
+  assign_person: {
+    label: 'Assign',
+    descriptiveLabel: 'Needs assignment',
+    borderColor: 'border-yellow-500',
+    bgColor: 'bg-yellow-500',
+    panelStyle: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30',
+  },
+  already_done: {
+    label: 'Done',
+    descriptiveLabel: 'Assigned',
+    borderColor: 'border-green-500',
+    bgColor: 'bg-green-500',
+    panelStyle: 'bg-green-500/10 text-green-400 border-green-500/30',
+  },
+  unassign_person: {
+    label: 'Outlier',
+    descriptiveLabel: 'Outlier',
+    borderColor: 'border-orange-500',
+    bgColor: 'bg-orange-500',
+    panelStyle: 'bg-orange-500/10 text-orange-400 border-orange-500/30',
+  },
 };
 
-// More descriptive labels for face assignment panel
-export const ACTION_DESCRIPTIVE_LABELS: Record<MatchAction, string> = {
-  create_marker: 'Unassigned',
-  assign_person: 'Needs assignment',
-  already_done: 'Assigned',
-  unassign_person: 'Outlier',
-};
+// Backward-compatible derived exports
+function derive<K extends keyof ActionStyle>(key: K): Record<MatchAction, string> {
+  const result = {} as Record<MatchAction, string>;
+  for (const [action, style] of Object.entries(ACTION_CONFIG)) {
+    result[action as MatchAction] = style[key];
+  }
+  return result;
+}
 
-// Border colors for bounding boxes and cards
-export const ACTION_BORDER_COLORS: Record<MatchAction, string> = {
-  create_marker: 'border-red-500',
-  assign_person: 'border-yellow-500',
-  already_done: 'border-green-500',
-  unassign_person: 'border-orange-500',
-};
-
-// Background colors for badges
-export const ACTION_BG_COLORS: Record<MatchAction, string> = {
-  create_marker: 'bg-red-500',
-  assign_person: 'bg-yellow-500',
-  already_done: 'bg-green-500',
-  unassign_person: 'bg-orange-500',
-};
-
-// Combined background + text + border for panel badges
-export const ACTION_PANEL_STYLES: Record<MatchAction, string> = {
-  create_marker: 'bg-red-500/10 text-red-400 border-red-500/30',
-  assign_person: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30',
-  already_done: 'bg-green-500/10 text-green-400 border-green-500/30',
-  unassign_person: 'bg-orange-500/10 text-orange-400 border-orange-500/30',
-};
-
-// Solid color dots for summary views
-export const ACTION_DOT_COLORS: Record<MatchAction, string> = {
-  create_marker: 'bg-red-500',
-  assign_person: 'bg-yellow-500',
-  already_done: 'bg-green-500',
-  unassign_person: 'bg-orange-500',
-};
+export const ACTION_LABELS = derive('label');
+export const ACTION_DESCRIPTIVE_LABELS = derive('descriptiveLabel');
+export const ACTION_BORDER_COLORS = derive('borderColor');
+export const ACTION_BG_COLORS = derive('bgColor');
+export const ACTION_PANEL_STYLES = derive('panelStyle');

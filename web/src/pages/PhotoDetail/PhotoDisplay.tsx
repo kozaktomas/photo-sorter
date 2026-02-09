@@ -1,14 +1,8 @@
 import { useState, useEffect } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { getThumbnailUrl } from '../../api/client';
-import type { Photo, PhotoFace, MatchAction } from '../../types';
-
-const actionColors: Record<MatchAction, string> = {
-  create_marker: 'border-red-500',
-  assign_person: 'border-yellow-500',
-  already_done: 'border-green-500',
-  unassign_person: 'border-orange-500',
-};
+import { ACTION_BORDER_COLORS } from '../../constants/actions';
+import type { Photo, PhotoFace } from '../../types';
 
 interface PhotoDisplayProps {
   photo: Photo;
@@ -88,7 +82,7 @@ export function PhotoDisplay({ photo, faces, selectedFaceIndex, onFaceSelect, ha
           <div
             key={face.face_index}
             className={`absolute border-2 cursor-pointer transition-all ${
-              selectedFaceIndex === index ? 'border-blue-400 shadow-lg shadow-blue-500/30' : actionColors[face.action]
+              selectedFaceIndex === index ? 'border-blue-400 shadow-lg shadow-blue-500/30' : ACTION_BORDER_COLORS[face.action]
             } ${selectedFaceIndex === index ? 'ring-2 ring-blue-400 ring-offset-2 ring-offset-transparent' : ''}`}
             style={{
               left: `${face.bbox_rel[0] * 100}%`,

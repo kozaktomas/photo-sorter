@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { ChevronLeft, ChevronRight, Archive, SkipForward } from 'lucide-react';
 import { Button } from '../../components/Button';
+import { Alert } from '../../components/Alert';
 import { getThumbnailUrl } from '../../api/client';
 import { MetadataDiff } from './MetadataDiff';
 import type { Photo } from '../../types';
@@ -126,9 +127,7 @@ export function CompareView({
 
       {/* Error message */}
       {archiveError && (
-        <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm text-center">
-          {archiveError}
-        </div>
+        <Alert variant="error" className="text-center">{archiveError}</Alert>
       )}
 
       {/* Metadata diff */}

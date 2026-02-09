@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { matchFaces } from '../../../api/client';
-import { DEFAULT_FACE_THRESHOLD } from '../../../constants';
+import { DEFAULT_FACE_THRESHOLD, percentToDistance } from '../../../constants';
 import type { FaceMatchResult, FaceMatch, MatchAction } from '../../../types';
 
 export type FilterTab = 'all' | MatchAction;
@@ -53,7 +53,7 @@ export function useFaceSearch(): UseFaceSearchReturn {
     try {
       const matchResult = await matchFaces({
         person_name: selectedPerson,
-        threshold: 1 - threshold / 100,
+        threshold: percentToDistance(threshold),
         limit,
       });
       setResult(matchResult);

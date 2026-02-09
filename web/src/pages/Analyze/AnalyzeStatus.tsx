@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Sparkles, CheckCircle, XCircle, AlertCircle, Square, FolderOpen } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '../../components/Card';
 import { Button } from '../../components/Button';
+import { Alert } from '../../components/Alert';
 import { USD_TO_CZK } from '../../constants';
 import type { SortJob } from '../../types';
 
@@ -85,9 +86,7 @@ export function AnalyzeStatus({ currentJob, selectedAlbum }: AnalyzeStatusProps)
 
             {/* Error message */}
             {currentJob.error && (
-              <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
-                {currentJob.error}
-              </div>
+              <Alert variant="error">{currentJob.error}</Alert>
             )}
 
             {/* Results */}

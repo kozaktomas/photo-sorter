@@ -155,15 +155,7 @@ func (p *OllamaProvider) AnalyzePhoto(ctx context.Context, imageData []byte, met
 
 func (p *OllamaProvider) EstimateAlbumDate(ctx context.Context, albumTitle string, albumDescription string, photoDescriptions []string) (*AlbumDateEstimate, error) {
 	systemPrompt := buildAlbumDatePrompt()
-
-	userContent := fmt.Sprintf("Album title: %s\n", albumTitle)
-	if albumDescription != "" {
-		userContent += fmt.Sprintf("Album description: %s\n", albumDescription)
-	}
-	userContent += "\nPhoto descriptions:\n"
-	for i, desc := range photoDescriptions {
-		userContent += fmt.Sprintf("%d. %s\n", i+1, desc)
-	}
+	userContent := buildAlbumDateContent(albumTitle, albumDescription, photoDescriptions)
 
 	messages := []ollamaMessage{
 		{

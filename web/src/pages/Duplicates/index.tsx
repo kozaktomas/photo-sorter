@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Search, AlertCircle, Check, X, ArrowLeftRight } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '../../components/Card';
 import { Button } from '../../components/Button';
+import { Alert } from '../../components/Alert';
 import { PageHeader } from '../../components/PageHeader';
 import { PAGE_CONFIGS } from '../../constants/pageConfig';
 import { PhotoCard } from '../../components/PhotoCard';
@@ -11,7 +12,7 @@ import { BulkActionBar } from '../../components/BulkActionBar';
 import { StatsGrid } from '../../components/StatsGrid';
 import { findDuplicates, getAlbums, getConfig } from '../../api/client';
 import { usePhotoSelection } from '../../hooks/usePhotoSelection';
-import { DEFAULT_DUPLICATE_THRESHOLD, DEFAULT_DUPLICATE_LIMIT, MAX_ALBUMS_FETCH } from '../../constants';
+import { DEFAULT_DUPLICATE_THRESHOLD, DEFAULT_DUPLICATE_LIMIT, MAX_ALBUMS_FETCH, percentToDistance } from '../../constants';
 import type { DuplicatesResponse, Config, Album } from '../../types';
 
 export function DuplicatesPage() {
@@ -59,7 +60,7 @@ export function DuplicatesPage() {
     try {
       const data = await findDuplicates({
         album_uid: scopeAlbum || undefined,
-        threshold: 1 - threshold / 100, // Convert percentage to cosine distance
+        threshold: percentToDistance(threshold),
         limit,
       });
       setResult(data);
@@ -158,9 +159,7 @@ export function DuplicatesPage() {
             </Button>
 
             {searchError && (
-              <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg text-red-400 text-sm">
-                {searchError}
-              </div>
+              <Alert variant="error">{searchError}</Alert>
             )}
           </CardContent>
         </Card>

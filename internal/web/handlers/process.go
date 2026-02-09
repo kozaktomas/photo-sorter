@@ -22,6 +22,8 @@ import (
 
 // ProcessJob represents an async photo processing job
 type ProcessJob struct {
+	EventBroadcaster
+
 	ID              string            `json:"id"`
 	Status          JobStatus         `json:"status"`
 	TotalPhotos     int               `json:"total_photos"`
@@ -32,10 +34,6 @@ type ProcessJob struct {
 	CompletedAt     *time.Time        `json:"completed_at,omitempty"`
 	Options         ProcessJobOptions `json:"options"`
 	Result          *ProcessJobResult `json:"result,omitempty"`
-
-	cancel    context.CancelFunc
-	listeners []chan JobEvent
-	mu        sync.RWMutex
 }
 
 // ProcessJobOptions represents options for a process job
@@ -58,50 +56,19 @@ type ProcessJobResult struct {
 	TotalFacePhotos int   `json:"total_face_photos"`
 }
 
-// AddListener adds an event listener to the process job
-func (j *ProcessJob) AddListener() chan JobEvent {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	ch := make(chan JobEvent, constants.EventChannelBuffer)
-	j.listeners = append(j.listeners, ch)
-	return ch
-}
-
-// RemoveListener removes an event listener from the process job
-func (j *ProcessJob) RemoveListener(ch chan JobEvent) {
-	j.mu.Lock()
-	defer j.mu.Unlock()
-	for i, listener := range j.listeners {
-		if listener == ch {
-			j.listeners = append(j.listeners[:i], j.listeners[i+1:]...)
-			close(ch)
-			return
-		}
-	}
-}
-
-// SendEvent sends an event to all listeners
-func (j *ProcessJob) SendEvent(event JobEvent) {
+// GetStatus returns the current job status (implements SSEJob)
+func (j *ProcessJob) GetStatus() JobStatus {
 	j.mu.RLock()
 	defer j.mu.RUnlock()
-	for _, listener := range j.listeners {
-		select {
-		case listener <- event:
-		default:
-			// Listener buffer full, skip
-		}
-	}
+	return j.Status
 }
 
 // Cancel cancels the process job
 func (j *ProcessJob) Cancel() {
-	if j.cancel != nil {
-		j.cancel()
-	}
+	j.EventBroadcaster.Cancel()
 	j.mu.Lock()
 	j.Status = JobStatusCancelled
 	j.mu.Unlock()
-	j.SendEvent(JobEvent{Type: "cancelled", Message: "Job cancelled by user"})
 }
 
 // ProcessJobManager manages process jobs (only one at a time)
@@ -236,54 +203,18 @@ func (h *ProcessHandler) Start(w http.ResponseWriter, r *http.Request) {
 
 // Events streams process job events via SSE
 func (h *ProcessHandler) Events(w http.ResponseWriter, r *http.Request) {
-	jobID := chi.URLParam(r, "jobId")
-	if jobID == "" {
-		respondError(w, http.StatusBadRequest, "missing job ID")
-		return
-	}
-
-	job := h.jobManager.GetJob(jobID)
-	if job == nil {
-		respondError(w, http.StatusNotFound, "job not found")
-		return
-	}
-
-	// Set SSE headers
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("Access-Control-Allow-Origin", "*")
-
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		respondError(w, http.StatusInternalServerError, "streaming not supported")
-		return
-	}
-
-	// Subscribe to job events
-	eventCh := job.AddListener()
-	defer job.RemoveListener(eventCh)
-
-	// Send initial status
-	sendSSEEvent(w, flusher, "status", job)
-
-	// Stream events
-	for {
-		select {
-		case <-r.Context().Done():
-			return
-		case event, ok := <-eventCh:
-			if !ok {
-				return
+	streamSSEEvents(w, r,
+		func(id string) SSEJob {
+			job := h.jobManager.GetJob(id)
+			if job == nil {
+				return nil
 			}
-			sendSSEEvent(w, flusher, event.Type, event)
-
-			// Close connection if job is done
-			if job.Status == JobStatusCompleted || job.Status == JobStatusFailed || job.Status == JobStatusCancelled {
-				return
-			}
-		}
-	}
+			return job
+		},
+		func(job SSEJob) interface{} {
+			return job
+		},
+	)
 }
 
 // Cancel cancels a process job
