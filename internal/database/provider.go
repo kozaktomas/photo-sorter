@@ -29,6 +29,19 @@ var (
 	postgresInitialized        bool
 )
 
+// ResetForTesting resets all registered backends. Only for use in tests.
+func ResetForTesting() {
+	postgresEmbeddingReader = nil
+	postgresEmbeddingWriter = nil
+	postgresFaceReader = nil
+	postgresFaceWriter = nil
+	postgresEraEmbeddingWriter = nil
+	postgresBookWriter = nil
+	postgresFaceHNSW = nil
+	postgresEmbeddingHNSW = nil
+	postgresInitialized = false
+}
+
 // RegisterPostgresBackend registers PostgreSQL repository constructors.
 // This is called by the postgres package to avoid import cycles.
 func RegisterPostgresBackend(

@@ -3,6 +3,7 @@ package mock
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/kozaktomas/photo-sorter/internal/database"
@@ -513,8 +514,473 @@ func (m *MockEmbeddingWriter) DeleteEmbedding(ctx context.Context, photoUID stri
 }
 
 
+// MockBookWriter is a mock implementation of database.BookWriter
+type MockBookWriter struct {
+	mu            sync.RWMutex
+	books         map[string]*database.PhotoBook
+	sections      map[string]*database.BookSection
+	sectionPhotos map[string][]database.SectionPhoto // keyed by sectionID
+	pages         map[string]*database.BookPage
+	pageSlots     map[string][]database.PageSlot // keyed by pageID
+	memberships   map[string][]database.PhotoBookMembership // keyed by photoUID
+
+	bookCounter    int
+	sectionCounter int
+	pageCounter    int
+
+	// Error injection
+	ListBooksError             error
+	GetBookError               error
+	CreateBookError            error
+	UpdateBookError            error
+	DeleteBookError            error
+	GetSectionsError           error
+	CreateSectionError         error
+	UpdateSectionError         error
+	DeleteSectionError         error
+	ReorderSectionsError       error
+	GetSectionPhotosError      error
+	CountSectionPhotosError    error
+	AddSectionPhotosError      error
+	RemoveSectionPhotosError   error
+	UpdateSectionPhotoError    error
+	GetPagesError              error
+	GetPageError               error
+	CreatePageError            error
+	UpdatePageError            error
+	DeletePageError            error
+	ReorderPagesError          error
+	GetPageSlotsError          error
+	GetAllPageSlotsError       error
+	AssignSlotError            error
+	ClearSlotError             error
+	SwapSlotsError             error
+	GetPhotoBookMembershipsError error
+}
+
+// NewMockBookWriter creates a new mock book writer
+func NewMockBookWriter() *MockBookWriter {
+	return &MockBookWriter{
+		books:         make(map[string]*database.PhotoBook),
+		sections:      make(map[string]*database.BookSection),
+		sectionPhotos: make(map[string][]database.SectionPhoto),
+		pages:         make(map[string]*database.BookPage),
+		pageSlots:     make(map[string][]database.PageSlot),
+		memberships:   make(map[string][]database.PhotoBookMembership),
+	}
+}
+
+// AddBook adds a book to the mock store
+func (m *MockBookWriter) AddBook(book database.PhotoBook) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.books[book.ID] = &book
+}
+
+// AddSection adds a section to the mock store
+func (m *MockBookWriter) AddSection(section database.BookSection) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.sections[section.ID] = &section
+}
+
+// AddPage adds a page to the mock store
+func (m *MockBookWriter) AddPage(page database.BookPage) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.pages[page.ID] = &page
+}
+
+// SetPageSlots sets slots for a page
+func (m *MockBookWriter) SetPageSlots(pageID string, slots []database.PageSlot) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.pageSlots[pageID] = slots
+}
+
+// SetSectionPhotos sets photos for a section
+func (m *MockBookWriter) SetSectionPhotos(sectionID string, photos []database.SectionPhoto) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.sectionPhotos[sectionID] = photos
+}
+
+// SetMemberships sets book memberships for a photo
+func (m *MockBookWriter) SetMemberships(photoUID string, memberships []database.PhotoBookMembership) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.memberships[photoUID] = memberships
+}
+
+func (m *MockBookWriter) ListBooks(ctx context.Context) ([]database.PhotoBook, error) {
+	if m.ListBooksError != nil {
+		return nil, m.ListBooksError
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var result []database.PhotoBook
+	for _, b := range m.books {
+		result = append(result, *b)
+	}
+	return result, nil
+}
+
+func (m *MockBookWriter) GetBook(ctx context.Context, id string) (*database.PhotoBook, error) {
+	if m.GetBookError != nil {
+		return nil, m.GetBookError
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	b, ok := m.books[id]
+	if !ok {
+		return nil, nil
+	}
+	return b, nil
+}
+
+func (m *MockBookWriter) CreateBook(ctx context.Context, book *database.PhotoBook) error {
+	if m.CreateBookError != nil {
+		return m.CreateBookError
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.bookCounter++
+	book.ID = fmt.Sprintf("book-%d", m.bookCounter)
+	m.books[book.ID] = book
+	return nil
+}
+
+func (m *MockBookWriter) UpdateBook(ctx context.Context, book *database.PhotoBook) error {
+	if m.UpdateBookError != nil {
+		return m.UpdateBookError
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.books[book.ID] = book
+	return nil
+}
+
+func (m *MockBookWriter) DeleteBook(ctx context.Context, id string) error {
+	if m.DeleteBookError != nil {
+		return m.DeleteBookError
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.books, id)
+	return nil
+}
+
+func (m *MockBookWriter) GetSections(ctx context.Context, bookID string) ([]database.BookSection, error) {
+	if m.GetSectionsError != nil {
+		return nil, m.GetSectionsError
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var result []database.BookSection
+	for _, s := range m.sections {
+		if s.BookID == bookID {
+			sec := *s
+			// Compute PhotoCount from sectionPhotos
+			sec.PhotoCount = len(m.sectionPhotos[sec.ID])
+			result = append(result, sec)
+		}
+	}
+	return result, nil
+}
+
+func (m *MockBookWriter) CreateSection(ctx context.Context, section *database.BookSection) error {
+	if m.CreateSectionError != nil {
+		return m.CreateSectionError
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.sectionCounter++
+	section.ID = fmt.Sprintf("section-%d", m.sectionCounter)
+	m.sections[section.ID] = section
+	return nil
+}
+
+func (m *MockBookWriter) UpdateSection(ctx context.Context, section *database.BookSection) error {
+	if m.UpdateSectionError != nil {
+		return m.UpdateSectionError
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if existing, ok := m.sections[section.ID]; ok {
+		existing.Title = section.Title
+	}
+	return nil
+}
+
+func (m *MockBookWriter) DeleteSection(ctx context.Context, id string) error {
+	if m.DeleteSectionError != nil {
+		return m.DeleteSectionError
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.sections, id)
+	delete(m.sectionPhotos, id)
+	return nil
+}
+
+func (m *MockBookWriter) ReorderSections(ctx context.Context, bookID string, sectionIDs []string) error {
+	if m.ReorderSectionsError != nil {
+		return m.ReorderSectionsError
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, id := range sectionIDs {
+		if s, ok := m.sections[id]; ok {
+			s.SortOrder = i
+		}
+	}
+	return nil
+}
+
+func (m *MockBookWriter) GetSectionPhotos(ctx context.Context, sectionID string) ([]database.SectionPhoto, error) {
+	if m.GetSectionPhotosError != nil {
+		return nil, m.GetSectionPhotosError
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.sectionPhotos[sectionID], nil
+}
+
+func (m *MockBookWriter) CountSectionPhotos(ctx context.Context, sectionID string) (int, error) {
+	if m.CountSectionPhotosError != nil {
+		return 0, m.CountSectionPhotosError
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return len(m.sectionPhotos[sectionID]), nil
+}
+
+func (m *MockBookWriter) AddSectionPhotos(ctx context.Context, sectionID string, photoUIDs []string) error {
+	if m.AddSectionPhotosError != nil {
+		return m.AddSectionPhotosError
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, uid := range photoUIDs {
+		m.sectionPhotos[sectionID] = append(m.sectionPhotos[sectionID], database.SectionPhoto{
+			SectionID: sectionID,
+			PhotoUID:  uid,
+		})
+	}
+	return nil
+}
+
+func (m *MockBookWriter) RemoveSectionPhotos(ctx context.Context, sectionID string, photoUIDs []string) error {
+	if m.RemoveSectionPhotosError != nil {
+		return m.RemoveSectionPhotosError
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	uidSet := make(map[string]struct{}, len(photoUIDs))
+	for _, uid := range photoUIDs {
+		uidSet[uid] = struct{}{}
+	}
+	var remaining []database.SectionPhoto
+	for _, p := range m.sectionPhotos[sectionID] {
+		if _, remove := uidSet[p.PhotoUID]; !remove {
+			remaining = append(remaining, p)
+		}
+	}
+	m.sectionPhotos[sectionID] = remaining
+	return nil
+}
+
+func (m *MockBookWriter) UpdateSectionPhoto(ctx context.Context, sectionID string, photoUID string, description string, note string) error {
+	if m.UpdateSectionPhotoError != nil {
+		return m.UpdateSectionPhotoError
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	photos := m.sectionPhotos[sectionID]
+	for i := range photos {
+		if photos[i].PhotoUID == photoUID {
+			photos[i].Description = description
+			photos[i].Note = note
+			break
+		}
+	}
+	m.sectionPhotos[sectionID] = photos
+	return nil
+}
+
+func (m *MockBookWriter) GetPages(ctx context.Context, bookID string) ([]database.BookPage, error) {
+	if m.GetPagesError != nil {
+		return nil, m.GetPagesError
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var result []database.BookPage
+	for _, p := range m.pages {
+		if p.BookID == bookID {
+			page := *p
+			page.Slots = m.pageSlots[page.ID]
+			result = append(result, page)
+		}
+	}
+	return result, nil
+}
+
+func (m *MockBookWriter) GetPage(ctx context.Context, pageID string) (*database.BookPage, error) {
+	if m.GetPageError != nil {
+		return nil, m.GetPageError
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	p, ok := m.pages[pageID]
+	if !ok {
+		return nil, nil
+	}
+	page := *p
+	page.Slots = m.pageSlots[page.ID]
+	return &page, nil
+}
+
+func (m *MockBookWriter) CreatePage(ctx context.Context, page *database.BookPage) error {
+	if m.CreatePageError != nil {
+		return m.CreatePageError
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.pageCounter++
+	page.ID = fmt.Sprintf("page-%d", m.pageCounter)
+	m.pages[page.ID] = page
+	return nil
+}
+
+func (m *MockBookWriter) UpdatePage(ctx context.Context, page *database.BookPage) error {
+	if m.UpdatePageError != nil {
+		return m.UpdatePageError
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.pages[page.ID] = page
+	return nil
+}
+
+func (m *MockBookWriter) DeletePage(ctx context.Context, id string) error {
+	if m.DeletePageError != nil {
+		return m.DeletePageError
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	delete(m.pages, id)
+	delete(m.pageSlots, id)
+	return nil
+}
+
+func (m *MockBookWriter) ReorderPages(ctx context.Context, bookID string, pageIDs []string) error {
+	if m.ReorderPagesError != nil {
+		return m.ReorderPagesError
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, id := range pageIDs {
+		if p, ok := m.pages[id]; ok {
+			p.SortOrder = i
+		}
+	}
+	return nil
+}
+
+func (m *MockBookWriter) GetPageSlots(ctx context.Context, pageID string) ([]database.PageSlot, error) {
+	if m.GetPageSlotsError != nil {
+		return nil, m.GetPageSlotsError
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.pageSlots[pageID], nil
+}
+
+func (m *MockBookWriter) GetAllPageSlots(ctx context.Context, bookID string) ([]database.PageSlot, error) {
+	if m.GetAllPageSlotsError != nil {
+		return nil, m.GetAllPageSlotsError
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var result []database.PageSlot
+	for _, p := range m.pages {
+		if p.BookID == bookID {
+			result = append(result, m.pageSlots[p.ID]...)
+		}
+	}
+	return result, nil
+}
+
+func (m *MockBookWriter) AssignSlot(ctx context.Context, pageID string, slotIndex int, photoUID string) error {
+	if m.AssignSlotError != nil {
+		return m.AssignSlotError
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	slots := m.pageSlots[pageID]
+	for i := range slots {
+		if slots[i].SlotIndex == slotIndex {
+			slots[i].PhotoUID = photoUID
+			m.pageSlots[pageID] = slots
+			return nil
+		}
+	}
+	m.pageSlots[pageID] = append(slots, database.PageSlot{SlotIndex: slotIndex, PhotoUID: photoUID})
+	return nil
+}
+
+func (m *MockBookWriter) ClearSlot(ctx context.Context, pageID string, slotIndex int) error {
+	if m.ClearSlotError != nil {
+		return m.ClearSlotError
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	slots := m.pageSlots[pageID]
+	for i := range slots {
+		if slots[i].SlotIndex == slotIndex {
+			slots[i].PhotoUID = ""
+			m.pageSlots[pageID] = slots
+			return nil
+		}
+	}
+	return nil
+}
+
+func (m *MockBookWriter) SwapSlots(ctx context.Context, pageID string, slotA int, slotB int) error {
+	if m.SwapSlotsError != nil {
+		return m.SwapSlotsError
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	slots := m.pageSlots[pageID]
+	var idxA, idxB int = -1, -1
+	for i := range slots {
+		if slots[i].SlotIndex == slotA {
+			idxA = i
+		}
+		if slots[i].SlotIndex == slotB {
+			idxB = i
+		}
+	}
+	if idxA >= 0 && idxB >= 0 {
+		slots[idxA].PhotoUID, slots[idxB].PhotoUID = slots[idxB].PhotoUID, slots[idxA].PhotoUID
+		m.pageSlots[pageID] = slots
+	}
+	return nil
+}
+
+func (m *MockBookWriter) GetPhotoBookMemberships(ctx context.Context, photoUID string) ([]database.PhotoBookMembership, error) {
+	if m.GetPhotoBookMembershipsError != nil {
+		return nil, m.GetPhotoBookMembershipsError
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	return m.memberships[photoUID], nil
+}
+
 // Verify interface compliance
 var _ database.EmbeddingReader = (*MockEmbeddingReader)(nil)
 var _ database.EmbeddingWriter = (*MockEmbeddingWriter)(nil)
 var _ database.FaceReader = (*MockFaceReader)(nil)
 var _ database.FaceWriter = (*MockFaceWriter)(nil)
+var _ database.BookWriter = (*MockBookWriter)(nil)
