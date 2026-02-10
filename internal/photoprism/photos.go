@@ -87,6 +87,36 @@ func IsPhotoDeleted(details map[string]interface{}) bool {
 //	}
 //	// Save to file
 //	err = os.WriteFile("photo.jpg", data, 0644)
+// findPrimaryFile finds the primary file map from the Files array in photo details.
+func findPrimaryFile(files []interface{}) map[string]interface{} {
+	for _, f := range files {
+		file, ok := f.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if mapBool(file, "Primary") {
+			return file
+		}
+	}
+	if first, ok := files[0].(map[string]interface{}); ok {
+		return first
+	}
+	return nil
+}
+
+// findPrimaryFileHash extracts the hash of the primary file from photo details.
+func findPrimaryFileHash(details map[string]interface{}) string {
+	files, ok := details["Files"].([]interface{})
+	if !ok || len(files) == 0 {
+		return ""
+	}
+	primaryFile := findPrimaryFile(files)
+	if primaryFile == nil {
+		return ""
+	}
+	return mapString(primaryFile, "Hash")
+}
+
 func (pp *PhotoPrism) GetPhotoDownload(photoUID string) ([]byte, string, error) {
 	// Get photo details to retrieve the file hash
 	details, err := pp.GetPhotoDetails(photoUID)
@@ -97,31 +127,7 @@ func (pp *PhotoPrism) GetPhotoDownload(photoUID string) ([]byte, string, error) 
 	// Extract the PRIMARY file hash (not just files[0])
 	// Face detection coordinates are calculated relative to the primary file,
 	// so we must download the same file to ensure coordinates match.
-	var fileHash string
-	if files, ok := details["Files"].([]interface{}); ok && len(files) > 0 {
-		// Find the primary file
-		var primaryFile map[string]interface{}
-		for _, f := range files {
-			if file, ok := f.(map[string]interface{}); ok {
-				if isPrimary, ok := file["Primary"].(bool); ok && isPrimary {
-					primaryFile = file
-					break
-				}
-			}
-		}
-		// Fall back to first file if no primary found
-		if primaryFile == nil {
-			if file, ok := files[0].(map[string]interface{}); ok {
-				primaryFile = file
-			}
-		}
-		if primaryFile != nil {
-			if hash, ok := primaryFile["Hash"].(string); ok {
-				fileHash = hash
-			}
-		}
-	}
-
+	fileHash := findPrimaryFileHash(details)
 	if fileHash == "" {
 		return nil, "", errors.New("could not find file hash for photo")
 	}

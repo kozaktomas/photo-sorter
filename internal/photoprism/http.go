@@ -98,14 +98,7 @@ func doRequestJSON[T any](pp *PhotoPrism, method, endpoint string, requestBody i
 	}
 	defer resp.Body.Close()
 
-	validStatus := false
-	for _, s := range expectedStatuses {
-		if resp.StatusCode == s {
-			validStatus = true
-			break
-		}
-	}
-	if !validStatus {
+	if !isExpectedStatus(resp.StatusCode, expectedStatuses) {
 		return nil, fmt.Errorf("request failed with status %d: %s", resp.StatusCode, readErrorBody(resp.Body))
 	}
 
@@ -158,6 +151,16 @@ func doRequestRaw(pp *PhotoPrism, method, endpoint string, requestBody interface
 	}
 
 	return nil
+}
+
+// isExpectedStatus checks if a status code is in the list of expected statuses.
+func isExpectedStatus(code int, expected []int) bool {
+	for _, s := range expected {
+		if code == s {
+			return true
+		}
+	}
+	return false
 }
 
 // IsNotFoundError returns true if the error indicates a 404 Not Found response.

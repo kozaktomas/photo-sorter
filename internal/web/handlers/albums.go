@@ -114,7 +114,7 @@ type CreateRequest struct {
 func (h *AlbumsHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req CreateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
+		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return
 	}
 
@@ -234,7 +234,7 @@ func (h *AlbumsHandler) parseAlbumPhotoRequest(w http.ResponseWriter, r *http.Re
 
 	var req albumPhotoRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
+		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return "", nil, nil
 	}
 

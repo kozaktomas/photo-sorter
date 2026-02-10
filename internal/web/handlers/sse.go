@@ -6,23 +6,26 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// streamSSEEvents sets up SSE headers and streams events from an SSEJob until the job
-// completes, the client disconnects, or the event channel closes.
-// The lookupJob function retrieves the job by ID from the URL parameter "jobId".
-func streamSSEEvents(w http.ResponseWriter, r *http.Request, lookupJob func(string) SSEJob, getInitialData func(SSEJob) interface{}) {
+// isJobTerminal returns true if the job status is a terminal state
+func isJobTerminal(status JobStatus) bool {
+	return status == JobStatusCompleted || status == JobStatusFailed || status == JobStatusCancelled
+}
+
+// setupSSEConnection validates the request, finds the job, and sets up SSE headers.
+// Returns the job, flusher, and true on success. On failure, writes an error response and returns zero values with false.
+func setupSSEConnection(w http.ResponseWriter, r *http.Request, lookupJob func(string) SSEJob) (SSEJob, http.Flusher, bool) {
 	jobID := chi.URLParam(r, "jobId")
 	if jobID == "" {
 		respondError(w, http.StatusBadRequest, "missing job ID")
-		return
+		return nil, nil, false
 	}
 
 	job := lookupJob(jobID)
 	if job == nil {
 		respondError(w, http.StatusNotFound, "job not found")
-		return
+		return nil, nil, false
 	}
 
-	// Set SSE headers
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
@@ -31,17 +34,26 @@ func streamSSEEvents(w http.ResponseWriter, r *http.Request, lookupJob func(stri
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		respondError(w, http.StatusInternalServerError, "streaming not supported")
+		return nil, nil, false
+	}
+
+	return job, flusher, true
+}
+
+// streamSSEEvents sets up SSE headers and streams events from an SSEJob until the job
+// completes, the client disconnects, or the event channel closes.
+// The lookupJob function retrieves the job by ID from the URL parameter "jobId".
+func streamSSEEvents(w http.ResponseWriter, r *http.Request, lookupJob func(string) SSEJob, getInitialData func(SSEJob) interface{}) {
+	job, flusher, ok := setupSSEConnection(w, r, lookupJob)
+	if !ok {
 		return
 	}
 
-	// Subscribe to job events
 	eventCh := job.AddListener()
 	defer job.RemoveListener(eventCh)
 
-	// Send initial status
 	sendSSEEvent(w, flusher, "status", getInitialData(job))
 
-	// Stream events
 	for {
 		select {
 		case <-r.Context().Done():
@@ -51,10 +63,7 @@ func streamSSEEvents(w http.ResponseWriter, r *http.Request, lookupJob func(stri
 				return
 			}
 			sendSSEEvent(w, flusher, event.Type, event)
-
-			// Close connection if job is done
-			status := job.GetStatus()
-			if status == JobStatusCompleted || status == JobStatusFailed || status == JobStatusCancelled {
+			if isJobTerminal(job.GetStatus()) {
 				return
 			}
 		}

@@ -255,27 +255,13 @@ func LoadHNSWEmbeddingMetadata(basePath string) (*HNSWEmbeddingIndexMetadata, er
 	return &meta, nil
 }
 
-// SaveWithEmbeddingMetadata saves the index and embedding metadata to disk
-func (h *HNSWEmbeddingIndex) SaveWithEmbeddingMetadata(basePath string, metadata HNSWEmbeddingIndexMetadata) error {
-	h.mu.RLock()
-	defer h.mu.RUnlock()
-
-	if h.graph == nil && h.savedGraph == nil {
-		// Remove existing files if index is empty (best-effort cleanup)
-		fmt.Printf("Embedding index save: no graph loaded, removing files\n")
-		_ = os.Remove(basePath)
-		_ = os.Remove(basePath + ".meta")
-		_ = os.Remove(basePath + ".embeddings")
-		return nil
-	}
-
-	// Save HNSW graph - use savedGraph if available (loaded from disk), otherwise use graph (built fresh)
+// exportGraph exports the HNSW graph to the given file path.
+func (h *HNSWEmbeddingIndex) exportGraph(basePath string) error {
 	f, err := os.Create(basePath) //nolint:gosec // path is from trusted config
 	if err != nil {
 		return fmt.Errorf("failed to create HNSW embedding index file: %w", err)
 	}
 	if h.savedGraph != nil {
-		// SavedGraph embeds *Graph, so we can call Export on it
 		if err := h.savedGraph.Export(f); err != nil {
 			_ = f.Close()
 			return fmt.Errorf("failed to export HNSW graph from savedGraph: %w", err)
@@ -287,18 +273,11 @@ func (h *HNSWEmbeddingIndex) SaveWithEmbeddingMetadata(basePath string, metadata
 		}
 	}
 	_ = f.Close()
+	return nil
+}
 
-	// Save metadata
-	metaPath := basePath + ".meta"
-	metaData, err := json.Marshal(metadata)
-	if err != nil {
-		return fmt.Errorf("failed to marshal metadata: %w", err)
-	}
-	if err := os.WriteFile(metaPath, metaData, 0600); err != nil {
-		return fmt.Errorf("failed to write metadata: %w", err)
-	}
-
-	// Save embedding data (for fast startup)
+// saveEmbeddingData saves the embedding metadata to a gob-encoded file.
+func (h *HNSWEmbeddingIndex) saveEmbeddingData(basePath string) error {
 	embPath := basePath + ".embeddings"
 	embFile, err := os.Create(embPath) //nolint:gosec // path is from trusted config
 	if err != nil {
@@ -306,18 +285,43 @@ func (h *HNSWEmbeddingIndex) SaveWithEmbeddingMetadata(basePath string, metadata
 	}
 	defer embFile.Close()
 
-	// Convert map to slice for gob encoding
 	embeddings := make([]StoredEmbedding, 0, len(h.idToEmb))
 	for _, emb := range h.idToEmb {
 		embeddings = append(embeddings, *emb)
 	}
 
-	encoder := gob.NewEncoder(embFile)
-	if err := encoder.Encode(embeddings); err != nil {
+	if err := gob.NewEncoder(embFile).Encode(embeddings); err != nil {
 		return fmt.Errorf("failed to encode embeddings: %w", err)
 	}
-
 	return nil
+}
+
+// SaveWithEmbeddingMetadata saves the index and embedding metadata to disk
+func (h *HNSWEmbeddingIndex) SaveWithEmbeddingMetadata(basePath string, metadata HNSWEmbeddingIndexMetadata) error {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	if h.graph == nil && h.savedGraph == nil {
+		fmt.Printf("Embedding index save: no graph loaded, removing files\n")
+		_ = os.Remove(basePath)
+		_ = os.Remove(basePath + ".meta")
+		_ = os.Remove(basePath + ".embeddings")
+		return nil
+	}
+
+	if err := h.exportGraph(basePath); err != nil {
+		return err
+	}
+
+	metaData, err := json.Marshal(metadata)
+	if err != nil {
+		return fmt.Errorf("failed to marshal metadata: %w", err)
+	}
+	if err := os.WriteFile(basePath+".meta", metaData, 0600); err != nil {
+		return fmt.Errorf("failed to write metadata: %w", err)
+	}
+
+	return h.saveEmbeddingData(basePath)
 }
 
 // LoadWithEmbeddingMetadata loads the index and embedding metadata from disk

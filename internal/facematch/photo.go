@@ -8,6 +8,24 @@ type PrimaryFileInfo struct {
 	Orientation int
 }
 
+// findPrimaryFile finds the primary file map from the Files array in photo details.
+func findPrimaryFile(files []interface{}) map[string]interface{} {
+	for _, f := range files {
+		file, ok := f.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if isPrimary, ok := file["Primary"].(bool); ok && isPrimary {
+			return file
+		}
+	}
+	// Fall back to first file if no primary found
+	if first, ok := files[0].(map[string]interface{}); ok {
+		return first
+	}
+	return nil
+}
+
 // ExtractPrimaryFileInfo extracts dimensions and orientation from photo details.
 // The details map is the JSON response from PhotoPrism's GetPhotoDetails endpoint.
 // Face detection runs on the primary file, so we must use its dimensions.
@@ -17,20 +35,7 @@ func ExtractPrimaryFileInfo(details map[string]interface{}) *PrimaryFileInfo {
 		return nil
 	}
 
-	// Find the primary file
-	var primaryFile map[string]interface{}
-	for _, f := range files {
-		if file, ok := f.(map[string]interface{}); ok {
-			if isPrimary, ok := file["Primary"].(bool); ok && isPrimary {
-				primaryFile = file
-				break
-			}
-		}
-	}
-	// Fall back to first file if no primary found
-	if primaryFile == nil {
-		primaryFile, _ = files[0].(map[string]interface{})
-	}
+	primaryFile := findPrimaryFile(files)
 	if primaryFile == nil {
 		return nil
 	}

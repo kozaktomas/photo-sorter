@@ -136,7 +136,7 @@ func (h *LabelsHandler) Update(w http.ResponseWriter, r *http.Request) {
 
 	var req LabelUpdateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
+		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return
 	}
 
@@ -166,7 +166,7 @@ func (h *LabelsHandler) Update(w http.ResponseWriter, r *http.Request) {
 func (h *LabelsHandler) BatchDelete(w http.ResponseWriter, r *http.Request) {
 	var req BatchDeleteRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
+		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return
 	}
 

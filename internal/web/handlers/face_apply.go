@@ -32,11 +32,79 @@ type ApplyResponse struct {
 	Error     string `json:"error,omitempty"`
 }
 
+// applyCreateMarker handles the create_marker action
+func (h *FacesHandler) applyCreateMarker(w http.ResponseWriter, pp *photoprism.PhotoPrism, req ApplyRequest) {
+	if req.FileUID == "" || len(req.BBoxRel) != 4 {
+		respondError(w, http.StatusBadRequest, "file_uid and bbox_rel are required for create_marker")
+		return
+	}
+
+	marker := photoprism.MarkerCreate{
+		FileUID: req.FileUID,
+		Type:    "face",
+		X:       req.BBoxRel[0],
+		Y:       req.BBoxRel[1],
+		W:       req.BBoxRel[2],
+		H:       req.BBoxRel[3],
+		Name:    req.PersonName,
+		Src:     "manual",
+		SubjSrc: "manual",
+	}
+
+	created, err := pp.CreateMarker(marker)
+	if err != nil {
+		respondJSON(w, http.StatusOK, ApplyResponse{Success: false, Error: err.Error()})
+		return
+	}
+
+	h.syncFaceCache(req.PhotoUID, req.FaceIndex, created.UID, created.SubjUID, req.PersonName)
+	respondJSON(w, http.StatusOK, ApplyResponse{Success: true, MarkerUID: created.UID})
+}
+
+// applyAssignPerson handles the assign_person action
+func (h *FacesHandler) applyAssignPerson(w http.ResponseWriter, pp *photoprism.PhotoPrism, req ApplyRequest) {
+	if req.MarkerUID == "" {
+		respondError(w, http.StatusBadRequest, "marker_uid is required for assign_person")
+		return
+	}
+
+	update := photoprism.MarkerUpdate{
+		Name:    req.PersonName,
+		SubjSrc: "manual",
+	}
+
+	updated, err := pp.UpdateMarker(req.MarkerUID, update)
+	if err != nil {
+		respondJSON(w, http.StatusOK, ApplyResponse{Success: false, Error: err.Error()})
+		return
+	}
+
+	h.syncFaceCache(req.PhotoUID, req.FaceIndex, req.MarkerUID, updated.SubjUID, req.PersonName)
+	respondJSON(w, http.StatusOK, ApplyResponse{Success: true, MarkerUID: req.MarkerUID})
+}
+
+// applyUnassignPerson handles the unassign_person action
+func (h *FacesHandler) applyUnassignPerson(w http.ResponseWriter, pp *photoprism.PhotoPrism, req ApplyRequest) {
+	if req.MarkerUID == "" {
+		respondError(w, http.StatusBadRequest, "marker_uid is required for unassign_person")
+		return
+	}
+
+	_, err := pp.ClearMarkerSubject(req.MarkerUID)
+	if err != nil {
+		respondJSON(w, http.StatusOK, ApplyResponse{Success: false, Error: err.Error()})
+		return
+	}
+
+	h.syncFaceCache(req.PhotoUID, req.FaceIndex, req.MarkerUID, "", "")
+	respondJSON(w, http.StatusOK, ApplyResponse{Success: true, MarkerUID: req.MarkerUID})
+}
+
 // Apply creates a marker or assigns a person to an existing marker
 func (h *FacesHandler) Apply(w http.ResponseWriter, r *http.Request) {
 	var req ApplyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
+		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return
 	}
 
@@ -52,91 +120,11 @@ func (h *FacesHandler) Apply(w http.ResponseWriter, r *http.Request) {
 
 	switch req.Action {
 	case ActionCreateMarker:
-		if req.FileUID == "" || len(req.BBoxRel) != 4 {
-			respondError(w, http.StatusBadRequest, "file_uid and bbox_rel are required for create_marker")
-			return
-		}
-
-		marker := photoprism.MarkerCreate{
-			FileUID: req.FileUID,
-			Type:    "face",
-			X:       req.BBoxRel[0],
-			Y:       req.BBoxRel[1],
-			W:       req.BBoxRel[2],
-			H:       req.BBoxRel[3],
-			Name:    req.PersonName,
-			Src:     "manual",
-			SubjSrc: "manual",
-		}
-
-		created, err := pp.CreateMarker(marker)
-		if err != nil {
-			respondJSON(w, http.StatusOK, ApplyResponse{
-				Success: false,
-				Error:   err.Error(),
-			})
-			return
-		}
-
-		// Update cache with new marker data
-		h.syncFaceCache(req.PhotoUID, req.FaceIndex, created.UID, created.SubjUID, req.PersonName)
-
-		respondJSON(w, http.StatusOK, ApplyResponse{
-			Success:   true,
-			MarkerUID: created.UID,
-		})
-
+		h.applyCreateMarker(w, pp, req)
 	case ActionAssignPerson:
-		if req.MarkerUID == "" {
-			respondError(w, http.StatusBadRequest, "marker_uid is required for assign_person")
-			return
-		}
-
-		update := photoprism.MarkerUpdate{
-			Name:    req.PersonName,
-			SubjSrc: "manual",
-		}
-
-		updated, err := pp.UpdateMarker(req.MarkerUID, update)
-		if err != nil {
-			respondJSON(w, http.StatusOK, ApplyResponse{
-				Success: false,
-				Error:   err.Error(),
-			})
-			return
-		}
-
-		// Update cache with assigned person
-		h.syncFaceCache(req.PhotoUID, req.FaceIndex, req.MarkerUID, updated.SubjUID, req.PersonName)
-
-		respondJSON(w, http.StatusOK, ApplyResponse{
-			Success:   true,
-			MarkerUID: req.MarkerUID,
-		})
-
+		h.applyAssignPerson(w, pp, req)
 	case ActionUnassignPerson:
-		if req.MarkerUID == "" {
-			respondError(w, http.StatusBadRequest, "marker_uid is required for unassign_person")
-			return
-		}
-
-		_, err := pp.ClearMarkerSubject(req.MarkerUID)
-		if err != nil {
-			respondJSON(w, http.StatusOK, ApplyResponse{
-				Success: false,
-				Error:   err.Error(),
-			})
-			return
-		}
-
-		// Update cache - clear subject info but keep marker UID
-		h.syncFaceCache(req.PhotoUID, req.FaceIndex, req.MarkerUID, "", "")
-
-		respondJSON(w, http.StatusOK, ApplyResponse{
-			Success:   true,
-			MarkerUID: req.MarkerUID,
-		})
-
+		h.applyUnassignPerson(w, pp, req)
 	default:
 		respondError(w, http.StatusBadRequest, "invalid action")
 	}
@@ -166,84 +154,35 @@ type ComputeFacesResponse struct {
 	Error      string `json:"error,omitempty"`
 }
 
-// ComputeFaces detects and stores face and image embeddings for a single photo.
-// This recalculates embeddings even if they already exist (useful for reprocessing).
-func (h *FacesHandler) ComputeFaces(w http.ResponseWriter, r *http.Request) {
-	photoUID := chi.URLParam(r, "uid")
-	if photoUID == "" {
-		respondError(w, http.StatusBadRequest, "photo_uid is required")
-		return
-	}
-
-	// Check database is initialized
-	if !database.IsInitialized() {
-		respondJSON(w, http.StatusOK, ComputeFacesResponse{
-			PhotoUID: photoUID,
-			Success:  false,
-			Error:    "database not configured",
-		})
-		return
-	}
-
-	// Get PhotoPrism client
-	pp := middleware.MustGetPhotoPrism(r.Context(), w)
-	if pp == nil {
-		return
-	}
-
-	// Get embedding URL from config
-	embURL := h.config.Embedding.URL
-	if embURL == "" {
-		respondJSON(w, http.StatusOK, ComputeFacesResponse{
-			PhotoUID: photoUID,
-			Success:  false,
-			Error:    "embedding service not configured (EMBEDDING_URL)",
-		})
-		return
-	}
-
-	// Download photo from PhotoPrism
-	imageData, _, err := pp.GetPhotoDownload(photoUID)
-	if err != nil {
-		respondJSON(w, http.StatusOK, ComputeFacesResponse{
-			PhotoUID: photoUID,
-			Success:  false,
-			Error:    fmt.Sprintf("failed to download photo: %v", err),
-		})
-		return
-	}
-
-	ctx := r.Context()
-
-	// Compute and save image embedding (768-dim CLIP)
+// computeAndSaveImageEmbedding computes and saves the CLIP image embedding for a photo (best-effort)
+func computeAndSaveImageEmbedding(ctx context.Context, embURL string, imageData []byte, photoUID string) {
 	embClient := fingerprint.NewEmbeddingClient(embURL, "clip")
 	resizedData, err := fingerprint.ResizeImage(imageData, 1920)
-	if err == nil {
-		result, err := embClient.ComputeEmbeddingWithMetadata(ctx, resizedData)
-		if err == nil {
-			if embReader, err := database.GetEmbeddingReader(ctx); err == nil {
-				if embWriter, ok := embReader.(interface {
-					Save(ctx context.Context, photoUID string, embedding []float32, model, pretrained string, dim int) error
-				}); ok {
-					embWriter.Save(ctx, photoUID, result.Embedding, result.Model, result.Pretrained, result.Dim)
-				}
-			}
-		}
+	if err != nil {
+		return
 	}
+	result, err := embClient.ComputeEmbeddingWithMetadata(ctx, resizedData)
+	if err != nil {
+		return
+	}
+	embReader, err := database.GetEmbeddingReader(ctx)
+	if err != nil {
+		return
+	}
+	if embWriter, ok := embReader.(interface {
+		Save(ctx context.Context, photoUID string, embedding []float32, model, pretrained string, dim int) error
+	}); ok {
+		embWriter.Save(ctx, photoUID, result.Embedding, result.Model, result.Pretrained, result.Dim)
+	}
+}
 
-	// Compute face embeddings (512-dim)
+// computeFaceEmbeddings computes face embeddings and converts them to StoredFace structs
+func computeFaceEmbeddings(ctx context.Context, embURL string, imageData []byte, photoUID string) ([]database.StoredFace, error) {
 	faceClient := fingerprint.NewEmbeddingClient(embURL, "faces")
 	faceResult, err := faceClient.ComputeFaceEmbeddings(ctx, imageData)
 	if err != nil {
-		respondJSON(w, http.StatusOK, ComputeFacesResponse{
-			PhotoUID: photoUID,
-			Success:  false,
-			Error:    fmt.Sprintf("failed to compute faces: %v", err),
-		})
-		return
+		return nil, err
 	}
-
-	// Convert to StoredFace and save
 	faces := make([]database.StoredFace, len(faceResult.Faces))
 	for i, f := range faceResult.Faces {
 		faces[i] = database.StoredFace{
@@ -256,30 +195,63 @@ func (h *FacesHandler) ComputeFaces(w http.ResponseWriter, r *http.Request) {
 			Dim:       f.Dim,
 		}
 	}
+	return faces, nil
+}
+
+// ComputeFaces detects and stores face and image embeddings for a single photo.
+// This recalculates embeddings even if they already exist (useful for reprocessing).
+func (h *FacesHandler) ComputeFaces(w http.ResponseWriter, r *http.Request) {
+	photoUID := chi.URLParam(r, "uid")
+	if photoUID == "" {
+		respondError(w, http.StatusBadRequest, "photo_uid is required")
+		return
+	}
+
+	if !database.IsInitialized() {
+		respondJSON(w, http.StatusOK, ComputeFacesResponse{PhotoUID: photoUID, Success: false, Error: "database not configured"})
+		return
+	}
+
+	pp := middleware.MustGetPhotoPrism(r.Context(), w)
+	if pp == nil {
+		return
+	}
+
+	embURL := h.config.Embedding.URL
+	if embURL == "" {
+		respondJSON(w, http.StatusOK, ComputeFacesResponse{PhotoUID: photoUID, Success: false, Error: "embedding service not configured (EMBEDDING_URL)"})
+		return
+	}
+
+	imageData, _, err := pp.GetPhotoDownload(photoUID)
+	if err != nil {
+		respondJSON(w, http.StatusOK, ComputeFacesResponse{PhotoUID: photoUID, Success: false, Error: fmt.Sprintf("failed to download photo: %v", err)})
+		return
+	}
+
+	ctx := r.Context()
+
+	// Compute and save image embedding (best-effort)
+	computeAndSaveImageEmbedding(ctx, embURL, imageData, photoUID)
+
+	// Compute face embeddings
+	faces, err := computeFaceEmbeddings(ctx, embURL, imageData, photoUID)
+	if err != nil {
+		respondJSON(w, http.StatusOK, ComputeFacesResponse{PhotoUID: photoUID, Success: false, Error: fmt.Sprintf("failed to compute faces: %v", err)})
+		return
+	}
 
 	h.writerMu.Lock()
 	if h.faceWriter != nil {
-		// SaveFaces updates PostgreSQL + in-memory HNSW index
 		if err := h.faceWriter.SaveFaces(ctx, photoUID, faces); err != nil {
 			h.writerMu.Unlock()
-			respondJSON(w, http.StatusOK, ComputeFacesResponse{
-				PhotoUID: photoUID,
-				Success:  false,
-				Error:    fmt.Sprintf("failed to save faces: %v", err),
-			})
+			respondJSON(w, http.StatusOK, ComputeFacesResponse{PhotoUID: photoUID, Success: false, Error: fmt.Sprintf("failed to save faces: %v", err)})
 			return
 		}
-		// Enrich with PhotoPrism marker data
 		enrichFacesWithMarkerData(pp, h.faceWriter, photoUID, faces)
-		// Mark as processed
 		h.faceWriter.MarkFacesProcessed(ctx, photoUID, len(faces))
 	}
 	h.writerMu.Unlock()
 
-	// Return success
-	respondJSON(w, http.StatusOK, ComputeFacesResponse{
-		PhotoUID:   photoUID,
-		FacesCount: len(faces),
-		Success:    true,
-	})
+	respondJSON(w, http.StatusOK, ComputeFacesResponse{PhotoUID: photoUID, FacesCount: len(faces), Success: true})
 }

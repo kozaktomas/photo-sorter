@@ -9,6 +9,9 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
 
+// errInvalidRequestBody is a shared error message for invalid JSON request bodies
+const errInvalidRequestBody = "invalid request body"
+
 // respondJSON sends a JSON response
 func respondJSON(w http.ResponseWriter, status int, data interface{}) {
 	w.Header().Set("Content-Type", "application/json")

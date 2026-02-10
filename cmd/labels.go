@@ -104,29 +104,7 @@ func runLabelsList(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
-func runLabelsDelete(cmd *cobra.Command, args []string) error {
-	cfg := config.Load()
-	skipConfirm := mustGetBool(cmd, "yes")
-
-	pp, err := photoprism.NewPhotoPrismWithCapture(cfg.PhotoPrism.URL, cfg.PhotoPrism.Username, cfg.PhotoPrism.Password, captureDir)
-	if err != nil {
-		return fmt.Errorf("failed to connect to PhotoPrism: %w", err)
-	}
-	defer pp.Logout()
-
-	// Get all labels to show names
-	labels, err := pp.GetLabels(10000, 0, true)
-	if err != nil {
-		return fmt.Errorf("failed to get labels: %w", err)
-	}
-
-	// Build UID to name map
-	uidToName := make(map[string]string)
-	for _, label := range labels {
-		uidToName[label.UID] = label.Name
-	}
-
-	// Validate UIDs and show what will be deleted
+func validateLabelUIDs(args []string, uidToName map[string]string) []string {
 	var validUIDs []string
 	fmt.Println("Labels to delete:")
 	for _, uid := range args {
@@ -137,30 +115,53 @@ func runLabelsDelete(cmd *cobra.Command, args []string) error {
 			fmt.Printf("  - WARNING: Unknown UID %s (skipping)\n", uid)
 		}
 	}
+	return validUIDs
+}
 
+func runLabelsDelete(cmd *cobra.Command, args []string) error {
+	cfg := config.Load()
+	skipConfirm := mustGetBool(cmd, "yes")
+
+	pp, err := photoprism.NewPhotoPrismWithCapture(cfg.PhotoPrism.URL, cfg.PhotoPrism.Username, cfg.PhotoPrism.Password, captureDir)
+	if err != nil {
+		return fmt.Errorf("failed to connect to PhotoPrism: %w", err)
+	}
+	defer pp.Logout()
+
+	labels, err := pp.GetLabels(10000, 0, true)
+	if err != nil {
+		return fmt.Errorf("failed to get labels: %w", err)
+	}
+
+	uidToName := make(map[string]string)
+	for _, label := range labels {
+		uidToName[label.UID] = label.Name
+	}
+
+	validUIDs := validateLabelUIDs(args, uidToName)
 	if len(validUIDs) == 0 {
 		return errors.New("no valid labels to delete")
 	}
 
-	// Confirm deletion
-	if !skipConfirm {
-		fmt.Printf("\nDelete %d label(s)? [y/N]: ", len(validUIDs))
-		reader := bufio.NewReader(os.Stdin)
-		response, _ := reader.ReadString('\n')
-		response = strings.TrimSpace(strings.ToLower(response))
-		if response != "y" && response != "yes" {
-			fmt.Println("Cancelled.")
-			return nil
-		}
+	if !skipConfirm && !confirmLabelsDelete(len(validUIDs)) {
+		fmt.Println("Cancelled.")
+		return nil
 	}
 
-	// Delete labels
 	if err := pp.DeleteLabels(validUIDs); err != nil {
 		return fmt.Errorf("failed to delete labels: %w", err)
 	}
 
 	fmt.Printf("Deleted %d label(s).\n", len(validUIDs))
 	return nil
+}
+
+func confirmLabelsDelete(count int) bool {
+	fmt.Printf("\nDelete %d label(s)? [y/N]: ", count)
+	reader := bufio.NewReader(os.Stdin)
+	response, _ := reader.ReadString('\n')
+	response = strings.TrimSpace(strings.ToLower(response))
+	return response == "y" || response == "yes"
 }
 
 func sortLabels(labels []photoprism.Label, sortBy string) {

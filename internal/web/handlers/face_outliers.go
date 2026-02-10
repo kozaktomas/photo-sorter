@@ -35,120 +35,44 @@ type OutlierResponse struct {
 	MissingEmbeddings []OutlierResult `json:"missing_embeddings"`
 }
 
-// FindOutliers detects wrongly assigned faces by computing centroid distance.
-// This version uses cached marker/dimension data from StoredFace, eliminating API calls.
-func (h *FacesHandler) FindOutliers(w http.ResponseWriter, r *http.Request) {
-	if h.faceReader == nil {
-		respondError(w, http.StatusServiceUnavailable, "face data not available")
-		return
-	}
+// outlierFaceData holds processed face data for outlier detection
+type outlierFaceData struct {
+	PhotoUID  string
+	Embedding []float32
+	FaceIndex int
+	BBoxRel   []float64
+	FileUID   string
+	MarkerUID string
+}
 
-	var req OutlierRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-
-	if req.PersonName == "" {
-		respondError(w, http.StatusBadRequest, "person_name is required")
-		return
-	}
-
-	// PhotoPrism client not needed for the optimized path, but keep for compatibility
-	_ = middleware.MustGetPhotoPrism(r.Context(), w)
-
-	ctx := r.Context()
-	faceRepo := h.faceReader
-
-	// Get all faces for this person directly from database (O(1) query)
-	// This eliminates PhotoPrism API calls and N individual face queries
-	allPersonFaces, err := faceRepo.GetFacesBySubjectName(ctx, req.PersonName)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, "failed to get faces for person")
-		return
-	}
-
-	if len(allPersonFaces) == 0 {
-		respondJSON(w, http.StatusOK, OutlierResponse{
-			Person:      req.PersonName,
-			TotalFaces:  0,
-			AvgDistance: 0,
-			Outliers:    []OutlierResult{},
-		})
-		return
-	}
-
-	// Collect face data from cached faces
-	type faceData struct {
-		PhotoUID         string
-		Embedding        []float32
-		FaceIndex        int
-		BBoxRel          []float64
-		FileUID          string
-		MarkerUID        string
-		MissingEmbedding bool
-	}
-
-	var faces []faceData
-	var missingEmbFaces []faceData
-
+// classifyOutlierFaces splits person faces into faces with embeddings and those missing embeddings
+func classifyOutlierFaces(allPersonFaces []database.StoredFace) (faces []outlierFaceData, missingEmbeddings []OutlierResult) {
 	for i := range allPersonFaces {
 		face := &allPersonFaces[i]
 		if len(face.Embedding) == 0 {
-			// Face exists but no embedding (shouldn't happen, but handle it)
-			missingEmbFaces = append(missingEmbFaces, faceData{
-				PhotoUID:         face.PhotoUID,
-				FaceIndex:        -1,
-				MarkerUID:        face.MarkerUID,
-				MissingEmbedding: true,
+			missingEmbeddings = append(missingEmbeddings, OutlierResult{
+				PhotoUID: face.PhotoUID, DistFromCentroid: -1,
+				FaceIndex: -1, MarkerUID: face.MarkerUID,
 			})
 			continue
 		}
 
-		// Use cached dimensions to compute BBoxRel
-		width, height, orientation := face.PhotoWidth, face.PhotoHeight, face.Orientation
-		fileUID := face.FileUID
-
 		var bboxRel []float64
-		if width > 0 && height > 0 && len(face.BBox) == 4 {
-			bboxRel = convertPixelBBoxToDisplayRelative(face.BBox, width, height, orientation)
+		if face.PhotoWidth > 0 && face.PhotoHeight > 0 && len(face.BBox) == 4 {
+			bboxRel = convertPixelBBoxToDisplayRelative(face.BBox, face.PhotoWidth, face.PhotoHeight, face.Orientation)
 		}
 
-		faces = append(faces, faceData{
-			PhotoUID:  face.PhotoUID,
-			Embedding: face.Embedding,
-			FaceIndex: face.FaceIndex,
-			BBoxRel:   bboxRel,
-			FileUID:   fileUID,
-			MarkerUID: face.MarkerUID,
+		faces = append(faces, outlierFaceData{
+			PhotoUID: face.PhotoUID, Embedding: face.Embedding,
+			FaceIndex: face.FaceIndex, BBoxRel: bboxRel,
+			FileUID: face.FileUID, MarkerUID: face.MarkerUID,
 		})
 	}
+	return faces, missingEmbeddings
+}
 
-	// Build missing embeddings list
-	missingEmbeddings := make([]OutlierResult, 0, len(missingEmbFaces))
-	for _, f := range missingEmbFaces {
-		missingEmbeddings = append(missingEmbeddings, OutlierResult{
-			PhotoUID:         f.PhotoUID,
-			DistFromCentroid: -1,
-			FaceIndex:        f.FaceIndex,
-			BBoxRel:          f.BBoxRel,
-			FileUID:          f.FileUID,
-			MarkerUID:        f.MarkerUID,
-		})
-	}
-
-	if len(faces) == 0 {
-		respondJSON(w, http.StatusOK, OutlierResponse{
-			Person:            req.PersonName,
-			TotalFaces:        0,
-			AvgDistance:       0,
-			Outliers:          []OutlierResult{},
-			MissingEmbeddings: missingEmbeddings,
-		})
-		return
-	}
-
-	// Compute centroid (element-wise mean of all embeddings)
+// computeFaceCentroid computes the element-wise mean of face embeddings
+func computeFaceCentroid(faces []outlierFaceData) []float32 {
 	embDim := len(faces[0].Embedding)
 	centroid := make([]float32, embDim)
 	for _, f := range faces {
@@ -161,10 +85,13 @@ func (h *FacesHandler) FindOutliers(w http.ResponseWriter, r *http.Request) {
 	for i := range centroid {
 		centroid[i] /= float32(len(faces))
 	}
+	return centroid
+}
 
-	// Compute distance from centroid for each face
+// rankFacesByDistance computes distances from centroid and returns sorted outlier results
+func rankFacesByDistance(faces []outlierFaceData, centroid []float32, threshold float64, limit int) ([]OutlierResult, float64) {
 	type faceWithDist struct {
-		data faceData
+		data outlierFaceData
 		dist float64
 	}
 	facesWithDist := make([]faceWithDist, len(faces))
@@ -178,42 +105,85 @@ func (h *FacesHandler) FindOutliers(w http.ResponseWriter, r *http.Request) {
 
 	avgDistance := totalDist / float64(len(faces))
 
-	// Sort by distance descending (most suspicious first)
 	sort.Slice(facesWithDist, func(i, j int) bool {
 		return facesWithDist[i].dist > facesWithDist[j].dist
 	})
 
-	// Apply threshold filter
 	var filtered []faceWithDist
 	for _, f := range facesWithDist {
-		if req.Threshold > 0 && f.dist < req.Threshold {
+		if threshold > 0 && f.dist < threshold {
 			continue
 		}
 		filtered = append(filtered, f)
 	}
 
-	// Apply limit
-	if req.Limit > 0 && len(filtered) > req.Limit {
-		filtered = filtered[:req.Limit]
+	if limit > 0 && len(filtered) > limit {
+		filtered = filtered[:limit]
 	}
 
-	// Build response
 	outliers := make([]OutlierResult, 0, len(filtered))
 	for _, f := range filtered {
 		outliers = append(outliers, OutlierResult{
-			PhotoUID:         f.data.PhotoUID,
-			DistFromCentroid: f.dist,
-			FaceIndex:        f.data.FaceIndex,
-			BBoxRel:          f.data.BBoxRel,
-			FileUID:          f.data.FileUID,
-			MarkerUID:        f.data.MarkerUID,
+			PhotoUID: f.data.PhotoUID, DistFromCentroid: f.dist,
+			FaceIndex: f.data.FaceIndex, BBoxRel: f.data.BBoxRel,
+			FileUID: f.data.FileUID, MarkerUID: f.data.MarkerUID,
 		})
 	}
+	return outliers, avgDistance
+}
+
+// FindOutliers detects wrongly assigned faces by computing centroid distance.
+// This version uses cached marker/dimension data from StoredFace, eliminating API calls.
+func (h *FacesHandler) FindOutliers(w http.ResponseWriter, r *http.Request) {
+	if h.faceReader == nil {
+		respondError(w, http.StatusServiceUnavailable, "face data not available")
+		return
+	}
+
+	var req OutlierRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
+		return
+	}
+
+	if req.PersonName == "" {
+		respondError(w, http.StatusBadRequest, "person_name is required")
+		return
+	}
+
+	_ = middleware.MustGetPhotoPrism(r.Context(), w)
+
+	ctx := r.Context()
+	allPersonFaces, err := h.faceReader.GetFacesBySubjectName(ctx, req.PersonName)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to get faces for person")
+		return
+	}
+
+	if len(allPersonFaces) == 0 {
+		respondJSON(w, http.StatusOK, OutlierResponse{
+			Person: req.PersonName, TotalFaces: 0, Outliers: []OutlierResult{},
+		})
+		return
+	}
+
+	faces, missingEmbeddings := classifyOutlierFaces(allPersonFaces)
+
+	if len(faces) == 0 {
+		respondJSON(w, http.StatusOK, OutlierResponse{
+			Person: req.PersonName, TotalFaces: 0,
+			Outliers: []OutlierResult{}, MissingEmbeddings: missingEmbeddings,
+		})
+		return
+	}
+
+	centroid := computeFaceCentroid(faces)
+	outliers, avgDistance := rankFacesByDistance(faces, centroid, req.Threshold, req.Limit)
 
 	respondJSON(w, http.StatusOK, OutlierResponse{
 		Person:            req.PersonName,
 		TotalFaces:        len(faces),
-		AvgDistance:       avgDistance,
+		AvgDistance:        avgDistance,
 		Outliers:          outliers,
 		MissingEmbeddings: missingEmbeddings,
 	})

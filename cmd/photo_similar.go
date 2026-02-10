@@ -120,19 +120,24 @@ func runPhotoSimilar(cmd *cobra.Command, args []string) error {
 	return runPhotoSimilarByUID(args[0], threshold, limit, jsonOutput)
 }
 
-func runPhotoSimilarByLabel(labels []string, threshold float64, limit int, jsonOutput bool, apply bool, dryRun bool) error {
-	ctx := context.Background()
+// similarLabelDeps holds initialized dependencies for label-based similar search.
+type similarLabelDeps struct {
+	pp      *photoprism.PhotoPrism
+	embRepo database.EmbeddingReader
+	cfg     *config.Config
+}
+
+// initSimilarLabelDeps initializes dependencies for label-based similar search.
+func initSimilarLabelDeps(ctx context.Context, jsonOutput bool) (*similarLabelDeps, error) {
 	cfg := config.Load()
 
-	// Initialize PostgreSQL database
 	if cfg.Database.URL == "" {
-		return errors.New("DATABASE_URL environment variable is required")
+		return nil, errors.New("DATABASE_URL environment variable is required")
 	}
 	if err := postgres.Initialize(&cfg.Database); err != nil {
-		return fmt.Errorf("failed to initialize PostgreSQL: %w", err)
+		return nil, fmt.Errorf("failed to initialize PostgreSQL: %w", err)
 	}
 
-	// Create singleton repositories and register with database package
 	pool := postgres.GetGlobalPool()
 	embeddingRepo := postgres.NewEmbeddingRepository(pool)
 	faceRepo := postgres.NewFaceRepository(pool)
@@ -142,25 +147,27 @@ func runPhotoSimilarByLabel(labels []string, threshold float64, limit int, jsonO
 		func() database.FaceWriter { return faceRepo },
 	)
 
-	// Connect to PhotoPrism
 	if !jsonOutput {
 		fmt.Println("Connecting to PhotoPrism...")
 	}
 	pp, err := photoprism.NewPhotoPrism(cfg.PhotoPrism.URL, cfg.PhotoPrism.Username, cfg.PhotoPrism.Password)
 	if err != nil {
-		return fmt.Errorf("failed to connect to PhotoPrism: %w", err)
+		return nil, fmt.Errorf("failed to connect to PhotoPrism: %w", err)
 	}
 
-	// Get embedding reader from PostgreSQL
 	embRepo, err := database.GetEmbeddingReader(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get embedding reader: %w", err)
+		return nil, fmt.Errorf("failed to get embedding reader: %w", err)
 	}
 	if !jsonOutput {
 		fmt.Println("Using PostgreSQL data source")
 	}
 
-	// Collect all source photos from all labels
+	return &similarLabelDeps{pp: pp, embRepo: embRepo, cfg: cfg}, nil
+}
+
+// fetchPhotosForLabels fetches all photo UIDs for the given labels.
+func fetchPhotosForLabels(pp *photoprism.PhotoPrism, labels []string, jsonOutput bool) (map[string]bool, error) {
 	sourcePhotoUIDs := make(map[string]bool)
 	for _, label := range labels {
 		if !jsonOutput {
@@ -174,18 +181,209 @@ func runPhotoSimilarByLabel(labels []string, threshold float64, limit int, jsonO
 		for {
 			photos, err := pp.GetPhotosWithQuery(pageSize, offset, query)
 			if err != nil {
-				return fmt.Errorf("failed to get photos for label '%s': %w", label, err)
+				return nil, fmt.Errorf("failed to get photos for label '%s': %w", label, err)
 			}
-
 			for _, photo := range photos {
 				sourcePhotoUIDs[photo.UID] = true
 			}
-
 			if len(photos) < pageSize {
 				break
 			}
 			offset += pageSize
 		}
+	}
+	return sourcePhotoUIDs, nil
+}
+
+// similarMatchCandidate tracks a candidate match for similar search.
+type similarMatchCandidate struct {
+	PhotoUID   string
+	Distance   float64
+	MatchCount int
+}
+
+// findSimilarByEmbeddings searches for similar photos using source embeddings.
+func findSimilarByEmbeddings(ctx context.Context, embRepo database.EmbeddingReader, sourcePhotoUIDs map[string]bool, limit int, threshold float64, jsonOutput bool) (map[string]*similarMatchCandidate, []string, int, error) {
+	candidateMap := make(map[string]*similarMatchCandidate)
+	sourceList := make([]string, 0, len(sourcePhotoUIDs))
+	sourceEmbeddingCount := 0
+
+	for photoUID := range sourcePhotoUIDs {
+		sourceList = append(sourceList, photoUID)
+
+		emb, err := embRepo.Get(ctx, photoUID)
+		if err != nil {
+			return nil, nil, 0, fmt.Errorf("failed to get embedding for %s: %w", photoUID, err)
+		}
+		if emb == nil {
+			if !jsonOutput {
+				fmt.Printf("Warning: no embedding for source photo %s (skipping)\n", photoUID)
+			}
+			continue
+		}
+		sourceEmbeddingCount++
+
+		similar, distances, err := embRepo.FindSimilarWithDistance(ctx, emb.Embedding, limit*10, threshold)
+		if err != nil {
+			return nil, nil, 0, fmt.Errorf("failed to find similar photos: %w", err)
+		}
+
+		for i, sim := range similar {
+			if sourcePhotoUIDs[sim.PhotoUID] {
+				continue
+			}
+			if existing, ok := candidateMap[sim.PhotoUID]; ok {
+				existing.MatchCount++
+				if distances[i] < existing.Distance {
+					existing.Distance = distances[i]
+				}
+			} else {
+				candidateMap[sim.PhotoUID] = &similarMatchCandidate{
+					PhotoUID: sim.PhotoUID, Distance: distances[i], MatchCount: 1,
+				}
+			}
+		}
+	}
+
+	return candidateMap, sourceList, sourceEmbeddingCount, nil
+}
+
+// filterAndSortSimilarResults filters candidates by min match count and sorts by distance.
+func filterAndSortSimilarResults(candidateMap map[string]*similarMatchCandidate, minMatchCount int, limit int) []SimilarPhoto {
+	for photoUID, candidate := range candidateMap {
+		if candidate.MatchCount < minMatchCount {
+			delete(candidateMap, photoUID)
+		}
+	}
+
+	var results []SimilarPhoto
+	for _, candidate := range candidateMap {
+		results = append(results, SimilarPhoto{
+			PhotoUID: candidate.PhotoUID, Distance: candidate.Distance, Similarity: 1 - candidate.Distance,
+		})
+	}
+
+	sort.Slice(results, func(i, j int) bool { return results[i].Distance < results[j].Distance })
+	if len(results) > limit {
+		results = results[:limit]
+	}
+	return results
+}
+
+// printSimilarTable prints similar results as a human-readable table.
+func printSimilarTable(results []SimilarPhoto, cfg *config.Config) {
+	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
+	fmt.Fprintln(w, "PHOTO\tDISTANCE\tSIMILARITY")
+	fmt.Fprintln(w, "-----\t--------\t----------")
+	for _, r := range results {
+		photoRef := r.PhotoUID
+		if url := cfg.PhotoPrism.PhotoURL(r.PhotoUID); url != "" {
+			photoRef = url
+		}
+		fmt.Fprintf(w, "%s\t%.4f\t%.2f%%\n", photoRef, r.Distance, r.Similarity*100)
+	}
+	w.Flush()
+}
+
+// applyLabelsToPhoto applies all labels to a single photo. Returns true if all succeeded.
+func applyLabelsToPhoto(pp *photoprism.PhotoPrism, r *SimilarPhoto, labels []string, jsonOutput bool) bool {
+	allOK := true
+	var lastError string
+	for _, label := range labels {
+		photoLabel := photoprism.PhotoLabel{Name: label, LabelSrc: "manual"}
+		_, err := pp.AddPhotoLabel(r.PhotoUID, photoLabel)
+		if err != nil {
+			allOK = false
+			lastError = err.Error()
+			if !jsonOutput {
+				fmt.Printf("  Error: failed to add label %q to %s: %v\n", label, r.PhotoUID, err)
+			}
+		}
+	}
+	if allOK {
+		r.Applied = true
+	} else {
+		r.ApplyError = lastError
+	}
+	return allOK
+}
+
+// applySimilarLabels applies labels to similar photos.
+func applySimilarLabels(pp *photoprism.PhotoPrism, results []SimilarPhoto, labels []string, dryRun bool, jsonOutput bool) (int, int) {
+	if !jsonOutput {
+		if dryRun {
+			fmt.Printf("\n[DRY-RUN] Would apply %d label(s) to %d photos:\n", len(labels), len(results))
+		} else {
+			fmt.Printf("\nApplying %d label(s) to %d photos...\n", len(labels), len(results))
+		}
+	}
+
+	appliedCount := 0
+	failedCount := 0
+
+	for i := range results {
+		r := &results[i]
+		if dryRun {
+			if !jsonOutput {
+				fmt.Printf("  [DRY-RUN] %s\n", r.PhotoUID)
+			}
+			continue
+		}
+		if applyLabelsToPhoto(pp, r, labels, jsonOutput) {
+			appliedCount++
+			if !jsonOutput {
+				fmt.Printf("  Applied labels to %s\n", r.PhotoUID)
+			}
+		} else {
+			failedCount++
+		}
+	}
+
+	if !jsonOutput && !dryRun {
+		fmt.Printf("\nApplied: %d, Failed: %d\n", appliedCount, failedCount)
+	}
+
+	return appliedCount, failedCount
+}
+
+// outputSimilarByLabelResults handles the output for label-based similar search (applying labels, printing, or JSON).
+func outputSimilarByLabelResults(deps *similarLabelDeps, results []SimilarPhoto, labels []string, sourceList []string, threshold float64, apply bool, dryRun bool, jsonOutput bool) error {
+	if !jsonOutput && len(results) == 0 {
+		fmt.Printf("No similar photos found within threshold %.2f\n", threshold)
+		return nil
+	}
+
+	if !jsonOutput {
+		fmt.Printf("\nFound %d similar photos (not already labeled):\n\n", len(results))
+		printSimilarTable(results, deps.cfg)
+	}
+
+	appliedCount := 0
+	failedCount := 0
+	if apply && len(results) > 0 {
+		appliedCount, failedCount = applySimilarLabels(deps.pp, results, labels, dryRun, jsonOutput)
+	}
+
+	if jsonOutput {
+		return json.NewEncoder(os.Stdout).Encode(LabelSimilarOutput{
+			Labels: labels, SourcePhotos: sourceList, Threshold: threshold,
+			Results: results, Count: len(results), Applied: appliedCount, Failed: failedCount,
+		})
+	}
+	return nil
+}
+
+func runPhotoSimilarByLabel(labels []string, threshold float64, limit int, jsonOutput bool, apply bool, dryRun bool) error {
+	ctx := context.Background()
+
+	deps, err := initSimilarLabelDeps(ctx, jsonOutput)
+	if err != nil {
+		return err
+	}
+
+	sourcePhotoUIDs, err := fetchPhotosForLabels(deps.pp, labels, jsonOutput)
+	if err != nil {
+		return err
 	}
 
 	if len(sourcePhotoUIDs) == 0 {
@@ -199,210 +397,34 @@ func runPhotoSimilarByLabel(labels []string, threshold float64, limit int, jsonO
 		fmt.Printf("Found %d source photos with specified labels\n", len(sourcePhotoUIDs))
 	}
 
-	// Get embeddings for source photos and find similar
-	// Track how many source embeddings match each candidate (same logic as photo match)
-	type matchCandidate struct {
-		PhotoUID   string
-		Distance   float64 // Best (lowest) distance
-		MatchCount int     // Number of source embeddings that matched
-	}
-	candidateMap := make(map[string]*matchCandidate)
-	sourceList := make([]string, 0, len(sourcePhotoUIDs))
-	sourceEmbeddingCount := 0
-
-	for photoUID := range sourcePhotoUIDs {
-		sourceList = append(sourceList, photoUID)
-
-		emb, err := embRepo.Get(ctx, photoUID)
-		if err != nil {
-			return fmt.Errorf("failed to get embedding for %s: %w", photoUID, err)
-		}
-		if emb == nil {
-			if !jsonOutput {
-				fmt.Printf("Warning: no embedding for source photo %s (skipping)\n", photoUID)
-			}
-			continue
-		}
-		sourceEmbeddingCount++
-
-		// Find similar photos for this source
-		similar, distances, err := embRepo.FindSimilarWithDistance(ctx, emb.Embedding, limit*10, threshold)
-		if err != nil {
-			return fmt.Errorf("failed to find similar photos: %w", err)
-		}
-
-		for i, sim := range similar {
-			// Skip source photos
-			if sourcePhotoUIDs[sim.PhotoUID] {
-				continue
-			}
-
-			// Track match count and keep best (lowest) distance
-			if existing, ok := candidateMap[sim.PhotoUID]; ok {
-				existing.MatchCount++
-				if distances[i] < existing.Distance {
-					existing.Distance = distances[i]
-				}
-			} else {
-				candidateMap[sim.PhotoUID] = &matchCandidate{
-					PhotoUID:   sim.PhotoUID,
-					Distance:   distances[i],
-					MatchCount: 1,
-				}
-			}
-		}
+	candidateMap, sourceList, sourceEmbeddingCount, err := findSimilarByEmbeddings(ctx, deps.embRepo, sourcePhotoUIDs, limit, threshold, jsonOutput)
+	if err != nil {
+		return err
 	}
 
-	// Calculate minimum match count: at least 5% (rounded up), minimum 5
 	minMatchCount := (sourceEmbeddingCount + 19) / 20
 	if minMatchCount < 5 {
 		minMatchCount = 5
 	}
-
 	if !jsonOutput {
 		fmt.Printf("Requiring at least %d/%d source matches\n", minMatchCount, sourceEmbeddingCount)
 	}
 
-	// Filter: only keep candidates that matched at least minMatchCount sources
-	for photoUID, candidate := range candidateMap {
-		if candidate.MatchCount < minMatchCount {
-			delete(candidateMap, photoUID)
-		}
-	}
-
-	// Convert to sorted results
-	var results []SimilarPhoto
-	for _, candidate := range candidateMap {
-		results = append(results, SimilarPhoto{
-			PhotoUID:   candidate.PhotoUID,
-			Distance:   candidate.Distance,
-			Similarity: 1 - candidate.Distance,
-		})
-	}
-
-	// Sort by distance (ascending)
-	sort.Slice(results, func(i, j int) bool {
-		return results[i].Distance < results[j].Distance
-	})
-
-	// Apply limit
-	if len(results) > limit {
-		results = results[:limit]
-	}
-
-	// Human-readable table output (before apply, unless JSON)
-	if !jsonOutput {
-		if len(results) == 0 {
-			fmt.Printf("No similar photos found within threshold %.2f\n", threshold)
-			return nil
-		}
-
-		fmt.Printf("\nFound %d similar photos (not already labeled):\n\n", len(results))
-
-		w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-		fmt.Fprintln(w, "PHOTO\tDISTANCE\tSIMILARITY")
-		fmt.Fprintln(w, "-----\t--------\t----------")
-
-		for _, r := range results {
-			photoRef := r.PhotoUID
-			if url := cfg.PhotoPrism.PhotoURL(r.PhotoUID); url != "" {
-				photoRef = url
-			}
-			fmt.Fprintf(w, "%s\t%.4f\t%.2f%%\n", photoRef, r.Distance, r.Similarity*100)
-		}
-
-		w.Flush()
-	}
-
-	// Apply labels if requested
-	appliedCount := 0
-	failedCount := 0
-
-	if apply && len(results) > 0 {
-		if !jsonOutput {
-			if dryRun {
-				fmt.Printf("\n[DRY-RUN] Would apply %d label(s) to %d photos:\n", len(labels), len(results))
-				for _, label := range labels {
-					fmt.Printf("  Label: %q\n", label)
-				}
-			} else {
-				fmt.Printf("\nApplying %d label(s) to %d photos...\n", len(labels), len(results))
-			}
-		}
-
-		for i := range results {
-			r := &results[i]
-
-			if dryRun {
-				if !jsonOutput {
-					fmt.Printf("  [DRY-RUN] %s\n", r.PhotoUID)
-				}
-				continue
-			}
-
-			// Apply all labels to this photo
-			photoApplied := true
-			var lastError string
-			for _, label := range labels {
-				photoLabel := photoprism.PhotoLabel{
-					Name:     label,
-					LabelSrc: "manual",
-				}
-				_, err := pp.AddPhotoLabel(r.PhotoUID, photoLabel)
-				if err != nil {
-					photoApplied = false
-					lastError = err.Error()
-					if !jsonOutput {
-						fmt.Printf("  Error: failed to add label %q to %s: %v\n", label, r.PhotoUID, err)
-					}
-				}
-			}
-
-			if photoApplied {
-				r.Applied = true
-				appliedCount++
-				if !jsonOutput {
-					fmt.Printf("  Applied labels to %s\n", r.PhotoUID)
-				}
-			} else {
-				r.ApplyError = lastError
-				failedCount++
-			}
-		}
-
-		if !jsonOutput && !dryRun {
-			fmt.Printf("\nApplied: %d, Failed: %d\n", appliedCount, failedCount)
-		}
-	}
-
-	if jsonOutput {
-		return json.NewEncoder(os.Stdout).Encode(LabelSimilarOutput{
-			Labels:       labels,
-			SourcePhotos: sourceList,
-			Threshold:    threshold,
-			Results:      results,
-			Count:        len(results),
-			Applied:      appliedCount,
-			Failed:       failedCount,
-		})
-	}
-
-	return nil
+	results := filterAndSortSimilarResults(candidateMap, minMatchCount, limit)
+	return outputSimilarByLabelResults(deps, results, labels, sourceList, threshold, apply, dryRun, jsonOutput)
 }
 
-func runPhotoSimilarByUID(photoUID string, threshold float64, limit int, jsonOutput bool) error {
-	ctx := context.Background()
+// initSimilarUIDDeps initializes dependencies for single-photo similar search.
+func initSimilarUIDDeps(ctx context.Context, jsonOutput bool) (database.EmbeddingReader, *config.Config, error) {
 	cfg := config.Load()
 
-	// Initialize PostgreSQL database
 	if cfg.Database.URL == "" {
-		return errors.New("DATABASE_URL environment variable is required")
+		return nil, nil, errors.New("DATABASE_URL environment variable is required")
 	}
 	if err := postgres.Initialize(&cfg.Database); err != nil {
-		return fmt.Errorf("failed to initialize PostgreSQL: %w", err)
+		return nil, nil, fmt.Errorf("failed to initialize PostgreSQL: %w", err)
 	}
 
-	// Create singleton repositories and register with database package
 	pool := postgres.GetGlobalPool()
 	embeddingRepo := postgres.NewEmbeddingRepository(pool)
 	faceRepo := postgres.NewFaceRepository(pool)
@@ -412,16 +434,48 @@ func runPhotoSimilarByUID(photoUID string, threshold float64, limit int, jsonOut
 		func() database.FaceWriter { return faceRepo },
 	)
 
-	// Get embedding reader from PostgreSQL
 	embRepo, err := database.GetEmbeddingReader(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get embedding reader: %w", err)
+		return nil, nil, fmt.Errorf("failed to get embedding reader: %w", err)
 	}
 	if !jsonOutput {
 		fmt.Println("Using PostgreSQL data source")
 	}
 
-	// Get the source photo's embedding
+	return embRepo, cfg, nil
+}
+
+// searchAndFilterSimilarByUID searches for similar photos and filters out the source photo.
+func searchAndFilterSimilarByUID(ctx context.Context, embRepo database.EmbeddingReader, sourceEmb []float32, photoUID string, limit int, threshold float64) ([]SimilarPhoto, error) {
+	similar, distances, err := embRepo.FindSimilarWithDistance(ctx, sourceEmb, limit+1, threshold)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find similar photos: %w", err)
+	}
+
+	var results []SimilarPhoto
+	for i, emb := range similar {
+		if emb.PhotoUID == photoUID {
+			continue
+		}
+		results = append(results, SimilarPhoto{
+			PhotoUID: emb.PhotoUID, Distance: distances[i], Similarity: 1 - distances[i],
+		})
+	}
+
+	if len(results) > limit {
+		results = results[:limit]
+	}
+	return results, nil
+}
+
+func runPhotoSimilarByUID(photoUID string, threshold float64, limit int, jsonOutput bool) error {
+	ctx := context.Background()
+
+	embRepo, cfg, err := initSimilarUIDDeps(ctx, jsonOutput)
+	if err != nil {
+		return err
+	}
+
 	if !jsonOutput {
 		fmt.Printf("Looking up embedding for %s...\n", photoUID)
 	}
@@ -434,44 +488,21 @@ func runPhotoSimilarByUID(photoUID string, threshold float64, limit int, jsonOut
 		return fmt.Errorf("no embedding found for photo %s. Run 'photo info --embedding %s' first", photoUID, photoUID)
 	}
 
-	// Search for similar photos (+1 to account for the source photo itself)
 	if !jsonOutput {
 		fmt.Printf("Searching for similar photos (threshold: %.2f)...\n\n", threshold)
 	}
 
-	similar, distances, err := embRepo.FindSimilarWithDistance(ctx, sourceEmb.Embedding, limit+1, threshold)
+	results, err := searchAndFilterSimilarByUID(ctx, embRepo, sourceEmb.Embedding, photoUID, limit, threshold)
 	if err != nil {
-		return fmt.Errorf("failed to find similar photos: %w", err)
-	}
-
-	// Build results, excluding the source photo
-	var results []SimilarPhoto
-	for i, emb := range similar {
-		if emb.PhotoUID == photoUID {
-			continue // Skip the source photo
-		}
-		results = append(results, SimilarPhoto{
-			PhotoUID:   emb.PhotoUID,
-			Distance:   distances[i],
-			Similarity: 1 - distances[i],
-		})
-	}
-
-	// Apply limit after filtering
-	if len(results) > limit {
-		results = results[:limit]
+		return err
 	}
 
 	if jsonOutput {
 		return json.NewEncoder(os.Stdout).Encode(SimilarOutput{
-			SourcePhotoUID: photoUID,
-			Threshold:      threshold,
-			Results:        results,
-			Count:          len(results),
+			SourcePhotoUID: photoUID, Threshold: threshold, Results: results, Count: len(results),
 		})
 	}
 
-	// Human-readable output
 	if len(results) == 0 {
 		sourceRef := photoUID
 		if url := cfg.PhotoPrism.PhotoURL(photoUID); url != "" {
@@ -482,20 +513,6 @@ func runPhotoSimilarByUID(photoUID string, threshold float64, limit int, jsonOut
 	}
 
 	fmt.Printf("Found %d similar photos:\n\n", len(results))
-
-	w := tabwriter.NewWriter(os.Stdout, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(w, "PHOTO\tDISTANCE\tSIMILARITY")
-	fmt.Fprintln(w, "-----\t--------\t----------")
-
-	for _, r := range results {
-		photoRef := r.PhotoUID
-		if url := cfg.PhotoPrism.PhotoURL(r.PhotoUID); url != "" {
-			photoRef = url
-		}
-		fmt.Fprintf(w, "%s\t%.4f\t%.2f%%\n", photoRef, r.Distance, r.Similarity*100)
-	}
-
-	w.Flush()
-
+	printSimilarTable(results, cfg)
 	return nil
 }

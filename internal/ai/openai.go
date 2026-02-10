@@ -236,47 +236,55 @@ func buildPhotoAnalysisPrompt(availableLabels []string, estimateDate bool) strin
 	return fmt.Sprintf(photoAnalysisPrompt, string(labelsJSON))
 }
 
-func buildUserMessageWithMetadata(metadata *PhotoMetadata) string {
-	if metadata == nil {
-		return "Analyze this photo."
+// formatDatePart formats the date from metadata into a human-readable string.
+func formatDatePart(metadata *PhotoMetadata) string {
+	if metadata.Year <= 0 {
+		return ""
 	}
+	if metadata.Month > 0 && metadata.Day > 0 {
+		return fmt.Sprintf("Metadata date: %04d-%02d-%02d", metadata.Year, metadata.Month, metadata.Day)
+	}
+	if metadata.Month > 0 {
+		return fmt.Sprintf("Metadata date: %04d-%02d", metadata.Year, metadata.Month)
+	}
+	return fmt.Sprintf("Metadata year: %d", metadata.Year)
+}
 
+// formatMetadataParts builds the metadata context lines from photo metadata.
+func formatMetadataParts(metadata *PhotoMetadata) []string {
 	var parts []string
-	parts = append(parts, "Analyze this photo.")
 
-	// Add filename info
 	if metadata.OriginalName != "" {
 		parts = append(parts, "Original filename: "+metadata.OriginalName)
 	} else if metadata.FileName != "" {
 		parts = append(parts, "Filename: "+metadata.FileName)
 	}
 
-	// Add date info from metadata
-	if metadata.Year > 0 {
-		if metadata.Month > 0 && metadata.Day > 0 {
-			parts = append(parts, fmt.Sprintf("Metadata date: %04d-%02d-%02d", metadata.Year, metadata.Month, metadata.Day))
-		} else if metadata.Month > 0 {
-			parts = append(parts, fmt.Sprintf("Metadata date: %04d-%02d", metadata.Year, metadata.Month))
-		} else {
-			parts = append(parts, fmt.Sprintf("Metadata year: %d", metadata.Year))
-		}
+	if datePart := formatDatePart(metadata); datePart != "" {
+		parts = append(parts, datePart)
 	}
 
-	// Add GPS info
 	if metadata.Lat != 0 || metadata.Lng != 0 {
 		parts = append(parts, fmt.Sprintf("GPS coordinates: %.6f, %.6f", metadata.Lat, metadata.Lng))
 	}
 
-	// Add country
 	if metadata.Country != "" && metadata.Country != "zz" {
 		parts = append(parts, "Country: "+metadata.Country)
 	}
 
-	// Add dimensions
 	if metadata.Width > 0 && metadata.Height > 0 {
 		parts = append(parts, fmt.Sprintf("Dimensions: %dx%d", metadata.Width, metadata.Height))
 	}
 
+	return parts
+}
+
+func buildUserMessageWithMetadata(metadata *PhotoMetadata) string {
+	if metadata == nil {
+		return "Analyze this photo."
+	}
+
+	parts := append([]string{"Analyze this photo."}, formatMetadataParts(metadata)...)
 	return strings.Join(parts, "\n")
 }
 
@@ -440,44 +448,43 @@ func (p *OpenAIProvider) GetBatchResults(ctx context.Context, batchID string) ([
 	var results []BatchPhotoResult
 	scanner := bufio.NewScanner(strings.NewReader(string(content)))
 	for scanner.Scan() {
-		line := scanner.Text()
-		if line == "" {
+		line := scanner.Bytes()
+		if len(line) == 0 {
 			continue
 		}
-
-		var resp batchResponse
-		if err := json.Unmarshal([]byte(line), &resp); err != nil {
-			results = append(results, BatchPhotoResult{
-				PhotoUID: "unknown",
-				Error:    fmt.Sprintf("failed to parse response: %v", err),
-			})
-			continue
-		}
-
-		result := BatchPhotoResult{
-			PhotoUID: resp.CustomID,
-		}
-
-		if resp.Error != nil {
-			result.Error = resp.Error.Message
-		} else if resp.Response.Body.Error != nil {
-			result.Error = resp.Response.Body.Error.Message
-		} else if len(resp.Response.Body.Choices) > 0 {
-			content := resp.Response.Body.Choices[0].Message.Content
-			var analysis PhotoAnalysis
-			if err := json.Unmarshal([]byte(content), &analysis); err != nil {
-				result.Error = fmt.Sprintf("failed to parse analysis: %v", err)
-			} else {
-				result.Analysis = &analysis
-			}
-		} else {
-			result.Error = "no choices in response"
-		}
-
-		results = append(results, result)
+		results = append(results, parseBatchResultLine(line))
 	}
 
 	return results, nil
+}
+
+// parseBatchResultLine parses a single JSONL line from a batch output file.
+func parseBatchResultLine(line []byte) BatchPhotoResult {
+	var resp batchResponse
+	if err := json.Unmarshal(line, &resp); err != nil {
+		return BatchPhotoResult{
+			PhotoUID: "unknown",
+			Error:    fmt.Sprintf("failed to parse response: %v", err),
+		}
+	}
+
+	result := BatchPhotoResult{PhotoUID: resp.CustomID}
+	switch {
+	case resp.Error != nil:
+		result.Error = resp.Error.Message
+	case resp.Response.Body.Error != nil:
+		result.Error = resp.Response.Body.Error.Message
+	case len(resp.Response.Body.Choices) > 0:
+		var analysis PhotoAnalysis
+		if err := json.Unmarshal([]byte(resp.Response.Body.Choices[0].Message.Content), &analysis); err != nil {
+			result.Error = fmt.Sprintf("failed to parse analysis: %v", err)
+		} else {
+			result.Analysis = &analysis
+		}
+	default:
+		result.Error = "no choices in response"
+	}
+	return result
 }
 
 func (p *OpenAIProvider) CancelBatch(ctx context.Context, batchID string) error {

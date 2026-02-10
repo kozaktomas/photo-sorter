@@ -367,163 +367,94 @@ type EraResultEntry struct {
 	PromptsUsed        int    `json:"prompts_used"`
 }
 
-func runCacheComputeEras(cmd *cobra.Command, args []string) error {
-	jsonOutput := mustGetBool(cmd, "json")
-	dryRun := mustGetBool(cmd, "dry-run")
+// eraEmbeddingMeta holds model info captured during the first embedding computation.
+type eraEmbeddingMeta struct {
+	Model      string
+	Pretrained string
+	Dim        int
+}
 
-	ctx := context.Background()
-	cfg := config.Load()
-	startTime := time.Now()
-
-	// Initialize PostgreSQL (needed even for dry-run to verify config)
-	if cfg.Database.URL == "" {
-		return errors.New("DATABASE_URL environment variable is required")
-	}
-	if !dryRun {
-		if err := postgres.Initialize(&cfg.Database); err != nil {
-			return fmt.Errorf("failed to initialize PostgreSQL: %w", err)
-		}
-
-		pool := postgres.GetGlobalPool()
-		eraRepo := postgres.NewEraEmbeddingRepository(pool)
-		database.RegisterPostgresBackend(
-			nil,
-			nil,
-			nil,
-		)
-		database.RegisterEraEmbeddingWriter(func() database.EraEmbeddingWriter { return eraRepo })
-	}
-
-	// Create embedding client
-	embClient := fingerprint.NewEmbeddingClient(cfg.Embedding.URL, "")
-
-	if !jsonOutput {
-		fmt.Printf("Embedding service: %s\n", cfg.Embedding.URL)
-		if dryRun {
-			fmt.Println("DRY RUN - embeddings will be computed but not saved")
-		}
-		fmt.Printf("Processing %d eras with %d prompts each (%d total embeddings)\n\n",
-			len(eras), promptsPerEra, len(eras)*promptsPerEra)
-	}
-
-	var result ComputeErasResult
-	result.DryRun = dryRun
-
-	var model, pretrained string
-	var dim int
-
-	for i, era := range eras {
-		prompts := generatePrompts(era)
-
-		if !jsonOutput {
-			fmt.Printf("[%d/%d] %s (%d prompts)...", i+1, len(eras), era.Name, len(prompts))
-		}
-
-		// Compute embedding for each prompt
-		var embeddings [][]float32
-		for j, prompt := range prompts {
-			// Use metadata variant on first call to capture model info
-			if model == "" {
-				embResult, err := embClient.ComputeTextEmbeddingWithMetadata(ctx, prompt)
-				if err != nil {
-					return fmt.Errorf("failed to compute text embedding for era %s prompt %d: %w", era.Slug, j, err)
-				}
-				model = embResult.Model
-				pretrained = embResult.Pretrained
-				dim = embResult.Dim
-				embeddings = append(embeddings, embResult.Embedding)
-			} else {
-				emb, err := embClient.ComputeTextEmbedding(ctx, prompt)
-				if err != nil {
-					return fmt.Errorf("failed to compute text embedding for era %s prompt %d: %w", era.Slug, j, err)
-				}
-				embeddings = append(embeddings, emb)
-			}
-		}
-
-		// Compute centroid
-		centroid := computeCentroid(embeddings)
-
-		if !jsonOutput {
-			fmt.Printf(" done (dim=%d)\n", len(centroid))
-		}
-
-		// Save to database
-		if !dryRun {
-			eraWriter, err := database.GetEraEmbeddingWriter(ctx)
+// computeEraEmbeddings computes text embeddings for an era's prompts and returns the centroid.
+// On the first call (when meta.Model is empty), it captures model metadata.
+func computeEraEmbeddings(ctx context.Context, embClient *fingerprint.EmbeddingClient, era eraDef, prompts []string, meta *eraEmbeddingMeta) ([]float32, error) {
+	var embeddings [][]float32
+	for j, prompt := range prompts {
+		if meta.Model == "" {
+			embResult, err := embClient.ComputeTextEmbeddingWithMetadata(ctx, prompt)
 			if err != nil {
-				return fmt.Errorf("failed to get era embedding writer: %w", err)
+				return nil, fmt.Errorf("failed to compute text embedding for era %s prompt %d: %w", era.Slug, j, err)
 			}
-
-			stored := database.StoredEraEmbedding{
-				EraSlug:            era.Slug,
-				EraName:            era.Name,
-				RepresentativeDate: era.RepresentativeDate,
-				PromptCount:        len(prompts),
-				Embedding:          centroid,
-				Model:              model,
-				Pretrained:         pretrained,
-				Dim:                dim,
+			meta.Model = embResult.Model
+			meta.Pretrained = embResult.Pretrained
+			meta.Dim = embResult.Dim
+			embeddings = append(embeddings, embResult.Embedding)
+		} else {
+			emb, err := embClient.ComputeTextEmbedding(ctx, prompt)
+			if err != nil {
+				return nil, fmt.Errorf("failed to compute text embedding for era %s prompt %d: %w", era.Slug, j, err)
 			}
-
-			if err := eraWriter.SaveEra(ctx, stored); err != nil {
-				return fmt.Errorf("failed to save era embedding for %s: %w", era.Slug, err)
-			}
-		}
-
-		result.Eras = append(result.Eras, EraResultEntry{
-			Slug:               era.Slug,
-			Name:               era.Name,
-			RepresentativeDate: era.RepresentativeDate,
-			PromptsUsed:        len(prompts),
-		})
-	}
-
-	// Clean up stale era embeddings not in the current list
-	if !dryRun {
-		eraWriter, err := database.GetEraEmbeddingWriter(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to get era embedding writer for cleanup: %w", err)
-		}
-
-		allStored, err := eraWriter.GetAllEras(ctx)
-		if err != nil {
-			return fmt.Errorf("failed to list stored eras for cleanup: %w", err)
-		}
-
-		currentSlugs := make(map[string]bool, len(eras))
-		for _, era := range eras {
-			currentSlugs[era.Slug] = true
-		}
-
-		for i := range allStored {
-			if !currentSlugs[allStored[i].EraSlug] {
-				if err := eraWriter.DeleteEra(ctx, allStored[i].EraSlug); err != nil {
-					return fmt.Errorf("failed to delete stale era %s: %w", allStored[i].EraSlug, err)
-				}
-				if !jsonOutput {
-					fmt.Printf("Deleted stale era: %s\n", allStored[i].EraSlug)
-				}
-			}
+			embeddings = append(embeddings, emb)
 		}
 	}
+	return computeCentroid(embeddings), nil
+}
 
-	duration := time.Since(startTime)
-	result.Success = true
-	result.ErasComputed = len(eras)
-	result.PromptsTotal = len(eras) * promptsPerEra
-	result.EmbeddingDim = dim
-	result.Model = model
-	result.Pretrained = pretrained
-	result.DurationMs = duration.Milliseconds()
-	result.DurationHuman = formatDuration(duration)
-
-	if jsonOutput {
-		result.DurationHuman = ""
-		return outputJSON(result)
+// saveEraCentroid saves a computed era centroid to the database.
+func saveEraCentroid(ctx context.Context, era eraDef, centroid []float32, promptCount int, meta *eraEmbeddingMeta) error {
+	eraWriter, err := database.GetEraEmbeddingWriter(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get era embedding writer: %w", err)
 	}
 
-	// Human-readable summary
+	stored := database.StoredEraEmbedding{
+		EraSlug:            era.Slug,
+		EraName:            era.Name,
+		RepresentativeDate: era.RepresentativeDate,
+		PromptCount:        promptCount,
+		Embedding:          centroid,
+		Model:              meta.Model,
+		Pretrained:         meta.Pretrained,
+		Dim:                meta.Dim,
+	}
+
+	if err := eraWriter.SaveEra(ctx, stored); err != nil {
+		return fmt.Errorf("failed to save era embedding for %s: %w", era.Slug, err)
+	}
+	return nil
+}
+
+// cleanupStaleEras deletes era embeddings that are no longer in the current eras list.
+func cleanupStaleEras(ctx context.Context, jsonOutput bool) error {
+	eraWriter, err := database.GetEraEmbeddingWriter(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get era embedding writer for cleanup: %w", err)
+	}
+
+	allStored, err := eraWriter.GetAllEras(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to list stored eras for cleanup: %w", err)
+	}
+
+	currentSlugs := make(map[string]bool, len(eras))
+	for _, era := range eras {
+		currentSlugs[era.Slug] = true
+	}
+
+	for i := range allStored {
+		if !currentSlugs[allStored[i].EraSlug] {
+			if err := eraWriter.DeleteEra(ctx, allStored[i].EraSlug); err != nil {
+				return fmt.Errorf("failed to delete stale era %s: %w", allStored[i].EraSlug, err)
+			}
+			if !jsonOutput {
+				fmt.Printf("Deleted stale era: %s\n", allStored[i].EraSlug)
+			}
+		}
+	}
+	return nil
+}
+
+// printComputeErasResult prints the human-readable summary of a compute-eras result.
+func printComputeErasResult(result ComputeErasResult, dryRun bool) {
 	fmt.Println("\nCompute complete!")
 	fmt.Printf("  Eras computed:   %d\n", result.ErasComputed)
 	fmt.Printf("  Total prompts:   %d\n", result.PromptsTotal)
@@ -534,6 +465,103 @@ func runCacheComputeEras(cmd *cobra.Command, args []string) error {
 		fmt.Printf("  Mode:            DRY RUN\n")
 	}
 	fmt.Printf("  Duration:        %s\n", result.DurationHuman)
+}
 
+// initComputeErasDB initializes the database if not in dry-run mode.
+func initComputeErasDB(cfg *config.Config, dryRun bool) error {
+	if cfg.Database.URL == "" {
+		return errors.New("DATABASE_URL environment variable is required")
+	}
+	if !dryRun {
+		if err := postgres.Initialize(&cfg.Database); err != nil {
+			return fmt.Errorf("failed to initialize PostgreSQL: %w", err)
+		}
+		pool := postgres.GetGlobalPool()
+		eraRepo := postgres.NewEraEmbeddingRepository(pool)
+		database.RegisterPostgresBackend(nil, nil, nil)
+		database.RegisterEraEmbeddingWriter(func() database.EraEmbeddingWriter { return eraRepo })
+	}
+	return nil
+}
+
+// processAllEras computes embeddings for all eras and returns era result entries.
+func processAllEras(ctx context.Context, embClient *fingerprint.EmbeddingClient, meta *eraEmbeddingMeta, dryRun bool, jsonOutput bool) ([]EraResultEntry, error) {
+	var entries []EraResultEntry
+	for i, era := range eras {
+		prompts := generatePrompts(era)
+		if !jsonOutput {
+			fmt.Printf("[%d/%d] %s (%d prompts)...", i+1, len(eras), era.Name, len(prompts))
+		}
+
+		centroid, err := computeEraEmbeddings(ctx, embClient, era, prompts, meta)
+		if err != nil {
+			return nil, err
+		}
+
+		if !jsonOutput {
+			fmt.Printf(" done (dim=%d)\n", len(centroid))
+		}
+
+		if !dryRun {
+			if err := saveEraCentroid(ctx, era, centroid, len(prompts), meta); err != nil {
+				return nil, err
+			}
+		}
+
+		entries = append(entries, EraResultEntry{
+			Slug: era.Slug, Name: era.Name,
+			RepresentativeDate: era.RepresentativeDate, PromptsUsed: len(prompts),
+		})
+	}
+	return entries, nil
+}
+
+func runCacheComputeEras(cmd *cobra.Command, args []string) error {
+	jsonOutput := mustGetBool(cmd, "json")
+	dryRun := mustGetBool(cmd, "dry-run")
+
+	ctx := context.Background()
+	cfg := config.Load()
+	startTime := time.Now()
+
+	if err := initComputeErasDB(cfg, dryRun); err != nil {
+		return err
+	}
+
+	embClient := fingerprint.NewEmbeddingClient(cfg.Embedding.URL, "")
+	if !jsonOutput {
+		fmt.Printf("Embedding service: %s\n", cfg.Embedding.URL)
+		if dryRun {
+			fmt.Println("DRY RUN - embeddings will be computed but not saved")
+		}
+		fmt.Printf("Processing %d eras with %d prompts each (%d total embeddings)\n\n",
+			len(eras), promptsPerEra, len(eras)*promptsPerEra)
+	}
+
+	meta := &eraEmbeddingMeta{}
+	entries, err := processAllEras(ctx, embClient, meta, dryRun, jsonOutput)
+	if err != nil {
+		return err
+	}
+
+	if !dryRun {
+		if err := cleanupStaleEras(ctx, jsonOutput); err != nil {
+			return err
+		}
+	}
+
+	duration := time.Since(startTime)
+	result := ComputeErasResult{
+		Success: true, DryRun: dryRun, Eras: entries,
+		ErasComputed: len(eras), PromptsTotal: len(eras) * promptsPerEra,
+		EmbeddingDim: meta.Dim, Model: meta.Model, Pretrained: meta.Pretrained,
+		DurationMs: duration.Milliseconds(), DurationHuman: formatDuration(duration),
+	}
+
+	if jsonOutput {
+		result.DurationHuman = ""
+		return outputJSON(result)
+	}
+	printComputeErasResult(result, dryRun)
 	return nil
 }

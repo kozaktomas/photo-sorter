@@ -40,44 +40,50 @@ type primaryFileInfo struct {
 	Orientation int
 }
 
-// extractPrimaryFileInfo extracts dimensions and orientation from the primary file in photo details.
-// Face detection runs on the primary file, so we must use its dimensions for coordinate conversion.
-func extractPrimaryFileInfo(details map[string]interface{}) *primaryFileInfo {
+// findPrimaryFile locates the primary file map from the photo details Files list.
+// Falls back to the first file if no primary is found.
+func findPrimaryFile(details map[string]interface{}) map[string]interface{} {
 	files, ok := details["Files"].([]interface{})
 	if !ok || len(files) == 0 {
 		return nil
 	}
 
-	// Find the primary file
-	var primaryFile map[string]interface{}
 	for _, f := range files {
 		if file, ok := f.(map[string]interface{}); ok {
 			if isPrimary, ok := file["Primary"].(bool); ok && isPrimary {
-				primaryFile = file
-				break
+				return file
 			}
 		}
 	}
 	// Fall back to first file if no primary found
-	if primaryFile == nil {
-		primaryFile, _ = files[0].(map[string]interface{})
-	}
-	if primaryFile == nil {
-		return nil
-	}
+	primaryFile, _ := files[0].(map[string]interface{})
+	return primaryFile
+}
 
+// parseFileInfo extracts UID, dimensions, and orientation from a file map.
+func parseFileInfo(file map[string]interface{}) *primaryFileInfo {
 	info := &primaryFileInfo{Orientation: 1} // Default orientation
-	if uid, ok := primaryFile["UID"].(string); ok {
+	if uid, ok := file["UID"].(string); ok {
 		info.UID = uid
 	}
-	if w, ok := primaryFile["Width"].(float64); ok {
+	if w, ok := file["Width"].(float64); ok {
 		info.Width = int(w)
 	}
-	if h, ok := primaryFile["Height"].(float64); ok {
+	if h, ok := file["Height"].(float64); ok {
 		info.Height = int(h)
 	}
-	if o, ok := primaryFile["Orientation"].(float64); ok {
+	if o, ok := file["Orientation"].(float64); ok {
 		info.Orientation = int(o)
 	}
 	return info
+}
+
+// extractPrimaryFileInfo extracts dimensions and orientation from the primary file in photo details.
+// Face detection runs on the primary file, so we must use its dimensions for coordinate conversion.
+func extractPrimaryFileInfo(details map[string]interface{}) *primaryFileInfo {
+	primaryFile := findPrimaryFile(details)
+	if primaryFile == nil {
+		return nil
+	}
+	return parseFileInfo(primaryFile)
 }

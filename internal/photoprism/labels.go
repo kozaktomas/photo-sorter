@@ -51,6 +51,32 @@ func (pp *PhotoPrism) UpdatePhotoLabel(photoUID string, labelID string, label Ph
 	return doPutJSON[Photo](pp, fmt.Sprintf("photos/%s/label/%s", photoUID, labelID), label)
 }
 
+// extractLabelIDs extracts label IDs from the Labels array in photo details.
+func extractLabelIDs(details map[string]interface{}) []string {
+	labels, ok := details["Labels"].([]interface{})
+	if !ok {
+		return nil
+	}
+
+	var labelIDs []string
+	for _, labelInterface := range labels {
+		label, ok := labelInterface.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if id, ok := label["LabelID"].(float64); ok {
+			labelIDs = append(labelIDs, fmt.Sprintf("%.0f", id))
+		} else if id, ok := label["ID"].(float64); ok {
+			labelIDs = append(labelIDs, fmt.Sprintf("%.0f", id))
+		} else if id, ok := label["LabelID"].(string); ok {
+			labelIDs = append(labelIDs, id)
+		} else if id, ok := label["ID"].(string); ok {
+			labelIDs = append(labelIDs, id)
+		}
+	}
+	return labelIDs
+}
+
 // RemoveAllPhotoLabels removes all labels/tags from a photo
 // It first retrieves the photo details to get all label IDs, then removes each one
 func (pp *PhotoPrism) RemoveAllPhotoLabels(photoUID string) error {
@@ -60,27 +86,8 @@ func (pp *PhotoPrism) RemoveAllPhotoLabels(photoUID string) error {
 		return fmt.Errorf("could not get photo details: %w", err)
 	}
 
-	// Extract label IDs from the photo details
-	var labelIDs []string
-	if labels, ok := details["Labels"].([]interface{}); ok {
-		for _, labelInterface := range labels {
-			if label, ok := labelInterface.(map[string]interface{}); ok {
-				// Label ID could be in different fields, try common ones
-				if id, ok := label["LabelID"].(float64); ok {
-					labelIDs = append(labelIDs, fmt.Sprintf("%.0f", id))
-				} else if id, ok := label["ID"].(float64); ok {
-					labelIDs = append(labelIDs, fmt.Sprintf("%.0f", id))
-				} else if id, ok := label["LabelID"].(string); ok {
-					labelIDs = append(labelIDs, id)
-				} else if id, ok := label["ID"].(string); ok {
-					labelIDs = append(labelIDs, id)
-				}
-			}
-		}
-	}
-
 	// Remove each label
-	for _, labelID := range labelIDs {
+	for _, labelID := range extractLabelIDs(details) {
 		_, err := pp.RemovePhotoLabel(photoUID, labelID)
 		if err != nil {
 			return fmt.Errorf("could not remove label %s: %w", labelID, err)

@@ -123,7 +123,7 @@ func (h *FacesHandler) UpdateSubject(w http.ResponseWriter, r *http.Request) {
 
 	var req SubjectUpdateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
+		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return
 	}
 

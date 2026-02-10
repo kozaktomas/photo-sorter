@@ -57,23 +57,21 @@ type SyncCacheResult struct {
 	DurationHuman string `json:"duration_human,omitempty"`
 }
 
-func runCacheSync(cmd *cobra.Command, args []string) error {
-	concurrency := mustGetInt(cmd, "concurrency")
-	jsonOutput := mustGetBool(cmd, "json")
+// initSyncDeps initializes the database backends and PhotoPrism connection for cache sync.
+type syncDeps struct {
+	pp        *photoprism.PhotoPrism
+	faceW     database.FaceWriter
+	embW      database.EmbeddingWriter
+}
 
-	ctx := context.Background()
-	cfg := config.Load()
-	startTime := time.Now()
-
-	// Initialize PostgreSQL database
+func initSyncDeps(ctx context.Context, cfg *config.Config, jsonOutput bool) (*syncDeps, error) {
 	if cfg.Database.URL == "" {
-		return errors.New("DATABASE_URL environment variable is required")
+		return nil, errors.New("DATABASE_URL environment variable is required")
 	}
 	if err := postgres.Initialize(&cfg.Database); err != nil {
-		return fmt.Errorf("failed to initialize PostgreSQL: %w", err)
+		return nil, fmt.Errorf("failed to initialize PostgreSQL: %w", err)
 	}
 
-	// Create singleton repositories and register with database package
 	pool := postgres.GetGlobalPool()
 	faceRepo := postgres.NewFaceRepository(pool)
 	embeddingRepo := postgres.NewEmbeddingRepository(pool)
@@ -84,40 +82,36 @@ func runCacheSync(cmd *cobra.Command, args []string) error {
 	)
 	database.RegisterEmbeddingWriter(func() database.EmbeddingWriter { return embeddingRepo })
 
-	// Connect to PhotoPrism
 	if !jsonOutput {
 		fmt.Println("Connecting to PhotoPrism...")
 	}
 	pp, err := photoprism.NewPhotoPrismWithCapture(
-		cfg.PhotoPrism.URL,
-		cfg.PhotoPrism.Username,
-		cfg.PhotoPrism.Password,
-		captureDir,
+		cfg.PhotoPrism.URL, cfg.PhotoPrism.Username, cfg.PhotoPrism.Password, captureDir,
 	)
 	if err != nil {
-		return fmt.Errorf("failed to connect to PhotoPrism: %w", err)
+		return nil, fmt.Errorf("failed to connect to PhotoPrism: %w", err)
 	}
-	defer pp.Logout()
 
-	// Get face writer
 	faceWriter, err := database.GetFaceWriter(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get face writer: %w", err)
+		pp.Logout()
+		return nil, fmt.Errorf("failed to get face writer: %w", err)
 	}
 
-	// Get embedding writer
 	embWriter, err := database.GetEmbeddingWriter(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get embedding writer: %w", err)
+		pp.Logout()
+		return nil, fmt.Errorf("failed to get embedding writer: %w", err)
 	}
 
-	// Get union of photo UIDs from faces and embeddings tables
-	if !jsonOutput {
-		fmt.Println("Fetching photo UIDs from database...")
-	}
+	return &syncDeps{pp: pp, faceW: faceWriter, embW: embWriter}, nil
+}
+
+// collectSyncPhotoUIDs returns the union of photo UIDs from faces and embeddings tables.
+func collectSyncPhotoUIDs(ctx context.Context, faceWriter database.FaceWriter, embWriter database.EmbeddingWriter) ([]string, error) {
 	faceUIDs, err := faceWriter.GetUniquePhotoUIDs(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get face photo UIDs: %w", err)
+		return nil, fmt.Errorf("failed to get face photo UIDs: %w", err)
 	}
 
 	uidSet := make(map[string]struct{}, len(faceUIDs))
@@ -127,7 +121,7 @@ func runCacheSync(cmd *cobra.Command, args []string) error {
 
 	embUIDs, err := embWriter.GetUniquePhotoUIDs(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get embedding photo UIDs: %w", err)
+		return nil, fmt.Errorf("failed to get embedding photo UIDs: %w", err)
 	}
 	for _, uid := range embUIDs {
 		uidSet[uid] = struct{}{}
@@ -137,41 +131,11 @@ func runCacheSync(cmd *cobra.Command, args []string) error {
 	for uid := range uidSet {
 		photoUIDs = append(photoUIDs, uid)
 	}
+	return photoUIDs, nil
+}
 
-	if len(photoUIDs) == 0 {
-		result := SyncCacheResult{
-			Success:       true,
-			PhotosScanned: 0,
-			FacesUpdated:  0,
-			Errors:        0,
-			DurationMs:    time.Since(startTime).Milliseconds(),
-		}
-		if jsonOutput {
-			return outputJSON(result)
-		}
-		fmt.Println("No photos with faces found in database.")
-		return nil
-	}
-
-	if !jsonOutput {
-		fmt.Printf("Found %d photos with faces to sync\n\n", len(photoUIDs))
-	}
-
-	// Create progress bar (only for non-JSON output)
-	var bar *progressbar.ProgressBar
-	if !jsonOutput {
-		bar = progressbar.NewOptions(len(photoUIDs),
-			progressbar.OptionSetDescription("Syncing cache"),
-			progressbar.OptionShowCount(),
-			progressbar.OptionShowIts(),
-			progressbar.OptionSetItsString("photos"),
-			progressbar.OptionShowElapsedTimeOnFinish(),
-			progressbar.OptionSetPredictTime(true),
-			progressbar.OptionFullWidth(),
-		)
-	}
-
-	// Process photos with concurrency
+// processSyncPhotos runs the sync for all photos concurrently with progress tracking.
+func processSyncPhotos(ctx context.Context, pp *photoprism.PhotoPrism, faceWriter database.FaceWriter, embWriter database.EmbeddingWriter, photoUIDs []string, concurrency int, bar *progressbar.ProgressBar) (int64, int64, int64) {
 	var facesUpdated int64
 	var photosDeleted int64
 	var errorCount int64
@@ -182,7 +146,6 @@ func runCacheSync(cmd *cobra.Command, args []string) error {
 		wg.Add(1)
 		go func(uid string) {
 			defer wg.Done()
-
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
@@ -205,29 +168,32 @@ func runCacheSync(cmd *cobra.Command, args []string) error {
 	}
 
 	wg.Wait()
+	return facesUpdated, photosDeleted, errorCount
+}
 
-	if bar != nil {
-		fmt.Println()
-	}
-
-	duration := time.Since(startTime)
-	result := SyncCacheResult{
-		Success:       true,
-		PhotosScanned: len(photoUIDs),
-		FacesUpdated:  int(facesUpdated),
-		PhotosDeleted: int(photosDeleted),
-		Errors:        int(errorCount),
-		DurationMs:    duration.Milliseconds(),
-		DurationHuman: formatDuration(duration),
-	}
-
+// newSyncProgressBar creates a progress bar for cache sync, or nil if JSON output.
+func newSyncProgressBar(count int, jsonOutput bool) *progressbar.ProgressBar {
 	if jsonOutput {
-		// Remove human-readable duration for JSON output
+		return nil
+	}
+	return progressbar.NewOptions(count,
+		progressbar.OptionSetDescription("Syncing cache"),
+		progressbar.OptionShowCount(),
+		progressbar.OptionShowIts(),
+		progressbar.OptionSetItsString("photos"),
+		progressbar.OptionShowElapsedTimeOnFinish(),
+		progressbar.OptionSetPredictTime(true),
+		progressbar.OptionFullWidth(),
+	)
+}
+
+// outputSyncResult outputs the sync result as JSON or human-readable.
+func outputSyncResult(result SyncCacheResult, jsonOutput bool) error {
+	if jsonOutput {
 		result.DurationHuman = ""
 		return outputJSON(result)
 	}
 
-	// Human-readable output
 	fmt.Println("\nSync complete!")
 	fmt.Printf("  Photos scanned: %d\n", result.PhotosScanned)
 	fmt.Printf("  Faces updated:  %d\n", result.FacesUpdated)
@@ -238,73 +204,66 @@ func runCacheSync(cmd *cobra.Command, args []string) error {
 		fmt.Printf("  Errors:         %d\n", result.Errors)
 	}
 	fmt.Printf("  Duration:       %s\n", result.DurationHuman)
-
 	return nil
 }
 
-// syncPhotoCache syncs the cache for a single photo and returns the number of faces updated,
-// whether the photo was deleted/archived in PhotoPrism (404 or DeletedAt set), and any error.
-func syncPhotoCache(ctx context.Context, pp *photoprism.PhotoPrism, faceWriter database.FaceWriter, embWriter database.EmbeddingWriter, photoUID string) (int, bool, error) {
-	// Get photo details for dimensions
-	details, err := pp.GetPhotoDetails(photoUID)
+func runCacheSync(cmd *cobra.Command, args []string) error {
+	concurrency := mustGetInt(cmd, "concurrency")
+	jsonOutput := mustGetBool(cmd, "json")
+
+	ctx := context.Background()
+	cfg := config.Load()
+	startTime := time.Now()
+
+	deps, err := initSyncDeps(ctx, cfg, jsonOutput)
 	if err != nil {
-		// If photo is gone (404), clean up all cached data
-		if photoprism.IsNotFoundError(err) {
-			faceWriter.DeleteFacesByPhoto(ctx, photoUID)
-			if embWriter != nil {
-				embWriter.DeleteEmbedding(ctx, photoUID)
-			}
-			return 0, true, nil
-		}
-		return 0, false, fmt.Errorf("failed to get photo details: %w", err)
+		return err
 	}
+	defer deps.pp.Logout()
 
-	// Check for soft-deleted photos (200 but DeletedAt populated)
-	if photoprism.IsPhotoDeleted(details) {
-		faceWriter.DeleteFacesByPhoto(ctx, photoUID)
-		if embWriter != nil {
-			embWriter.DeleteEmbedding(ctx, photoUID)
-		}
-		return 0, true, nil
+	if !jsonOutput {
+		fmt.Println("Fetching photo UIDs from database...")
 	}
-
-	fileInfo := facematch.ExtractPrimaryFileInfo(details)
-	if fileInfo == nil || fileInfo.Width == 0 || fileInfo.Height == 0 {
-		return 0, false, nil
-	}
-
-	// Update photo dimensions for all faces
-	faceWriter.UpdateFacePhotoInfo(ctx, photoUID, fileInfo.Width, fileInfo.Height, fileInfo.Orientation, fileInfo.UID)
-
-	// Get markers from PhotoPrism
-	markers, err := pp.GetPhotoMarkers(photoUID)
+	photoUIDs, err := collectSyncPhotoUIDs(ctx, deps.faceW, deps.embW)
 	if err != nil {
-		return 0, false, fmt.Errorf("failed to get markers: %w", err)
+		return err
 	}
 
-	// Get faces for this photo from database
-	faces, err := faceWriter.GetFaces(ctx, photoUID)
-	if err != nil {
-		return 0, false, fmt.Errorf("failed to get faces: %w", err)
+	if len(photoUIDs) == 0 {
+		return outputSyncResult(SyncCacheResult{Success: true, DurationMs: time.Since(startTime).Milliseconds()}, jsonOutput)
 	}
 
-	if len(faces) == 0 {
-		return 0, false, nil
+	if !jsonOutput {
+		fmt.Printf("Found %d photos with faces to sync\n\n", len(photoUIDs))
 	}
 
-	// If no markers, clear any existing marker assignments
-	if len(markers) == 0 {
-		updated := 0
-		for _, face := range faces {
-			if face.MarkerUID != "" {
-				faceWriter.UpdateFaceMarker(ctx, photoUID, face.FaceIndex, "", "", "")
-				updated++
-			}
-		}
-		return updated, false, nil
+	bar := newSyncProgressBar(len(photoUIDs), jsonOutput)
+	facesUpdated, photosDeleted, errorCount := processSyncPhotos(ctx, deps.pp, deps.faceW, deps.embW, photoUIDs, concurrency, bar)
+	if bar != nil {
+		fmt.Println()
 	}
 
-	// Convert markers to facematch.MarkerInfo
+	return outputSyncResult(SyncCacheResult{
+		Success:       true,
+		PhotosScanned: len(photoUIDs),
+		FacesUpdated:  int(facesUpdated),
+		PhotosDeleted: int(photosDeleted),
+		Errors:        int(errorCount),
+		DurationMs:    time.Since(startTime).Milliseconds(),
+		DurationHuman: formatDuration(time.Since(startTime)),
+	}, jsonOutput)
+}
+
+// cleanupDeletedPhoto removes all cached data for a deleted/archived photo.
+func cleanupDeletedPhoto(ctx context.Context, faceWriter database.FaceWriter, embWriter database.EmbeddingWriter, photoUID string) {
+	faceWriter.DeleteFacesByPhoto(ctx, photoUID)
+	if embWriter != nil {
+		embWriter.DeleteEmbedding(ctx, photoUID)
+	}
+}
+
+// convertMarkersToInfos converts PhotoPrism markers to facematch.MarkerInfo slice.
+func convertMarkersToInfos(markers []photoprism.Marker) []facematch.MarkerInfo {
 	markerInfos := make([]facematch.MarkerInfo, 0, len(markers))
 	for i := range markers {
 		m := &markers[i]
@@ -319,8 +278,12 @@ func syncPhotoCache(ctx context.Context, pp *photoprism.PhotoPrism, faceWriter d
 			H:       m.H,
 		})
 	}
+	return markerInfos
+}
 
-	// Match each face to a marker and update cache
+// matchFacesToMarkers matches each face to a marker and updates the cache.
+// Returns the number of faces updated.
+func matchFacesToMarkers(ctx context.Context, faceWriter database.FaceWriter, faces []database.StoredFace, markerInfos []facematch.MarkerInfo, fileInfo *facematch.PrimaryFileInfo, photoUID string) int {
 	updated := 0
 	for _, face := range faces {
 		if len(face.BBox) != 4 {
@@ -328,18 +291,86 @@ func syncPhotoCache(ctx context.Context, pp *photoprism.PhotoPrism, faceWriter d
 		}
 		match := facematch.MatchFaceToMarkers(face.BBox, markerInfos, fileInfo.Width, fileInfo.Height, fileInfo.Orientation, constants.IoUThreshold)
 		if match != nil {
-			// Check if update is needed (to count actual changes)
 			if face.MarkerUID != match.MarkerUID || face.SubjectUID != match.SubjectUID || face.SubjectName != match.SubjectName {
 				faceWriter.UpdateFaceMarker(ctx, photoUID, face.FaceIndex, match.MarkerUID, match.SubjectUID, match.SubjectName)
 				updated++
 			}
 		} else if face.MarkerUID != "" {
-			// No match found but face had a marker - clear it
 			faceWriter.UpdateFaceMarker(ctx, photoUID, face.FaceIndex, "", "", "")
 			updated++
 		}
 	}
+	return updated
+}
 
+// syncPhotoCache syncs the cache for a single photo and returns the number of faces updated,
+// whether the photo was deleted/archived in PhotoPrism (404 or DeletedAt set), and any error.
+// clearFaceAssignments clears marker assignments for all faces that have one.
+func clearFaceAssignments(ctx context.Context, faceWriter database.FaceWriter, faces []database.StoredFace, photoUID string) int {
+	updated := 0
+	for _, face := range faces {
+		if face.MarkerUID != "" {
+			faceWriter.UpdateFaceMarker(ctx, photoUID, face.FaceIndex, "", "", "")
+			updated++
+		}
+	}
+	return updated
+}
+
+// isPhotoDeletedOrMissing checks if a photo is deleted or missing, and cleans up if so.
+// Returns true if the photo was deleted/missing.
+func isPhotoDeletedOrMissing(ctx context.Context, details map[string]interface{}, err error, faceWriter database.FaceWriter, embWriter database.EmbeddingWriter, photoUID string) (bool, error) {
+	if err != nil {
+		if photoprism.IsNotFoundError(err) {
+			cleanupDeletedPhoto(ctx, faceWriter, embWriter, photoUID)
+			return true, nil
+		}
+		return false, fmt.Errorf("failed to get photo details: %w", err)
+	}
+	if photoprism.IsPhotoDeleted(details) {
+		cleanupDeletedPhoto(ctx, faceWriter, embWriter, photoUID)
+		return true, nil
+	}
+	return false, nil
+}
+
+func syncPhotoCache(ctx context.Context, pp *photoprism.PhotoPrism, faceWriter database.FaceWriter, embWriter database.EmbeddingWriter, photoUID string) (int, bool, error) {
+	details, err := pp.GetPhotoDetails(photoUID)
+	deleted, detailErr := isPhotoDeletedOrMissing(ctx, details, err, faceWriter, embWriter, photoUID)
+	if detailErr != nil {
+		return 0, false, detailErr
+	}
+	if deleted {
+		return 0, true, nil
+	}
+
+	fileInfo := facematch.ExtractPrimaryFileInfo(details)
+	if fileInfo == nil || fileInfo.Width == 0 || fileInfo.Height == 0 {
+		return 0, false, nil
+	}
+
+	faceWriter.UpdateFacePhotoInfo(ctx, photoUID, fileInfo.Width, fileInfo.Height, fileInfo.Orientation, fileInfo.UID)
+
+	markers, err := pp.GetPhotoMarkers(photoUID)
+	if err != nil {
+		return 0, false, fmt.Errorf("failed to get markers: %w", err)
+	}
+
+	faces, err := faceWriter.GetFaces(ctx, photoUID)
+	if err != nil {
+		return 0, false, fmt.Errorf("failed to get faces: %w", err)
+	}
+
+	if len(faces) == 0 {
+		return 0, false, nil
+	}
+
+	if len(markers) == 0 {
+		return clearFaceAssignments(ctx, faceWriter, faces, photoUID), false, nil
+	}
+
+	markerInfos := convertMarkersToInfos(markers)
+	updated := matchFacesToMarkers(ctx, faceWriter, faces, markerInfos, fileInfo, photoUID)
 	return updated, false, nil
 }
 

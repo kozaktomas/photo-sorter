@@ -74,6 +74,26 @@ func (pp *PhotoPrism) UploadFile(filePath string) (string, error) {
 	return uploadToken, nil
 }
 
+// addFileToMultipart opens a file and writes it to the multipart writer.
+func addFileToMultipart(writer *multipart.Writer, filePath string) error {
+	file, err := os.Open(filePath) //nolint:gosec // user-provided file path for upload
+	if err != nil {
+		return fmt.Errorf("could not open file %s: %w", filePath, err)
+	}
+	defer file.Close()
+
+	fileName := filepath.Base(filePath)
+	part, err := writer.CreateFormFile("files", fileName)
+	if err != nil {
+		return fmt.Errorf("could not create form file: %w", err)
+	}
+
+	if _, err := io.Copy(part, file); err != nil {
+		return fmt.Errorf("could not copy file data: %w", err)
+	}
+	return nil
+}
+
 // UploadFiles uploads multiple files to the user's upload folder
 // Returns the upload token used for processing
 func (pp *PhotoPrism) UploadFiles(filePaths []string) (string, error) {
@@ -94,24 +114,9 @@ func (pp *PhotoPrism) UploadFiles(filePaths []string) (string, error) {
 
 	// Add all files to form
 	for _, filePath := range filePaths {
-		file, err := os.Open(filePath) //nolint:gosec // user-provided file path for upload
-		if err != nil {
-			return "", fmt.Errorf("could not open file %s: %w", filePath, err)
+		if err := addFileToMultipart(writer, filePath); err != nil {
+			return "", err
 		}
-
-		fileName := filepath.Base(filePath)
-		part, err := writer.CreateFormFile("files", fileName)
-		if err != nil {
-			_ = file.Close()
-			return "", fmt.Errorf("could not create form file: %w", err)
-		}
-
-		if _, err := io.Copy(part, file); err != nil {
-			_ = file.Close()
-			return "", fmt.Errorf("could not copy file data: %w", err)
-		}
-
-		_ = file.Close()
 	}
 
 	if err := writer.Close(); err != nil {

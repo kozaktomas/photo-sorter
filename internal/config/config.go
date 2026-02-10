@@ -87,34 +87,25 @@ type RequestPricing struct {
 	Output float64 `yaml:"output"`
 }
 
+// envInt reads an environment variable and parses it as a positive integer.
+// Returns the default value if the env var is unset, empty, or invalid.
+func envInt(key string, defaultVal int) int {
+	s := os.Getenv(key)
+	if s == "" {
+		return defaultVal
+	}
+	if n, err := strconv.Atoi(s); err == nil && n > 0 {
+		return n
+	}
+	return defaultVal
+}
+
 func Load() *Config {
 	var prices PricesConfig
 	if err := yaml.Unmarshal(pricesYAML, &prices); err != nil {
 		// Log error but continue - prices will be zero which is safe
 		// This is an embedded file so this error should never happen in practice
 		panic("failed to unmarshal embedded prices.yaml: " + err.Error())
-	}
-
-	// Parse embedding dimension with default
-	embeddingDim := 768
-	if dimStr := os.Getenv("EMBEDDING_DIM"); dimStr != "" {
-		if d, err := strconv.Atoi(dimStr); err == nil && d > 0 {
-			embeddingDim = d
-		}
-	}
-
-	// Parse database pool settings with defaults
-	dbMaxOpen := 25
-	if s := os.Getenv("DATABASE_MAX_OPEN_CONNS"); s != "" {
-		if n, err := strconv.Atoi(s); err == nil && n > 0 {
-			dbMaxOpen = n
-		}
-	}
-	dbMaxIdle := 5
-	if s := os.Getenv("DATABASE_MAX_IDLE_CONNS"); s != "" {
-		if n, err := strconv.Atoi(s); err == nil && n > 0 {
-			dbMaxIdle = n
-		}
 	}
 
 	return &Config{
@@ -141,12 +132,12 @@ func Load() *Config {
 		},
 		Embedding: EmbeddingConfig{
 			URL: os.Getenv("EMBEDDING_URL"),
-			Dim: embeddingDim,
+			Dim: envInt("EMBEDDING_DIM", 768),
 		},
 		Database: DatabaseConfig{
 			URL:                    os.Getenv("DATABASE_URL"),
-			MaxOpenConns:           dbMaxOpen,
-			MaxIdleConns:           dbMaxIdle,
+			MaxOpenConns:           envInt("DATABASE_MAX_OPEN_CONNS", 25),
+			MaxIdleConns:           envInt("DATABASE_MAX_IDLE_CONNS", 5),
 			HNSWIndexPath:          os.Getenv("HNSW_INDEX_PATH"),
 			HNSWEmbeddingIndexPath: os.Getenv("HNSW_EMBEDDING_INDEX_PATH"),
 		},

@@ -161,7 +161,7 @@ func (h *BooksHandler) CreateBook(w http.ResponseWriter, r *http.Request) {
 		Description string `json:"description"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
+		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return
 	}
 	if req.Title == "" {
@@ -252,7 +252,7 @@ func (h *BooksHandler) UpdateBook(w http.ResponseWriter, r *http.Request) {
 		Description *string `json:"description"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
+		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return
 	}
 	if req.Title != nil {
@@ -293,7 +293,7 @@ func (h *BooksHandler) CreateSection(w http.ResponseWriter, r *http.Request) {
 		Title string `json:"title"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
+		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return
 	}
 	if req.Title == "" {
@@ -322,7 +322,7 @@ func (h *BooksHandler) UpdateSection(w http.ResponseWriter, r *http.Request) {
 		Title string `json:"title"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
+		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return
 	}
 	section := &database.BookSection{ID: id, Title: req.Title}
@@ -356,7 +356,7 @@ func (h *BooksHandler) ReorderSections(w http.ResponseWriter, r *http.Request) {
 		SectionIDs []string `json:"section_ids"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
+		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return
 	}
 	if err := bw.ReorderSections(r.Context(), bookID, req.SectionIDs); err != nil {
@@ -401,7 +401,7 @@ func (h *BooksHandler) AddSectionPhotos(w http.ResponseWriter, r *http.Request) 
 		PhotoUIDs []string `json:"photo_uids"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
+		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return
 	}
 	if len(req.PhotoUIDs) == 0 {
@@ -425,7 +425,7 @@ func (h *BooksHandler) RemoveSectionPhotos(w http.ResponseWriter, r *http.Reques
 		PhotoUIDs []string `json:"photo_uids"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
+		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return
 	}
 	if err := bw.RemoveSectionPhotos(r.Context(), sectionID, req.PhotoUIDs); err != nil {
@@ -447,7 +447,7 @@ func (h *BooksHandler) UpdatePhotoDescription(w http.ResponseWriter, r *http.Req
 		Note        string `json:"note"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
+		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return
 	}
 	if err := bw.UpdateSectionPhoto(r.Context(), sectionID, photoUID, req.Description, req.Note); err != nil {
@@ -470,7 +470,7 @@ func (h *BooksHandler) CreatePage(w http.ResponseWriter, r *http.Request) {
 		SectionID string `json:"section_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
+		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return
 	}
 	if database.PageFormatSlotCount(req.Format) == 0 {
@@ -496,19 +496,42 @@ func (h *BooksHandler) CreatePage(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// updatePageRequest holds the parsed update page request fields
+type updatePageRequest struct {
+	Format      *string `json:"format"`
+	SectionID   *string `json:"section_id"`
+	Description *string `json:"description"`
+}
+
+// applyPageUpdates applies the request fields to the page, returning an error message if validation fails
+func applyPageUpdates(page *database.BookPage, req updatePageRequest) string {
+	if req.Format != nil {
+		if database.PageFormatSlotCount(*req.Format) == 0 {
+			return "invalid format"
+		}
+		page.Format = *req.Format
+	}
+	if req.SectionID != nil {
+		if *req.SectionID == "" {
+			return "section_id is required"
+		}
+		page.SectionID = *req.SectionID
+	}
+	if req.Description != nil {
+		page.Description = *req.Description
+	}
+	return ""
+}
+
 func (h *BooksHandler) UpdatePage(w http.ResponseWriter, r *http.Request) {
 	bw := getBookWriter(w)
 	if bw == nil {
 		return
 	}
 	id := chi.URLParam(r, "id")
-	var req struct {
-		Format      *string `json:"format"`
-		SectionID   *string `json:"section_id"`
-		Description *string `json:"description"`
-	}
+	var req updatePageRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
+		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return
 	}
 
@@ -519,22 +542,9 @@ func (h *BooksHandler) UpdatePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Format != nil {
-		if database.PageFormatSlotCount(*req.Format) == 0 {
-			respondError(w, http.StatusBadRequest, "invalid format")
-			return
-		}
-		page.Format = *req.Format
-	}
-	if req.SectionID != nil {
-		if *req.SectionID == "" {
-			respondError(w, http.StatusBadRequest, "section_id is required")
-			return
-		}
-		page.SectionID = *req.SectionID
-	}
-	if req.Description != nil {
-		page.Description = *req.Description
+	if errMsg := applyPageUpdates(page, req); errMsg != "" {
+		respondError(w, http.StatusBadRequest, errMsg)
+		return
 	}
 	if err := bw.UpdatePage(r.Context(), page); err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to update page")
@@ -566,7 +576,7 @@ func (h *BooksHandler) ReorderPages(w http.ResponseWriter, r *http.Request) {
 		PageIDs []string `json:"page_ids"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
+		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return
 	}
 	if err := bw.ReorderPages(r.Context(), bookID, req.PageIDs); err != nil {
@@ -593,7 +603,7 @@ func (h *BooksHandler) AssignSlot(w http.ResponseWriter, r *http.Request) {
 		PhotoUID string `json:"photo_uid"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
+		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return
 	}
 	if req.PhotoUID == "" {
@@ -618,7 +628,7 @@ func (h *BooksHandler) SwapSlots(w http.ResponseWriter, r *http.Request) {
 		SlotB int `json:"slot_b"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
+		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return
 	}
 	if req.SlotA == req.SlotB {

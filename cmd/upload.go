@@ -59,82 +59,72 @@ func isImageFile(name string) bool {
 	return supported[ext]
 }
 
-func runUpload(cmd *cobra.Command, args []string) error {
-	albumUID := args[0]
-	folderPaths := args[1:]
-	recursive := mustGetBool(cmd, "recursive")
+// collectImageFiles collects image file paths from the given folders.
+// collectImagesFromFolder collects image file paths from a single folder.
+func collectImagesFromFolder(folderPath string, recursive bool) ([]string, error) {
+	info, err := os.Stat(folderPath)
+	if err != nil {
+		return nil, fmt.Errorf("cannot access folder %s: %w", folderPath, err)
+	}
+	if !info.IsDir() {
+		return nil, fmt.Errorf("%s is not a directory", folderPath)
+	}
 
-	cfg := config.Load()
+	if recursive {
+		return collectImagesRecursive(folderPath)
+	}
+	return collectImagesFlat(folderPath)
+}
 
-	// Collect files from all folders
+// collectImagesRecursive walks a directory recursively for image files.
+func collectImagesRecursive(folderPath string) ([]string, error) {
+	var filePaths []string
+	err := filepath.WalkDir(folderPath, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() && isImageFile(d.Name()) {
+			filePaths = append(filePaths, path)
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("cannot walk folder %s: %w", folderPath, err)
+	}
+	return filePaths, nil
+}
+
+// collectImagesFlat lists image files in a single directory (non-recursive).
+func collectImagesFlat(folderPath string) ([]string, error) {
+	entries, err := os.ReadDir(folderPath)
+	if err != nil {
+		return nil, fmt.Errorf("cannot read folder %s: %w", folderPath, err)
+	}
+	var filePaths []string
+	for _, entry := range entries {
+		if !entry.IsDir() && isImageFile(entry.Name()) {
+			filePaths = append(filePaths, filepath.Join(folderPath, entry.Name()))
+		}
+	}
+	return filePaths, nil
+}
+
+func collectImageFiles(folderPaths []string, recursive bool) ([]string, error) {
 	var filePaths []string
 	for _, folderPath := range folderPaths {
-		// Check if folder exists
-		info, err := os.Stat(folderPath)
+		paths, err := collectImagesFromFolder(folderPath, recursive)
 		if err != nil {
-			return fmt.Errorf("cannot access folder %s: %w", folderPath, err)
+			return nil, err
 		}
-		if !info.IsDir() {
-			return fmt.Errorf("%s is not a directory", folderPath)
-		}
-
-		if recursive {
-			// Walk directory recursively
-			err := filepath.WalkDir(folderPath, func(path string, d os.DirEntry, err error) error {
-				if err != nil {
-					return err
-				}
-				if !d.IsDir() && isImageFile(d.Name()) {
-					filePaths = append(filePaths, path)
-				}
-				return nil
-			})
-			if err != nil {
-				return fmt.Errorf("cannot walk folder %s: %w", folderPath, err)
-			}
-		} else {
-			// List files in folder (non-recursive)
-			entries, err := os.ReadDir(folderPath)
-			if err != nil {
-				return fmt.Errorf("cannot read folder %s: %w", folderPath, err)
-			}
-
-			// Filter image files
-			for _, entry := range entries {
-				if entry.IsDir() {
-					continue
-				}
-				if isImageFile(entry.Name()) {
-					filePaths = append(filePaths, filepath.Join(folderPath, entry.Name()))
-				}
-			}
-		}
+		filePaths = append(filePaths, paths...)
 	}
+	return filePaths, nil
+}
 
-	if len(filePaths) == 0 {
-		fmt.Println("No image files found in the specified folders.")
-		return nil
-	}
-
-	fmt.Printf("Found %d image(s) to upload from %d folder(s)\n", len(filePaths), len(folderPaths))
-
-	// Connect to PhotoPrism
-	pp, err := photoprism.NewPhotoPrismWithCapture(cfg.PhotoPrism.URL, cfg.PhotoPrism.Username, cfg.PhotoPrism.Password, captureDir)
-	if err != nil {
-		return fmt.Errorf("failed to connect to PhotoPrism: %w", err)
-	}
-	defer pp.Logout()
-
-	// Verify album exists
-	album, err := pp.GetAlbum(albumUID)
-	if err != nil {
-		return fmt.Errorf("failed to get album: %w", err)
-	}
-	fmt.Printf("Uploading to album: %s\n\n", album.Title)
-
-	// Upload files one by one with progress bar
-	uploadBar := progressbar.NewOptions(len(filePaths),
-		progressbar.OptionSetDescription("Uploading"),
+// newUploadProgressBar creates a progress bar for upload or processing.
+func newUploadProgressBar(total int, description string) *progressbar.ProgressBar {
+	return progressbar.NewOptions(total,
+		progressbar.OptionSetDescription(description),
 		progressbar.OptionShowCount(),
 		progressbar.OptionShowIts(),
 		progressbar.OptionSetItsString("files"),
@@ -149,56 +139,38 @@ func runUpload(cmd *cobra.Command, args []string) error {
 			BarEnd:        "]",
 		}),
 	)
+}
+
+// uploadFiles uploads files one by one and returns tokens and errors.
+func uploadFiles(pp *photoprism.PhotoPrism, filePaths []string) ([]string, []string) {
+	bar := newUploadProgressBar(len(filePaths), "Uploading")
 
 	var uploadTokens []string
 	var uploadErrors []string
 	for _, filePath := range filePaths {
 		fileName := filepath.Base(filePath)
-
 		token, err := pp.UploadFile(filePath)
 		if err != nil {
 			uploadErrors = append(uploadErrors, fmt.Sprintf("%s: %v", fileName, err))
-			uploadBar.Add(1)
+			bar.Add(1)
 			continue
 		}
 		uploadTokens = append(uploadTokens, token)
-		uploadBar.Add(1)
+		bar.Add(1)
 	}
 	fmt.Println()
+	return uploadTokens, uploadErrors
+}
 
-	// Print any upload errors
-	for _, errMsg := range uploadErrors {
-		fmt.Printf("Failed: %s\n", errMsg)
-	}
-
-	if len(uploadTokens) == 0 {
-		return errors.New("no files were uploaded successfully")
-	}
-
-	// Process all uploads and add to album
-	fmt.Printf("\nProcessing %d upload(s)...\n", len(uploadTokens))
-	processBar := progressbar.NewOptions(len(uploadTokens),
-		progressbar.OptionSetDescription("Processing"),
-		progressbar.OptionShowCount(),
-		progressbar.OptionShowIts(),
-		progressbar.OptionSetItsString("files"),
-		progressbar.OptionShowElapsedTimeOnFinish(),
-		progressbar.OptionSetPredictTime(true),
-		progressbar.OptionFullWidth(),
-		progressbar.OptionSetTheme(progressbar.Theme{
-			Saucer:        "=",
-			SaucerHead:    ">",
-			SaucerPadding: " ",
-			BarStart:      "[",
-			BarEnd:        "]",
-		}),
-	)
+// processUploads processes upload tokens in parallel and adds to album.
+func processUploads(pp *photoprism.PhotoPrism, uploadTokens []string, albumUID string) []string {
+	bar := newUploadProgressBar(len(uploadTokens), "Processing")
 
 	var (
 		processErrors []string
 		errorsMu      sync.Mutex
 		wg            sync.WaitGroup
-		sem           = make(chan struct{}, 8) // 8 concurrent workers
+		sem           = make(chan struct{}, 8)
 	)
 
 	for _, token := range uploadTokens {
@@ -213,13 +185,56 @@ func runUpload(cmd *cobra.Command, args []string) error {
 				processErrors = append(processErrors, fmt.Sprintf("upload %s: %v", t, err))
 				errorsMu.Unlock()
 			}
-			processBar.Add(1)
+			bar.Add(1)
 		}(token)
 	}
 	wg.Wait()
 	fmt.Println()
+	return processErrors
+}
 
-	// Print any processing errors
+func runUpload(cmd *cobra.Command, args []string) error {
+	albumUID := args[0]
+	folderPaths := args[1:]
+	recursive := mustGetBool(cmd, "recursive")
+
+	cfg := config.Load()
+
+	filePaths, err := collectImageFiles(folderPaths, recursive)
+	if err != nil {
+		return err
+	}
+
+	if len(filePaths) == 0 {
+		fmt.Println("No image files found in the specified folders.")
+		return nil
+	}
+
+	fmt.Printf("Found %d image(s) to upload from %d folder(s)\n", len(filePaths), len(folderPaths))
+
+	pp, err := photoprism.NewPhotoPrismWithCapture(cfg.PhotoPrism.URL, cfg.PhotoPrism.Username, cfg.PhotoPrism.Password, captureDir)
+	if err != nil {
+		return fmt.Errorf("failed to connect to PhotoPrism: %w", err)
+	}
+	defer pp.Logout()
+
+	album, err := pp.GetAlbum(albumUID)
+	if err != nil {
+		return fmt.Errorf("failed to get album: %w", err)
+	}
+	fmt.Printf("Uploading to album: %s\n\n", album.Title)
+
+	uploadTokens, uploadErrors := uploadFiles(pp, filePaths)
+	for _, errMsg := range uploadErrors {
+		fmt.Printf("Failed: %s\n", errMsg)
+	}
+
+	if len(uploadTokens) == 0 {
+		return errors.New("no files were uploaded successfully")
+	}
+
+	fmt.Printf("\nProcessing %d upload(s)...\n", len(uploadTokens))
+	processErrors := processUploads(pp, uploadTokens, albumUID)
 	for _, errMsg := range processErrors {
 		fmt.Printf("Warning: failed to process %s\n", errMsg)
 	}

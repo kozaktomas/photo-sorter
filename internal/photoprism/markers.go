@@ -1,5 +1,85 @@
 package photoprism
 
+// mapString extracts a string value from a map by key.
+func mapString(m map[string]interface{}, key string) string {
+	if v, ok := m[key].(string); ok {
+		return v
+	}
+	return ""
+}
+
+// mapFloat64 extracts a float64 value from a map by key.
+func mapFloat64(m map[string]interface{}, key string) float64 {
+	if v, ok := m[key].(float64); ok {
+		return v
+	}
+	return 0
+}
+
+// mapInt extracts an int value (stored as float64) from a map by key.
+func mapInt(m map[string]interface{}, key string) int {
+	if v, ok := m[key].(float64); ok {
+		return int(v)
+	}
+	return 0
+}
+
+// mapBool extracts a bool value from a map by key.
+func mapBool(m map[string]interface{}, key string) bool {
+	if v, ok := m[key].(bool); ok {
+		return v
+	}
+	return false
+}
+
+// parseMarkerFromMap converts a raw map into a Marker struct.
+func parseMarkerFromMap(m map[string]interface{}) Marker {
+	return Marker{
+		UID:      mapString(m, "UID"),
+		FileUID:  mapString(m, "FileUID"),
+		Type:     mapString(m, "Type"),
+		Src:      mapString(m, "Src"),
+		Name:     mapString(m, "Name"),
+		SubjUID:  mapString(m, "SubjUID"),
+		SubjSrc:  mapString(m, "SubjSrc"),
+		FaceID:   mapString(m, "FaceID"),
+		FaceDist: mapFloat64(m, "FaceDist"),
+		X:        mapFloat64(m, "X"),
+		Y:        mapFloat64(m, "Y"),
+		W:        mapFloat64(m, "W"),
+		H:        mapFloat64(m, "H"),
+		Size:     mapInt(m, "Size"),
+		Score:    mapInt(m, "Score"),
+		Invalid:  mapBool(m, "Invalid"),
+		Review:   mapBool(m, "Review"),
+	}
+}
+
+// extractMarkersFromFiles extracts markers from the Files array in photo details.
+func extractMarkersFromFiles(files []interface{}) []Marker {
+	var markers []Marker
+	for _, fileInterface := range files {
+		file, ok := fileInterface.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		fileMarkers, ok := file["Markers"].([]interface{})
+		if !ok {
+			continue
+		}
+		for _, markerInterface := range fileMarkers {
+			m, ok := markerInterface.(map[string]interface{})
+			if !ok {
+				continue
+			}
+			marker := parseMarkerFromMap(m)
+			if !marker.Invalid {
+				markers = append(markers, marker)
+			}
+		}
+	}
+	return markers
+}
 
 // GetPhotoMarkers extracts markers from photo details
 // Returns markers found in the photo's files
@@ -9,80 +89,12 @@ func (pp *PhotoPrism) GetPhotoMarkers(photoUID string) ([]Marker, error) {
 		return nil, err
 	}
 
-	var markers []Marker
-
-	// Extract markers from Files
-	if files, ok := details["Files"].([]interface{}); ok {
-		for _, fileInterface := range files {
-			if file, ok := fileInterface.(map[string]interface{}); ok {
-				if fileMarkers, ok := file["Markers"].([]interface{}); ok {
-					for _, markerInterface := range fileMarkers {
-						if m, ok := markerInterface.(map[string]interface{}); ok {
-							marker := Marker{}
-							if v, ok := m["UID"].(string); ok {
-								marker.UID = v
-							}
-							if v, ok := m["FileUID"].(string); ok {
-								marker.FileUID = v
-							}
-							if v, ok := m["Type"].(string); ok {
-								marker.Type = v
-							}
-							if v, ok := m["Src"].(string); ok {
-								marker.Src = v
-							}
-							if v, ok := m["Name"].(string); ok {
-								marker.Name = v
-							}
-							if v, ok := m["SubjUID"].(string); ok {
-								marker.SubjUID = v
-							}
-							if v, ok := m["SubjSrc"].(string); ok {
-								marker.SubjSrc = v
-							}
-							if v, ok := m["FaceID"].(string); ok {
-								marker.FaceID = v
-							}
-							if v, ok := m["FaceDist"].(float64); ok {
-								marker.FaceDist = v
-							}
-							if v, ok := m["X"].(float64); ok {
-								marker.X = v
-							}
-							if v, ok := m["Y"].(float64); ok {
-								marker.Y = v
-							}
-							if v, ok := m["W"].(float64); ok {
-								marker.W = v
-							}
-							if v, ok := m["H"].(float64); ok {
-								marker.H = v
-							}
-							if v, ok := m["Size"].(float64); ok {
-								marker.Size = int(v)
-							}
-							if v, ok := m["Score"].(float64); ok {
-								marker.Score = int(v)
-							}
-							if v, ok := m["Invalid"].(bool); ok {
-								marker.Invalid = v
-							}
-							if v, ok := m["Review"].(bool); ok {
-								marker.Review = v
-							}
-							// Skip invalid/deleted markers
-							if marker.Invalid {
-								continue
-							}
-							markers = append(markers, marker)
-						}
-					}
-				}
-			}
-		}
+	files, ok := details["Files"].([]interface{})
+	if !ok {
+		return nil, nil
 	}
 
-	return markers, nil
+	return extractMarkersFromFiles(files), nil
 }
 
 // CreateMarker creates a new face marker on a photo

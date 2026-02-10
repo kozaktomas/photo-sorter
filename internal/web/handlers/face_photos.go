@@ -46,6 +46,151 @@ type FaceSuggestion struct {
 	PhotoCount int     `json:"photo_count"`
 }
 
+// buildSubjectMap creates a lookup map from subjects indexed by both Name and UID
+func buildSubjectMap(subjects []photoprism.Subject) map[string]photoprism.Subject {
+	subjectMap := make(map[string]photoprism.Subject, len(subjects)*2)
+	for i := range subjects {
+		subjectMap[subjects[i].Name] = subjects[i]
+		subjectMap[subjects[i].UID] = subjects[i]
+	}
+	return subjectMap
+}
+
+// matchFaceToMarker finds the best matching marker for a face's display bbox
+func matchFaceToMarker(displayBBox []float64, markers []photoprism.Marker) (*photoprism.Marker, float64) {
+	displayBBoxCorners := []float64{
+		displayBBox[0],
+		displayBBox[1],
+		displayBBox[0] + displayBBox[2],
+		displayBBox[1] + displayBBox[3],
+	}
+
+	var bestMarker *photoprism.Marker
+	bestIoU := 0.0
+
+	for i := range markers {
+		if markers[i].Type != constants.MarkerTypeFace {
+			continue
+		}
+		markerBBox := markerToRelativeBBox(markers[i])
+		iou := computeIoU(displayBBoxCorners, markerBBox)
+		if iou > bestIoU {
+			bestIoU = iou
+			bestMarker = &markers[i]
+		}
+	}
+	return bestMarker, bestIoU
+}
+
+// buildDBFaces converts database faces to PhotoFace responses, matching with markers
+func (h *FacesHandler) buildDBFaces(ctx context.Context, dbFaces []database.StoredFace, markers []photoprism.Marker,
+	width, height, orientation int, faceRepo database.FaceReader, pp *photoprism.PhotoPrism,
+	threshold float64, limit int, subjectMap map[string]photoprism.Subject,
+) ([]PhotoFace, map[string]bool) {
+	faces := make([]PhotoFace, 0, len(dbFaces))
+	matchedMarkerUIDs := make(map[string]bool)
+
+	for _, dbFace := range dbFaces {
+		if len(dbFace.BBox) != 4 {
+			continue
+		}
+
+		displayBBox := convertPixelBBoxToDisplayRelative(dbFace.BBox, width, height, orientation)
+		face := PhotoFace{
+			FaceIndex: dbFace.FaceIndex, BBox: dbFace.BBox, BBoxRel: displayBBox,
+			DetScore: dbFace.DetScore, Action: ActionCreateMarker, Suggestions: []FaceSuggestion{},
+		}
+
+		bestMarker, bestIoU := matchFaceToMarker(displayBBox, markers)
+		if bestMarker != nil && bestIoU >= constants.IoUThreshold {
+			face.MarkerUID = bestMarker.UID
+			face.MarkerName = bestMarker.Name
+			matchedMarkerUIDs[bestMarker.UID] = true
+			if bestMarker.Name != "" && bestMarker.SubjUID != "" {
+				face.Action = ActionAlreadyDone
+			} else {
+				face.Action = ActionAssignPerson
+			}
+		}
+
+		face.Suggestions = h.findFaceSuggestions(ctx, faceRepo, pp, dbFace.Embedding, threshold, limit, subjectMap)
+		faces = append(faces, face)
+	}
+	return faces, matchedMarkerUIDs
+}
+
+// appendUnmatchedMarkers adds markers not matched to any database face
+func appendUnmatchedMarkers(faces []PhotoFace, markers []photoprism.Marker, matchedMarkerUIDs map[string]bool) []PhotoFace {
+	unmatchedIdx := -1
+	for i := range markers {
+		m := &markers[i]
+		if m.Type != constants.MarkerTypeFace || matchedMarkerUIDs[m.UID] {
+			continue
+		}
+		face := PhotoFace{
+			FaceIndex: unmatchedIdx, BBoxRel: []float64{m.X, m.Y, m.W, m.H},
+			MarkerUID: m.UID, MarkerName: m.Name, Suggestions: []FaceSuggestion{},
+		}
+		unmatchedIdx--
+		if m.Name != "" && m.SubjUID != "" {
+			face.Action = ActionAlreadyDone
+		} else {
+			face.Action = ActionAssignPerson
+		}
+		faces = append(faces, face)
+	}
+	return faces
+}
+
+// countFaceMarkers counts markers of type "face"
+func countFaceMarkers(markers []photoprism.Marker) int {
+	count := 0
+	for i := range markers {
+		if markers[i].Type == constants.MarkerTypeFace {
+			count++
+		}
+	}
+	return count
+}
+
+// parsePhotoFacesParams extracts threshold and limit from query parameters
+func parsePhotoFacesParams(r *http.Request) (float64, int) {
+	threshold := 0.5
+	if t, err := strconv.ParseFloat(r.URL.Query().Get("threshold"), 64); err == nil && t > 0 {
+		threshold = t
+	}
+	limit := constants.DefaultFaceSuggestionLimit
+	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 {
+		limit = l
+	}
+	return threshold, limit
+}
+
+// fetchPhotoFacesData fetches faces, details, markers, and subjects for a photo.
+// Returns an error message if any required data cannot be fetched.
+func fetchPhotoFacesData(ctx context.Context, faceRepo database.FaceReader, pp *photoprism.PhotoPrism, photoUID string) (
+	dbFaces []database.StoredFace, fileInfo *primaryFileInfo, markers []photoprism.Marker, subjects []photoprism.Subject, errMsg string,
+) {
+	dbFaces, err := faceRepo.GetFaces(ctx, photoUID)
+	if err != nil {
+		return nil, nil, nil, nil, "failed to get faces from database"
+	}
+
+	details, err := pp.GetPhotoDetails(photoUID)
+	if err != nil {
+		return nil, nil, nil, nil, "failed to get photo details"
+	}
+
+	fileInfo = extractPrimaryFileInfo(details)
+	if fileInfo == nil || fileInfo.Width == 0 || fileInfo.Height == 0 {
+		return nil, nil, nil, nil, "could not determine photo dimensions"
+	}
+
+	markers, _ = pp.GetPhotoMarkers(photoUID)
+	subjects, _ = pp.GetSubjects(constants.DefaultSubjectCount, 0)
+	return dbFaces, fileInfo, markers, subjects, ""
+}
+
 // GetPhotoFaces returns all faces in a photo with suggestions for unassigned ones
 func (h *FacesHandler) GetPhotoFaces(w http.ResponseWriter, r *http.Request) {
 	if h.faceReader == nil {
@@ -59,219 +204,61 @@ func (h *FacesHandler) GetPhotoFaces(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse query parameters
-	threshold := 0.5
-	if t, err := strconv.ParseFloat(r.URL.Query().Get("threshold"), 64); err == nil && t > 0 {
-		threshold = t
-	}
-	limit := constants.DefaultFaceSuggestionLimit
-	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 {
-		limit = l
-	}
-
 	pp := middleware.MustGetPhotoPrism(r.Context(), w)
 	if pp == nil {
 		return
 	}
 
 	ctx := r.Context()
-	faceRepo := h.faceReader
+	threshold, limit := parsePhotoFacesParams(r)
 
-	// Get faces from database
-	dbFaces, err := faceRepo.GetFaces(ctx, photoUID)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, "failed to get faces from database")
+	dbFaces, fileInfo, markers, subjects, errMsg := fetchPhotoFacesData(ctx, h.faceReader, pp, photoUID)
+	if errMsg != "" {
+		respondError(w, http.StatusInternalServerError, errMsg)
 		return
 	}
 
-	// Get photo details from PhotoPrism
-	details, err := pp.GetPhotoDetails(photoUID)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, "failed to get photo details")
-		return
-	}
-
-	// Extract file UID, dimensions, and orientation from the PRIMARY file
-	// (face detection runs on the primary file via GetPhotoDownload)
-	fileInfo := extractPrimaryFileInfo(details)
-	if fileInfo == nil || fileInfo.Width == 0 || fileInfo.Height == 0 {
-		respondError(w, http.StatusInternalServerError, "could not determine photo dimensions")
-		return
-	}
-	fileUID := fileInfo.UID
-	width, height, orientation := fileInfo.Width, fileInfo.Height, fileInfo.Orientation
-
-	// Get markers from PhotoPrism
-	markers, _ := pp.GetPhotoMarkers(photoUID)
-
-	// Get all subjects for looking up person info
-	subjects, _ := pp.GetSubjects(constants.DefaultSubjectCount, 0)
-	subjectMap := make(map[string]photoprism.Subject)
-	for i := range subjects {
-		subjectMap[subjects[i].Name] = subjects[i]
-		subjectMap[subjects[i].UID] = subjects[i]
-	}
-
-	// Build response faces
-	faces := make([]PhotoFace, 0, len(dbFaces))
-	matchedMarkerUIDs := make(map[string]bool)
-
-	for _, dbFace := range dbFaces {
-		if len(dbFace.BBox) != 4 {
-			continue
-		}
-
-		// Convert pixel bbox to display-relative coordinates (handles orientation)
-		displayBBox := convertPixelBBoxToDisplayRelative(dbFace.BBox, width, height, orientation)
-
-		face := PhotoFace{
-			FaceIndex:   dbFace.FaceIndex,
-			BBox:        dbFace.BBox,
-			BBoxRel:     displayBBox,
-			DetScore:    dbFace.DetScore,
-			Action:      ActionCreateMarker,
-			Suggestions: []FaceSuggestion{},
-		}
-
-		// For IoU comparison, convert display [x, y, w, h] back to [x1, y1, x2, y2]
-		displayBBoxCorners := []float64{
-			displayBBox[0],
-			displayBBox[1],
-			displayBBox[0] + displayBBox[2],
-			displayBBox[1] + displayBBox[3],
-		}
-
-		// Try to match with a PhotoPrism marker using IoU
-		var bestMarker *photoprism.Marker
-		bestIoU := 0.0
-
-		for i := range markers {
-			if markers[i].Type != constants.MarkerTypeFace {
-				continue
-			}
-			markerBBox := markerToRelativeBBox(markers[i])
-			iou := computeIoU(displayBBoxCorners, markerBBox)
-			if iou > bestIoU {
-				bestIoU = iou
-				bestMarker = &markers[i]
-			}
-		}
-
-		if bestMarker != nil && bestIoU >= constants.IoUThreshold {
-			face.MarkerUID = bestMarker.UID
-			face.MarkerName = bestMarker.Name
-			matchedMarkerUIDs[bestMarker.UID] = true
-
-			if bestMarker.Name != "" && bestMarker.SubjUID != "" {
-				face.Action = ActionAlreadyDone
-			} else {
-				face.Action = ActionAssignPerson
-			}
-		}
-
-		// Find suggestions for all faces (including already-assigned ones, for reassignment)
-		suggestions := h.findFaceSuggestions(ctx, faceRepo, pp, dbFace.Embedding, threshold, limit, subjectMap)
-		face.Suggestions = suggestions
-
-		faces = append(faces, face)
-	}
-
-	// Append unmatched markers (faces detected by PhotoPrism but not in embeddings database)
-	unmatchedIdx := -1
-	for i := range markers {
-		m := &markers[i]
-		if m.Type != constants.MarkerTypeFace || matchedMarkerUIDs[m.UID] {
-			continue
-		}
-		face := PhotoFace{
-			FaceIndex:   unmatchedIdx,
-			BBoxRel:     []float64{m.X, m.Y, m.W, m.H},
-			MarkerUID:   m.UID,
-			MarkerName:  m.Name,
-			Suggestions: []FaceSuggestion{},
-		}
-		unmatchedIdx--
-		if m.Name != "" && m.SubjUID != "" {
-			face.Action = ActionAlreadyDone
-		} else {
-			face.Action = ActionAssignPerson
-		}
-		faces = append(faces, face)
-	}
-
-	// Count face markers from PhotoPrism
-	faceMarkerCount := 0
-	for i := range markers {
-		if markers[i].Type == constants.MarkerTypeFace {
-			faceMarkerCount++
-		}
-	}
-
-	// Check if face detection has been run for this photo
-	facesProcessed, _ := faceRepo.IsFacesProcessed(ctx, photoUID)
+	subjectMap := buildSubjectMap(subjects)
+	faces, matchedMarkerUIDs := h.buildDBFaces(ctx, dbFaces, markers,
+		fileInfo.Width, fileInfo.Height, fileInfo.Orientation,
+		h.faceReader, pp, threshold, limit, subjectMap)
+	faces = appendUnmatchedMarkers(faces, markers, matchedMarkerUIDs)
+	facesProcessed, _ := h.faceReader.IsFacesProcessed(ctx, photoUID)
 
 	respondJSON(w, http.StatusOK, PhotoFacesResponse{
-		PhotoUID:        photoUID,
-		FileUID:         fileUID,
-		Width:           width,
-		Height:          height,
-		Orientation:     orientation,
-		EmbeddingsCount: len(dbFaces),
-		MarkersCount:    faceMarkerCount,
-		FacesProcessed:  facesProcessed,
-		Faces:           faces,
+		PhotoUID: photoUID, FileUID: fileInfo.UID,
+		Width: fileInfo.Width, Height: fileInfo.Height, Orientation: fileInfo.Orientation,
+		EmbeddingsCount: len(dbFaces), MarkersCount: countFaceMarkers(markers),
+		FacesProcessed: facesProcessed, Faces: faces,
 	})
 }
 
-// findFaceSuggestions finds people who have similar faces and returns them as suggestions.
-// This version uses cached SubjectName/SubjectUID from StoredFace, making zero API calls.
-func (h *FacesHandler) findFaceSuggestions(
-	ctx context.Context,
-	faceRepo database.FaceReader,
-	_ *photoprism.PhotoPrism, // kept for interface compatibility, not used
-	embedding []float32,
-	threshold float64,
-	limit int,
-	subjectMap map[string]photoprism.Subject,
-) []FaceSuggestion {
-	// Skip if embedding is nil or empty (photo may not have been processed yet)
-	if len(embedding) == 0 {
-		return []FaceSuggestion{}
-	}
+// personMatch aggregates face match data for a single person
+type personMatch struct {
+	name       string
+	uid        string
+	totalDist  float64
+	count      int
+	photoCount int
+}
 
-	// Find similar faces
-	similarFaces, distances, err := faceRepo.FindSimilarWithDistance(ctx, embedding, constants.DefaultFaceSimilarSearchLimit, threshold)
-	if err != nil || len(similarFaces) == 0 {
-		return []FaceSuggestion{}
-	}
-
-	// Group similar faces by person using cached SubjectName (zero API calls)
-	type personMatch struct {
-		name       string
-		uid        string
-		totalDist  float64
-		count      int
-		photoCount int
-	}
+// aggregatePersonMatches groups similar faces by person using cached subject data
+func aggregatePersonMatches(similarFaces []database.StoredFace, distances []float64, subjectMap map[string]photoprism.Subject) map[string]*personMatch {
 	personMatches := make(map[string]*personMatch)
 
 	for i, face := range similarFaces {
-		// Use cached subject data from the face record
 		personName := face.SubjectName
 		personUID := face.SubjectUID
 
-		// Fallback: if SubjectName is empty but SubjectUID exists, look it up
 		if personName == "" && personUID != "" {
 			if subj, ok := subjectMap[personUID]; ok {
 				personName = subj.Name
 			}
 		}
-
 		if personName == "" {
-			continue // No assigned person for this face
+			continue
 		}
 
-		// Aggregate by person
 		if pm, ok := personMatches[personName]; ok {
 			pm.totalDist += distances[i]
 			pm.count++
@@ -281,33 +268,29 @@ func (h *FacesHandler) findFaceSuggestions(
 				photoCount = subj.PhotoCount
 			}
 			personMatches[personName] = &personMatch{
-				name:       personName,
-				uid:        personUID,
-				totalDist:  distances[i],
-				count:      1,
-				photoCount: photoCount,
+				name: personName, uid: personUID,
+				totalDist: distances[i], count: 1, photoCount: photoCount,
 			}
 		}
 	}
+	return personMatches
+}
 
-	// Convert to suggestions and sort by confidence (descending)
+// personMatchesToSuggestions converts aggregated person matches to sorted suggestions
+func personMatchesToSuggestions(personMatches map[string]*personMatch, limit int) []FaceSuggestion {
 	suggestions := make([]FaceSuggestion, 0, len(personMatches))
 	for _, pm := range personMatches {
 		avgDist := pm.totalDist / float64(pm.count)
-		confidence := 1.0 - avgDist // Simple confidence from distance
+		confidence := 1.0 - avgDist
 		if confidence < 0 {
 			confidence = 0
 		}
 		suggestions = append(suggestions, FaceSuggestion{
-			PersonName: pm.name,
-			PersonUID:  pm.uid,
-			Distance:   avgDist,
-			Confidence: confidence,
-			PhotoCount: pm.photoCount,
+			PersonName: pm.name, PersonUID: pm.uid,
+			Distance: avgDist, Confidence: confidence, PhotoCount: pm.photoCount,
 		})
 	}
 
-	// Sort by confidence (descending)
 	for i := range len(suggestions) - 1 {
 		for j := i + 1; j < len(suggestions); j++ {
 			if suggestions[j].Confidence > suggestions[i].Confidence {
@@ -316,10 +299,32 @@ func (h *FacesHandler) findFaceSuggestions(
 		}
 	}
 
-	// Limit results
 	if len(suggestions) > limit {
 		suggestions = suggestions[:limit]
 	}
-
 	return suggestions
+}
+
+// findFaceSuggestions finds people who have similar faces and returns them as suggestions.
+// This version uses cached SubjectName/SubjectUID from StoredFace, making zero API calls.
+func (h *FacesHandler) findFaceSuggestions(
+	ctx context.Context,
+	faceRepo database.FaceReader,
+	_ *photoprism.PhotoPrism,
+	embedding []float32,
+	threshold float64,
+	limit int,
+	subjectMap map[string]photoprism.Subject,
+) []FaceSuggestion {
+	if len(embedding) == 0 {
+		return []FaceSuggestion{}
+	}
+
+	similarFaces, distances, err := faceRepo.FindSimilarWithDistance(ctx, embedding, constants.DefaultFaceSimilarSearchLimit, threshold)
+	if err != nil || len(similarFaces) == 0 {
+		return []FaceSuggestion{}
+	}
+
+	personMatches := aggregatePersonMatches(similarFaces, distances, subjectMap)
+	return personMatchesToSuggestions(personMatches, limit)
 }

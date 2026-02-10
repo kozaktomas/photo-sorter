@@ -385,7 +385,52 @@ func (r *FaceRepository) findSimilarWithDistancePostgres(ctx context.Context, em
 	return faces, distances, nil
 }
 
+// faceNullableFields holds nullable SQL parameters extracted from a StoredFace.
+type faceNullableFields struct {
+	markerUID   sql.NullString
+	subjectUID  sql.NullString
+	subjectName sql.NullString
+	fileUID     sql.NullString
+	photoWidth  sql.NullInt32
+	photoHeight sql.NullInt32
+	orientation sql.NullInt32
+}
+
+// extractNullableFields converts optional face fields to SQL nullable types.
+func extractNullableFields(face *database.StoredFace) faceNullableFields {
+	var f faceNullableFields
+	if face.MarkerUID != "" {
+		f.markerUID = sql.NullString{String: face.MarkerUID, Valid: true}
+	}
+	if face.SubjectUID != "" {
+		f.subjectUID = sql.NullString{String: face.SubjectUID, Valid: true}
+	}
+	if face.SubjectName != "" {
+		f.subjectName = sql.NullString{String: face.SubjectName, Valid: true}
+	}
+	if face.FileUID != "" {
+		f.fileUID = sql.NullString{String: face.FileUID, Valid: true}
+	}
+	if face.PhotoWidth > 0 {
+		f.photoWidth = sql.NullInt32{Int32: safeIntToInt32(face.PhotoWidth), Valid: true}
+	}
+	if face.PhotoHeight > 0 {
+		f.photoHeight = sql.NullInt32{Int32: safeIntToInt32(face.PhotoHeight), Valid: true}
+	}
+	if face.Orientation > 0 {
+		f.orientation = sql.NullInt32{Int32: safeIntToInt32(face.Orientation), Valid: true}
+	}
+	return f
+}
+
 // SaveFaces stores multiple faces for a photo (replaces existing faces for that photo)
+// isHNSWEnabled checks whether the HNSW index is active.
+func (r *FaceRepository) isHNSWEnabled() bool {
+	r.hnswMu.RLock()
+	defer r.hnswMu.RUnlock()
+	return r.hnswEnabled && r.hnswIndex != nil
+}
+
 func (r *FaceRepository) SaveFaces(ctx context.Context, photoUID string, faces []database.StoredFace) error {
 	tx, err := r.pool.BeginTx(ctx, nil)
 	if err != nil {
@@ -393,21 +438,16 @@ func (r *FaceRepository) SaveFaces(ctx context.Context, photoUID string, faces [
 	}
 	defer tx.Rollback()
 
-	// Get existing face IDs for HNSW cleanup
-	r.hnswMu.RLock()
-	hnswEnabled := r.hnswEnabled && r.hnswIndex != nil
-	r.hnswMu.RUnlock()
+	hnswEnabled := r.isHNSWEnabled()
 
 	var oldFaceIDs []int64
 	if hnswEnabled {
-		ids, err := scanFaceIDs(tx, ctx, photoUID)
+		oldFaceIDs, err = scanFaceIDs(tx, ctx, photoUID)
 		if err != nil {
 			return err
 		}
-		oldFaceIDs = ids
 	}
 
-	// Delete existing faces for this photo
 	if _, err := tx.ExecContext(ctx, "DELETE FROM faces WHERE photo_uid = $1", photoUID); err != nil {
 		return fmt.Errorf("delete existing faces: %w", err)
 	}
@@ -416,14 +456,7 @@ func (r *FaceRepository) SaveFaces(ctx context.Context, photoUID string, faces [
 		if err := tx.Commit(); err != nil {
 			return fmt.Errorf("commit transaction: %w", err)
 		}
-		// Remove old faces from HNSW index
-		if hnswEnabled {
-			r.hnswMu.Lock()
-			for _, id := range oldFaceIDs {
-				r.hnswIndex.Delete(id)
-			}
-			r.hnswMu.Unlock()
-		}
+		r.updateHNSWFaces(hnswEnabled, oldFaceIDs, nil)
 		return nil
 	}
 
@@ -434,31 +467,7 @@ func (r *FaceRepository) SaveFaces(ctx context.Context, photoUID string, faces [
 		face := &faces[i]
 		vec := pgvector.NewVector(face.Embedding)
 		bbox := pq.Array(face.BBox)
-
-		var markerUID, subjectUID, subjectName, fileUID sql.NullString
-		var photoWidth, photoHeight, orientation sql.NullInt32
-
-		if face.MarkerUID != "" {
-			markerUID = sql.NullString{String: face.MarkerUID, Valid: true}
-		}
-		if face.SubjectUID != "" {
-			subjectUID = sql.NullString{String: face.SubjectUID, Valid: true}
-		}
-		if face.SubjectName != "" {
-			subjectName = sql.NullString{String: face.SubjectName, Valid: true}
-		}
-		if face.FileUID != "" {
-			fileUID = sql.NullString{String: face.FileUID, Valid: true}
-		}
-		if face.PhotoWidth > 0 {
-			photoWidth = sql.NullInt32{Int32: safeIntToInt32(face.PhotoWidth), Valid: true}
-		}
-		if face.PhotoHeight > 0 {
-			photoHeight = sql.NullInt32{Int32: safeIntToInt32(face.PhotoHeight), Valid: true}
-		}
-		if face.Orientation > 0 {
-			orientation = sql.NullInt32{Int32: safeIntToInt32(face.Orientation), Valid: true}
-		}
+		nf := extractNullableFields(face)
 
 		var newID int64
 		err := tx.QueryRowContext(ctx, `
@@ -474,13 +483,13 @@ func (r *FaceRepository) SaveFaces(ctx context.Context, photoUID string, faces [
 			face.DetScore,
 			face.Model,
 			face.Dim,
-			markerUID,
-			subjectUID,
-			subjectName,
-			photoWidth,
-			photoHeight,
-			orientation,
-			fileUID,
+			nf.markerUID,
+			nf.subjectUID,
+			nf.subjectName,
+			nf.photoWidth,
+			nf.photoHeight,
+			nf.orientation,
+			nf.fileUID,
 		).Scan(&newID)
 		if err != nil {
 			return fmt.Errorf("insert face %d: %w", face.FaceIndex, err)
@@ -497,21 +506,23 @@ func (r *FaceRepository) SaveFaces(ctx context.Context, photoUID string, faces [
 		return fmt.Errorf("commit transaction: %w", err)
 	}
 
-	// Update HNSW index
-	if hnswEnabled {
-		r.hnswMu.Lock()
-		// Remove old faces
-		for _, id := range oldFaceIDs {
-			r.hnswIndex.Delete(id)
-		}
-		// Add new faces
-		for i := range insertedFaces {
-			r.hnswIndex.Add(&insertedFaces[i])
-		}
-		r.hnswMu.Unlock()
-	}
-
+	r.updateHNSWFaces(hnswEnabled, oldFaceIDs, insertedFaces)
 	return nil
+}
+
+// updateHNSWFaces removes old face IDs and adds new faces to the HNSW index.
+func (r *FaceRepository) updateHNSWFaces(hnswEnabled bool, oldIDs []int64, newFaces []database.StoredFace) {
+	if !hnswEnabled {
+		return
+	}
+	r.hnswMu.Lock()
+	for _, id := range oldIDs {
+		r.hnswIndex.Delete(id)
+	}
+	for i := range newFaces {
+		r.hnswIndex.Add(&newFaces[i])
+	}
+	r.hnswMu.Unlock()
 }
 
 // MarkFacesProcessed marks a photo as having been processed for face detection
@@ -613,31 +624,7 @@ func (r *FaceRepository) SaveFacesBatch(ctx context.Context, facesByPhoto map[st
 			face := &faces[j]
 			vec := pgvector.NewVector(face.Embedding)
 			bbox := pq.Array(face.BBox)
-
-			var markerUID, subjectUID, subjectName, fileUID sql.NullString
-			var photoWidth, photoHeight, orientation sql.NullInt32
-
-			if face.MarkerUID != "" {
-				markerUID = sql.NullString{String: face.MarkerUID, Valid: true}
-			}
-			if face.SubjectUID != "" {
-				subjectUID = sql.NullString{String: face.SubjectUID, Valid: true}
-			}
-			if face.SubjectName != "" {
-				subjectName = sql.NullString{String: face.SubjectName, Valid: true}
-			}
-			if face.FileUID != "" {
-				fileUID = sql.NullString{String: face.FileUID, Valid: true}
-			}
-			if face.PhotoWidth > 0 {
-				photoWidth = sql.NullInt32{Int32: safeIntToInt32(face.PhotoWidth), Valid: true}
-			}
-			if face.PhotoHeight > 0 {
-				photoHeight = sql.NullInt32{Int32: safeIntToInt32(face.PhotoHeight), Valid: true}
-			}
-			if face.Orientation > 0 {
-				orientation = sql.NullInt32{Int32: safeIntToInt32(face.Orientation), Valid: true}
-			}
+			nf := extractNullableFields(face)
 
 			if _, err := stmt.ExecContext(ctx,
 				photoUID,
@@ -647,13 +634,13 @@ func (r *FaceRepository) SaveFacesBatch(ctx context.Context, facesByPhoto map[st
 				face.DetScore,
 				face.Model,
 				face.Dim,
-				markerUID,
-				subjectUID,
-				subjectName,
-				photoWidth,
-				photoHeight,
-				orientation,
-				fileUID,
+				nf.markerUID,
+				nf.subjectUID,
+				nf.subjectName,
+				nf.photoWidth,
+				nf.photoHeight,
+				nf.orientation,
+				nf.fileUID,
 			); err != nil {
 				return fmt.Errorf("insert face %s/%d: %w", photoUID, face.FaceIndex, err)
 			}
@@ -805,6 +792,59 @@ func (r *FaceRepository) GetAllFaces(ctx context.Context) ([]database.StoredFace
 	return scanFaces(rows)
 }
 
+// tryLoadFaceIndex attempts to load the face HNSW index from disk.
+// Returns true if the index was loaded successfully.
+func (r *FaceRepository) tryLoadFaceIndex(ctx context.Context, indexPath string, dbFaceCount, dbMaxFaceID int64) bool {
+	metadata, metaErr := database.LoadHNSWMetadata(indexPath)
+	if metaErr != nil {
+		fmt.Printf("Face index: metadata file error: %v (will rebuild)\n", metaErr)
+		return false
+	}
+	if metadata.FaceCount != dbFaceCount || metadata.MaxFaceID != dbMaxFaceID {
+		fmt.Printf("Face index: stale (db: count=%d max_id=%d, cached: count=%d max_id=%d) (will rebuild)\n",
+			dbFaceCount, dbMaxFaceID, metadata.FaceCount, metadata.MaxFaceID)
+		return false
+	}
+	return r.tryLoadFreshFaceIndex(ctx, indexPath)
+}
+
+// tryLoadFreshFaceIndex attempts to load a fresh face index, with fallback to legacy format.
+func (r *FaceRepository) tryLoadFreshFaceIndex(ctx context.Context, indexPath string) bool {
+	r.hnswIndex = database.NewHNSWIndex()
+	if err := r.hnswIndex.LoadWithFaceMetadata(indexPath); err != nil {
+		fmt.Printf("Face index: failed to load with metadata: %v (trying fallback)\n", err)
+		return r.tryLoadFallbackFaceIndex(ctx, indexPath)
+	}
+	if r.hnswIndex.IsEmpty() {
+		fmt.Printf("Face index: loaded graph is empty (will rebuild)\n")
+		return false
+	}
+	fmt.Printf("Face index: loaded from disk (fresh)\n")
+	return true
+}
+
+// tryLoadFallbackFaceIndex attempts the legacy load path without face metadata.
+func (r *FaceRepository) tryLoadFallbackFaceIndex(ctx context.Context, indexPath string) bool {
+	r.hnswIndex = database.NewHNSWIndex()
+	if err := r.hnswIndex.Load(indexPath); err != nil {
+		fmt.Printf("Face index: fallback load failed: %v (will rebuild)\n", err)
+		return false
+	}
+	if r.hnswIndex.IsEmpty() {
+		fmt.Printf("Face index: fallback loaded graph is empty (will rebuild)\n")
+		return false
+	}
+	fmt.Println("Loading faces from database (consider running 'Rebuild Index' to create .faces file for faster startup)...")
+	faces, err := r.GetAllFaces(ctx)
+	if err != nil {
+		fmt.Printf("Face index: failed to load faces for fallback: %v (will rebuild)\n", err)
+		return false
+	}
+	r.hnswIndex.RebuildFromFaces(faces)
+	fmt.Printf("Face index: loaded from disk (fallback path)\n")
+	return true
+}
+
 // EnableHNSW loads or builds an in-memory HNSW index for O(log N) similarity search.
 // If indexPath is provided, it will try to load from disk first and save after building.
 // This should be called once at startup.
@@ -814,57 +854,17 @@ func (r *FaceRepository) EnableHNSW(ctx context.Context, indexPath string) error
 
 	r.hnswIndexPath = indexPath
 
-	// Get current database stats for staleness check
-	var dbFaceCount int64
-	var dbMaxFaceID int64
+	var dbFaceCount, dbMaxFaceID int64
 	err := r.pool.QueryRow(ctx, "SELECT COUNT(*), COALESCE(MAX(id), 0) FROM faces").Scan(&dbFaceCount, &dbMaxFaceID)
 	if err != nil {
 		return fmt.Errorf("failed to get face stats: %w", err)
 	}
 
-	// Try to load from disk if path is configured
-	if indexPath != "" {
-		metadata, metaErr := database.LoadHNSWMetadata(indexPath)
-		if metaErr != nil {
-			fmt.Printf("Face index: metadata file error: %v (will rebuild)\n", metaErr)
-		} else if metadata.FaceCount != dbFaceCount || metadata.MaxFaceID != dbMaxFaceID {
-			fmt.Printf("Face index: stale (db: count=%d max_id=%d, cached: count=%d max_id=%d) (will rebuild)\n",
-				dbFaceCount, dbMaxFaceID, metadata.FaceCount, metadata.MaxFaceID)
-		} else {
-			// Index is fresh, try to load with face metadata (fast path)
-			r.hnswIndex = database.NewHNSWIndex()
-			if err := r.hnswIndex.LoadWithFaceMetadata(indexPath); err != nil {
-				fmt.Printf("Face index: failed to load with metadata: %v (trying fallback)\n", err)
-				// Fall through to try loading without face metadata (backward compatibility)
-				r.hnswIndex = database.NewHNSWIndex()
-				if err := r.hnswIndex.Load(indexPath); err != nil {
-					fmt.Printf("Face index: fallback load failed: %v (will rebuild)\n", err)
-				} else if r.hnswIndex.IsEmpty() {
-					fmt.Printf("Face index: fallback loaded graph is empty (will rebuild)\n")
-				} else {
-					// Load faces from database to populate idToFace map (slow path)
-					fmt.Println("Loading faces from database (consider running 'Rebuild Index' to create .faces file for faster startup)...")
-					faces, err := r.GetAllFaces(ctx)
-					if err != nil {
-						return fmt.Errorf("failed to load faces for idToFace map: %w", err)
-					}
-					r.hnswIndex.RebuildFromFaces(faces)
-					fmt.Printf("Face index: loaded from disk (fallback path)\n")
-					r.hnswEnabled = true
-					return nil
-				}
-			} else if r.hnswIndex.IsEmpty() {
-				fmt.Printf("Face index: loaded graph is empty (will rebuild)\n")
-			} else {
-				fmt.Printf("Face index: loaded from disk (fresh)\n")
-				r.hnswEnabled = true
-				return nil
-			}
-		}
-		// Index is stale or missing, will rebuild below
+	if indexPath != "" && r.tryLoadFaceIndex(ctx, indexPath, dbFaceCount, dbMaxFaceID) {
+		r.hnswEnabled = true
+		return nil
 	}
 
-	// Build from database
 	faces, err := r.GetAllFaces(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to load faces: %w", err)
@@ -875,14 +875,9 @@ func (r *FaceRepository) EnableHNSW(ctx context.Context, indexPath string) error
 		return fmt.Errorf("failed to build HNSW index: %w", err)
 	}
 
-	// Save to disk if path is configured
 	if indexPath != "" && len(faces) > 0 {
-		metadata := database.HNSWIndexMetadata{
-			FaceCount: dbFaceCount,
-			MaxFaceID: dbMaxFaceID,
-		}
+		metadata := database.HNSWIndexMetadata{FaceCount: dbFaceCount, MaxFaceID: dbMaxFaceID}
 		if err := r.hnswIndex.SaveWithFaceMetadata(indexPath, metadata); err != nil {
-			// Log warning but don't fail - index is still usable in memory
 			fmt.Printf("Warning: failed to save HNSW index to disk: %v\n", err)
 		}
 	}

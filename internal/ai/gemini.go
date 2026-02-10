@@ -275,36 +275,37 @@ func (p *GeminiProvider) GetBatchResults(ctx context.Context, batchID string) ([
 		if i < len(photoUIDs) {
 			photoUID = photoUIDs[i]
 		}
-
-		result := BatchPhotoResult{
-			PhotoUID: photoUID,
-		}
-
-		if resp.Error != nil {
-			result.Error = resp.Error.Message
-		} else if resp.Response != nil {
-			content := resp.Response.Text()
-			if content == "" {
-				result.Error = "empty response"
-			} else {
-				var analysis PhotoAnalysis
-				if err := json.Unmarshal([]byte(content), &analysis); err != nil {
-					result.Error = fmt.Sprintf("failed to parse analysis: %v", err)
-				} else {
-					result.Analysis = &analysis
-				}
-			}
-		} else {
-			result.Error = "no response"
-		}
-
-		results = append(results, result)
+		results = append(results, parseGeminiBatchResponse(resp, photoUID))
 	}
 
 	// Clean up stored photo UIDs
 	delete(p.batchPhotoIDs, batchID)
 
 	return results, nil
+}
+
+// parseGeminiBatchResponse converts a single Gemini batch response into a BatchPhotoResult.
+func parseGeminiBatchResponse(resp *genai.InlinedResponse, photoUID string) BatchPhotoResult {
+	result := BatchPhotoResult{PhotoUID: photoUID}
+	switch {
+	case resp.Error != nil:
+		result.Error = resp.Error.Message
+	case resp.Response != nil:
+		content := resp.Response.Text()
+		if content == "" {
+			result.Error = "empty response"
+		} else {
+			var analysis PhotoAnalysis
+			if err := json.Unmarshal([]byte(content), &analysis); err != nil {
+				result.Error = fmt.Sprintf("failed to parse analysis: %v", err)
+			} else {
+				result.Analysis = &analysis
+			}
+		}
+	default:
+		result.Error = "no response"
+	}
+	return result
 }
 
 func (p *GeminiProvider) CancelBatch(ctx context.Context, batchID string) error {

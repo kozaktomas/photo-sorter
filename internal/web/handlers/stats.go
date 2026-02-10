@@ -74,23 +74,8 @@ type StatsResponse struct {
 	TotalEmbeddings  int `json:"total_embeddings"`
 }
 
-// Get returns statistics about photos and embeddings
-func (h *StatsHandler) Get(w http.ResponseWriter, r *http.Request) {
-	// Check cache first
-	if cached, ok := h.cache.get(); ok {
-		respondJSON(w, http.StatusOK, cached)
-		return
-	}
-
-	ctx := context.Background()
-
-	// Get total photos from PhotoPrism
-	pp := middleware.MustGetPhotoPrism(r.Context(), w)
-	if pp == nil {
-		return
-	}
-
-	// Fetch all photos from PhotoPrism
+// fetchAllPhotoUIDs fetches all photo UIDs from PhotoPrism with pagination
+func fetchAllPhotoUIDs(pp *photoprism.PhotoPrism) []string {
 	var allPhotos []photoprism.Photo
 	pageSize := constants.DefaultPageSize
 	offset := 0
@@ -105,17 +90,15 @@ func (h *StatsHandler) Get(w http.ResponseWriter, r *http.Request) {
 		}
 		offset += pageSize
 	}
-	totalPhotos := len(allPhotos)
-
-	// Collect photo UIDs for filtered counting
 	photoUIDs := make([]string, len(allPhotos))
 	for i, p := range allPhotos {
 		photoUIDs[i] = p.UID
 	}
+	return photoUIDs
+}
 
-	// Get embedding and face stats from PostgreSQL, filtered to only existing photos
-	var photosProcessed, photosWithEmbed, photosWithFaces, totalFaces, totalEmbeddings int
-
+// fetchDBStats retrieves embedding and face statistics from PostgreSQL
+func fetchDBStats(ctx context.Context, photoUIDs []string) (photosWithEmbed, totalEmbeddings, photosWithFaces, totalFaces int) {
 	if embRepo, err := database.GetEmbeddingReader(ctx); err == nil {
 		if count, err := embRepo.CountByUIDs(ctx, photoUIDs); err == nil {
 			totalEmbeddings = count
@@ -130,25 +113,35 @@ func (h *StatsHandler) Get(w http.ResponseWriter, r *http.Request) {
 			photosWithFaces = count
 		}
 	}
+	return
+}
 
-	// Count processed photos: a photo is "processed" if it has an embedding or faces
-	// For PostgreSQL, we use the counts from the database
-	photosProcessed = photosWithEmbed
+// Get returns statistics about photos and embeddings
+func (h *StatsHandler) Get(w http.ResponseWriter, r *http.Request) {
+	if cached, ok := h.cache.get(); ok {
+		respondJSON(w, http.StatusOK, cached)
+		return
+	}
+
+	pp := middleware.MustGetPhotoPrism(r.Context(), w)
+	if pp == nil {
+		return
+	}
+
+	photoUIDs := fetchAllPhotoUIDs(pp)
+	photosWithEmbed, totalEmbeddings, photosWithFaces, totalFaces := fetchDBStats(context.Background(), photoUIDs)
+
+	photosProcessed := photosWithEmbed
 	if photosWithFaces > photosProcessed {
 		photosProcessed = photosWithFaces
 	}
 
 	stats := &StatsResponse{
-		TotalPhotos:     totalPhotos,
-		PhotosProcessed: photosProcessed,
-		PhotosWithEmbed: photosWithEmbed,
-		PhotosWithFaces: photosWithFaces,
-		TotalFaces:      totalFaces,
-		TotalEmbeddings: totalEmbeddings,
+		TotalPhotos: len(photoUIDs), PhotosProcessed: photosProcessed,
+		PhotosWithEmbed: photosWithEmbed, PhotosWithFaces: photosWithFaces,
+		TotalFaces: totalFaces, TotalEmbeddings: totalEmbeddings,
 	}
 
-	// Cache the result
 	h.cache.set(stats)
-
 	respondJSON(w, http.StatusOK, stats)
 }

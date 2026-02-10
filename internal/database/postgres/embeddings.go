@@ -385,6 +385,60 @@ func (r *EmbeddingRepository) GetAllEmbeddings(ctx context.Context) ([]database.
 	return scanEmbeddings(rows)
 }
 
+// tryLoadEmbeddingIndex attempts to load the HNSW index from disk.
+// Returns true if the index was loaded successfully.
+func (r *EmbeddingRepository) tryLoadEmbeddingIndex(ctx context.Context, indexPath string, dbEmbCount int64) bool {
+	metadata, metaErr := database.LoadHNSWEmbeddingMetadata(indexPath)
+	if metaErr != nil {
+		fmt.Printf("Embedding index: metadata file error: %v (will rebuild)\n", metaErr)
+		return false
+	}
+	if metadata.EmbeddingCount != dbEmbCount {
+		fmt.Printf("Embedding index: stale (db: count=%d, cached: count=%d) (will rebuild)\n",
+			dbEmbCount, metadata.EmbeddingCount)
+		return false
+	}
+
+	return r.tryLoadFreshEmbeddingIndex(ctx, indexPath)
+}
+
+// tryLoadFreshEmbeddingIndex attempts to load a fresh index, with fallback to legacy format.
+func (r *EmbeddingRepository) tryLoadFreshEmbeddingIndex(ctx context.Context, indexPath string) bool {
+	r.hnswIndex = database.NewHNSWEmbeddingIndex()
+	if err := r.hnswIndex.LoadWithEmbeddingMetadata(indexPath); err != nil {
+		fmt.Printf("Embedding index: failed to load with metadata: %v (trying fallback)\n", err)
+		return r.tryLoadFallbackEmbeddingIndex(ctx, indexPath)
+	}
+	if r.hnswIndex.IsEmpty() {
+		fmt.Printf("Embedding index: loaded graph is empty (will rebuild)\n")
+		return false
+	}
+	fmt.Printf("Embedding index: loaded from disk (fresh)\n")
+	return true
+}
+
+// tryLoadFallbackEmbeddingIndex attempts the legacy load path without metadata.
+func (r *EmbeddingRepository) tryLoadFallbackEmbeddingIndex(ctx context.Context, indexPath string) bool {
+	r.hnswIndex = database.NewHNSWEmbeddingIndex()
+	if err := r.hnswIndex.Load(indexPath); err != nil {
+		fmt.Printf("Embedding index: fallback load failed: %v (will rebuild)\n", err)
+		return false
+	}
+	if r.hnswIndex.IsEmpty() {
+		fmt.Printf("Embedding index: fallback loaded graph is empty (will rebuild)\n")
+		return false
+	}
+	fmt.Println("Loading embeddings from database (consider running 'Rebuild Index' to create .embeddings file for faster startup)...")
+	embeddings, err := r.GetAllEmbeddings(ctx)
+	if err != nil {
+		fmt.Printf("Embedding index: failed to load embeddings for fallback: %v (will rebuild)\n", err)
+		return false
+	}
+	r.hnswIndex.RebuildFromEmbeddings(embeddings)
+	fmt.Printf("Embedding index: loaded from disk (fallback path)\n")
+	return true
+}
+
 // EnableHNSW loads or builds an in-memory HNSW index for O(log N) similarity search.
 // If indexPath is provided, it will try to load from disk first and save after building.
 // This should be called once at startup.
@@ -394,56 +448,17 @@ func (r *EmbeddingRepository) EnableHNSW(ctx context.Context, indexPath string) 
 
 	r.hnswIndexPath = indexPath
 
-	// Get current database stats for staleness check
 	var dbEmbCount int64
 	err := r.pool.QueryRow(ctx, "SELECT COUNT(*) FROM embeddings").Scan(&dbEmbCount)
 	if err != nil {
 		return fmt.Errorf("failed to get embedding count: %w", err)
 	}
 
-	// Try to load from disk if path is configured
-	if indexPath != "" {
-		metadata, metaErr := database.LoadHNSWEmbeddingMetadata(indexPath)
-		if metaErr != nil {
-			fmt.Printf("Embedding index: metadata file error: %v (will rebuild)\n", metaErr)
-		} else if metadata.EmbeddingCount != dbEmbCount {
-			fmt.Printf("Embedding index: stale (db: count=%d, cached: count=%d) (will rebuild)\n",
-				dbEmbCount, metadata.EmbeddingCount)
-		} else {
-			// Index is fresh, try to load with embedding metadata (fast path)
-			r.hnswIndex = database.NewHNSWEmbeddingIndex()
-			if err := r.hnswIndex.LoadWithEmbeddingMetadata(indexPath); err != nil {
-				fmt.Printf("Embedding index: failed to load with metadata: %v (trying fallback)\n", err)
-				// Fall through to try loading without embedding metadata (backward compatibility)
-				r.hnswIndex = database.NewHNSWEmbeddingIndex()
-				if err := r.hnswIndex.Load(indexPath); err != nil {
-					fmt.Printf("Embedding index: fallback load failed: %v (will rebuild)\n", err)
-				} else if r.hnswIndex.IsEmpty() {
-					fmt.Printf("Embedding index: fallback loaded graph is empty (will rebuild)\n")
-				} else {
-					// Load embeddings from database to populate idToEmb map (slow path)
-					fmt.Println("Loading embeddings from database (consider running 'Rebuild Index' to create .embeddings file for faster startup)...")
-					embeddings, err := r.GetAllEmbeddings(ctx)
-					if err != nil {
-						return fmt.Errorf("failed to load embeddings for idToEmb map: %w", err)
-					}
-					r.hnswIndex.RebuildFromEmbeddings(embeddings)
-					fmt.Printf("Embedding index: loaded from disk (fallback path)\n")
-					r.hnswEnabled = true
-					return nil
-				}
-			} else if r.hnswIndex.IsEmpty() {
-				fmt.Printf("Embedding index: loaded graph is empty (will rebuild)\n")
-			} else {
-				fmt.Printf("Embedding index: loaded from disk (fresh)\n")
-				r.hnswEnabled = true
-				return nil
-			}
-		}
-		// Index is stale or missing, will rebuild below
+	if indexPath != "" && r.tryLoadEmbeddingIndex(ctx, indexPath, dbEmbCount) {
+		r.hnswEnabled = true
+		return nil
 	}
 
-	// Build from database
 	embeddings, err := r.GetAllEmbeddings(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to load embeddings: %w", err)
@@ -454,13 +469,9 @@ func (r *EmbeddingRepository) EnableHNSW(ctx context.Context, indexPath string) 
 		return fmt.Errorf("failed to build HNSW embedding index: %w", err)
 	}
 
-	// Save to disk if path is configured
 	if indexPath != "" && len(embeddings) > 0 {
-		metadata := database.HNSWEmbeddingIndexMetadata{
-			EmbeddingCount: dbEmbCount,
-		}
+		metadata := database.HNSWEmbeddingIndexMetadata{EmbeddingCount: dbEmbCount}
 		if err := r.hnswIndex.SaveWithEmbeddingMetadata(indexPath, metadata); err != nil {
-			// Log warning but don't fail - index is still usable in memory
 			fmt.Printf("Warning: failed to save HNSW embedding index to disk: %v\n", err)
 		}
 	}

@@ -131,73 +131,74 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 	s.router.Get("/*", s.serveSPA)
 }
 
+// contentTypeByExt maps file extensions to MIME content types.
+var contentTypeByExt = map[string]string{
+	".html":  "text/html; charset=utf-8",
+	".css":   "text/css; charset=utf-8",
+	".js":    "application/javascript; charset=utf-8",
+	".json":  "application/json",
+	".svg":   "image/svg+xml",
+	".png":   "image/png",
+	".jpg":   "image/jpeg",
+	".jpeg":  "image/jpeg",
+	".ico":   "image/x-icon",
+	".woff2": "font/woff2",
+	".woff":  "font/woff",
+}
+
+// getContentTypeForExt returns the MIME content type for a file path based on its extension.
+func getContentTypeForExt(path string) string {
+	// Find the last dot to extract extension
+	for i := len(path) - 1; i >= 0; i-- {
+		if path[i] == '.' {
+			if ct, ok := contentTypeByExt[path[i:]]; ok {
+				return ct
+			}
+			break
+		}
+	}
+	return "application/octet-stream"
+}
+
+// serveEmbeddedFile attempts to serve a file from the embedded filesystem.
+// Returns true if the file was served, false otherwise.
+func serveEmbeddedFile(w http.ResponseWriter, fsys http.FileSystem, path string) bool {
+	f, err := fsys.Open(path)
+	if err != nil {
+		return false
+	}
+	defer f.Close()
+
+	stat, err := f.Stat()
+	if err != nil || stat.IsDir() {
+		return false
+	}
+
+	w.Header().Set("Content-Type", getContentTypeForExt(path))
+	if strings.HasPrefix(path, "/assets/") {
+		w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	}
+	w.WriteHeader(http.StatusOK)
+	io.Copy(w, f)
+	return true
+}
+
 // serveSPA serves the single-page application
 func (s *Server) serveSPA(w http.ResponseWriter, r *http.Request) {
-	// Check if we have embedded frontend assets
 	if static.HasDist() {
-		// Try to serve the requested file
 		fs := static.GetFileSystem()
 		path := r.URL.Path
 		if path == "/" {
 			path = "/index.html"
 		}
 
-		// Try to open the file
-		f, err := fs.Open(path)
-		if err == nil {
-			defer f.Close()
-
-			// Get file info for content type detection
-			stat, err := f.Stat()
-			if err == nil && !stat.IsDir() {
-				// Set content type based on extension
-				contentType := "application/octet-stream"
-				switch {
-				case strings.HasSuffix(path, ".html"):
-					contentType = "text/html; charset=utf-8"
-				case strings.HasSuffix(path, ".css"):
-					contentType = "text/css; charset=utf-8"
-				case strings.HasSuffix(path, ".js"):
-					contentType = "application/javascript; charset=utf-8"
-				case strings.HasSuffix(path, ".json"):
-					contentType = "application/json"
-				case strings.HasSuffix(path, ".svg"):
-					contentType = "image/svg+xml"
-				case strings.HasSuffix(path, ".png"):
-					contentType = "image/png"
-				case strings.HasSuffix(path, ".jpg"), strings.HasSuffix(path, ".jpeg"):
-					contentType = "image/jpeg"
-				case strings.HasSuffix(path, ".ico"):
-					contentType = "image/x-icon"
-				case strings.HasSuffix(path, ".woff2"):
-					contentType = "font/woff2"
-				case strings.HasSuffix(path, ".woff"):
-					contentType = "font/woff"
-				}
-
-				w.Header().Set("Content-Type", contentType)
-
-				// Add cache headers for static assets
-				if strings.HasPrefix(path, "/assets/") {
-					w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
-				}
-
-				w.WriteHeader(http.StatusOK)
-				io.Copy(w, f)
-				return
-			}
+		if serveEmbeddedFile(w, fs, path) {
+			return
 		}
 
 		// For SPA routing, serve index.html for non-asset paths
-		if !strings.HasPrefix(path, "/assets/") {
-			indexFile, err := fs.Open("/index.html")
-			if err == nil {
-				defer indexFile.Close()
-				w.Header().Set("Content-Type", "text/html; charset=utf-8")
-				w.WriteHeader(http.StatusOK)
-				io.Copy(w, indexFile)
-				return
-			}
+		if !strings.HasPrefix(path, "/assets/") && serveEmbeddedFile(w, fs, "/index.html") {
+			return
 		}
 	}
 

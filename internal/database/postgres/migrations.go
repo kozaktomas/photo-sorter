@@ -11,9 +11,8 @@ import (
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
 
-// Migrate applies all pending migrations automatically on startup
-func (p *Pool) Migrate(ctx context.Context) error {
-	// Create migrations tracking table if not exists
+// getAppliedMigrations returns a set of already-applied migration versions.
+func (p *Pool) getAppliedMigrations(ctx context.Context) (map[string]bool, error) {
 	_, err := p.db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS schema_migrations (
 			version VARCHAR(255) PRIMARY KEY,
@@ -21,54 +20,64 @@ func (p *Pool) Migrate(ctx context.Context) error {
 		)
 	`)
 	if err != nil {
-		return fmt.Errorf("create migrations table: %w", err)
+		return nil, fmt.Errorf("create migrations table: %w", err)
 	}
 
-	// Get applied migrations
 	applied := make(map[string]bool)
 	rows, err := p.db.QueryContext(ctx, "SELECT version FROM schema_migrations")
 	if err != nil {
-		return fmt.Errorf("query applied migrations: %w", err)
+		return nil, fmt.Errorf("query applied migrations: %w", err)
 	}
 	defer rows.Close()
 
 	for rows.Next() {
 		var v string
 		if err := rows.Scan(&v); err != nil {
-			return fmt.Errorf("scan migration version: %w", err)
+			return nil, fmt.Errorf("scan migration version: %w", err)
 		}
 		applied[v] = true
 	}
 	if err := rows.Err(); err != nil {
-		return fmt.Errorf("iterate applied migrations: %w", err)
+		return nil, fmt.Errorf("iterate applied migrations: %w", err)
 	}
+	return applied, nil
+}
 
-	// Read and sort migration files
+// getPendingMigrationFiles returns sorted SQL migration filenames not yet applied.
+func getPendingMigrationFiles(applied map[string]bool) ([]string, error) {
 	entries, err := migrationsFS.ReadDir("migrations")
 	if err != nil {
-		return fmt.Errorf("read migrations directory: %w", err)
+		return nil, fmt.Errorf("read migrations directory: %w", err)
 	}
 
 	var files []string
 	for _, e := range entries {
-		if strings.HasSuffix(e.Name(), ".sql") {
+		if strings.HasSuffix(e.Name(), ".sql") && !applied[e.Name()] {
 			files = append(files, e.Name())
 		}
 	}
 	sort.Strings(files)
+	return files, nil
+}
 
-	// Apply pending migrations in a transaction
+// Migrate applies all pending migrations automatically on startup
+func (p *Pool) Migrate(ctx context.Context) error {
+	applied, err := p.getAppliedMigrations(ctx)
+	if err != nil {
+		return err
+	}
+
+	files, err := getPendingMigrationFiles(applied)
+	if err != nil {
+		return err
+	}
+
 	for _, file := range files {
-		if applied[file] {
-			continue
-		}
-
 		content, err := migrationsFS.ReadFile("migrations/" + file)
 		if err != nil {
 			return fmt.Errorf("read migration %s: %w", file, err)
 		}
 
-		// Run migration in a transaction
 		tx, err := p.db.BeginTx(ctx, nil)
 		if err != nil {
 			return fmt.Errorf("begin transaction for %s: %w", file, err)

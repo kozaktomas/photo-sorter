@@ -92,38 +92,33 @@ type photoResult struct {
 	err        error
 }
 
-func (s *Sorter) sortImmediate(ctx context.Context, albumUID string, albumTitle string, albumDescription string, opts SortOptions) (*SortResult, error) {
-	result := &SortResult{}
-
-	// Fetch available labels from PhotoPrism
+// fetchLabelsAndPhotos fetches available labels and album photos for sorting.
+func (s *Sorter) fetchLabelsAndPhotos(albumUID string, limit int) ([]string, []photoprism.Photo, error) {
 	labels, err := s.photoprism.GetLabels(10000, 0, true)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch labels: %w", err)
+		return nil, nil, fmt.Errorf("failed to fetch labels: %w", err)
 	}
-
 	availableLabels := make([]string, len(labels))
 	for i, label := range labels {
 		availableLabels[i] = label.Name
 	}
-
-	// Fetch photos from album
-	limit := opts.Limit
 	if limit == 0 {
 		limit = 10000
 	}
-
 	photos, err := s.photoprism.GetAlbumPhotos(albumUID, limit, 0)
 	if err != nil {
-		return nil, fmt.Errorf("failed to fetch photos: %w", err)
+		return nil, nil, fmt.Errorf("failed to fetch photos: %w", err)
 	}
+	return availableLabels, photos, nil
+}
 
-	// Set concurrency (default to 5 if not set)
+// analyzePhotosParallel downloads and analyzes photos concurrently, returning ordered results.
+func (s *Sorter) analyzePhotosParallel(ctx context.Context, photos []photoprism.Photo, availableLabels []string, opts SortOptions) []*photoResult {
 	concurrency := opts.Concurrency
 	if concurrency <= 0 {
 		concurrency = 5
 	}
 
-	// Analyze all photos for labels and descriptions (with concurrency)
 	bar := progressbar.NewOptions(len(photos),
 		progressbar.OptionSetDescription(fmt.Sprintf("Analyzing photos (%d workers)", concurrency)),
 		progressbar.OptionShowCount(),
@@ -141,14 +136,12 @@ func (s *Sorter) sortImmediate(ctx context.Context, albumUID string, albumTitle 
 		}),
 	)
 
-	// Create channels for work distribution and results
 	resultsChan := make(chan photoResult, len(photos))
 	semaphore := make(chan struct{}, concurrency)
 	var wg sync.WaitGroup
 	var processedCount int
 	var progressMu sync.Mutex
 
-	// Helper to report progress
 	reportProgress := func(photoUID string) {
 		progressMu.Lock()
 		processedCount++
@@ -165,24 +158,19 @@ func (s *Sorter) sortImmediate(ctx context.Context, albumUID string, albumTitle 
 		}
 	}
 
-	// Process photos concurrently
 	for i := range photos {
 		wg.Add(1)
 		go func(idx int, p photoprism.Photo) {
 			defer wg.Done()
-
-			// Acquire semaphore
 			semaphore <- struct{}{}
 			defer func() { <-semaphore }()
 
-			// Check if context is cancelled
 			if ctx.Err() != nil {
 				resultsChan <- photoResult{index: idx, err: ctx.Err()}
 				reportProgress(p.UID)
 				return
 			}
 
-			// Download photo
 			imageData, _, err := s.photoprism.GetPhotoDownload(p.UID)
 			if err != nil {
 				resultsChan <- photoResult{index: idx, err: fmt.Errorf("failed to download photo %s: %w", p.UID, err)}
@@ -190,7 +178,6 @@ func (s *Sorter) sortImmediate(ctx context.Context, albumUID string, albumTitle 
 				return
 			}
 
-			// Analyze photo
 			metadata := photoToMetadata(p, opts.ForceDate)
 			analysis, err := s.aiProvider.AnalyzePhoto(ctx, imageData, metadata, availableLabels, opts.IndividualDates)
 			if err != nil {
@@ -199,84 +186,101 @@ func (s *Sorter) sortImmediate(ctx context.Context, albumUID string, albumTitle 
 				return
 			}
 
-			suggestion := &ai.SortSuggestion{
+			resultsChan <- photoResult{index: idx, suggestion: &ai.SortSuggestion{
 				PhotoUID:      p.UID,
 				Labels:        analysis.Labels,
 				Description:   analysis.Description,
 				EstimatedDate: analysis.EstimatedDate,
-			}
-			resultsChan <- photoResult{index: idx, suggestion: suggestion}
+			}}
 			reportProgress(p.UID)
 		}(i, photos[i])
 	}
 
-	// Wait for all goroutines to complete and close results channel
 	go func() {
 		wg.Wait()
 		close(resultsChan)
 	}()
 
-	// Collect results maintaining order
 	results := make([]*photoResult, len(photos))
 	for r := range resultsChan {
 		results[r.index] = &r
 	}
-	fmt.Println() // New line after progress bar
+	fmt.Println()
+	return results
+}
 
-	// Process results in order
+// collectSuggestions processes ordered results into suggestions and descriptions.
+func collectSuggestions(results []*photoResult, sortResult *SortResult) []string {
 	var photoDescriptions []string
 	for i, r := range results {
-		result.ProcessedCount++
+		sortResult.ProcessedCount++
 		if r == nil {
-			result.Errors = append(result.Errors, fmt.Errorf("no result for photo at index %d", i))
+			sortResult.Errors = append(sortResult.Errors, fmt.Errorf("no result for photo at index %d", i))
 			continue
 		}
 		if r.err != nil {
-			result.Errors = append(result.Errors, r.err)
+			sortResult.Errors = append(sortResult.Errors, r.err)
 			continue
 		}
 		if r.suggestion != nil {
 			photoDescriptions = append(photoDescriptions, r.suggestion.Description)
-			result.Suggestions = append(result.Suggestions, *r.suggestion)
+			sortResult.Suggestions = append(sortResult.Suggestions, *r.suggestion)
 		}
 	}
+	return photoDescriptions
+}
 
-	// Estimate album-wide date if not using individual dates
+// estimateAndApplyAlbumDate estimates album date and applies it to all suggestions.
+func (s *Sorter) estimateAndApplyAlbumDate(ctx context.Context, result *SortResult, albumTitle, albumDescription string, photoDescriptions []string) {
+	dateEstimate, err := s.aiProvider.EstimateAlbumDate(ctx, albumTitle, albumDescription, photoDescriptions)
+	if err != nil {
+		result.Errors = append(result.Errors, fmt.Errorf("failed to estimate album date: %w", err))
+		return
+	}
+	result.AlbumDate = dateEstimate.EstimatedDate
+	result.DateReasoning = dateEstimate.Reasoning
+	for i := range result.Suggestions {
+		result.Suggestions[i].EstimatedDate = dateEstimate.EstimatedDate
+	}
+}
+
+// applySuggestions applies sorting suggestions to photos if not dry run.
+func (s *Sorter) applySuggestions(result *SortResult, photoMap map[string]photoprism.Photo, forceDate bool) {
+	for _, suggestion := range result.Suggestions {
+		photo, ok := photoMap[suggestion.PhotoUID]
+		if !ok {
+			result.Errors = append(result.Errors, fmt.Errorf("photo not found: %s", suggestion.PhotoUID))
+			continue
+		}
+		if err := s.applySorting(photo, suggestion, forceDate); err != nil {
+			result.Errors = append(result.Errors, fmt.Errorf("failed to apply sorting for %s: %w", photo.UID, err))
+			continue
+		}
+		result.SortedCount++
+	}
+}
+
+func (s *Sorter) sortImmediate(ctx context.Context, albumUID string, albumTitle string, albumDescription string, opts SortOptions) (*SortResult, error) {
+	result := &SortResult{}
+
+	availableLabels, photos, err := s.fetchLabelsAndPhotos(albumUID, opts.Limit)
+	if err != nil {
+		return nil, err
+	}
+
+	results := s.analyzePhotosParallel(ctx, photos, availableLabels, opts)
+	photoDescriptions := collectSuggestions(results, result)
+
 	if !opts.IndividualDates && len(photoDescriptions) > 0 {
-		dateEstimate, err := s.aiProvider.EstimateAlbumDate(ctx, albumTitle, albumDescription, photoDescriptions)
-		if err != nil {
-			result.Errors = append(result.Errors, fmt.Errorf("failed to estimate album date: %w", err))
-		} else {
-			result.AlbumDate = dateEstimate.EstimatedDate
-			result.DateReasoning = dateEstimate.Reasoning
-
-			// Apply the same date to all suggestions
-			for i := range result.Suggestions {
-				result.Suggestions[i].EstimatedDate = dateEstimate.EstimatedDate
-			}
-		}
+		s.estimateAndApplyAlbumDate(ctx, result, albumTitle, albumDescription, photoDescriptions)
 	}
 
-	// Apply changes if not dry run
 	if !opts.DryRun {
-		// Build a map of photo UID to photo for applying results
 		photoMap := make(map[string]photoprism.Photo)
 		for i := range photos {
 			photoMap[photos[i].UID] = photos[i]
 		}
-
-		for _, suggestion := range result.Suggestions {
-			photo, ok := photoMap[suggestion.PhotoUID]
-			if !ok {
-				result.Errors = append(result.Errors, fmt.Errorf("photo not found: %s", suggestion.PhotoUID))
-				continue
-			}
-			if err := s.applySorting(photo, suggestion, opts.ForceDate); err != nil {
-				result.Errors = append(result.Errors, fmt.Errorf("failed to apply sorting for %s: %w", photo.UID, err))
-				continue
-			}
-			result.SortedCount++
-		}
+		s.applySuggestions(result, photoMap, opts.ForceDate)
 	} else {
 		result.SortedCount = len(result.Suggestions)
 	}
@@ -284,34 +288,8 @@ func (s *Sorter) sortImmediate(ctx context.Context, albumUID string, albumTitle 
 	return result, nil
 }
 
-func (s *Sorter) sortBatch(ctx context.Context, albumUID string, albumTitle string, albumDescription string, opts SortOptions) (*SortResult, error) {
-	result := &SortResult{}
-
-	// Fetch available labels from PhotoPrism
-	labels, err := s.photoprism.GetLabels(10000, 0, true)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch labels: %w", err)
-	}
-
-	availableLabels := make([]string, len(labels))
-	for i, label := range labels {
-		availableLabels[i] = label.Name
-	}
-
-	// Fetch photos from album
-	limit := opts.Limit
-	if limit == 0 {
-		limit = 10000
-	}
-
-	photos, err := s.photoprism.GetAlbumPhotos(albumUID, limit, 0)
-	if err != nil {
-		return nil, fmt.Errorf("failed to fetch photos: %w", err)
-	}
-
-	fmt.Printf("Downloading %d photos for batch processing...\n", len(photos))
-
-	// Download all photos and prepare batch requests
+// downloadBatchPhotos downloads photos and prepares batch requests.
+func (s *Sorter) downloadBatchPhotos(photos []photoprism.Photo, availableLabels []string, opts SortOptions, result *SortResult) ([]ai.BatchPhotoRequest, map[string]photoprism.Photo) {
 	bar := progressbar.NewOptions(len(photos),
 		progressbar.OptionSetDescription("Downloading photos"),
 		progressbar.OptionShowCount(),
@@ -337,7 +315,6 @@ func (s *Sorter) sortBatch(ctx context.Context, albumUID string, albumTitle stri
 			bar.Add(1)
 			continue
 		}
-
 		batchRequests = append(batchRequests, ai.BatchPhotoRequest{
 			PhotoUID:        photos[i].UID,
 			ImageData:       imageData,
@@ -349,22 +326,21 @@ func (s *Sorter) sortBatch(ctx context.Context, albumUID string, albumTitle stri
 		bar.Add(1)
 	}
 	fmt.Println()
+	return batchRequests, photoMap
+}
 
-	if len(batchRequests) == 0 {
-		return nil, errors.New("no photos to process")
+// cancelBatch attempts to cancel a batch job and returns the context error.
+func (s *Sorter) cancelBatch(batchID string) {
+	fmt.Println("\n\nCancelling batch job...")
+	if err := s.aiProvider.CancelBatch(context.Background(), batchID); err != nil {
+		fmt.Printf("Warning: failed to cancel batch: %v\n", err)
+	} else {
+		fmt.Println("Batch job cancelled successfully.")
 	}
+}
 
-	// Create batch
-	fmt.Println("Creating batch job...")
-	batchID, err := s.aiProvider.CreatePhotoBatch(ctx, batchRequests)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create batch: %w", err)
-	}
-	fmt.Printf("Batch created: %s\n", batchID)
-
-	// Poll for completion
-	fmt.Println("Waiting for batch to complete (this may take a few minutes)...")
-	fmt.Println("Press Ctrl+C to cancel the batch job...")
+// pollBatchCompletion polls a batch job until completion or cancellation.
+func (s *Sorter) pollBatchCompletion(ctx context.Context, batchID string) error {
 	pollBar := progressbar.NewOptions(-1,
 		progressbar.OptionSetDescription("Processing"),
 		progressbar.OptionSpinnerType(14),
@@ -372,130 +348,136 @@ func (s *Sorter) sortBatch(ctx context.Context, albumUID string, albumTitle stri
 	)
 
 	for {
-		// Check if context was cancelled (Ctrl+C)
 		select {
 		case <-ctx.Done():
-			fmt.Println("\n\nCancelling batch job...")
-			if err := s.aiProvider.CancelBatch(context.Background(), batchID); err != nil {
-				fmt.Printf("Warning: failed to cancel batch: %v\n", err)
-			} else {
-				fmt.Println("Batch job cancelled successfully.")
-			}
-			return nil, ctx.Err()
+			s.cancelBatch(batchID)
+			return ctx.Err()
 		default:
 		}
 
 		status, err := s.aiProvider.GetBatchStatus(ctx, batchID)
 		if err != nil {
-			// Check if it was a cancellation
 			if ctx.Err() != nil {
-				fmt.Println("\n\nCancelling batch job...")
-				if cancelErr := s.aiProvider.CancelBatch(context.Background(), batchID); cancelErr != nil {
-					fmt.Printf("Warning: failed to cancel batch: %v\n", cancelErr)
-				} else {
-					fmt.Println("Batch job cancelled successfully.")
-				}
-				return nil, ctx.Err()
+				s.cancelBatch(batchID)
+				return ctx.Err()
 			}
-			return nil, fmt.Errorf("failed to get batch status: %w", err)
+			return fmt.Errorf("failed to get batch status: %w", err)
 		}
 
 		pollBar.Describe(fmt.Sprintf("Status: %s (%d/%d completed)", status.Status, status.CompletedCount, status.TotalRequests))
 		pollBar.Add(1)
 
-		if status.Status == "completed" || status.Status == "JOB_STATE_SUCCEEDED" {
+		switch status.Status {
+		case "completed", "JOB_STATE_SUCCEEDED":
 			fmt.Println("\nBatch completed!")
-			break
-		} else if status.Status == "failed" || status.Status == "expired" || status.Status == "cancelled" ||
-			status.Status == "JOB_STATE_FAILED" || status.Status == "JOB_STATE_CANCELLED" {
-			return nil, fmt.Errorf("batch failed with status: %s", status.Status)
+			return nil
+		case "failed", "expired", "cancelled", "JOB_STATE_FAILED", "JOB_STATE_CANCELLED":
+			return fmt.Errorf("batch failed with status: %s", status.Status)
 		}
 
 		time.Sleep(5 * time.Second)
 	}
+}
 
-	// Get results
+// collectBatchResults converts batch API results into suggestions and descriptions.
+func collectBatchResults(batchResults []ai.BatchPhotoResult, result *SortResult) []string {
+	var photoDescriptions []string
+	for _, batchResult := range batchResults {
+		result.ProcessedCount++
+		if batchResult.Error != "" {
+			result.Errors = append(result.Errors, fmt.Errorf("analysis failed for %s: %s", batchResult.PhotoUID, batchResult.Error))
+			continue
+		}
+		if batchResult.Analysis == nil {
+			result.Errors = append(result.Errors, fmt.Errorf("no analysis for %s", batchResult.PhotoUID))
+			continue
+		}
+		photoDescriptions = append(photoDescriptions, batchResult.Analysis.Description)
+		result.Suggestions = append(result.Suggestions, ai.SortSuggestion{
+			PhotoUID:      batchResult.PhotoUID,
+			Labels:        batchResult.Analysis.Labels,
+			Description:   batchResult.Analysis.Description,
+			EstimatedDate: batchResult.Analysis.EstimatedDate,
+		})
+	}
+	return photoDescriptions
+}
+
+// applySuggestionsWithProgress applies suggestions with a progress bar.
+func (s *Sorter) applySuggestionsWithProgress(result *SortResult, photoMap map[string]photoprism.Photo, forceDate bool) {
+	fmt.Println("Applying changes to PhotoPrism...")
+	applyBar := progressbar.NewOptions(len(result.Suggestions),
+		progressbar.OptionSetDescription("Applying"),
+		progressbar.OptionShowCount(),
+		progressbar.OptionFullWidth(),
+		progressbar.OptionSetTheme(progressbar.Theme{
+			Saucer:        "=",
+			SaucerHead:    ">",
+			SaucerPadding: " ",
+			BarStart:      "[",
+			BarEnd:        "]",
+		}),
+	)
+	for _, suggestion := range result.Suggestions {
+		photo, ok := photoMap[suggestion.PhotoUID]
+		if !ok {
+			result.Errors = append(result.Errors, fmt.Errorf("photo not found: %s", suggestion.PhotoUID))
+			applyBar.Add(1)
+			continue
+		}
+		if err := s.applySorting(photo, suggestion, forceDate); err != nil {
+			result.Errors = append(result.Errors, fmt.Errorf("failed to apply sorting for %s: %w", photo.UID, err))
+			applyBar.Add(1)
+			continue
+		}
+		result.SortedCount++
+		applyBar.Add(1)
+	}
+	fmt.Println()
+}
+
+func (s *Sorter) sortBatch(ctx context.Context, albumUID string, albumTitle string, albumDescription string, opts SortOptions) (*SortResult, error) {
+	result := &SortResult{}
+
+	availableLabels, photos, err := s.fetchLabelsAndPhotos(albumUID, opts.Limit)
+	if err != nil {
+		return nil, err
+	}
+
+	fmt.Printf("Downloading %d photos for batch processing...\n", len(photos))
+	batchRequests, photoMap := s.downloadBatchPhotos(photos, availableLabels, opts, result)
+	if len(batchRequests) == 0 {
+		return nil, errors.New("no photos to process")
+	}
+
+	fmt.Println("Creating batch job...")
+	batchID, err := s.aiProvider.CreatePhotoBatch(ctx, batchRequests)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create batch: %w", err)
+	}
+	fmt.Printf("Batch created: %s\n", batchID)
+
+	fmt.Println("Waiting for batch to complete (this may take a few minutes)...")
+	fmt.Println("Press Ctrl+C to cancel the batch job...")
+	if err := s.pollBatchCompletion(ctx, batchID); err != nil {
+		return nil, err
+	}
+
 	fmt.Println("Downloading results...")
 	batchResults, err := s.aiProvider.GetBatchResults(ctx, batchID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get batch results: %w", err)
 	}
 
-	// Process results
-	var photoDescriptions []string
-	for _, batchResult := range batchResults {
-		result.ProcessedCount++
+	photoDescriptions := collectBatchResults(batchResults, result)
 
-		if batchResult.Error != "" {
-			result.Errors = append(result.Errors, fmt.Errorf("analysis failed for %s: %s", batchResult.PhotoUID, batchResult.Error))
-			continue
-		}
-
-		if batchResult.Analysis == nil {
-			result.Errors = append(result.Errors, fmt.Errorf("no analysis for %s", batchResult.PhotoUID))
-			continue
-		}
-
-		photoDescriptions = append(photoDescriptions, batchResult.Analysis.Description)
-
-		suggestion := ai.SortSuggestion{
-			PhotoUID:      batchResult.PhotoUID,
-			Labels:        batchResult.Analysis.Labels,
-			Description:   batchResult.Analysis.Description,
-			EstimatedDate: batchResult.Analysis.EstimatedDate,
-		}
-		result.Suggestions = append(result.Suggestions, suggestion)
-	}
-
-	// Estimate album-wide date if not using individual dates
 	if !opts.IndividualDates && len(photoDescriptions) > 0 {
 		fmt.Println("Estimating album date...")
-		dateEstimate, err := s.aiProvider.EstimateAlbumDate(ctx, albumTitle, albumDescription, photoDescriptions)
-		if err != nil {
-			result.Errors = append(result.Errors, fmt.Errorf("failed to estimate album date: %w", err))
-		} else {
-			result.AlbumDate = dateEstimate.EstimatedDate
-			result.DateReasoning = dateEstimate.Reasoning
-
-			// Apply the same date to all suggestions
-			for i := range result.Suggestions {
-				result.Suggestions[i].EstimatedDate = dateEstimate.EstimatedDate
-			}
-		}
+		s.estimateAndApplyAlbumDate(ctx, result, albumTitle, albumDescription, photoDescriptions)
 	}
 
-	// Apply changes if not dry run
 	if !opts.DryRun {
-		fmt.Println("Applying changes to PhotoPrism...")
-		applyBar := progressbar.NewOptions(len(result.Suggestions),
-			progressbar.OptionSetDescription("Applying"),
-			progressbar.OptionShowCount(),
-			progressbar.OptionFullWidth(),
-			progressbar.OptionSetTheme(progressbar.Theme{
-				Saucer:        "=",
-				SaucerHead:    ">",
-				SaucerPadding: " ",
-				BarStart:      "[",
-				BarEnd:        "]",
-			}),
-		)
-
-		for _, suggestion := range result.Suggestions {
-			photo, ok := photoMap[suggestion.PhotoUID]
-			if !ok {
-				result.Errors = append(result.Errors, fmt.Errorf("photo not found: %s", suggestion.PhotoUID))
-				applyBar.Add(1)
-				continue
-			}
-			if err := s.applySorting(photo, suggestion, opts.ForceDate); err != nil {
-				result.Errors = append(result.Errors, fmt.Errorf("failed to apply sorting for %s: %w", photo.UID, err))
-				applyBar.Add(1)
-				continue
-			}
-			result.SortedCount++
-			applyBar.Add(1)
-		}
-		fmt.Println()
+		s.applySuggestionsWithProgress(result, photoMap, opts.ForceDate)
 	} else {
 		result.SortedCount = len(result.Suggestions)
 	}
@@ -503,20 +485,17 @@ func (s *Sorter) sortBatch(ctx context.Context, albumUID string, albumTitle stri
 	return result, nil
 }
 
-func (s *Sorter) applySorting(photo photoprism.Photo, suggestion ai.SortSuggestion, forceDate bool) error {
-	// Remove all existing labels first
-	if err := s.photoprism.RemoveAllPhotoLabels(photo.UID); err != nil {
+// applyLabels replaces photo labels with AI-suggested ones (confidence > 80%).
+func (s *Sorter) applyLabels(photoUID string, labels []ai.LabelWithConfidence) error {
+	if err := s.photoprism.RemoveAllPhotoLabels(photoUID); err != nil {
 		return fmt.Errorf("failed to remove existing labels: %w", err)
 	}
-
-	// Add labels to photo (only if confidence > 80%)
-	for _, label := range suggestion.Labels {
+	for _, label := range labels {
 		if label.Confidence < 0.8 {
-			continue // Skip low confidence labels
+			continue
 		}
-		// Convert confidence to uncertainty (0-100 scale, where 0 = certain, 100 = uncertain)
 		uncertainty := int((1 - label.Confidence) * 100)
-		_, err := s.photoprism.AddPhotoLabel(photo.UID, photoprism.PhotoLabel{
+		_, err := s.photoprism.AddPhotoLabel(photoUID, photoprism.PhotoLabel{
 			Name:        label.Name,
 			LabelSrc:    "manual",
 			Uncertainty: uncertainty,
@@ -525,11 +504,49 @@ func (s *Sorter) applySorting(photo photoprism.Photo, suggestion ai.SortSuggesti
 			return fmt.Errorf("failed to add label %s: %w", label.Name, err)
 		}
 	}
+	return nil
+}
 
-	// Build update with description, notes, and optional date
+// buildDateUpdate adds date fields to the photo update if appropriate.
+func buildDateUpdate(update *photoprism.PhotoUpdate, photo photoprism.Photo, estimatedDate string, forceDate bool) error {
+	photoHasDate := photo.Year > 0 && photo.Year != 1
+	cameraLower := strings.ToLower(photo.CameraModel)
+	isScannedPhoto := photo.Scan || strings.Contains(cameraLower, "scanjet") || strings.Contains(cameraLower, "scanner")
+	shouldUpdateDate := forceDate || !photoHasDate || isScannedPhoto
+	if !shouldUpdateDate || estimatedDate == "" || estimatedDate == "0001-01-01" {
+		return nil
+	}
+
+	prague, _ := time.LoadLocation("Europe/Prague")
+	localTime, err := time.ParseInLocation("2006-01-02", estimatedDate, prague)
+	if err != nil {
+		return fmt.Errorf("failed to parse date %s: %w", estimatedDate, err)
+	}
+	localTime = localTime.Add(12 * time.Hour)
+
+	takenAtLocal := localTime.Format("2006-01-02T15:04:05Z")
+	takenAt := localTime.UTC().Format("2006-01-02T15:04:05Z")
+	timeZone := "Europe/Prague"
+	year := localTime.Year()
+	month := int(localTime.Month())
+	day := localTime.Day()
+
+	update.TakenAt = &takenAt
+	update.TakenAtLocal = &takenAtLocal
+	update.TimeZone = &timeZone
+	update.Year = &year
+	update.Month = &month
+	update.Day = &day
+	return nil
+}
+
+func (s *Sorter) applySorting(photo photoprism.Photo, suggestion ai.SortSuggestion, forceDate bool) error {
+	if err := s.applyLabels(photo.UID, suggestion.Labels); err != nil {
+		return err
+	}
+
 	update := photoprism.PhotoUpdate{}
 
-	// Set description with model info
 	desc := suggestion.Description
 	if desc != "" {
 		desc = fmt.Sprintf("%s\n\nAI_MODEL: %s", desc, s.aiProvider.Name())
@@ -540,47 +557,15 @@ func (s *Sorter) applySorting(photo photoprism.Photo, suggestion ai.SortSuggesti
 	descSrc := "manual"
 	update.DescriptionSrc = &descSrc
 
-	// Set notes with model info
 	notes := "Analyzed by: " + s.aiProvider.Name()
 	update.Details = &photoprism.PhotoDetails{
 		Notes: &notes,
 	}
 
-	// Update taken date only if photo doesn't already have a valid date
-	// (preserve existing metadata, only fill in missing dates)
-	// Unless forceDate is true - then always overwrite
-	// Also force date update for scanned photos (scanner dates are unreliable)
-	photoHasDate := photo.Year > 0 && photo.Year != 1
-	cameraLower := strings.ToLower(photo.CameraModel)
-	isScannedPhoto := photo.Scan || strings.Contains(cameraLower, "scanjet") || strings.Contains(cameraLower, "scanner")
-	shouldUpdateDate := forceDate || !photoHasDate || isScannedPhoto
-	if shouldUpdateDate && suggestion.EstimatedDate != "" && suggestion.EstimatedDate != "0001-01-01" {
-		// Parse the date and set it as local time in Europe/Prague
-		prague, _ := time.LoadLocation("Europe/Prague")
-		localTime, err := time.ParseInLocation("2006-01-02", suggestion.EstimatedDate, prague)
-		if err != nil {
-			return fmt.Errorf("failed to parse date %s: %w", suggestion.EstimatedDate, err)
-		}
-		// Set to noon local time
-		localTime = localTime.Add(12 * time.Hour)
-
-		// Format for PhotoPrism
-		takenAtLocal := localTime.Format("2006-01-02T15:04:05Z")
-		takenAt := localTime.UTC().Format("2006-01-02T15:04:05Z")
-		timeZone := "Europe/Prague"
-		year := localTime.Year()
-		month := int(localTime.Month())
-		day := localTime.Day()
-
-		update.TakenAt = &takenAt
-		update.TakenAtLocal = &takenAtLocal
-		update.TimeZone = &timeZone
-		update.Year = &year
-		update.Month = &month
-		update.Day = &day
+	if err := buildDateUpdate(&update, photo, suggestion.EstimatedDate, forceDate); err != nil {
+		return err
 	}
 
-	// Apply updates
 	_, err := s.photoprism.EditPhoto(photo.UID, update)
 	if err != nil {
 		return fmt.Errorf("failed to update photo: %w", err)

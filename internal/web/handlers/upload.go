@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -27,40 +28,8 @@ func NewUploadHandler(cfg *config.Config, sm *middleware.SessionManager) *Upload
 	}
 }
 
-// Upload handles multipart file uploads
-func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
-	// Parse multipart form with max upload size limit
-	if err := r.ParseMultipartForm(constants.MaxUploadSize); err != nil {
-		respondError(w, http.StatusBadRequest, "failed to parse multipart form")
-		return
-	}
-
-	albumUID := r.FormValue("album_uid")
-	if albumUID == "" {
-		respondError(w, http.StatusBadRequest, "album_uid is required")
-		return
-	}
-
-	pp := middleware.MustGetPhotoPrism(r.Context(), w)
-	if pp == nil {
-		return
-	}
-
-	files := r.MultipartForm.File["files"]
-	if len(files) == 0 {
-		respondError(w, http.StatusBadRequest, "no files provided")
-		return
-	}
-
-	// Create temp directory for uploads
-	tempDir, err := os.MkdirTemp("", "photo-sorter-upload-*")
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, "failed to create temp directory")
-		return
-	}
-	defer os.RemoveAll(tempDir)
-
-	// Save files to temp directory
+// saveUploadedFiles saves multipart files to a temporary directory and returns their paths
+func saveUploadedFiles(files []*multipart.FileHeader, tempDir string) ([]string, error) {
 	var filePaths []string
 	for _, fileHeader := range files {
 		if err := func() error {
@@ -85,19 +54,55 @@ func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
 			filePaths = append(filePaths, tempPath)
 			return nil
 		}(); err != nil {
-			respondError(w, http.StatusInternalServerError, err.Error())
-			return
+			return nil, err
 		}
 	}
+	return filePaths, nil
+}
 
-	// Upload files to PhotoPrism
+// Upload handles multipart file uploads
+func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseMultipartForm(constants.MaxUploadSize); err != nil {
+		respondError(w, http.StatusBadRequest, "failed to parse multipart form")
+		return
+	}
+
+	albumUID := r.FormValue("album_uid")
+	if albumUID == "" {
+		respondError(w, http.StatusBadRequest, "album_uid is required")
+		return
+	}
+
+	pp := middleware.MustGetPhotoPrism(r.Context(), w)
+	if pp == nil {
+		return
+	}
+
+	tempDir, err := os.MkdirTemp("", "photo-sorter-upload-*")
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to create temp directory")
+		return
+	}
+	defer os.RemoveAll(tempDir)
+
+	files := r.MultipartForm.File["files"]
+	if len(files) == 0 {
+		respondError(w, http.StatusBadRequest, "no files provided")
+		return
+	}
+
+	filePaths, err := saveUploadedFiles(files, tempDir)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
 	uploadToken, err := pp.UploadFiles(filePaths)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to upload files: %v", err))
 		return
 	}
 
-	// Process the upload and add to album
 	if err := pp.ProcessUpload(uploadToken, []string{albumUID}); err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to process upload: %v", err))
 		return

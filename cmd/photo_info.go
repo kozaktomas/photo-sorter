@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -111,16 +110,102 @@ func runPhotoInfoSingle(pp *photoprism.PhotoPrism, photoUID string, jsonOutput b
 	return outputHumanReadableSingle(info, ppCfg)
 }
 
-func runPhotoInfoAlbum(pp *photoprism.PhotoPrism, albumUID string, limit, concurrency int, jsonOutput bool, ppCfg *config.PhotoPrismConfig) error {
-	ctx := context.Background()
+// processPhotoHash downloads a photo and computes its hashes, returning the result.
+func processPhotoHash(pp *photoprism.PhotoPrism, p photoprism.Photo) (fingerprint.PhotoInfo, error) {
+	imageData, _, err := pp.GetPhotoDownload(p.UID)
+	if err != nil {
+		return fingerprint.PhotoInfo{}, fmt.Errorf("photo %s: %w", p.UID, err)
+	}
 
-	// Get album info
+	hashes, err := fingerprint.ComputeHashes(imageData)
+	if err != nil {
+		return fingerprint.PhotoInfo{}, fmt.Errorf("photo %s: %w", p.UID, err)
+	}
+
+	return buildPhotoInfoFromPhoto(p, hashes), nil
+}
+
+// processPhotosConcurrently processes photos with workers and returns results and errors.
+func processPhotosConcurrently(pp *photoprism.PhotoPrism, photos []photoprism.Photo, concurrency int, bar *progressbar.ProgressBar) ([]fingerprint.PhotoInfo, []error) {
+	results := make([]fingerprint.PhotoInfo, len(photos))
+	var errs []error
+	var mu sync.Mutex
+	sem := make(chan struct{}, concurrency)
+	var wg sync.WaitGroup
+
+	for i := range photos {
+		wg.Add(1)
+		go func(idx int, p photoprism.Photo) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			info, err := processPhotoHash(pp, p)
+			if err != nil {
+				mu.Lock()
+				errs = append(errs, err)
+				mu.Unlock()
+			} else {
+				mu.Lock()
+				results[idx] = info
+				mu.Unlock()
+			}
+
+			if bar != nil {
+				bar.Add(1)
+			}
+		}(i, photos[i])
+	}
+	wg.Wait()
+
+	// Filter out empty results (from errors)
+	validResults := make([]fingerprint.PhotoInfo, 0, len(results))
+	for i := range results {
+		if results[i].UID != "" {
+			validResults = append(validResults, results[i])
+		}
+	}
+	return validResults, errs
+}
+
+// newHashProgressBar creates a progress bar for hash computation, or nil if JSON output.
+func newHashProgressBar(count int, jsonOutput bool) *progressbar.ProgressBar {
+	if jsonOutput {
+		return nil
+	}
+	return progressbar.NewOptions(count,
+		progressbar.OptionSetDescription("Computing hashes"),
+		progressbar.OptionShowCount(),
+		progressbar.OptionShowIts(),
+		progressbar.OptionSetItsString("photos"),
+		progressbar.OptionShowElapsedTimeOnFinish(),
+		progressbar.OptionSetPredictTime(true),
+		progressbar.OptionFullWidth(),
+	)
+}
+
+// outputInfoAlbumResults outputs the batch info results as JSON or human-readable with errors.
+func outputInfoAlbumResults(validResults []fingerprint.PhotoInfo, errs []error, jsonOutput bool, ppCfg *config.PhotoPrismConfig) error {
+	if jsonOutput {
+		return outputJSON(fingerprint.PhotoInfoBatch{Photos: validResults, Count: len(validResults)})
+	}
+
+	outputHumanReadableBatch(validResults, ppCfg)
+	if len(errs) > 0 {
+		fmt.Printf("\nErrors: %d\n", len(errs))
+		for _, e := range errs {
+			fmt.Printf("  - %v\n", e)
+		}
+	}
+	return nil
+}
+
+func runPhotoInfoAlbum(pp *photoprism.PhotoPrism, albumUID string, limit, concurrency int, jsonOutput bool, ppCfg *config.PhotoPrismConfig) error {
 	album, err := pp.GetAlbum(albumUID)
 	if err != nil {
 		return fmt.Errorf("failed to get album: %w", err)
 	}
 
-	// Fetch photos
 	if limit == 0 {
 		limit = 10000
 	}
@@ -142,170 +227,63 @@ func runPhotoInfoAlbum(pp *photoprism.PhotoPrism, albumUID string, limit, concur
 		fmt.Printf("Processing %d photos...\n\n", len(photos))
 	}
 
-	// Process photos with concurrency
-	results := make([]fingerprint.PhotoInfo, len(photos))
-	var errors []error
-	var mu sync.Mutex
-
-	// Create progress bar (only for non-JSON output)
-	var bar *progressbar.ProgressBar
-	if !jsonOutput {
-		bar = progressbar.NewOptions(len(photos),
-			progressbar.OptionSetDescription("Computing hashes"),
-			progressbar.OptionShowCount(),
-			progressbar.OptionShowIts(),
-			progressbar.OptionSetItsString("photos"),
-			progressbar.OptionShowElapsedTimeOnFinish(),
-			progressbar.OptionSetPredictTime(true),
-			progressbar.OptionFullWidth(),
-		)
-	}
-
-	// Semaphore for concurrency control
-	sem := make(chan struct{}, concurrency)
-	var wg sync.WaitGroup
-
-	for i := range photos {
-		wg.Add(1)
-		go func(idx int, p photoprism.Photo) {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-
-			// Download photo
-			imageData, _, err := pp.GetPhotoDownload(p.UID)
-			if err != nil {
-				mu.Lock()
-				errors = append(errors, fmt.Errorf("photo %s: %w", p.UID, err))
-				mu.Unlock()
-				if bar != nil {
-					bar.Add(1)
-				}
-				return
-			}
-
-			// Compute hashes
-			hashes, err := fingerprint.ComputeHashes(imageData)
-			if err != nil {
-				mu.Lock()
-				errors = append(errors, fmt.Errorf("photo %s: %w", p.UID, err))
-				mu.Unlock()
-				if bar != nil {
-					bar.Add(1)
-				}
-				return
-			}
-
-			// Build info from Photo struct
-			info := buildPhotoInfoFromPhoto(p, hashes)
-
-			mu.Lock()
-			results[idx] = info
-			mu.Unlock()
-
-			if bar != nil {
-				bar.Add(1)
-			}
-		}(i, photos[i])
-	}
-
-	wg.Wait()
-	_ = ctx // silence unused warning
-
+	bar := newHashProgressBar(len(photos), jsonOutput)
+	validResults, errs := processPhotosConcurrently(pp, photos, concurrency, bar)
 	if bar != nil {
 		fmt.Println()
 	}
 
-	// Filter out empty results (from errors)
-	validResults := make([]fingerprint.PhotoInfo, 0, len(results))
-	for i := range results {
-		if results[i].UID != "" {
-			validResults = append(validResults, results[i])
-		}
+	return outputInfoAlbumResults(validResults, errs, jsonOutput, ppCfg)
+}
+
+// detailsString extracts a string field from a details map.
+func detailsString(details map[string]interface{}, key string) string {
+	if v, ok := details[key].(string); ok {
+		return v
 	}
+	return ""
+}
 
-	if jsonOutput {
-		batch := fingerprint.PhotoInfoBatch{
-			Photos: validResults,
-			Count:  len(validResults),
-		}
-		return outputJSON(batch)
+// detailsInt extracts a float64 field from a details map and returns it as int.
+func detailsInt(details map[string]interface{}, key string) int {
+	if v, ok := details[key].(float64); ok {
+		return int(v)
 	}
+	return 0
+}
 
-	// Output table
-	outputHumanReadableBatch(validResults, ppCfg)
-
-	// Report errors
-	if len(errors) > 0 {
-		fmt.Printf("\nErrors: %d\n", len(errors))
-		for _, e := range errors {
-			fmt.Printf("  - %v\n", e)
-		}
+// detailsFloat64 extracts a float64 field from a details map.
+func detailsFloat64(details map[string]interface{}, key string) float64 {
+	if v, ok := details[key].(float64); ok {
+		return v
 	}
-
-	return nil
+	return 0
 }
 
 func buildPhotoInfo(details map[string]interface{}, hashes *fingerprint.HashResult) fingerprint.PhotoInfo {
-	info := fingerprint.PhotoInfo{
-		PHash:      hashes.PHash,
-		DHash:      hashes.DHash,
-		PHashBits:  hashes.PHashBits,
-		DHashBits:  hashes.DHashBits,
-		ComputedAt: time.Now().UTC().Format(time.RFC3339),
+	return fingerprint.PhotoInfo{
+		UID:          detailsString(details, "UID"),
+		OriginalName: detailsString(details, "OriginalName"),
+		FileName:     detailsString(details, "FileName"),
+		Width:        detailsInt(details, "Width"),
+		Height:       detailsInt(details, "Height"),
+		TakenAt:      detailsString(details, "TakenAt"),
+		Year:         detailsInt(details, "Year"),
+		Month:        detailsInt(details, "Month"),
+		Day:          detailsInt(details, "Day"),
+		Lat:          detailsFloat64(details, "Lat"),
+		Lng:          detailsFloat64(details, "Lng"),
+		Country:      detailsString(details, "Country"),
+		CameraModel:  detailsString(details, "CameraModel"),
+		Hash:         detailsString(details, "Hash"),
+		Title:        detailsString(details, "Title"),
+		Description:  detailsString(details, "Description"),
+		PHash:        hashes.PHash,
+		DHash:        hashes.DHash,
+		PHashBits:    hashes.PHashBits,
+		DHashBits:    hashes.DHashBits,
+		ComputedAt:   time.Now().UTC().Format(time.RFC3339),
 	}
-
-	// Extract fields from details map
-	if v, ok := details["UID"].(string); ok {
-		info.UID = v
-	}
-	if v, ok := details["OriginalName"].(string); ok {
-		info.OriginalName = v
-	}
-	if v, ok := details["FileName"].(string); ok {
-		info.FileName = v
-	}
-	if v, ok := details["Width"].(float64); ok {
-		info.Width = int(v)
-	}
-	if v, ok := details["Height"].(float64); ok {
-		info.Height = int(v)
-	}
-	if v, ok := details["TakenAt"].(string); ok {
-		info.TakenAt = v
-	}
-	if v, ok := details["Year"].(float64); ok {
-		info.Year = int(v)
-	}
-	if v, ok := details["Month"].(float64); ok {
-		info.Month = int(v)
-	}
-	if v, ok := details["Day"].(float64); ok {
-		info.Day = int(v)
-	}
-	if v, ok := details["Lat"].(float64); ok {
-		info.Lat = v
-	}
-	if v, ok := details["Lng"].(float64); ok {
-		info.Lng = v
-	}
-	if v, ok := details["Country"].(string); ok {
-		info.Country = v
-	}
-	if v, ok := details["CameraModel"].(string); ok {
-		info.CameraModel = v
-	}
-	if v, ok := details["Hash"].(string); ok {
-		info.Hash = v
-	}
-	if v, ok := details["Title"].(string); ok {
-		info.Title = v
-	}
-	if v, ok := details["Description"].(string); ok {
-		info.Description = v
-	}
-
-	return info
 }
 
 func buildPhotoInfoFromPhoto(p photoprism.Photo, hashes *fingerprint.HashResult) fingerprint.PhotoInfo {
@@ -340,14 +318,8 @@ func outputJSON(data interface{}) error {
 	return encoder.Encode(data)
 }
 
-func outputHumanReadableSingle(info fingerprint.PhotoInfo, ppCfg *config.PhotoPrismConfig) error {
-	if url := ppCfg.PhotoURL(info.UID); url != "" {
-		fmt.Printf("Photo: %s\n", url)
-	} else {
-		fmt.Printf("Photo: %s\n", info.UID)
-	}
-	fmt.Println("────────────────────────────────────────")
-
+// printPhotoMetadata prints the metadata section of photo info.
+func printPhotoMetadata(info fingerprint.PhotoInfo) {
 	fmt.Println("\nMetadata:")
 	if info.OriginalName != "" {
 		fmt.Printf("  Original Name:  %s\n", info.OriginalName)
@@ -361,26 +333,47 @@ func outputHumanReadableSingle(info fingerprint.PhotoInfo, ppCfg *config.PhotoPr
 	if info.CameraModel != "" {
 		fmt.Printf("  Camera:         %s\n", info.CameraModel)
 	}
+}
 
-	if info.TakenAt != "" || info.Year > 0 {
-		fmt.Println("\nDates:")
-		if info.TakenAt != "" {
-			fmt.Printf("  Taken At:       %s\n", info.TakenAt)
-		}
-		if info.Year > 0 {
-			fmt.Printf("  Year/Month/Day: %d / %02d / %02d\n", info.Year, info.Month, info.Day)
-		}
+// printPhotoDates prints the dates section of photo info.
+func printPhotoDates(info fingerprint.PhotoInfo) {
+	if info.TakenAt == "" && info.Year == 0 {
+		return
 	}
+	fmt.Println("\nDates:")
+	if info.TakenAt != "" {
+		fmt.Printf("  Taken At:       %s\n", info.TakenAt)
+	}
+	if info.Year > 0 {
+		fmt.Printf("  Year/Month/Day: %d / %02d / %02d\n", info.Year, info.Month, info.Day)
+	}
+}
 
-	if info.Lat != 0 || info.Lng != 0 || info.Country != "" {
-		fmt.Println("\nLocation:")
-		if info.Lat != 0 || info.Lng != 0 {
-			fmt.Printf("  GPS:            %.6f, %.6f\n", info.Lat, info.Lng)
-		}
-		if info.Country != "" && info.Country != "zz" {
-			fmt.Printf("  Country:        %s\n", info.Country)
-		}
+// printPhotoLocation prints the location section of photo info.
+func printPhotoLocation(info fingerprint.PhotoInfo) {
+	if info.Lat == 0 && info.Lng == 0 && info.Country == "" {
+		return
 	}
+	fmt.Println("\nLocation:")
+	if info.Lat != 0 || info.Lng != 0 {
+		fmt.Printf("  GPS:            %.6f, %.6f\n", info.Lat, info.Lng)
+	}
+	if info.Country != "" && info.Country != "zz" {
+		fmt.Printf("  Country:        %s\n", info.Country)
+	}
+}
+
+func outputHumanReadableSingle(info fingerprint.PhotoInfo, ppCfg *config.PhotoPrismConfig) error {
+	if url := ppCfg.PhotoURL(info.UID); url != "" {
+		fmt.Printf("Photo: %s\n", url)
+	} else {
+		fmt.Printf("Photo: %s\n", info.UID)
+	}
+	fmt.Println("────────────────────────────────────────")
+
+	printPhotoMetadata(info)
+	printPhotoDates(info)
+	printPhotoLocation(info)
 
 	fmt.Println("\nHashes:")
 	fmt.Printf("  pHash:          %s\n", info.PHash)

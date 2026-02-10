@@ -45,23 +45,9 @@ func runMove(cmd *cobra.Command, args []string) error {
 
 	// Get all photos from source album
 	fmt.Println("Fetching photos from source album...")
-	var allPhotos []photoprism.Photo
-	offset := 0
-	batchSize := 100
-
-	for {
-		photos, err := pp.GetAlbumPhotos(sourceAlbumUID, batchSize, offset)
-		if err != nil {
-			return fmt.Errorf("failed to get photos from album: %w", err)
-		}
-		if len(photos) == 0 {
-			break
-		}
-		allPhotos = append(allPhotos, photos...)
-		offset += len(photos)
-		if len(photos) < batchSize {
-			break
-		}
+	allPhotos, err := fetchAllAlbumPhotos(pp, sourceAlbumUID, 100)
+	if err != nil {
+		return err
 	}
 
 	if len(allPhotos) == 0 {

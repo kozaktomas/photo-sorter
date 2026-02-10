@@ -37,6 +37,37 @@ func init() {
 	photoClearFacesCmd.Flags().Bool("assigned-only", false, "Only remove markers with person assignments")
 }
 
+// filterFaceMarkers filters markers to only face markers, optionally filtering to assigned-only.
+func filterFaceMarkers(markers []photoprism.Marker, assignedOnly bool) []photoprism.Marker {
+	var faceMarkers []photoprism.Marker
+	for i := range markers {
+		m := &markers[i]
+		if m.Type != constants.MarkerTypeFace {
+			continue
+		}
+		if assignedOnly && m.Name == "" && m.SubjUID == "" {
+			continue
+		}
+		faceMarkers = append(faceMarkers, *m)
+	}
+	return faceMarkers
+}
+
+// deleteFaceMarkers deletes face markers and returns the number deleted.
+func deleteFaceMarkers(pp *photoprism.PhotoPrism, faceMarkers []photoprism.Marker) int {
+	deleted := 0
+	for _, m := range faceMarkers {
+		_, err := pp.DeleteMarker(m.UID)
+		if err != nil {
+			fmt.Printf("  Failed to delete %s (%s): %v\n", markerDisplayName(m.Name), m.UID, err)
+			continue
+		}
+		fmt.Printf("  Deleted: %s\n", markerDisplayName(m.Name))
+		deleted++
+	}
+	return deleted
+}
+
 func runPhotoClearFaces(cmd *cobra.Command, args []string) error {
 	photoUID := args[0]
 	dryRun := mustGetBool(cmd, "dry-run")
@@ -64,18 +95,7 @@ func runPhotoClearFaces(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get markers: %w", err)
 	}
 
-	// Filter to face markers
-	var faceMarkers []photoprism.Marker
-	for i := range markers {
-		m := &markers[i]
-		if m.Type != constants.MarkerTypeFace {
-			continue
-		}
-		if assignedOnly && m.Name == "" && m.SubjUID == "" {
-			continue
-		}
-		faceMarkers = append(faceMarkers, *m)
-	}
+	faceMarkers := filterFaceMarkers(markers, assignedOnly)
 
 	if len(faceMarkers) == 0 {
 		if assignedOnly {
@@ -98,16 +118,7 @@ func runPhotoClearFaces(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Println("\nDeleting face markers...")
-	deleted := 0
-	for _, m := range faceMarkers {
-		_, err := pp.DeleteMarker(m.UID)
-		if err != nil {
-			fmt.Printf("  Failed to delete %s (%s): %v\n", markerDisplayName(m.Name), m.UID, err)
-			continue
-		}
-		fmt.Printf("  Deleted: %s\n", markerDisplayName(m.Name))
-		deleted++
-	}
+	deleted := deleteFaceMarkers(pp, faceMarkers)
 
 	fmt.Printf("\nDeleted %d/%d face markers.\n", deleted, len(faceMarkers))
 	return nil

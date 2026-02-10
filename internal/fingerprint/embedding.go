@@ -128,27 +128,38 @@ func (c *EmbeddingClient) ComputeEmbedding(ctx context.Context, imageData []byte
 	return embResp.Embedding, nil
 }
 
-// detectMIMEType detects the MIME type from image data
+// magicSignature maps a magic byte prefix (at a given offset) to a MIME type.
+type magicSignature struct {
+	offset   int
+	magic    []byte
+	mimeType string
+}
+
+// magicSignatures lists known image format magic bytes, checked in order.
+var magicSignatures = []magicSignature{
+	{0, []byte{0xFF, 0xD8, 0xFF}, "image/jpeg"},
+	{0, []byte{0x89, 0x50, 0x4E, 0x47}, "image/png"},
+	{0, []byte{0x47, 0x49, 0x46, 0x38}, "image/gif"},
+	{0, []byte{0x52, 0x49, 0x46, 0x46}, "image/webp"}, // checked with extra WebP bytes below
+}
+
+// detectMIMEType detects the MIME type from image data using magic bytes.
 func detectMIMEType(data []byte) string {
-	if len(data) < 8 {
-		return "application/octet-stream"
-	}
-	// JPEG: FF D8 FF
-	if data[0] == 0xFF && data[1] == 0xD8 && data[2] == 0xFF {
-		return "image/jpeg"
-	}
-	// PNG: 89 50 4E 47 0D 0A 1A 0A
-	if data[0] == 0x89 && data[1] == 0x50 && data[2] == 0x4E && data[3] == 0x47 {
-		return "image/png"
-	}
-	// GIF: 47 49 46 38
-	if data[0] == 0x47 && data[1] == 0x49 && data[2] == 0x46 && data[3] == 0x38 {
-		return "image/gif"
-	}
-	// WebP: 52 49 46 46 ... 57 45 42 50
-	if len(data) >= 12 && data[0] == 0x52 && data[1] == 0x49 && data[2] == 0x46 && data[3] == 0x46 &&
-		data[8] == 0x57 && data[9] == 0x45 && data[10] == 0x42 && data[11] == 0x50 {
-		return "image/webp"
+	for _, sig := range magicSignatures {
+		end := sig.offset + len(sig.magic)
+		if len(data) < end {
+			continue
+		}
+		if !bytes.Equal(data[sig.offset:end], sig.magic) {
+			continue
+		}
+		// WebP requires additional check at offset 8
+		if sig.mimeType == "image/webp" {
+			if len(data) < 12 || !bytes.Equal(data[8:12], []byte{0x57, 0x45, 0x42, 0x50}) {
+				continue
+			}
+		}
+		return sig.mimeType
 	}
 	return "application/octet-stream"
 }
