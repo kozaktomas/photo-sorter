@@ -206,7 +206,7 @@ func TestAlbumsHandler_Create_Success(t *testing.T) {
 
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			json.NewEncoder(w).Encode(map[string]any{
 				"UID":   "new-album-uid",
 				"Title": input.Title,
 				"Type":  "album",

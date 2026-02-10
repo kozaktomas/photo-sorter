@@ -131,10 +131,7 @@ func (h *StatsHandler) Get(w http.ResponseWriter, r *http.Request) {
 	photoUIDs := fetchAllPhotoUIDs(pp)
 	photosWithEmbed, totalEmbeddings, photosWithFaces, totalFaces := fetchDBStats(context.Background(), photoUIDs)
 
-	photosProcessed := photosWithEmbed
-	if photosWithFaces > photosProcessed {
-		photosProcessed = photosWithFaces
-	}
+	photosProcessed := max(photosWithEmbed, photosWithFaces)
 
 	stats := &StatsResponse{
 		TotalPhotos: len(photoUIDs), PhotosProcessed: photosProcessed,

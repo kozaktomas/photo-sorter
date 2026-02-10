@@ -81,7 +81,10 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		s.sessionManager.Stop()
 	}
 
-	return s.httpServer.Shutdown(ctx)
+	if err := s.httpServer.Shutdown(ctx); err != nil {
+		return fmt.Errorf("shutting down server: %w", err)
+	}
+	return nil
 }
 
 // Router returns the chi router for testing

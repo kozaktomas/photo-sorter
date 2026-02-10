@@ -59,7 +59,9 @@ func (p *Pool) DB() *sql.DB {
 // Close closes the connection pool
 func (p *Pool) Close() error {
 	if p.db != nil {
-		return p.db.Close()
+		if err := p.db.Close(); err != nil {
+			return fmt.Errorf("closing database connection: %w", err)
+		}
 	}
 	return nil
 }
@@ -86,23 +88,35 @@ func IsAvailable() bool {
 }
 
 // QueryRow executes a query that returns a single row
-func (p *Pool) QueryRow(ctx context.Context, query string, args ...interface{}) *sql.Row {
+func (p *Pool) QueryRow(ctx context.Context, query string, args ...any) *sql.Row {
 	return p.db.QueryRowContext(ctx, query, args...)
 }
 
 // Query executes a query that returns rows
-func (p *Pool) Query(ctx context.Context, query string, args ...interface{}) (*sql.Rows, error) {
-	return p.db.QueryContext(ctx, query, args...)
+func (p *Pool) Query(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
+	rows, err := p.db.QueryContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("executing query: %w", err)
+	}
+	return rows, nil
 }
 
 // Exec executes a query that doesn't return rows
-func (p *Pool) Exec(ctx context.Context, query string, args ...interface{}) (sql.Result, error) {
-	return p.db.ExecContext(ctx, query, args...)
+func (p *Pool) Exec(ctx context.Context, query string, args ...any) (sql.Result, error) {
+	result, err := p.db.ExecContext(ctx, query, args...)
+	if err != nil {
+		return nil, fmt.Errorf("executing statement: %w", err)
+	}
+	return result, nil
 }
 
 // BeginTx starts a transaction
 func (p *Pool) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
-	return p.db.BeginTx(ctx, opts)
+	tx, err := p.db.BeginTx(ctx, opts)
+	if err != nil {
+		return nil, fmt.Errorf("beginning transaction: %w", err)
+	}
+	return tx, nil
 }
 
 // Initialize sets up the PostgreSQL backend with migrations and registers it

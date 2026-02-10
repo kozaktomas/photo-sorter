@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	_ "embed"
+	"fmt"
 	"strings"
 
 	"github.com/openai/openai-go"
@@ -40,7 +41,7 @@ func TranslateForCLIP(ctx context.Context, apiKey string, czechText string) (*Tr
 		MaxTokens: openai.Int(100),
 	})
 	if err != nil {
-		return &TranslateResult{Text: czechText}, err
+		return &TranslateResult{Text: czechText}, fmt.Errorf("translating text: %w", err)
 	}
 
 	result := &TranslateResult{

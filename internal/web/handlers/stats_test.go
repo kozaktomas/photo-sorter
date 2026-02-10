@@ -165,7 +165,7 @@ func TestStatsResponse_Fields(t *testing.T) {
 
 	assertStatusCode(t, recorder, http.StatusOK)
 
-	var result map[string]interface{}
+	var result map[string]any
 	parseJSONResponse(t, recorder, &result)
 
 	expectedFields := []string{

@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"math"
 	"net/http"
 	"sort"
@@ -411,7 +412,7 @@ func fetchSourcePhotoUIDs(pp *photoprism.PhotoPrism, query string) (map[string]b
 	for {
 		photos, err := pp.GetPhotosWithQuery(pageSize, offset, query)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("fetching photos with query: %w", err)
 		}
 		for _, photo := range photos {
 			sourcePhotoUIDs[photo.UID] = true
@@ -1132,7 +1133,7 @@ func fetchAlbumMemberSet(pp *photoprism.PhotoPrism, albumUID string) (map[string
 	for {
 		photos, err := pp.GetAlbumPhotos(albumUID, pageSize, offset)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("fetching album photos: %w", err)
 		}
 		for _, p := range photos {
 			albumMemberSet[p.UID] = true

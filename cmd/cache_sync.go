@@ -8,14 +8,14 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/schollz/progressbar/v3"
-	"github.com/spf13/cobra"
 	"github.com/kozaktomas/photo-sorter/internal/config"
 	"github.com/kozaktomas/photo-sorter/internal/constants"
 	"github.com/kozaktomas/photo-sorter/internal/database"
 	"github.com/kozaktomas/photo-sorter/internal/database/postgres"
 	"github.com/kozaktomas/photo-sorter/internal/facematch"
 	"github.com/kozaktomas/photo-sorter/internal/photoprism"
+	"github.com/schollz/progressbar/v3"
+	"github.com/spf13/cobra"
 )
 
 var cacheSyncCmd = &cobra.Command{
@@ -59,9 +59,9 @@ type SyncCacheResult struct {
 
 // initSyncDeps initializes the database backends and PhotoPrism connection for cache sync.
 type syncDeps struct {
-	pp        *photoprism.PhotoPrism
-	faceW     database.FaceWriter
-	embW      database.EmbeddingWriter
+	pp    *photoprism.PhotoPrism
+	faceW database.FaceWriter
+	embW  database.EmbeddingWriter
 }
 
 func initSyncDeps(ctx context.Context, cfg *config.Config, jsonOutput bool) (*syncDeps, error) {
@@ -319,7 +319,7 @@ func clearFaceAssignments(ctx context.Context, faceWriter database.FaceWriter, f
 
 // isPhotoDeletedOrMissing checks if a photo is deleted or missing, and cleans up if so.
 // Returns true if the photo was deleted/missing.
-func isPhotoDeletedOrMissing(ctx context.Context, details map[string]interface{}, err error, faceWriter database.FaceWriter, embWriter database.EmbeddingWriter, photoUID string) (bool, error) {
+func isPhotoDeletedOrMissing(ctx context.Context, details map[string]any, err error, faceWriter database.FaceWriter, embWriter database.EmbeddingWriter, photoUID string) (bool, error) {
 	if err != nil {
 		if photoprism.IsNotFoundError(err) {
 			cleanupDeletedPhoto(ctx, faceWriter, embWriter, photoUID)
@@ -384,4 +384,3 @@ func formatDuration(d time.Duration) string {
 	}
 	return fmt.Sprintf("%dh%dm", int(d.Hours()), int(d.Minutes())%60)
 }
-

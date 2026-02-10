@@ -51,8 +51,8 @@ func (pp *PhotoPrism) EditPhoto(photoUID string, updates PhotoUpdate) (*Photo, e
 }
 
 // GetPhotoDetails retrieves full photo details including all metadata
-func (pp *PhotoPrism) GetPhotoDetails(photoUID string) (map[string]interface{}, error) {
-	result, err := doGetJSON[map[string]interface{}](pp, "photos/"+photoUID)
+func (pp *PhotoPrism) GetPhotoDetails(photoUID string) (map[string]any, error) {
+	result, err := doGetJSON[map[string]any](pp, "photos/"+photoUID)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +61,7 @@ func (pp *PhotoPrism) GetPhotoDetails(photoUID string) (map[string]interface{}, 
 
 // IsPhotoDeleted checks if a photo details response indicates the photo has been soft-deleted.
 // PhotoPrism sets DeletedAt to a non-empty timestamp string when a photo is archived/deleted.
-func IsPhotoDeleted(details map[string]interface{}) bool {
+func IsPhotoDeleted(details map[string]any) bool {
 	deletedAt, ok := details["DeletedAt"]
 	if !ok {
 		return false
@@ -87,10 +87,11 @@ func IsPhotoDeleted(details map[string]interface{}) bool {
 //	}
 //	// Save to file
 //	err = os.WriteFile("photo.jpg", data, 0644)
+//
 // findPrimaryFile finds the primary file map from the Files array in photo details.
-func findPrimaryFile(files []interface{}) map[string]interface{} {
+func findPrimaryFile(files []any) map[string]any {
 	for _, f := range files {
-		file, ok := f.(map[string]interface{})
+		file, ok := f.(map[string]any)
 		if !ok {
 			continue
 		}
@@ -98,15 +99,15 @@ func findPrimaryFile(files []interface{}) map[string]interface{} {
 			return file
 		}
 	}
-	if first, ok := files[0].(map[string]interface{}); ok {
+	if first, ok := files[0].(map[string]any); ok {
 		return first
 	}
 	return nil
 }
 
 // findPrimaryFileHash extracts the hash of the primary file from photo details.
-func findPrimaryFileHash(details map[string]interface{}) string {
-	files, ok := details["Files"].([]interface{})
+func findPrimaryFileHash(details map[string]any) string {
+	files, ok := details["Files"].([]any)
 	if !ok || len(files) == 0 {
 		return ""
 	}
@@ -231,8 +232,8 @@ func (pp *PhotoPrism) GetPhotoFileUID(photoUID string) (string, error) {
 		return "", err
 	}
 
-	if files, ok := details["Files"].([]interface{}); ok && len(files) > 0 {
-		if file, ok := files[0].(map[string]interface{}); ok {
+	if files, ok := details["Files"].([]any); ok && len(files) > 0 {
+		if file, ok := files[0].(map[string]any); ok {
 			if uid, ok := file["UID"].(string); ok {
 				return uid, nil
 			}

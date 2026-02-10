@@ -9,9 +9,9 @@ type PrimaryFileInfo struct {
 }
 
 // findPrimaryFile finds the primary file map from the Files array in photo details.
-func findPrimaryFile(files []interface{}) map[string]interface{} {
+func findPrimaryFile(files []any) map[string]any {
 	for _, f := range files {
-		file, ok := f.(map[string]interface{})
+		file, ok := f.(map[string]any)
 		if !ok {
 			continue
 		}
@@ -20,7 +20,7 @@ func findPrimaryFile(files []interface{}) map[string]interface{} {
 		}
 	}
 	// Fall back to first file if no primary found
-	if first, ok := files[0].(map[string]interface{}); ok {
+	if first, ok := files[0].(map[string]any); ok {
 		return first
 	}
 	return nil
@@ -29,8 +29,8 @@ func findPrimaryFile(files []interface{}) map[string]interface{} {
 // ExtractPrimaryFileInfo extracts dimensions and orientation from photo details.
 // The details map is the JSON response from PhotoPrism's GetPhotoDetails endpoint.
 // Face detection runs on the primary file, so we must use its dimensions.
-func ExtractPrimaryFileInfo(details map[string]interface{}) *PrimaryFileInfo {
-	files, ok := details["Files"].([]interface{})
+func ExtractPrimaryFileInfo(details map[string]any) *PrimaryFileInfo {
+	files, ok := details["Files"].([]any)
 	if !ok || len(files) == 0 {
 		return nil
 	}
@@ -122,7 +122,7 @@ func MatchFaceToMarkers(faceBBox []float64, markers []MarkerInfo, width, height,
 
 // ConvertMarkersToInfo converts PhotoPrism marker data to MarkerInfo slice.
 // This is a helper for callers that have raw marker data from API responses.
-func ConvertMarkersToInfo(markers []map[string]interface{}) []MarkerInfo {
+func ConvertMarkersToInfo(markers []map[string]any) []MarkerInfo {
 	result := make([]MarkerInfo, 0, len(markers))
 	for _, m := range markers {
 		info := MarkerInfo{}

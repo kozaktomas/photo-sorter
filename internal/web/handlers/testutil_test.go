@@ -48,7 +48,7 @@ func setupMockPhotoPrismServer(t *testing.T, handlers map[string]http.HandlerFun
 	// Mock auth endpoint (always needed for NewPhotoPrism)
 	mux.HandleFunc("/api/v1/sessions", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		json.NewEncoder(w).Encode(map[string]any{
 			"id":           "test-session-id",
 			"access_token": "test-token",
 			"config": map[string]string{
@@ -80,7 +80,7 @@ func createPhotoPrismClient(t *testing.T, server *httptest.Server) *photoprism.P
 }
 
 // parseJSONResponse parses a JSON response body into the target type
-func parseJSONResponse(t *testing.T, recorder *httptest.ResponseRecorder, target interface{}) {
+func parseJSONResponse(t *testing.T, recorder *httptest.ResponseRecorder, target any) {
 	t.Helper()
 	if err := json.Unmarshal(recorder.Body.Bytes(), target); err != nil {
 		t.Fatalf("failed to parse JSON response: %v\nBody: %s", err, recorder.Body.String())
@@ -115,4 +115,3 @@ func assertJSONError(t *testing.T, recorder *httptest.ResponseRecorder, expected
 		t.Errorf("expected error '%s', got '%s'", expectedMessage, result["error"])
 	}
 }
-

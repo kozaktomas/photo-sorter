@@ -4,34 +4,52 @@ linters:
   default: standard
   enable:
     - bodyclose
+    - canonicalheader
+    - containedctx
+    - copyloopvar
     - cyclop
     - dupl
     - dupword
     - durationcheck
+    - errname
     - errorlint
     - exhaustive
+    - exptostd
     - fatcontext
     - forcetypeassert
     - goconst
     - gocritic
+    - godox
     - gosec
     - intrange
+    - makezero
+    - mirror
     - misspell
+    - modernize
+    - musttag
     - nakedret
+    - nestif
     - nilnil
     - nilerr
     - noctx
+    - nolintlint
+    - nosprintfhostport
     - perfsprint
+    - prealloc
     - predeclared
+    - reassign
     - recvcheck
     - revive
     - sqlclosecheck
     - testifylint
+    - thelper
     - unconvert
     - unparam
     - usestdlibvars
+    - usetesting
     - wastedassign
     - whitespace
+    - wrapcheck
 
   settings:
     goconst:
@@ -75,7 +93,6 @@ linters:
         - (github.com/kozaktomas/photo-sorter/internal/database.FaceWriter).MarkFacesProcessed
         - (github.com/kozaktomas/photo-sorter/internal/database.EmbeddingWriter).DeleteEmbedding
         - (github.com/kozaktomas/photo-sorter/internal/database.EmbeddingWriter).Save
-
   exclusions:
     presets:
       - std-error-handling
@@ -117,6 +134,10 @@ linters:
           - forcetypeassert
           - unparam
           - usestdlibvars
+          - nestif
+          - thelper
+          - usetesting
+          - wrapcheck
 
 output:
   sort-order:

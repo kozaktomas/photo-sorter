@@ -72,7 +72,10 @@ func (r *BookRepository) ListBooks(ctx context.Context) ([]database.PhotoBook, e
 		}
 		books = append(books, b)
 	}
-	return books, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate books: %w", err)
+	}
+	return books, nil
 }
 
 func (r *BookRepository) UpdateBook(ctx context.Context, book *database.PhotoBook) error {
@@ -143,7 +146,10 @@ func (r *BookRepository) GetSections(ctx context.Context, bookID string) ([]data
 		}
 		sections = append(sections, s)
 	}
-	return sections, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate sections: %w", err)
+	}
+	return sections, nil
 }
 
 func (r *BookRepository) UpdateSection(ctx context.Context, section *database.BookSection) error {
@@ -180,7 +186,10 @@ func (r *BookRepository) ReorderSections(ctx context.Context, bookID string, sec
 			return fmt.Errorf("reorder section %s: %w", id, err)
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit reorder sections: %w", err)
+	}
+	return nil
 }
 
 // --- Section Photos ---
@@ -201,7 +210,10 @@ func (r *BookRepository) GetSectionPhotos(ctx context.Context, sectionID string)
 		}
 		photos = append(photos, p)
 	}
-	return photos, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate section photos: %w", err)
+	}
+	return photos, nil
 }
 
 func (r *BookRepository) CountSectionPhotos(ctx context.Context, sectionID string) (int, error) {
@@ -228,7 +240,10 @@ func (r *BookRepository) AddSectionPhotos(ctx context.Context, sectionID string,
 			return fmt.Errorf("add photo %s: %w", uid, err)
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit add section photos: %w", err)
+	}
+	return nil
 }
 
 func (r *BookRepository) RemoveSectionPhotos(ctx context.Context, sectionID string, photoUIDs []string) error {
@@ -246,7 +261,10 @@ func (r *BookRepository) RemoveSectionPhotos(ctx context.Context, sectionID stri
 			return fmt.Errorf("remove photo %s: %w", uid, err)
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit remove section photos: %w", err)
+	}
+	return nil
 }
 
 func (r *BookRepository) UpdateSectionPhoto(ctx context.Context, sectionID string, photoUID string, description string, note string) error {
@@ -331,7 +349,7 @@ func (r *BookRepository) GetPages(ctx context.Context, bookID string) ([]databas
 		pages = append(pages, p)
 	}
 	if err := rows.Err(); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("iterate pages: %w", err)
 	}
 
 	// Load slots for each page
@@ -383,7 +401,10 @@ func (r *BookRepository) ReorderPages(ctx context.Context, bookID string, pageID
 			return fmt.Errorf("reorder page %s: %w", id, err)
 		}
 	}
-	return tx.Commit()
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit reorder pages: %w", err)
+	}
+	return nil
 }
 
 // --- Slots ---
@@ -403,7 +424,10 @@ func (r *BookRepository) GetPageSlots(ctx context.Context, pageID string) ([]dat
 		}
 		slots = append(slots, s)
 	}
-	return slots, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate page slots: %w", err)
+	}
+	return slots, nil
 }
 
 func (r *BookRepository) GetAllPageSlots(ctx context.Context, bookID string) ([]database.PageSlot, error) {
@@ -425,7 +449,10 @@ func (r *BookRepository) GetAllPageSlots(ctx context.Context, bookID string) ([]
 		}
 		slots = append(slots, s)
 	}
-	return slots, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate all page slots: %w", err)
+	}
+	return slots, nil
 }
 
 func (r *BookRepository) AssignSlot(ctx context.Context, pageID string, slotIndex int, photoUID string) error {
@@ -512,7 +539,10 @@ func (r *BookRepository) GetPhotoBookMemberships(ctx context.Context, photoUID s
 		}
 		memberships = append(memberships, m)
 	}
-	return memberships, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate memberships: %w", err)
+	}
+	return memberships, nil
 }
 
 func scanSlotRows(rows *sql.Rows) (map[int]string, error) {
@@ -522,9 +552,12 @@ func scanSlotRows(rows *sql.Rows) (map[int]string, error) {
 		var idx int
 		var uid string
 		if err := rows.Scan(&idx, &uid); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("scan slot row: %w", err)
 		}
 		photos[idx] = uid
 	}
-	return photos, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate slot rows: %w", err)
+	}
+	return photos, nil
 }

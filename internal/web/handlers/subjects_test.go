@@ -222,7 +222,7 @@ func TestFacesHandler_UpdateSubject_Success(t *testing.T) {
 				return
 			}
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			json.NewEncoder(w).Encode(map[string]any{
 				"UID":      "subj123",
 				"Name":     "Updated Name",
 				"Slug":     "updated-name",
@@ -269,7 +269,7 @@ func TestFacesHandler_UpdateSubject_PartialUpdate(t *testing.T) {
 				return
 			}
 
-			var update map[string]interface{}
+			var update map[string]any
 			json.NewDecoder(r.Body).Decode(&update)
 
 			// Should only have About field
@@ -278,7 +278,7 @@ func TestFacesHandler_UpdateSubject_PartialUpdate(t *testing.T) {
 			}
 
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			json.NewEncoder(w).Encode(map[string]any{
 				"UID":   "subj123",
 				"Name":  "Original Name",
 				"About": "New about text",

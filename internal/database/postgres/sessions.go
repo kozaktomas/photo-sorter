@@ -79,5 +79,9 @@ func (r *SessionRepository) DeleteExpired(ctx context.Context) (int64, error) {
 	if err != nil {
 		return 0, fmt.Errorf("delete expired sessions: %w", err)
 	}
-	return result.RowsAffected()
+	count, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("getting rows affected: %w", err)
+	}
+	return count, nil
 }

@@ -236,7 +236,7 @@ func TestPhotosHandler_Update_Success(t *testing.T) {
 				return
 			}
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			json.NewEncoder(w).Encode(map[string]any{
 				"UID":         "photo123",
 				"Title":       "Updated Title",
 				"Description": "New description",

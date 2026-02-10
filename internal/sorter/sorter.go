@@ -351,7 +351,7 @@ func (s *Sorter) pollBatchCompletion(ctx context.Context, batchID string) error 
 		select {
 		case <-ctx.Done():
 			s.cancelBatch(batchID)
-			return ctx.Err()
+			return fmt.Errorf("sort cancelled: %w", ctx.Err())
 		default:
 		}
 
@@ -359,7 +359,7 @@ func (s *Sorter) pollBatchCompletion(ctx context.Context, batchID string) error 
 		if err != nil {
 			if ctx.Err() != nil {
 				s.cancelBatch(batchID)
-				return ctx.Err()
+				return fmt.Errorf("sort cancelled: %w", ctx.Err())
 			}
 			return fmt.Errorf("failed to get batch status: %w", err)
 		}

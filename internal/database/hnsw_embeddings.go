@@ -139,7 +139,10 @@ func (h *HNSWEmbeddingIndex) Save() error {
 	}
 	defer f.Close()
 
-	return h.graph.Export(f)
+	if err := h.graph.Export(f); err != nil {
+		return fmt.Errorf("exporting HNSW graph: %w", err)
+	}
+	return nil
 }
 
 // Load loads the index from disk
@@ -201,10 +204,7 @@ func (h *HNSWEmbeddingIndex) SearchWithDistance(query []float32, k int, maxDista
 	}
 
 	// Search with more candidates for better recall after filtering
-	searchK := k * HNSWSearchMultiplier
-	if searchK < 100 {
-		searchK = 100
-	}
+	searchK := max(k*HNSWSearchMultiplier, 100)
 
 	var neighbors []hnsw.Node[string]
 	if h.savedGraph != nil {
@@ -246,11 +246,11 @@ func LoadHNSWEmbeddingMetadata(basePath string) (*HNSWEmbeddingIndexMetadata, er
 	metaPath := basePath + ".meta"
 	data, err := os.ReadFile(metaPath) //nolint:gosec // path is from trusted config
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("reading embedding metadata file: %w", err)
 	}
 	var meta HNSWEmbeddingIndexMetadata
 	if err := json.Unmarshal(data, &meta); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("unmarshaling embedding metadata: %w", err)
 	}
 	return &meta, nil
 }

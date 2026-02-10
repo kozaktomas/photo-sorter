@@ -175,7 +175,10 @@ func (h *HNSWIndex) Save() error {
 	}
 	defer f.Close()
 
-	return h.graph.Export(f)
+	if err := h.graph.Export(f); err != nil {
+		return fmt.Errorf("exporting HNSW graph: %w", err)
+	}
+	return nil
 }
 
 // Load loads the index from disk

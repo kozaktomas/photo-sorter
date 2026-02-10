@@ -177,5 +177,8 @@ func runServe(cmd *cobra.Command, args []string) error {
 	fmt.Printf("Starting Photo Sorter Web UI on http://%s:%d\n", host, port)
 	fmt.Println("Press Ctrl+C to stop")
 
-	return server.Start()
+	if err := server.Start(); err != nil {
+		return fmt.Errorf("starting server: %w", err)
+	}
+	return nil
 }

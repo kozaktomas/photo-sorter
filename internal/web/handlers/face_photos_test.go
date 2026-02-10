@@ -17,17 +17,17 @@ func TestFacesHandler_GetPhotoFaces_Success(t *testing.T) {
 		"/api/v1/photos/photo123": func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			// Include markers in Files - GetPhotoMarkers extracts from Files[].Markers
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			json.NewEncoder(w).Encode(map[string]any{
 				"UID":   "photo123",
 				"Title": "Test Photo",
-				"Files": []map[string]interface{}{
+				"Files": []map[string]any{
 					{
 						"UID":         "file123",
 						"Primary":     true,
 						"Width":       1920,
 						"Height":      1080,
 						"Orientation": 1,
-						"Markers": []map[string]interface{}{
+						"Markers": []map[string]any{
 							{
 								"UID":     "marker1",
 								"Type":    "face",
@@ -45,7 +45,7 @@ func TestFacesHandler_GetPhotoFaces_Success(t *testing.T) {
 		},
 		"/api/v1/subjects": func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode([]map[string]interface{}{
+			json.NewEncoder(w).Encode([]map[string]any{
 				{
 					"UID":        "subj1",
 					"Name":       "john-doe",
@@ -241,10 +241,10 @@ func TestFacesHandler_GetPhotoFaces_NoFacesInPhoto(t *testing.T) {
 	server := setupMockPhotoPrismServer(t, map[string]http.HandlerFunc{
 		"/api/v1/photos/photo123": func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			json.NewEncoder(w).Encode(map[string]any{
 				"UID":   "photo123",
 				"Title": "Test Photo",
-				"Files": []map[string]interface{}{
+				"Files": []map[string]any{
 					{
 						"UID":         "file123",
 						"Primary":     true,
@@ -307,10 +307,10 @@ func TestFacesHandler_GetPhotoFaces_WithThresholdAndLimit(t *testing.T) {
 	server := setupMockPhotoPrismServer(t, map[string]http.HandlerFunc{
 		"/api/v1/photos/photo123": func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			json.NewEncoder(w).Encode(map[string]any{
 				"UID":   "photo123",
 				"Title": "Test Photo",
-				"Files": []map[string]interface{}{
+				"Files": []map[string]any{
 					{
 						"UID":         "file123",
 						"Primary":     true,
@@ -368,17 +368,17 @@ func TestFacesHandler_GetPhotoFaces_UnmatchedMarkers(t *testing.T) {
 		"/api/v1/photos/photo123": func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
 			// Include markers in Files - GetPhotoMarkers extracts from Files[].Markers
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			json.NewEncoder(w).Encode(map[string]any{
 				"UID":   "photo123",
 				"Title": "Test Photo",
-				"Files": []map[string]interface{}{
+				"Files": []map[string]any{
 					{
 						"UID":         "file123",
 						"Primary":     true,
 						"Width":       1920,
 						"Height":      1080,
 						"Orientation": 1,
-						"Markers": []map[string]interface{}{
+						"Markers": []map[string]any{
 							{
 								"UID":     "marker1",
 								"Type":    "face",

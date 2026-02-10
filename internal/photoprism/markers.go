@@ -1,7 +1,7 @@
 package photoprism
 
 // mapString extracts a string value from a map by key.
-func mapString(m map[string]interface{}, key string) string {
+func mapString(m map[string]any, key string) string {
 	if v, ok := m[key].(string); ok {
 		return v
 	}
@@ -9,7 +9,7 @@ func mapString(m map[string]interface{}, key string) string {
 }
 
 // mapFloat64 extracts a float64 value from a map by key.
-func mapFloat64(m map[string]interface{}, key string) float64 {
+func mapFloat64(m map[string]any, key string) float64 {
 	if v, ok := m[key].(float64); ok {
 		return v
 	}
@@ -17,7 +17,7 @@ func mapFloat64(m map[string]interface{}, key string) float64 {
 }
 
 // mapInt extracts an int value (stored as float64) from a map by key.
-func mapInt(m map[string]interface{}, key string) int {
+func mapInt(m map[string]any, key string) int {
 	if v, ok := m[key].(float64); ok {
 		return int(v)
 	}
@@ -25,7 +25,7 @@ func mapInt(m map[string]interface{}, key string) int {
 }
 
 // mapBool extracts a bool value from a map by key.
-func mapBool(m map[string]interface{}, key string) bool {
+func mapBool(m map[string]any, key string) bool {
 	if v, ok := m[key].(bool); ok {
 		return v
 	}
@@ -33,7 +33,7 @@ func mapBool(m map[string]interface{}, key string) bool {
 }
 
 // parseMarkerFromMap converts a raw map into a Marker struct.
-func parseMarkerFromMap(m map[string]interface{}) Marker {
+func parseMarkerFromMap(m map[string]any) Marker {
 	return Marker{
 		UID:      mapString(m, "UID"),
 		FileUID:  mapString(m, "FileUID"),
@@ -56,19 +56,19 @@ func parseMarkerFromMap(m map[string]interface{}) Marker {
 }
 
 // extractMarkersFromFiles extracts markers from the Files array in photo details.
-func extractMarkersFromFiles(files []interface{}) []Marker {
+func extractMarkersFromFiles(files []any) []Marker {
 	var markers []Marker
 	for _, fileInterface := range files {
-		file, ok := fileInterface.(map[string]interface{})
+		file, ok := fileInterface.(map[string]any)
 		if !ok {
 			continue
 		}
-		fileMarkers, ok := file["Markers"].([]interface{})
+		fileMarkers, ok := file["Markers"].([]any)
 		if !ok {
 			continue
 		}
 		for _, markerInterface := range fileMarkers {
-			m, ok := markerInterface.(map[string]interface{})
+			m, ok := markerInterface.(map[string]any)
 			if !ok {
 				continue
 			}
@@ -89,7 +89,7 @@ func (pp *PhotoPrism) GetPhotoMarkers(photoUID string) ([]Marker, error) {
 		return nil, err
 	}
 
-	files, ok := details["Files"].([]interface{})
+	files, ok := details["Files"].([]any)
 	if !ok {
 		return nil, nil
 	}

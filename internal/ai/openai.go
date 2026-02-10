@@ -298,8 +298,8 @@ type batchRequest struct {
 
 type batchRequestBody struct {
 	Model          string                   `json:"model"`
-	Messages       []map[string]interface{} `json:"messages"`
-	ResponseFormat map[string]interface{}   `json:"response_format"`
+	Messages       []map[string]any `json:"messages"`
+	ResponseFormat map[string]any   `json:"response_format"`
 	MaxTokens      int                      `json:"max_tokens"`
 }
 
@@ -351,23 +351,23 @@ func (p *OpenAIProvider) CreatePhotoBatch(ctx context.Context, requests []BatchP
 			URL:      "/v1/chat/completions",
 			Body: batchRequestBody{
 				Model: chatModel,
-				Messages: []map[string]interface{}{
+				Messages: []map[string]any{
 					{
 						"role":    "system",
 						"content": systemPrompt,
 					},
 					{
 						"role": "user",
-						"content": []map[string]interface{}{
+						"content": []map[string]any{
 							{"type": "text", "text": userMessage},
-							{"type": "image_url", "image_url": map[string]interface{}{
+							{"type": "image_url", "image_url": map[string]any{
 								"url":    imageURL,
 								"detail": "low",
 							}},
 						},
 					},
 				},
-				ResponseFormat: map[string]interface{}{"type": "json_object"},
+				ResponseFormat: map[string]any{"type": "json_object"},
 				MaxTokens:      500,
 			},
 		}

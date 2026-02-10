@@ -9,11 +9,11 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/schollz/progressbar/v3"
-	"github.com/spf13/cobra"
 	"github.com/kozaktomas/photo-sorter/internal/config"
 	"github.com/kozaktomas/photo-sorter/internal/fingerprint"
 	"github.com/kozaktomas/photo-sorter/internal/photoprism"
+	"github.com/schollz/progressbar/v3"
+	"github.com/spf13/cobra"
 )
 
 var photoInfoCmd = &cobra.Command{
@@ -237,7 +237,7 @@ func runPhotoInfoAlbum(pp *photoprism.PhotoPrism, albumUID string, limit, concur
 }
 
 // detailsString extracts a string field from a details map.
-func detailsString(details map[string]interface{}, key string) string {
+func detailsString(details map[string]any, key string) string {
 	if v, ok := details[key].(string); ok {
 		return v
 	}
@@ -245,7 +245,7 @@ func detailsString(details map[string]interface{}, key string) string {
 }
 
 // detailsInt extracts a float64 field from a details map and returns it as int.
-func detailsInt(details map[string]interface{}, key string) int {
+func detailsInt(details map[string]any, key string) int {
 	if v, ok := details[key].(float64); ok {
 		return int(v)
 	}
@@ -253,14 +253,14 @@ func detailsInt(details map[string]interface{}, key string) int {
 }
 
 // detailsFloat64 extracts a float64 field from a details map.
-func detailsFloat64(details map[string]interface{}, key string) float64 {
+func detailsFloat64(details map[string]any, key string) float64 {
 	if v, ok := details[key].(float64); ok {
 		return v
 	}
 	return 0
 }
 
-func buildPhotoInfo(details map[string]interface{}, hashes *fingerprint.HashResult) fingerprint.PhotoInfo {
+func buildPhotoInfo(details map[string]any, hashes *fingerprint.HashResult) fingerprint.PhotoInfo {
 	return fingerprint.PhotoInfo{
 		UID:          detailsString(details, "UID"),
 		OriginalName: detailsString(details, "OriginalName"),
@@ -312,10 +312,13 @@ func buildPhotoInfoFromPhoto(p photoprism.Photo, hashes *fingerprint.HashResult)
 	}
 }
 
-func outputJSON(data interface{}) error {
+func outputJSON(data any) error {
 	encoder := json.NewEncoder(os.Stdout)
 	encoder.SetIndent("", "  ")
-	return encoder.Encode(data)
+	if err := encoder.Encode(data); err != nil {
+		return fmt.Errorf("encoding JSON output: %w", err)
+	}
+	return nil
 }
 
 // printPhotoMetadata prints the metadata section of photo info.

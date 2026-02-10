@@ -135,7 +135,7 @@ func (h *SortHandler) Events(w http.ResponseWriter, r *http.Request) {
 			}
 			return job
 		},
-		func(job SSEJob) interface{} {
+		func(job SSEJob) any {
 			return job
 		},
 	)
@@ -222,7 +222,7 @@ func (h *SortHandler) runSortJob(job *SortJob, session *middleware.Session) {
 			job.mu.Unlock()
 			job.SendEvent(JobEvent{
 				Type: "progress",
-				Data: map[string]interface{}{
+				Data: map[string]any{
 					"phase":            info.Phase,
 					"current":          info.Current,
 					"total":            info.Total,
@@ -307,10 +307,14 @@ func (h *SortHandler) createAIProvider(providerName string) (ai.Provider, error)
 			return nil, errors.New("GEMINI_API_KEY environment variable is required")
 		}
 		pricing := h.config.GetModelPricing("gemini-2.5-flash")
-		return ai.NewGeminiProvider(context.Background(), h.config.Gemini.APIKey,
+		provider, err := ai.NewGeminiProvider(context.Background(), h.config.Gemini.APIKey,
 			ai.RequestPricing{Input: pricing.Standard.Input, Output: pricing.Standard.Output},
 			ai.RequestPricing{Input: pricing.Batch.Input, Output: pricing.Batch.Output},
 		)
+		if err != nil {
+			return nil, fmt.Errorf("creating Gemini provider: %w", err)
+		}
+		return provider, nil
 	case constants.ProviderOllama:
 		return ai.NewOllamaProvider(h.config.Ollama.URL, h.config.Ollama.Model), nil
 	case constants.ProviderLlamaCpp:
@@ -320,7 +324,7 @@ func (h *SortHandler) createAIProvider(providerName string) (ai.Provider, error)
 	}
 }
 
-func sendSSEEvent(w http.ResponseWriter, flusher http.Flusher, eventType string, data interface{}) {
+func sendSSEEvent(w http.ResponseWriter, flusher http.Flusher, eventType string, data any) {
 	jsonData, _ := json.Marshal(data)
 	fmt.Fprintf(w, "event: %s\n", eventType)
 	fmt.Fprintf(w, "data: %s\n\n", jsonData)

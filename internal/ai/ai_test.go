@@ -501,7 +501,7 @@ func BenchmarkResizeImage_Small(b *testing.B) {
 	data := encodeJPEG(img)
 
 	b.ResetTimer()
-	for range b.N {
+	for b.Loop() {
 		ResizeImage(data, 50)
 	}
 }
@@ -511,7 +511,7 @@ func BenchmarkResizeImage_Large(b *testing.B) {
 	data := encodeJPEG(img)
 
 	b.ResetTimer()
-	for range b.N {
+	for b.Loop() {
 		ResizeImage(data, 1920)
 	}
 }

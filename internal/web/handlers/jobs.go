@@ -24,18 +24,18 @@ const (
 type SortJob struct {
 	EventBroadcaster
 
-	ID              string           `json:"id"`
-	AlbumUID        string           `json:"album_uid"`
-	AlbumTitle      string           `json:"album_title"`
-	Status          JobStatus        `json:"status"`
-	Progress        int              `json:"progress"`
-	TotalPhotos     int              `json:"total_photos"`
-	ProcessedPhotos int              `json:"processed_photos"`
-	Error           string           `json:"error,omitempty"`
-	StartedAt       time.Time        `json:"started_at"`
-	CompletedAt     *time.Time       `json:"completed_at,omitempty"`
-	Options         SortJobOptions   `json:"options"`
-	Result          *SortJobResult   `json:"result,omitempty"`
+	ID              string         `json:"id"`
+	AlbumUID        string         `json:"album_uid"`
+	AlbumTitle      string         `json:"album_title"`
+	Status          JobStatus      `json:"status"`
+	Progress        int            `json:"progress"`
+	TotalPhotos     int            `json:"total_photos"`
+	ProcessedPhotos int            `json:"processed_photos"`
+	Error           string         `json:"error,omitempty"`
+	StartedAt       time.Time      `json:"started_at"`
+	CompletedAt     *time.Time     `json:"completed_at,omitempty"`
+	Options         SortJobOptions `json:"options"`
+	Result          *SortJobResult `json:"result,omitempty"`
 
 	events chan JobEvent
 }
@@ -86,9 +86,9 @@ type UsageInfo struct {
 
 // JobEvent represents an event from a job
 type JobEvent struct {
-	Type    string      `json:"type"`
-	Message string      `json:"message,omitempty"`
-	Data    interface{} `json:"data,omitempty"`
+	Type    string `json:"type"`
+	Message string `json:"message,omitempty"`
+	Data    any    `json:"data,omitempty"`
 }
 
 // EventBroadcaster provides listener management and event broadcasting for async jobs.

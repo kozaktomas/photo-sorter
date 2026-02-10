@@ -55,10 +55,14 @@ func createAIProvider(providerName string, cfg *config.Config) (ai.Provider, err
 			return nil, errors.New("GEMINI_API_KEY environment variable is required")
 		}
 		pricing := cfg.GetModelPricing("gemini-2.5-flash")
-		return ai.NewGeminiProvider(context.Background(), cfg.Gemini.APIKey,
+		provider, err := ai.NewGeminiProvider(context.Background(), cfg.Gemini.APIKey,
 			ai.RequestPricing{Input: pricing.Standard.Input, Output: pricing.Standard.Output},
 			ai.RequestPricing{Input: pricing.Batch.Input, Output: pricing.Batch.Output},
 		)
+		if err != nil {
+			return nil, fmt.Errorf("creating Gemini provider: %w", err)
+		}
+		return provider, nil
 	case "ollama":
 		return ai.NewOllamaProvider(cfg.Ollama.URL, cfg.Ollama.Model), nil
 	case "llamacpp":
@@ -108,7 +112,7 @@ func printSortSuggestions(suggestions []ai.SortSuggestion, cfg *config.Config, i
 		}
 		fmt.Printf("  %s:\n", photoRef)
 		if len(s.Labels) > 0 {
-			var labelStrs []string
+			labelStrs := make([]string, 0, len(s.Labels))
 			for _, l := range s.Labels {
 				status := ""
 				if l.Confidence < 0.8 {

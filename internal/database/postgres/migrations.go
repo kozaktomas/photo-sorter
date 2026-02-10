@@ -107,7 +107,7 @@ func (p *Pool) Migrate(ctx context.Context) error {
 func (p *Pool) MigrationsApplied(ctx context.Context) ([]string, error) {
 	rows, err := p.db.QueryContext(ctx, "SELECT version FROM schema_migrations ORDER BY version")
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("query applied migrations: %w", err)
 	}
 	defer rows.Close()
 
@@ -115,9 +115,12 @@ func (p *Pool) MigrationsApplied(ctx context.Context) ([]string, error) {
 	for rows.Next() {
 		var v string
 		if err := rows.Scan(&v); err != nil {
-			return nil, err
+			return nil, fmt.Errorf("scan migration version: %w", err)
 		}
 		versions = append(versions, v)
 	}
-	return versions, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate migration versions: %w", err)
+	}
+	return versions, nil
 }

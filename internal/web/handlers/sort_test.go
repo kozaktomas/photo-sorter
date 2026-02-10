@@ -198,7 +198,7 @@ func TestSortHandler_Status_Success(t *testing.T) {
 	assertStatusCode(t, recorder, http.StatusOK)
 	assertContentType(t, recorder, "application/json")
 
-	var result map[string]interface{}
+	var result map[string]any
 	parseJSONResponse(t, recorder, &result)
 
 	if result["id"] != job.ID {

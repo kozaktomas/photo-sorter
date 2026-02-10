@@ -182,7 +182,7 @@ func (h *ProcessHandler) Start(w http.ResponseWriter, r *http.Request) {
 		ID:        jobID,
 		Status:    JobStatusPending,
 		StartedAt: time.Now(),
-		Options: ProcessJobOptions(req),
+		Options:   ProcessJobOptions(req),
 	}
 
 	h.jobManager.SetActiveJob(job)
@@ -206,7 +206,7 @@ func (h *ProcessHandler) Events(w http.ResponseWriter, r *http.Request) {
 			}
 			return job
 		},
-		func(job SSEJob) interface{} {
+		func(job SSEJob) any {
 			return job
 		},
 	)
@@ -274,11 +274,11 @@ func fetchAllPhotos(ctx context.Context, pp *photoprism.PhotoPrism) ([]photopris
 
 	for {
 		if ctx.Err() != nil {
-			return nil, ctx.Err()
+			return nil, fmt.Errorf("fetching photos cancelled: %w", ctx.Err())
 		}
 		photos, err := pp.GetPhotos(pageSize, offset)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("fetching photos: %w", err)
 		}
 		if len(photos) == 0 {
 			break
@@ -510,7 +510,7 @@ func (h *ProcessHandler) sendProgress(job *ProcessJob, processed int) {
 	job.mu.Unlock()
 	job.SendEvent(JobEvent{
 		Type: "progress",
-		Data: map[string]interface{}{
+		Data: map[string]any{
 			"processed": processed,
 			"total":     job.TotalPhotos,
 		},
@@ -719,7 +719,7 @@ func (h *ProcessHandler) RebuildIndex(w http.ResponseWriter, _ *http.Request) {
 func collectSyncPhotoUIDs(ctx context.Context, faceWriter database.FaceWriter, embWriter database.EmbeddingWriter) ([]string, error) {
 	faceUIDs, err := faceWriter.GetUniquePhotoUIDs(ctx)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("getting unique photo UIDs: %w", err)
 	}
 
 	uidSet := make(map[string]struct{}, len(faceUIDs))
@@ -835,7 +835,7 @@ func syncFaceMarkers(ctx context.Context, faceWriter database.FaceWriter, photoU
 
 // fetchPhotoDetailsForSync fetches photo details and handles deleted/archived photos.
 // Returns details and fileInfo on success, or (nil, nil, true) if the photo was deleted, or (nil, nil, false) on other errors.
-func fetchPhotoDetailsForSync(ctx context.Context, pp *photoprism.PhotoPrism, faceWriter database.FaceWriter, embWriter database.EmbeddingWriter, photoUID string) (details map[string]interface{}, fileInfo *facematch.PrimaryFileInfo, deleted bool) {
+func fetchPhotoDetailsForSync(ctx context.Context, pp *photoprism.PhotoPrism, faceWriter database.FaceWriter, embWriter database.EmbeddingWriter, photoUID string) (details map[string]any, fileInfo *facematch.PrimaryFileInfo, deleted bool) {
 	var err error
 	details, err = pp.GetPhotoDetails(photoUID)
 	if err != nil {

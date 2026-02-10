@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"strings"
@@ -110,7 +111,7 @@ func (sm *SessionManager) CreateSession(token, downloadToken string) (*Session, 
 	// Generate session ID
 	idBytes := make([]byte, 32)
 	if _, err := rand.Read(idBytes); err != nil {
-		return nil, err
+		return nil, fmt.Errorf("generating random bytes: %w", err)
 	}
 	sessionID := base64.URLEncoding.EncodeToString(idBytes)
 
@@ -238,30 +239,36 @@ func (sm *SessionManager) ClearSessionCookie(w http.ResponseWriter) {
 // GetSessionFromRequest extracts the session from a request
 func (sm *SessionManager) GetSessionFromRequest(r *http.Request) *Session {
 	// Try cookie first
-	cookie, err := r.Cookie(sessionCookieName)
-	if err == nil {
-		parts := strings.SplitN(cookie.Value, ".", 2)
-		if len(parts) == 2 {
-			sessionID := parts[0]
-			signature := parts[1]
-			if sm.verifySignature(sessionID, signature) {
-				if session := sm.GetSession(sessionID); session != nil {
-					return session
-				}
-			}
-		}
+	if session := sm.getSessionFromCookie(r); session != nil {
+		return session
 	}
 
 	// Try Authorization header
 	authHeader := r.Header.Get("Authorization")
-	if strings.HasPrefix(authHeader, "Bearer ") {
-		sessionID := strings.TrimPrefix(authHeader, "Bearer ")
+	if sessionID, ok := strings.CutPrefix(authHeader, "Bearer "); ok {
 		if session := sm.GetSession(sessionID); session != nil {
 			return session
 		}
 	}
 
 	return nil
+}
+
+// getSessionFromCookie extracts and validates a session from the request cookie.
+func (sm *SessionManager) getSessionFromCookie(r *http.Request) *Session {
+	cookie, err := r.Cookie(sessionCookieName)
+	if err != nil {
+		return nil
+	}
+	parts := strings.SplitN(cookie.Value, ".", 2)
+	if len(parts) != 2 {
+		return nil
+	}
+	sessionID := parts[0]
+	if !sm.verifySignature(sessionID, parts[1]) {
+		return nil
+	}
+	return sm.GetSession(sessionID)
 }
 
 // signData creates an HMAC signature for data
@@ -293,5 +300,9 @@ func (s *Session) ToJSON() SessionJSONData {
 
 // MarshalJSON implements json.Marshaler (excludes sensitive fields)
 func (s *Session) MarshalJSON() ([]byte, error) {
-	return json.Marshal(s.ToJSON())
+	data, err := json.Marshal(s.ToJSON())
+	if err != nil {
+		return nil, fmt.Errorf("marshaling session: %w", err)
+	}
+	return data, nil
 }

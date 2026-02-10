@@ -42,26 +42,26 @@ type primaryFileInfo struct {
 
 // findPrimaryFile locates the primary file map from the photo details Files list.
 // Falls back to the first file if no primary is found.
-func findPrimaryFile(details map[string]interface{}) map[string]interface{} {
-	files, ok := details["Files"].([]interface{})
+func findPrimaryFile(details map[string]any) map[string]any {
+	files, ok := details["Files"].([]any)
 	if !ok || len(files) == 0 {
 		return nil
 	}
 
 	for _, f := range files {
-		if file, ok := f.(map[string]interface{}); ok {
+		if file, ok := f.(map[string]any); ok {
 			if isPrimary, ok := file["Primary"].(bool); ok && isPrimary {
 				return file
 			}
 		}
 	}
 	// Fall back to first file if no primary found
-	primaryFile, _ := files[0].(map[string]interface{})
+	primaryFile, _ := files[0].(map[string]any)
 	return primaryFile
 }
 
 // parseFileInfo extracts UID, dimensions, and orientation from a file map.
-func parseFileInfo(file map[string]interface{}) *primaryFileInfo {
+func parseFileInfo(file map[string]any) *primaryFileInfo {
 	info := &primaryFileInfo{Orientation: 1} // Default orientation
 	if uid, ok := file["UID"].(string); ok {
 		info.UID = uid
@@ -80,7 +80,7 @@ func parseFileInfo(file map[string]interface{}) *primaryFileInfo {
 
 // extractPrimaryFileInfo extracts dimensions and orientation from the primary file in photo details.
 // Face detection runs on the primary file, so we must use its dimensions for coordinate conversion.
-func extractPrimaryFileInfo(details map[string]interface{}) *primaryFileInfo {
+func extractPrimaryFileInfo(details map[string]any) *primaryFileInfo {
 	primaryFile := findPrimaryFile(details)
 	if primaryFile == nil {
 		return nil

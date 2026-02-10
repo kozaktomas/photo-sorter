@@ -52,15 +52,15 @@ func (pp *PhotoPrism) UpdatePhotoLabel(photoUID string, labelID string, label Ph
 }
 
 // extractLabelIDs extracts label IDs from the Labels array in photo details.
-func extractLabelIDs(details map[string]interface{}) []string {
-	labels, ok := details["Labels"].([]interface{})
+func extractLabelIDs(details map[string]any) []string {
+	labels, ok := details["Labels"].([]any)
 	if !ok {
 		return nil
 	}
 
 	var labelIDs []string
 	for _, labelInterface := range labels {
-		label, ok := labelInterface.(map[string]interface{})
+		label, ok := labelInterface.(map[string]any)
 		if !ok {
 			continue
 		}

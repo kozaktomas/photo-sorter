@@ -188,9 +188,7 @@ func (r *EmbeddingRepository) findSimilarWithDistanceHNSW(embedding []float32, l
 
 	// Request more candidates to ensure we have enough after distance filtering
 	searchK := limit * database.HNSWSearchMultiplier
-	if searchK < 100 {
-		searchK = 100 // Minimum search size for better recall
-	}
+	searchK = max(searchK, 100) // Minimum search size for better recall
 
 	ids, distances, err := r.hnswIndex.SearchWithDistance(embedding, searchK, maxDistance)
 	if err != nil {
@@ -543,7 +541,7 @@ func (r *EmbeddingRepository) SaveHNSWIndex() error {
 	}
 
 	if err := r.hnswIndex.SaveWithEmbeddingMetadata(r.hnswIndexPath, metadata); err != nil {
-		return err
+		return fmt.Errorf("saving HNSW embedding index: %w", err)
 	}
 
 	fmt.Printf("Embedding index save: saved successfully (count=%d)\n", embCount)

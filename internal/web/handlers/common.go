@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 
 	"github.com/kozaktomas/photo-sorter/internal/config"
@@ -13,7 +14,7 @@ import (
 const errInvalidRequestBody = "invalid request body"
 
 // respondJSON sends a JSON response
-func respondJSON(w http.ResponseWriter, status int, data interface{}) {
+func respondJSON(w http.ResponseWriter, status int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	if data != nil {
@@ -31,10 +32,18 @@ func respondError(w http.ResponseWriter, status int, message string) {
 // This allows the API to work both with and without user sessions.
 func getPhotoPrismClient(cfg *config.Config, session *middleware.Session) (*photoprism.PhotoPrism, error) {
 	if session != nil && session.Token != "" {
-		return photoprism.NewPhotoPrismFromToken(cfg.PhotoPrism.URL, session.Token, session.DownloadToken)
+		pp, err := photoprism.NewPhotoPrismFromToken(cfg.PhotoPrism.URL, session.Token, session.DownloadToken)
+		if err != nil {
+			return nil, fmt.Errorf("creating PhotoPrism client from token: %w", err)
+		}
+		return pp, nil
 	}
 	// No session - authenticate directly with config credentials
-	return photoprism.NewPhotoPrism(cfg.PhotoPrism.URL, cfg.PhotoPrism.Username, cfg.PhotoPrism.Password)
+	pp, err := photoprism.NewPhotoPrism(cfg.PhotoPrism.URL, cfg.PhotoPrism.Username, cfg.PhotoPrism.Password)
+	if err != nil {
+		return nil, fmt.Errorf("creating PhotoPrism client: %w", err)
+	}
+	return pp, nil
 }
 
 // HealthCheck handles the health check endpoint

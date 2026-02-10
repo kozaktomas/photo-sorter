@@ -19,7 +19,7 @@ func TestFacesHandler_Apply_CreateMarker_Success(t *testing.T) {
 			}
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusCreated)
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			json.NewEncoder(w).Encode(map[string]any{
 				"UID":     "marker-new",
 				"FileUID": "file123",
 				"SubjUID": "subj123",
@@ -124,7 +124,7 @@ func TestFacesHandler_Apply_AssignPerson_Success(t *testing.T) {
 				return
 			}
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			json.NewEncoder(w).Encode(map[string]any{
 				"UID":     "marker123",
 				"SubjUID": "subj123",
 				"Name":    "John Doe",
@@ -199,7 +199,7 @@ func TestFacesHandler_Apply_UnassignPerson_Success(t *testing.T) {
 				return
 			}
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			json.NewEncoder(w).Encode(map[string]any{
 				"UID":     "marker123",
 				"SubjUID": "",
 				"Name":    "",

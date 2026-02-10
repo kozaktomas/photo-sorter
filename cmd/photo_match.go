@@ -15,13 +15,13 @@ import (
 	"sync"
 	"text/tabwriter"
 
-	"github.com/spf13/cobra"
 	"github.com/kozaktomas/photo-sorter/internal/config"
 	"github.com/kozaktomas/photo-sorter/internal/constants"
 	"github.com/kozaktomas/photo-sorter/internal/database"
 	"github.com/kozaktomas/photo-sorter/internal/database/postgres"
 	"github.com/kozaktomas/photo-sorter/internal/facematch"
 	"github.com/kozaktomas/photo-sorter/internal/photoprism"
+	"github.com/spf13/cobra"
 	"golang.org/x/image/draw"
 )
 
@@ -74,18 +74,18 @@ func init() {
 
 // MatchResult represents a photo that matches the person search
 type MatchResult struct {
-	PhotoUID   string               `json:"photo_uid"`
-	Distance   float64              `json:"distance"`
-	FaceIndex  int                  `json:"face_index"`
-	BBox       []float64            `json:"bbox"`                  // Our detected bbox [x1, y1, x2, y2] in pixels
-	BBoxRel    []float64            `json:"bbox_rel,omitempty"`    // Relative bbox [x, y, w, h] (0-1)
-	FileUID    string               `json:"file_uid,omitempty"`    // File UID for creating markers
+	PhotoUID   string                `json:"photo_uid"`
+	Distance   float64               `json:"distance"`
+	FaceIndex  int                   `json:"face_index"`
+	BBox       []float64             `json:"bbox"`                  // Our detected bbox [x1, y1, x2, y2] in pixels
+	BBoxRel    []float64             `json:"bbox_rel,omitempty"`    // Relative bbox [x, y, w, h] (0-1)
+	FileUID    string                `json:"file_uid,omitempty"`    // File UID for creating markers
 	Action     facematch.MatchAction `json:"action"`                // What action is needed
-	MarkerUID  string               `json:"marker_uid,omitempty"`  // Existing marker UID if found
-	MarkerName string               `json:"marker_name,omitempty"` // Existing marker name if assigned
-	IoU        float64              `json:"iou,omitempty"`         // IoU with matched marker
-	Applied    bool                 `json:"applied,omitempty"`     // Whether the change was applied
-	ApplyError string               `json:"apply_error,omitempty"` // Error message if apply failed
+	MarkerUID  string                `json:"marker_uid,omitempty"`  // Existing marker UID if found
+	MarkerName string                `json:"marker_name,omitempty"` // Existing marker name if assigned
+	IoU        float64               `json:"iou,omitempty"`         // IoU with matched marker
+	Applied    bool                  `json:"applied,omitempty"`     // Whether the change was applied
+	ApplyError string                `json:"apply_error,omitempty"` // Error message if apply failed
 }
 
 // MatchOutput represents the JSON output structure
@@ -103,7 +103,6 @@ type MatchSummary struct {
 	AssignPerson int `json:"assign_person"`
 	AlreadyDone  int `json:"already_done"`
 }
-
 
 // resizeImageForMatch resizes an image to fit within maxSize while maintaining aspect ratio
 func resizeImageForMatch(img image.Image, maxSize int) image.Image {
@@ -388,12 +387,12 @@ type sourceData struct {
 }
 
 // extractPhotoDimensions extracts width and height from photo details Files[0].
-func extractPhotoDimensions(details map[string]interface{}) (int, int) {
-	files, ok := details["Files"].([]interface{})
+func extractPhotoDimensions(details map[string]any) (int, int) {
+	files, ok := details["Files"].([]any)
 	if !ok || len(files) == 0 {
 		return 0, 0
 	}
-	file, ok := files[0].(map[string]interface{})
+	file, ok := files[0].(map[string]any)
 	if !ok {
 		return 0, 0
 	}
@@ -403,12 +402,12 @@ func extractPhotoDimensions(details map[string]interface{}) (int, int) {
 }
 
 // extractFileUID extracts the file UID from photo details Files[0].
-func extractFileUID(details map[string]interface{}) string {
-	files, ok := details["Files"].([]interface{})
+func extractFileUID(details map[string]any) string {
+	files, ok := details["Files"].([]any)
 	if !ok || len(files) == 0 {
 		return ""
 	}
-	file, ok := files[0].(map[string]interface{})
+	file, ok := files[0].(map[string]any)
 	if !ok {
 		return ""
 	}
@@ -417,7 +416,7 @@ func extractFileUID(details map[string]interface{}) string {
 }
 
 // warnf prints a formatted warning message if not in JSON output mode.
-func warnf(jsonOutput bool, format string, args ...interface{}) {
+func warnf(jsonOutput bool, format string, args ...any) {
 	if !jsonOutput {
 		fmt.Printf(format, args...)
 	}
@@ -1048,10 +1047,7 @@ func runPhotoMatch(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	minMatchCount := (len(sourceEmbeddings) + 19) / 20
-	if minMatchCount < 5 {
-		minMatchCount = 5
-	}
+	minMatchCount := max((len(sourceEmbeddings)+19)/20, 5)
 	warnf(!flags.jsonOutput, "Found %d face embeddings from source photos\nSearching for similar faces (threshold: %.2f, min matches: %d/%d)...\n",
 		len(sourceEmbeddings), flags.threshold, minMatchCount, len(sourceEmbeddings))
 

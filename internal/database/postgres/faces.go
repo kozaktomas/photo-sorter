@@ -304,9 +304,7 @@ func (r *FaceRepository) findSimilarWithDistanceHNSW(embedding []float32, limit 
 
 	// Request more candidates to ensure we have enough after distance filtering
 	searchK := limit * database.HNSWSearchMultiplier
-	if searchK < 100 {
-		searchK = 100 // Minimum search size for better recall
-	}
+	searchK = max(searchK, 100) // Minimum search size for better recall
 
 	ids, distances, err := r.hnswIndex.Search(embedding, searchK)
 	if err != nil {
@@ -691,7 +689,7 @@ func (r *FaceRepository) MarkFacesProcessedBatch(ctx context.Context, records []
 
 // scanFaceRow scans a single row into a StoredFace, with optional extra scan destinations
 // appended after the standard 16 face columns (e.g., a distance column).
-func scanFaceRow(scanner interface{ Scan(...interface{}) error }, extraDest ...interface{}) (database.StoredFace, error) {
+func scanFaceRow(scanner interface{ Scan(...any) error }, extraDest ...any) (database.StoredFace, error) {
 	var face database.StoredFace
 	var vec pgvector.Vector
 	var bbox pq.Float64Array
@@ -699,7 +697,8 @@ func scanFaceRow(scanner interface{ Scan(...interface{}) error }, extraDest ...i
 	var photoWidth, photoHeight, orientation sql.NullInt32
 	var model sql.NullString
 
-	dest := []interface{}{
+	dest := make([]any, 0, 16+len(extraDest))
+	dest = append(dest,
 		&face.ID,
 		&face.PhotoUID,
 		&face.FaceIndex,
@@ -716,7 +715,7 @@ func scanFaceRow(scanner interface{ Scan(...interface{}) error }, extraDest ...i
 		&photoHeight,
 		&orientation,
 		&fileUID,
-	}
+	)
 	dest = append(dest, extraDest...)
 
 	if err := scanner.Scan(dest...); err != nil {
@@ -951,7 +950,7 @@ func (r *FaceRepository) SaveHNSWIndex() error {
 	}
 
 	if err := r.hnswIndex.SaveWithFaceMetadata(r.hnswIndexPath, metadata); err != nil {
-		return err
+		return fmt.Errorf("saving HNSW face index: %w", err)
 	}
 
 	fmt.Printf("Face index save: saved successfully (count=%d, max_id=%d)\n", faceCount, maxFaceID)
@@ -1018,7 +1017,10 @@ func scanFaceIDs(tx *sql.Tx, ctx context.Context, photoUID string) ([]int64, err
 		}
 		ids = append(ids, id)
 	}
-	return ids, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate face IDs: %w", err)
+	}
+	return ids, nil
 }
 
 // Verify interface compliance

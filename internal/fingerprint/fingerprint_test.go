@@ -295,7 +295,7 @@ func createGradientImage(width, height int) *image.RGBA {
 	img := image.NewRGBA(image.Rect(0, 0, width, height))
 	for x := range width {
 		for y := range height {
-			gray := uint8((x + y) * 255 / (width + height)) //nolint:gosec // test image generation, values are bounded
+			gray := uint8((x + y) * 255 / (width + height))
 			img.Set(x, y, color.RGBA{gray, gray, gray, 255})
 		}
 	}
@@ -440,10 +440,7 @@ func TestResizeImage_NeedsResize(t *testing.T) {
 	}
 
 	bounds := decodedImg.Bounds()
-	maxDim := bounds.Dx()
-	if bounds.Dy() > maxDim {
-		maxDim = bounds.Dy()
-	}
+	maxDim := max(bounds.Dx(), bounds.Dy())
 
 	if maxDim > 500 {
 		t.Errorf("expected max dimension <= 500, got %d", maxDim)
@@ -675,7 +672,7 @@ func BenchmarkComputeHashes_Small(b *testing.B) {
 	data := encodeJPEG(img)
 
 	b.ResetTimer()
-	for range b.N {
+	for b.Loop() {
 		ComputeHashes(data)
 	}
 }
@@ -685,7 +682,7 @@ func BenchmarkComputeHashes_Large(b *testing.B) {
 	data := encodeJPEG(img)
 
 	b.ResetTimer()
-	for range b.N {
+	for b.Loop() {
 		ComputeHashes(data)
 	}
 }
@@ -695,7 +692,7 @@ func BenchmarkHammingDistance(b *testing.B) {
 	hash2 := uint64(0x123456789ABCDEF0)
 
 	b.ResetTimer()
-	for range b.N {
+	for b.Loop() {
 		HammingDistance(hash1, hash2)
 	}
 }
@@ -705,7 +702,7 @@ func BenchmarkResizeImage(b *testing.B) {
 	data := encodeJPEG(img)
 
 	b.ResetTimer()
-	for range b.N {
+	for b.Loop() {
 		ResizeImage(data, 500)
 	}
 }

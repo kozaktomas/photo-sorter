@@ -181,7 +181,7 @@ func computeFaceEmbeddings(ctx context.Context, embURL string, imageData []byte,
 	faceClient := fingerprint.NewEmbeddingClient(embURL, "faces")
 	faceResult, err := faceClient.ComputeFaceEmbeddings(ctx, imageData)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("computing face embeddings: %w", err)
 	}
 	faces := make([]database.StoredFace, len(faceResult.Faces))
 	for i, f := range faceResult.Faces {

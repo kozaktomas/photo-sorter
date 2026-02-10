@@ -44,7 +44,9 @@ func NewPool(dsn string) (*Pool, error) {
 // Close closes the connection pool
 func (p *Pool) Close() error {
 	if p.db != nil {
-		return p.db.Close()
+		if err := p.db.Close(); err != nil {
+			return fmt.Errorf("closing database connection: %w", err)
+		}
 	}
 	return nil
 }

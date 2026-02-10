@@ -69,7 +69,7 @@ type llamaCppMessage struct {
 }
 
 // llamaCppMessageContent can be a string or an array of content parts
-type llamaCppMessageContent interface{}
+type llamaCppMessageContent any
 
 type llamaCppContentPart struct {
 	Type     string               `json:"type"`

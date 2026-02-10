@@ -97,13 +97,7 @@ func computeMinMatchCount(sourceCount int, threshold float64) int {
 	if thresholdFactor > 0.05 {
 		thresholdFactor = 0.05
 	}
-	minMatchCount := int(float64(sourceCount) * thresholdFactor)
-	if minMatchCount < 1 {
-		minMatchCount = 1
-	}
-	if minMatchCount > 5 {
-		minMatchCount = 5
-	}
+	minMatchCount := min(max(int(float64(sourceCount)*thresholdFactor), 1), 5)
 	return minMatchCount
 }
 
@@ -208,7 +202,9 @@ func filterAndSortCandidates(matchMap map[string]*matchCandidate, minMatchCount,
 
 // resolveCandidateDimensions resolves width, height, orientation, and fileUID for a candidate.
 // Falls back to the PhotoPrism API if cached data is missing. Returns false if resolution fails.
-func resolveCandidateDimensions(c *matchCandidate, pp interface{ GetPhotoDetails(string) (map[string]interface{}, error) }) (width, height, orientation int, fileUID string, ok bool) {
+func resolveCandidateDimensions(c *matchCandidate, pp interface {
+	GetPhotoDetails(string) (map[string]any, error)
+}) (width, height, orientation int, fileUID string, ok bool) {
 	width, height, orientation = c.PhotoWidth, c.PhotoHeight, c.Orientation
 	fileUID = c.FileUID
 
@@ -240,7 +236,9 @@ func determineMatchAction(c *matchCandidate) (MatchAction, string, string) {
 
 // candidateToMatchResult converts a matchCandidate to a FaceMatchResult, fetching dimensions from the API if needed.
 // Returns nil if the candidate should be skipped.
-func candidateToMatchResult(c *matchCandidate, pp interface{ GetPhotoDetails(string) (map[string]interface{}, error) }) *FaceMatchResult {
+func candidateToMatchResult(c *matchCandidate, pp interface {
+	GetPhotoDetails(string) (map[string]any, error)
+}) *FaceMatchResult {
 	width, height, orientation, fileUID, ok := resolveCandidateDimensions(c, pp)
 	if !ok || len(c.BBox) != 4 {
 		return nil
@@ -263,7 +261,9 @@ func candidateToMatchResult(c *matchCandidate, pp interface{ GetPhotoDetails(str
 }
 
 // buildMatchResults converts candidates to match results and computes the summary
-func buildMatchResults(candidates []matchCandidate, pp interface{ GetPhotoDetails(string) (map[string]interface{}, error) }) ([]FaceMatchResult, MatchSummary) {
+func buildMatchResults(candidates []matchCandidate, pp interface {
+	GetPhotoDetails(string) (map[string]any, error)
+}) ([]FaceMatchResult, MatchSummary) {
 	matches := make([]FaceMatchResult, 0, len(candidates))
 	var summary MatchSummary
 

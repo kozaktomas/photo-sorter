@@ -43,7 +43,7 @@ func setupSSEConnection(w http.ResponseWriter, r *http.Request, lookupJob func(s
 // streamSSEEvents sets up SSE headers and streams events from an SSEJob until the job
 // completes, the client disconnects, or the event channel closes.
 // The lookupJob function retrieves the job by ID from the URL parameter "jobId".
-func streamSSEEvents(w http.ResponseWriter, r *http.Request, lookupJob func(string) SSEJob, getInitialData func(SSEJob) interface{}) {
+func streamSSEEvents(w http.ResponseWriter, r *http.Request, lookupJob func(string) SSEJob, getInitialData func(SSEJob) any) {
 	job, flusher, ok := setupSSEConnection(w, r, lookupJob)
 	if !ok {
 		return

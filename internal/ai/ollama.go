@@ -60,7 +60,7 @@ type ollamaRequest struct {
 	Messages []ollamaMessage `json:"messages"`
 	Stream   bool            `json:"stream"`
 	Format   string          `json:"format,omitempty"`
-	Options  ollamaOptions   `json:"options,omitempty"`
+	Options  ollamaOptions   `json:"options,omitzero"`
 }
 
 type ollamaMessage struct {

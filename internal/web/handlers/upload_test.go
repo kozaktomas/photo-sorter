@@ -23,7 +23,7 @@ func TestUploadHandler_Upload_Success(t *testing.T) {
 				return
 			}
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]interface{}{
+			json.NewEncoder(w).Encode(map[string]any{
 				"message": "uploaded",
 			})
 		},
@@ -195,7 +195,7 @@ func TestUploadHandler_Upload_MultipleFiles(t *testing.T) {
 		"/api/v1/upload/": func(w http.ResponseWriter, _ *http.Request) {
 			uploadCount++
 			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]interface{}{"message": "ok"})
+			json.NewEncoder(w).Encode(map[string]any{"message": "ok"})
 		},
 		"/api/v1/import": func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
@@ -233,7 +233,7 @@ func TestUploadHandler_Upload_MultipleFiles(t *testing.T) {
 
 	// Check the response parses correctly (may fail due to mock limitations)
 	if recorder.Code == http.StatusOK {
-		var result map[string]interface{}
+		var result map[string]any
 		if err := json.Unmarshal(recorder.Body.Bytes(), &result); err == nil {
 			if uploaded, ok := result["uploaded"].(float64); ok {
 				if int(uploaded) != 3 {

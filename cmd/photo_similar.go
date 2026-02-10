@@ -365,10 +365,13 @@ func outputSimilarByLabelResults(deps *similarLabelDeps, results []SimilarPhoto,
 	}
 
 	if jsonOutput {
-		return json.NewEncoder(os.Stdout).Encode(LabelSimilarOutput{
+		if err := json.NewEncoder(os.Stdout).Encode(LabelSimilarOutput{
 			Labels: labels, SourcePhotos: sourceList, Threshold: threshold,
 			Results: results, Count: len(results), Applied: appliedCount, Failed: failedCount,
-		})
+		}); err != nil {
+			return fmt.Errorf("encoding JSON output: %w", err)
+		}
+		return nil
 	}
 	return nil
 }
@@ -402,10 +405,7 @@ func runPhotoSimilarByLabel(labels []string, threshold float64, limit int, jsonO
 		return err
 	}
 
-	minMatchCount := (sourceEmbeddingCount + 19) / 20
-	if minMatchCount < 5 {
-		minMatchCount = 5
-	}
+	minMatchCount := max((sourceEmbeddingCount+19)/20, 5)
 	if !jsonOutput {
 		fmt.Printf("Requiring at least %d/%d source matches\n", minMatchCount, sourceEmbeddingCount)
 	}
@@ -497,10 +497,17 @@ func runPhotoSimilarByUID(photoUID string, threshold float64, limit int, jsonOut
 		return err
 	}
 
+	return outputSimilarByUIDResults(results, photoUID, threshold, cfg, jsonOutput)
+}
+
+func outputSimilarByUIDResults(results []SimilarPhoto, photoUID string, threshold float64, cfg *config.Config, jsonOutput bool) error {
 	if jsonOutput {
-		return json.NewEncoder(os.Stdout).Encode(SimilarOutput{
+		if err := json.NewEncoder(os.Stdout).Encode(SimilarOutput{
 			SourcePhotoUID: photoUID, Threshold: threshold, Results: results, Count: len(results),
-		})
+		}); err != nil {
+			return fmt.Errorf("encoding JSON output: %w", err)
+		}
+		return nil
 	}
 
 	if len(results) == 0 {

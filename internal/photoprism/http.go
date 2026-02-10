@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 )
 
@@ -48,29 +49,29 @@ func doGetJSON[T any](pp *PhotoPrism, endpoint string) (*T, error) {
 }
 
 // doPostJSON performs a POST request with a JSON body and unmarshals the JSON response.
-func doPostJSON[T any](pp *PhotoPrism, endpoint string, requestBody interface{}) (*T, error) {
+func doPostJSON[T any](pp *PhotoPrism, endpoint string, requestBody any) (*T, error) {
 	return doRequestJSON[T](pp, "POST", endpoint, requestBody, http.StatusOK)
 }
 
 // doPostJSONCreated performs a POST request that accepts either 200 OK or 201 Created.
 // Useful for endpoints that may return either status code.
-func doPostJSONCreated[T any](pp *PhotoPrism, endpoint string, requestBody interface{}) (*T, error) {
+func doPostJSONCreated[T any](pp *PhotoPrism, endpoint string, requestBody any) (*T, error) {
 	return doRequestJSON[T](pp, "POST", endpoint, requestBody, http.StatusOK, http.StatusCreated)
 }
 
 // doPutJSON performs a PUT request with a JSON body and unmarshals the JSON response.
-func doPutJSON[T any](pp *PhotoPrism, endpoint string, requestBody interface{}) (*T, error) {
+func doPutJSON[T any](pp *PhotoPrism, endpoint string, requestBody any) (*T, error) {
 	return doRequestJSON[T](pp, "PUT", endpoint, requestBody, http.StatusOK)
 }
 
 // doDeleteJSON performs a DELETE request with a JSON body and returns the unmarshaled response.
-func doDeleteJSON[T any](pp *PhotoPrism, endpoint string, requestBody interface{}) (*T, error) {
+func doDeleteJSON[T any](pp *PhotoPrism, endpoint string, requestBody any) (*T, error) {
 	return doRequestJSON[T](pp, "DELETE", endpoint, requestBody, http.StatusOK)
 }
 
 // doRequestJSON is the internal helper that performs HTTP requests with JSON body and response.
 // It accepts one or more valid status codes. If the response status doesn't match any, an error is returned.
-func doRequestJSON[T any](pp *PhotoPrism, method, endpoint string, requestBody interface{}, expectedStatuses ...int) (*T, error) {
+func doRequestJSON[T any](pp *PhotoPrism, method, endpoint string, requestBody any, expectedStatuses ...int) (*T, error) {
 	url := pp.Url + "/" + endpoint
 
 	var bodyReader io.Reader
@@ -118,7 +119,7 @@ func doRequestJSON[T any](pp *PhotoPrism, method, endpoint string, requestBody i
 }
 
 // doRequestRaw performs an HTTP request without JSON unmarshaling the response.
-func doRequestRaw(pp *PhotoPrism, method, endpoint string, requestBody interface{}) error {
+func doRequestRaw(pp *PhotoPrism, method, endpoint string, requestBody any) error {
 	url := pp.Url + "/" + endpoint
 
 	var bodyReader io.Reader
@@ -155,12 +156,7 @@ func doRequestRaw(pp *PhotoPrism, method, endpoint string, requestBody interface
 
 // isExpectedStatus checks if a status code is in the list of expected statuses.
 func isExpectedStatus(code int, expected []int) bool {
-	for _, s := range expected {
-		if code == s {
-			return true
-		}
-	}
-	return false
+	return slices.Contains(expected, code)
 }
 
 // IsNotFoundError returns true if the error indicates a 404 Not Found response.

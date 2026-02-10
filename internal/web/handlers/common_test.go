@@ -45,7 +45,7 @@ func TestRespondJSON_SetsStatusCode(t *testing.T) {
 
 func TestRespondJSON_EncodesData(t *testing.T) {
 	recorder := httptest.NewRecorder()
-	data := map[string]interface{}{
+	data := map[string]any{
 		"message": "hello",
 		"count":   42,
 		"active":  true,
@@ -53,7 +53,7 @@ func TestRespondJSON_EncodesData(t *testing.T) {
 
 	respondJSON(recorder, http.StatusOK, data)
 
-	var result map[string]interface{}
+	var result map[string]any
 	err := json.Unmarshal(recorder.Body.Bytes(), &result)
 	if err != nil {
 		t.Fatalf("failed to unmarshal response: %v", err)
@@ -130,7 +130,7 @@ func TestRespondJSON_NestedStruct(t *testing.T) {
 
 	respondJSON(recorder, http.StatusOK, data)
 
-	var result map[string]interface{}
+	var result map[string]any
 	err := json.Unmarshal(recorder.Body.Bytes(), &result)
 	if err != nil {
 		t.Fatalf("failed to unmarshal response: %v", err)
@@ -140,7 +140,7 @@ func TestRespondJSON_NestedStruct(t *testing.T) {
 		t.Errorf("expected name 'test', got '%v'", result["name"])
 	}
 
-	nested, ok := result["nested"].(map[string]interface{})
+	nested, ok := result["nested"].(map[string]any)
 	if !ok {
 		t.Fatal("expected nested object")
 	}

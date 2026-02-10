@@ -311,7 +311,7 @@ func setupErrorServer(statusCode int, body string) *httptest.Server {
 	// Auth always succeeds
 	mux.HandleFunc("/api/v1/sessions", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		json.NewEncoder(w).Encode(map[string]any{
 			"id":           "test-session-id",
 			"access_token": "test-token",
 			"config": map[string]string{
@@ -1155,13 +1155,13 @@ func TestGetPhotoDetails(t *testing.T) {
 	}
 
 	// Check nested Files array
-	files, ok := details["Files"].([]interface{})
+	files, ok := details["Files"].([]any)
 	if !ok || len(files) == 0 {
 		t.Fatal("expected non-empty Files array")
 	}
 
 	// Check Labels array
-	labels, ok := details["Labels"].([]interface{})
+	labels, ok := details["Labels"].([]any)
 	if !ok || len(labels) != 3 {
 		t.Errorf("expected 3 labels, got %d", len(labels))
 	}
@@ -1786,7 +1786,7 @@ func setupMockServerWithHandlers(t *testing.T, handlers map[string]http.HandlerF
 	// Mock auth endpoint (always needed)
 	mux.HandleFunc("/api/v1/sessions", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		json.NewEncoder(w).Encode(map[string]any{
 			"id":           "test-session-id",
 			"access_token": "test-token",
 			"config": map[string]string{
