@@ -3,6 +3,7 @@ package ai
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"google.golang.org/genai"
@@ -92,10 +93,10 @@ func (p *GeminiProvider) AnalyzePhoto(ctx context.Context, imageData []byte, met
 	var lastError error
 	var lastResponse string
 
-	for attempt := 0; attempt < maxRetries; attempt++ {
+	for range maxRetries {
 		result, err := p.client.Models.GenerateContent(ctx, geminiModel, contents, config)
 		if err != nil {
-			return nil, fmt.Errorf("Gemini API error: %w", err)
+			return nil, fmt.Errorf("gemini API error: %w", err)
 		}
 
 		// Track usage
@@ -105,7 +106,7 @@ func (p *GeminiProvider) AnalyzePhoto(ctx context.Context, imageData []byte, met
 
 		content := result.Text()
 		if content == "" {
-			return nil, fmt.Errorf("no response from Gemini")
+			return nil, errors.New("no response from Gemini")
 		}
 		lastResponse = content
 
@@ -152,7 +153,7 @@ func (p *GeminiProvider) EstimateAlbumDate(ctx context.Context, albumTitle strin
 
 	result, err := p.client.Models.GenerateContent(ctx, geminiModel, contents, config)
 	if err != nil {
-		return nil, fmt.Errorf("Gemini API error: %w", err)
+		return nil, fmt.Errorf("gemini API error: %w", err)
 	}
 
 	// Track usage
@@ -162,7 +163,7 @@ func (p *GeminiProvider) EstimateAlbumDate(ctx context.Context, albumTitle strin
 
 	content := result.Text()
 	if content == "" {
-		return nil, fmt.Errorf("no response from Gemini")
+		return nil, errors.New("no response from Gemini")
 	}
 
 	var estimate AlbumDateEstimate
@@ -177,7 +178,7 @@ func (p *GeminiProvider) EstimateAlbumDate(ctx context.Context, albumTitle strin
 
 func (p *GeminiProvider) CreatePhotoBatch(ctx context.Context, requests []BatchPhotoRequest) (string, error) {
 	if len(requests) == 0 {
-		return "", fmt.Errorf("no requests provided")
+		return "", errors.New("no requests provided")
 	}
 
 	// Build inlined requests and track photo UIDs in order
@@ -259,7 +260,7 @@ func (p *GeminiProvider) GetBatchResults(ctx context.Context, batchID string) ([
 	}
 
 	if batch.Dest == nil || len(batch.Dest.InlinedResponses) == 0 {
-		return nil, fmt.Errorf("no results available")
+		return nil, errors.New("no results available")
 	}
 
 	// Get stored photo UIDs

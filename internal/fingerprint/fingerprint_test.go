@@ -180,8 +180,8 @@ func TestResizeImage(t *testing.T) {
 func TestToGrayscale(t *testing.T) {
 	// Create a simple colored image
 	img := image.NewRGBA(image.Rect(0, 0, 10, 10))
-	for x := 0; x < 10; x++ {
-		for y := 0; y < 10; y++ {
+	for x := range 10 {
+		for y := range 10 {
 			img.Set(x, y, color.RGBA{255, 0, 0, 255}) // Red
 		}
 	}
@@ -283,8 +283,8 @@ func TestEmbeddingSimilar(t *testing.T) {
 
 func createTestImage(width, height int, c color.Color) *image.RGBA {
 	img := image.NewRGBA(image.Rect(0, 0, width, height))
-	for x := 0; x < width; x++ {
-		for y := 0; y < height; y++ {
+	for x := range width {
+		for y := range height {
 			img.Set(x, y, c)
 		}
 	}
@@ -293,9 +293,9 @@ func createTestImage(width, height int, c color.Color) *image.RGBA {
 
 func createGradientImage(width, height int) *image.RGBA {
 	img := image.NewRGBA(image.Rect(0, 0, width, height))
-	for x := 0; x < width; x++ {
-		for y := 0; y < height; y++ {
-			gray := uint8((x + y) * 255 / (width + height))
+	for x := range width {
+		for y := range height {
+			gray := uint8((x + y) * 255 / (width + height)) //nolint:gosec // test image generation, values are bounded
 			img.Set(x, y, color.RGBA{gray, gray, gray, 255})
 		}
 	}
@@ -336,7 +336,7 @@ func TestHammingDistance_MaxValue(t *testing.T) {
 
 func TestHammingDistance_SingleBitPositions(t *testing.T) {
 	// Test single bit at each position
-	for i := 0; i < 64; i++ {
+	for i := range 64 {
 		hash := uint64(1) << i
 		distance := HammingDistance(hash, 0)
 
@@ -624,7 +624,7 @@ func TestComputeHashes_HashStability(t *testing.T) {
 	data := encodeJPEG(img)
 
 	var lastPHash, lastDHash string
-	for i := 0; i < 5; i++ {
+	for i := range 5 {
 		result, err := ComputeHashes(data)
 		if err != nil {
 			t.Fatalf("iteration %d: ComputeHashes failed: %v", i, err)
@@ -675,7 +675,7 @@ func BenchmarkComputeHashes_Small(b *testing.B) {
 	data := encodeJPEG(img)
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		ComputeHashes(data)
 	}
 }
@@ -685,7 +685,7 @@ func BenchmarkComputeHashes_Large(b *testing.B) {
 	data := encodeJPEG(img)
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		ComputeHashes(data)
 	}
 }
@@ -695,7 +695,7 @@ func BenchmarkHammingDistance(b *testing.B) {
 	hash2 := uint64(0x123456789ABCDEF0)
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		HammingDistance(hash1, hash2)
 	}
 }
@@ -705,7 +705,7 @@ func BenchmarkResizeImage(b *testing.B) {
 	data := encodeJPEG(img)
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		ResizeImage(data, 500)
 	}
 }

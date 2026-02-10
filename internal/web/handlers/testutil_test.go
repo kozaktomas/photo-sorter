@@ -116,7 +116,3 @@ func assertJSONError(t *testing.T, recorder *httptest.ResponseRecorder, expected
 	}
 }
 
-// errorResponse represents a JSON error response
-type errorResponse struct {
-	Error string `json:"error"`
-}

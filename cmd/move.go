@@ -81,8 +81,8 @@ func runMove(cmd *cobra.Command, args []string) error {
 
 	// Collect photo UIDs
 	photoUIDs := make([]string, len(allPhotos))
-	for i, photo := range allPhotos {
-		photoUIDs[i] = photo.UID
+	for i := range allPhotos {
+		photoUIDs[i] = allPhotos[i].UID
 	}
 
 	// Add photos to new album

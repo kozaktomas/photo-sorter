@@ -1,13 +1,10 @@
 package photoprism
 
-import (
-	"fmt"
-	"net/http"
-)
+import "fmt"
 
 // GetAlbum retrieves a single album by UID
 func (pp *PhotoPrism) GetAlbum(albumUID string) (*Album, error) {
-	return doGetJSON[Album](pp, fmt.Sprintf("albums/%s", albumUID))
+	return doGetJSON[Album](pp, "albums/"+albumUID)
 }
 
 // GetAlbums retrieves albums from PhotoPrism
@@ -15,13 +12,13 @@ func (pp *PhotoPrism) GetAlbum(albumUID string) (*Album, error) {
 func (pp *PhotoPrism) GetAlbums(count int, offset int, order string, query string, albumType string) ([]Album, error) {
 	endpoint := fmt.Sprintf("albums?count=%d&offset=%d", count, offset)
 	if albumType != "" {
-		endpoint += fmt.Sprintf("&type=%s", albumType)
+		endpoint += "&type=" + albumType
 	}
 	if order != "" {
-		endpoint += fmt.Sprintf("&order=%s", order)
+		endpoint += "&order=" + order
 	}
 	if query != "" {
-		endpoint += fmt.Sprintf("&q=%s", query)
+		endpoint += "&q=" + query
 	}
 
 	result, err := doGetJSON[[]Album](pp, endpoint)
@@ -54,8 +51,7 @@ func (pp *PhotoPrism) AddPhotosToAlbum(albumUID string, photoUIDs []string) erro
 		Photos: photoUIDs,
 	}
 
-	_, err := doRequestRaw(pp, "POST", fmt.Sprintf("albums/%s/photos", albumUID), selection, http.StatusOK)
-	return err
+	return doRequestRaw(pp, "POST", fmt.Sprintf("albums/%s/photos", albumUID), selection)
 }
 
 // RemovePhotosFromAlbum removes photos from an album (keeps them in library)
@@ -70,8 +66,7 @@ func (pp *PhotoPrism) RemovePhotosFromAlbum(albumUID string, photoUIDs []string)
 		Photos: photoUIDs,
 	}
 
-	_, err := doRequestRaw(pp, "DELETE", fmt.Sprintf("albums/%s/photos", albumUID), selection, http.StatusOK)
-	return err
+	return doRequestRaw(pp, "DELETE", fmt.Sprintf("albums/%s/photos", albumUID), selection)
 }
 
 // GetAlbumPhotos retrieves photos from a specific album

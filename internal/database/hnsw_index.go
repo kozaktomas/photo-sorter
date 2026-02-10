@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/gob"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -39,7 +40,7 @@ func NewHNSWIndex() *HNSWIndex {
 }
 
 // BuildFromFaces builds the index from a slice of faces
-func (h *HNSWIndex) BuildFromFaces(faces []StoredFace) error {
+func (h *HNSWIndex) BuildFromFaces(faces []StoredFace) error { //nolint:dupl
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -80,7 +81,7 @@ func (h *HNSWIndex) Search(query []float32, k int) ([]int64, []float64, error) {
 	defer h.mu.RUnlock()
 
 	if h.graph == nil && h.savedGraph == nil {
-		return nil, nil, fmt.Errorf("index not initialized")
+		return nil, nil, errors.New("index not initialized")
 	}
 
 	var neighbors []hnsw.Node[int64]
@@ -162,8 +163,8 @@ func (h *HNSWIndex) Save() error {
 	}
 
 	if h.graph == nil {
-		// Remove existing file if index is empty
-		os.Remove(h.path)
+		// Remove existing file if index is empty (best-effort cleanup)
+		_ = os.Remove(h.path)
 		return nil
 	}
 
@@ -231,14 +232,14 @@ func (h *HNSWIndex) SaveWithMetadata(path string, metadata HNSWIndexMetadata) er
 	defer h.mu.RUnlock()
 
 	if h.graph == nil {
-		// Remove existing files if index is empty
-		os.Remove(path)
-		os.Remove(path + ".meta")
+		// Remove existing files if index is empty (best-effort cleanup)
+		_ = os.Remove(path)
+		_ = os.Remove(path + ".meta")
 		return nil
 	}
 
 	// Write graph to file
-	f, err := os.Create(path)
+	f, err := os.Create(path) //nolint:gosec // path is from trusted config
 	if err != nil {
 		return fmt.Errorf("failed to create HNSW index file: %w", err)
 	}
@@ -255,7 +256,7 @@ func (h *HNSWIndex) SaveWithMetadata(path string, metadata HNSWIndexMetadata) er
 		return fmt.Errorf("failed to marshal metadata: %w", err)
 	}
 
-	if err := os.WriteFile(path+".meta", metaData, 0644); err != nil {
+	if err := os.WriteFile(path+".meta", metaData, 0600); err != nil {
 		return fmt.Errorf("failed to write metadata file: %w", err)
 	}
 
@@ -267,7 +268,7 @@ func LoadHNSWMetadata(path string) (HNSWIndexMetadata, error) {
 	var metadata HNSWIndexMetadata
 
 	metaPath := path + ".meta"
-	data, err := os.ReadFile(metaPath)
+	data, err := os.ReadFile(metaPath) //nolint:gosec // path is from trusted config
 	if err != nil {
 		return metadata, fmt.Errorf("failed to read metadata file: %w", err)
 	}
@@ -289,7 +290,7 @@ func SaveFaceMetadata(path string, faces []StoredFace) error {
 		return fmt.Errorf("failed to encode faces: %w", err)
 	}
 
-	if err := os.WriteFile(facesPath, buf.Bytes(), 0644); err != nil {
+	if err := os.WriteFile(facesPath, buf.Bytes(), 0600); err != nil {
 		return fmt.Errorf("failed to write faces file: %w", err)
 	}
 
@@ -300,7 +301,7 @@ func SaveFaceMetadata(path string, faces []StoredFace) error {
 func LoadFaceMetadata(path string) ([]StoredFace, error) {
 	facesPath := path + ".faces"
 
-	data, err := os.ReadFile(facesPath)
+	data, err := os.ReadFile(facesPath) //nolint:gosec // path is from trusted config
 	if err != nil {
 		return nil, fmt.Errorf("failed to read faces file: %w", err)
 	}
@@ -352,16 +353,16 @@ func (h *HNSWIndex) SaveWithFaceMetadata(path string, metadata HNSWIndexMetadata
 	defer h.mu.RUnlock()
 
 	if h.graph == nil && h.savedGraph == nil {
-		// Remove existing files if index is empty
+		// Remove existing files if index is empty (best-effort cleanup)
 		fmt.Printf("Face index save: no graph loaded, removing files\n")
-		os.Remove(path)
-		os.Remove(path + ".meta")
-		os.Remove(path + ".faces")
+		_ = os.Remove(path)
+		_ = os.Remove(path + ".meta")
+		_ = os.Remove(path + ".faces")
 		return nil
 	}
 
 	// Write graph to file - use savedGraph if available (loaded from disk), otherwise use graph (built fresh)
-	f, err := os.Create(path)
+	f, err := os.Create(path) //nolint:gosec // path is from trusted config
 	if err != nil {
 		return fmt.Errorf("failed to create HNSW index file: %w", err)
 	}
@@ -369,16 +370,16 @@ func (h *HNSWIndex) SaveWithFaceMetadata(path string, metadata HNSWIndexMetadata
 	if h.savedGraph != nil {
 		// SavedGraph embeds *Graph, so we can call Export on it
 		if err := h.savedGraph.Export(f); err != nil {
-			f.Close()
+			_ = f.Close()
 			return fmt.Errorf("failed to export HNSW graph from savedGraph: %w", err)
 		}
 	} else {
 		if err := h.graph.Export(f); err != nil {
-			f.Close()
+			_ = f.Close()
 			return fmt.Errorf("failed to export HNSW graph: %w", err)
 		}
 	}
-	f.Close() // Close explicitly before writing other files
+	_ = f.Close() // Close explicitly before writing other files
 	fmt.Printf("Face index: wrote graph to %s\n", path)
 
 	// Write metadata to separate file
@@ -389,7 +390,7 @@ func (h *HNSWIndex) SaveWithFaceMetadata(path string, metadata HNSWIndexMetadata
 	}
 
 	metaPath := path + ".meta"
-	if err := os.WriteFile(metaPath, metaData, 0644); err != nil {
+	if err := os.WriteFile(metaPath, metaData, 0600); err != nil {
 		return fmt.Errorf("failed to write metadata file: %w", err)
 	}
 	fmt.Printf("Face index: wrote metadata to %s (%d bytes)\n", metaPath, len(metaData))

@@ -107,9 +107,9 @@ func (h *FacesHandler) GetPhotoFaces(w http.ResponseWriter, r *http.Request) {
 	// Get all subjects for looking up person info
 	subjects, _ := pp.GetSubjects(constants.DefaultSubjectCount, 0)
 	subjectMap := make(map[string]photoprism.Subject)
-	for _, s := range subjects {
-		subjectMap[s.Name] = s
-		subjectMap[s.UID] = s
+	for i := range subjects {
+		subjectMap[subjects[i].Name] = subjects[i]
+		subjectMap[subjects[i].UID] = subjects[i]
 	}
 
 	// Build response faces
@@ -146,7 +146,7 @@ func (h *FacesHandler) GetPhotoFaces(w http.ResponseWriter, r *http.Request) {
 		bestIoU := 0.0
 
 		for i := range markers {
-			if markers[i].Type != "face" {
+			if markers[i].Type != constants.MarkerTypeFace {
 				continue
 			}
 			markerBBox := markerToRelativeBBox(markers[i])
@@ -178,8 +178,9 @@ func (h *FacesHandler) GetPhotoFaces(w http.ResponseWriter, r *http.Request) {
 
 	// Append unmatched markers (faces detected by PhotoPrism but not in embeddings database)
 	unmatchedIdx := -1
-	for _, m := range markers {
-		if m.Type != "face" || matchedMarkerUIDs[m.UID] {
+	for i := range markers {
+		m := &markers[i]
+		if m.Type != constants.MarkerTypeFace || matchedMarkerUIDs[m.UID] {
 			continue
 		}
 		face := PhotoFace{
@@ -200,8 +201,8 @@ func (h *FacesHandler) GetPhotoFaces(w http.ResponseWriter, r *http.Request) {
 
 	// Count face markers from PhotoPrism
 	faceMarkerCount := 0
-	for _, m := range markers {
-		if m.Type == "face" {
+	for i := range markers {
+		if markers[i].Type == constants.MarkerTypeFace {
 			faceMarkerCount++
 		}
 	}
@@ -307,7 +308,7 @@ func (h *FacesHandler) findFaceSuggestions(
 	}
 
 	// Sort by confidence (descending)
-	for i := 0; i < len(suggestions)-1; i++ {
+	for i := range len(suggestions) - 1 {
 		for j := i + 1; j < len(suggestions); j++ {
 			if suggestions[j].Confidence > suggestions[i].Confidence {
 				suggestions[i], suggestions[j] = suggestions[j], suggestions[i]

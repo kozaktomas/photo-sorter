@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/config"
 	"github.com/kozaktomas/photo-sorter/internal/constants"
 	"github.com/kozaktomas/photo-sorter/internal/sorter"
+
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
 
@@ -58,7 +60,7 @@ func (h *SortHandler) Start(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if req.Provider == "" {
-		req.Provider = "openai"
+		req.Provider = constants.ProviderOpenAI
 	}
 
 	if req.Concurrency <= 0 {
@@ -291,27 +293,27 @@ func (h *SortHandler) failJob(job *SortJob, message string) {
 
 func (h *SortHandler) createAIProvider(providerName string) (ai.Provider, error) {
 	switch providerName {
-	case "openai":
+	case constants.ProviderOpenAI:
 		if h.config.OpenAI.Token == "" {
-			return nil, fmt.Errorf("OPENAI_TOKEN environment variable is required")
+			return nil, errors.New("OPENAI_TOKEN environment variable is required")
 		}
 		pricing := h.config.GetModelPricing("gpt-4.1-mini")
 		return ai.NewOpenAIProvider(h.config.OpenAI.Token,
 			ai.RequestPricing{Input: pricing.Standard.Input, Output: pricing.Standard.Output},
 			ai.RequestPricing{Input: pricing.Batch.Input, Output: pricing.Batch.Output},
 		), nil
-	case "gemini":
+	case constants.ProviderGemini:
 		if h.config.Gemini.APIKey == "" {
-			return nil, fmt.Errorf("GEMINI_API_KEY environment variable is required")
+			return nil, errors.New("GEMINI_API_KEY environment variable is required")
 		}
 		pricing := h.config.GetModelPricing("gemini-2.5-flash")
 		return ai.NewGeminiProvider(context.Background(), h.config.Gemini.APIKey,
 			ai.RequestPricing{Input: pricing.Standard.Input, Output: pricing.Standard.Output},
 			ai.RequestPricing{Input: pricing.Batch.Input, Output: pricing.Batch.Output},
 		)
-	case "ollama":
+	case constants.ProviderOllama:
 		return ai.NewOllamaProvider(h.config.Ollama.URL, h.config.Ollama.Model), nil
-	case "llamacpp":
+	case constants.ProviderLlamaCpp:
 		return ai.NewLlamaCppProvider(h.config.LlamaCpp.URL, h.config.LlamaCpp.Model), nil
 	default:
 		return nil, fmt.Errorf("unknown provider: %s", providerName)

@@ -3,6 +3,7 @@ package cmd
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"image"
 	"image/color"
@@ -153,7 +154,7 @@ func drawBoundingBox(img image.Image, bbox []float64, lineWidth int, padding int
 	red := color.RGBA{255, 0, 0, 255}
 
 	// Draw rectangle lines
-	for w := 0; w < lineWidth; w++ {
+	for w := range lineWidth {
 		// Top line
 		for x := x1; x <= x2; x++ {
 			if y1+w >= 0 && y1+w < bounds.Dy() && x >= 0 && x < bounds.Dx() {
@@ -190,7 +191,7 @@ func findPersonMarker(markers []photoprism.Marker, personName string) *photopris
 	personNameNorm := facematch.NormalizePersonName(personName)
 
 	for i := range markers {
-		if markers[i].Type != "face" {
+		if markers[i].Type != constants.MarkerTypeFace {
 			continue
 		}
 		markerNameNorm := facematch.NormalizePersonName(markers[i].Name)
@@ -263,7 +264,7 @@ func findBestMarkerForBBox(markers []photoprism.Marker, bboxRel []float64) (*pho
 	bestIoU := 0.0
 
 	for i := range markers {
-		if markers[i].Type != "face" {
+		if markers[i].Type != constants.MarkerTypeFace {
 			continue
 		}
 		markerBBox := facematch.MarkerToCornerBBox(markers[i].X, markers[i].Y, markers[i].W, markers[i].H)
@@ -301,13 +302,13 @@ func saveMatchedPhoto(pp *photoprism.PhotoPrism, photoUID string, bbox []float64
 	img = resizeImageForMatch(img, 1080)
 
 	// Ensure output directory exists
-	if err := os.MkdirAll(outputDir, 0755); err != nil {
+	if err := os.MkdirAll(outputDir, 0750); err != nil {
 		return fmt.Errorf("mkdir failed: %w", err)
 	}
 
 	// Save as JPEG
 	outPath := filepath.Join(outputDir, photoUID+".jpg")
-	f, err := os.Create(outPath)
+	f, err := os.Create(outPath) //nolint:gosec // path is constructed from sanitized photo UID
 	if err != nil {
 		return fmt.Errorf("create file failed: %w", err)
 	}
@@ -334,7 +335,7 @@ func runPhotoMatch(cmd *cobra.Command, args []string) error {
 
 	// Initialize PostgreSQL database
 	if cfg.Database.URL == "" {
-		return fmt.Errorf("DATABASE_URL environment variable is required")
+		return errors.New("DATABASE_URL environment variable is required")
 	}
 	if err := postgres.Initialize(&cfg.Database); err != nil {
 		return fmt.Errorf("failed to initialize PostgreSQL: %w", err)
@@ -375,7 +376,7 @@ func runPhotoMatch(cmd *cobra.Command, args []string) error {
 	}
 
 	// Fetch photos for the person from PhotoPrism
-	query := fmt.Sprintf("person:%s", personName)
+	query := "person:" + personName
 	if !jsonOutput {
 		fmt.Printf("Searching for photos with query: %s\n", query)
 	}
@@ -456,7 +457,7 @@ func runPhotoMatch(cmd *cobra.Command, args []string) error {
 				// List available marker names for debugging
 				var names []string
 				for _, m := range markers {
-					if m.Type == "face" {
+					if m.Type == constants.MarkerTypeFace {
 						names = append(names, fmt.Sprintf("%q", m.Name))
 					}
 				}
@@ -512,10 +513,8 @@ func runPhotoMatch(cmd *cobra.Command, args []string) error {
 				Embedding: bestFace.Embedding,
 				BBox:      bestFace.BBox,
 			})
-		} else {
-			if !jsonOutput {
-				fmt.Printf("Warning: no matching face for marker in %s\n", photo.UID)
-			}
+		} else if !jsonOutput {
+			fmt.Printf("Warning: no matching face for marker in %s\n", photo.UID)
 		}
 	}
 
@@ -653,7 +652,7 @@ func runPhotoMatch(cmd *cobra.Command, args []string) error {
 	}
 
 	// Sort by distance (ascending)
-	for i := 0; i < len(candidates)-1; i++ {
+	for i := range len(candidates) - 1 {
 		for j := i + 1; j < len(candidates); j++ {
 			if candidates[j].Distance < candidates[i].Distance {
 				candidates[i], candidates[j] = candidates[j], candidates[i]
@@ -762,6 +761,8 @@ func runPhotoMatch(cmd *cobra.Command, args []string) error {
 			summary.AssignPerson++
 		case facematch.ActionAlreadyDone:
 			summary.AlreadyDone++
+		case facematch.ActionUnassignPerson:
+			// Not applicable in match context
 		}
 
 		matches = append(matches, result)
@@ -802,6 +803,8 @@ func runPhotoMatch(cmd *cobra.Command, args []string) error {
 						fmt.Printf("  [DRY-RUN] Would create marker for %s and assign %s\n", m.PhotoUID, nameToApply)
 					case facematch.ActionAssignPerson:
 						fmt.Printf("  [DRY-RUN] Would assign %s to marker %s on %s\n", nameToApply, m.MarkerUID, m.PhotoUID)
+					case facematch.ActionAlreadyDone, facematch.ActionUnassignPerson:
+						// Not applicable
 					}
 				}
 				continue
@@ -821,7 +824,7 @@ func runPhotoMatch(cmd *cobra.Command, args []string) error {
 
 				marker := photoprism.MarkerCreate{
 					FileUID: m.FileUID,
-					Type:    "face",
+					Type:    constants.MarkerTypeFace,
 					X:       m.BBoxRel[0],
 					Y:       m.BBoxRel[1],
 					W:       m.BBoxRel[2],
@@ -876,6 +879,9 @@ func runPhotoMatch(cmd *cobra.Command, args []string) error {
 						fmt.Printf("  Assigned %s to marker %s on %s\n", nameToApply, m.MarkerUID, m.PhotoUID)
 					}
 				}
+
+			case facematch.ActionAlreadyDone, facematch.ActionUnassignPerson:
+				// Skipped above
 			}
 		}
 
@@ -893,20 +899,20 @@ func runPhotoMatch(cmd *cobra.Command, args []string) error {
 		}
 
 		savedCount := 0
-		for _, m := range matches {
-			if len(m.BBox) != 4 {
+		for i := range matches {
+			if len(matches[i].BBox) != 4 {
 				continue
 			}
 
-			err := saveMatchedPhoto(pp, m.PhotoUID, m.BBox, outputDir)
+			err := saveMatchedPhoto(pp, matches[i].PhotoUID, matches[i].BBox, outputDir)
 			if err != nil {
 				if !jsonOutput {
-					fmt.Fprintf(os.Stderr, "  Error saving %s: %v\n", m.PhotoUID, err)
+					fmt.Fprintf(os.Stderr, "  Error saving %s: %v\n", matches[i].PhotoUID, err)
 				}
 			} else {
 				savedCount++
 				if !jsonOutput {
-					fmt.Printf("  Saved %s.jpg\n", m.PhotoUID)
+					fmt.Printf("  Saved %s.jpg\n", matches[i].PhotoUID)
 				}
 			}
 		}
@@ -938,7 +944,8 @@ func runPhotoMatch(cmd *cobra.Command, args []string) error {
 	fmt.Fprintln(w, "PHOTO\tDISTANCE\tACTION\tMARKER UID\tMARKER NAME\tIoU")
 	fmt.Fprintln(w, "-----\t--------\t------\t----------\t-----------\t---")
 
-	for _, m := range matches {
+	for i := range matches {
+		m := &matches[i]
 		photoRef := m.PhotoUID
 		if url := cfg.PhotoPrism.PhotoURL(m.PhotoUID); url != "" {
 			photoRef = url

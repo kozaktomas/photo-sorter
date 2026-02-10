@@ -192,12 +192,12 @@ func TestUploadHandler_Upload_NoPhotoPrismClient(t *testing.T) {
 func TestUploadHandler_Upload_MultipleFiles(t *testing.T) {
 	uploadCount := 0
 	server := setupMockPhotoPrismServer(t, map[string]http.HandlerFunc{
-		"/api/v1/upload/": func(w http.ResponseWriter, r *http.Request) {
+		"/api/v1/upload/": func(w http.ResponseWriter, _ *http.Request) {
 			uploadCount++
 			w.Header().Set("Content-Type", "application/json")
 			json.NewEncoder(w).Encode(map[string]interface{}{"message": "ok"})
 		},
-		"/api/v1/import": func(w http.ResponseWriter, r *http.Request) {
+		"/api/v1/import": func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		},
 	})
@@ -216,7 +216,7 @@ func TestUploadHandler_Upload_MultipleFiles(t *testing.T) {
 	writer.WriteField("album_uid", "album123")
 
 	// Add multiple files
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		part, _ := writer.CreateFormFile("files", "test"+string(rune('0'+i))+".jpg")
 		part.Write([]byte("fake image data " + string(rune('0'+i))))
 	}

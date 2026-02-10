@@ -1,6 +1,9 @@
 package ai
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // buildAlbumDatePrompt returns the embedded album date estimation prompt.
 func buildAlbumDatePrompt() string {
@@ -10,13 +13,14 @@ func buildAlbumDatePrompt() string {
 // buildAlbumDateContent builds the user message content for album date estimation.
 // This is shared across all AI providers.
 func buildAlbumDateContent(albumTitle, albumDescription string, photoDescriptions []string) string {
-	content := fmt.Sprintf("Album title: %s\n", albumTitle)
+	var b strings.Builder
+	fmt.Fprintf(&b, "Album title: %s\n", albumTitle)
 	if albumDescription != "" {
-		content += fmt.Sprintf("Album description: %s\n", albumDescription)
+		fmt.Fprintf(&b, "Album description: %s\n", albumDescription)
 	}
-	content += "\nPhoto descriptions:\n"
+	b.WriteString("\nPhoto descriptions:\n")
 	for i, desc := range photoDescriptions {
-		content += fmt.Sprintf("%d. %s\n", i+1, desc)
+		fmt.Fprintf(&b, "%d. %s\n", i+1, desc)
 	}
-	return content
+	return b.String()
 }

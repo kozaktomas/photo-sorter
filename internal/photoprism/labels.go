@@ -1,9 +1,6 @@
 package photoprism
 
-import (
-	"fmt"
-	"net/http"
-)
+import "fmt"
 
 // GetLabels retrieves labels from PhotoPrism
 func (pp *PhotoPrism) GetLabels(count int, offset int, all bool) ([]Label, error) {
@@ -21,7 +18,7 @@ func (pp *PhotoPrism) GetLabels(count int, offset int, all bool) ([]Label, error
 
 // UpdateLabel updates a label's metadata
 func (pp *PhotoPrism) UpdateLabel(uid string, update LabelUpdate) (*Label, error) {
-	return doPutJSON[Label](pp, fmt.Sprintf("labels/%s", uid), update)
+	return doPutJSON[Label](pp, "labels/"+uid, update)
 }
 
 // DeleteLabels deletes multiple labels by their UIDs
@@ -36,8 +33,7 @@ func (pp *PhotoPrism) DeleteLabels(labelUIDs []string) error {
 		Labels: labelUIDs,
 	}
 
-	_, err := doRequestRaw(pp, "POST", "batch/labels/delete", selection, http.StatusOK)
-	return err
+	return doRequestRaw(pp, "POST", "batch/labels/delete", selection)
 }
 
 // AddPhotoLabel adds a label/tag to a photo

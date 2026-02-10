@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strconv"
@@ -23,7 +24,7 @@ func NewBooksHandler(cfg *config.Config, sm *middleware.SessionManager) *BooksHa
 }
 
 func getBookWriter(w http.ResponseWriter) database.BookWriter {
-	writer, err := database.GetBookWriter(nil)
+	writer, err := database.GetBookWriter(context.TODO())
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "book storage not available")
 		return nil
@@ -208,10 +209,11 @@ func (h *BooksHandler) GetBook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	pageResps := make([]pageResponse, len(pages))
-	for i, p := range pages {
+	for i := range pages {
+		p := &pages[i]
 		slots := make([]slotResponse, len(p.Slots))
-		for j, s := range p.Slots {
-			slots[j] = slotResponse{SlotIndex: s.SlotIndex, PhotoUID: s.PhotoUID}
+		for j := range p.Slots {
+			slots[j] = slotResponse{SlotIndex: p.Slots[j].SlotIndex, PhotoUID: p.Slots[j].PhotoUID}
 		}
 		pageResps[i] = pageResponse{
 			ID:          p.ID,

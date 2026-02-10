@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -55,7 +56,7 @@ func runSort(cmd *cobra.Command, args []string) error {
 	switch providerName {
 	case "openai":
 		if cfg.OpenAI.Token == "" {
-			return fmt.Errorf("OPENAI_TOKEN environment variable is required")
+			return errors.New("OPENAI_TOKEN environment variable is required")
 		}
 		pricing := cfg.GetModelPricing("gpt-4.1-mini")
 		aiProvider = ai.NewOpenAIProvider(cfg.OpenAI.Token,
@@ -64,7 +65,7 @@ func runSort(cmd *cobra.Command, args []string) error {
 		)
 	case "gemini":
 		if cfg.Gemini.APIKey == "" {
-			return fmt.Errorf("GEMINI_API_KEY environment variable is required")
+			return errors.New("GEMINI_API_KEY environment variable is required")
 		}
 		pricing := cfg.GetModelPricing("gemini-2.5-flash")
 		var err error

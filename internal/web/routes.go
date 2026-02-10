@@ -12,7 +12,6 @@ import (
 )
 
 func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
-
 	// Create handlers
 	authHandler := handlers.NewAuthHandler(s.config, sessionManager)
 	albumsHandler := handlers.NewAlbumsHandler(s.config, sessionManager)

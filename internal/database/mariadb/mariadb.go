@@ -3,6 +3,7 @@ package mariadb
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -17,7 +18,7 @@ type Pool struct {
 // NewPool creates a new MariaDB connection pool
 func NewPool(dsn string) (*Pool, error) {
 	if dsn == "" {
-		return nil, fmt.Errorf("MariaDB DSN is required")
+		return nil, errors.New("MariaDB DSN is required")
 	}
 
 	db, err := sql.Open("mysql", dsn)
@@ -33,7 +34,7 @@ func NewPool(dsn string) (*Pool, error) {
 	defer cancel()
 
 	if err := db.PingContext(ctx); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("failed to ping MariaDB: %w", err)
 	}
 

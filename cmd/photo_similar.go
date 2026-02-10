@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -108,12 +109,12 @@ func runPhotoSimilar(cmd *cobra.Command, args []string) error {
 
 	// --apply only works with --label
 	if apply || dryRun {
-		return fmt.Errorf("--apply and --dry-run flags require --label flag")
+		return errors.New("--apply and --dry-run flags require --label flag")
 	}
 
 	// Single photo mode - require exactly one argument
 	if len(args) != 1 {
-		return fmt.Errorf("requires either a photo-uid argument or --label flag")
+		return errors.New("requires either a photo-uid argument or --label flag")
 	}
 
 	return runPhotoSimilarByUID(args[0], threshold, limit, jsonOutput)
@@ -125,7 +126,7 @@ func runPhotoSimilarByLabel(labels []string, threshold float64, limit int, jsonO
 
 	// Initialize PostgreSQL database
 	if cfg.Database.URL == "" {
-		return fmt.Errorf("DATABASE_URL environment variable is required")
+		return errors.New("DATABASE_URL environment variable is required")
 	}
 	if err := postgres.Initialize(&cfg.Database); err != nil {
 		return fmt.Errorf("failed to initialize PostgreSQL: %w", err)
@@ -166,7 +167,7 @@ func runPhotoSimilarByLabel(labels []string, threshold float64, limit int, jsonO
 			fmt.Printf("Fetching photos with label '%s'...\n", label)
 		}
 
-		query := fmt.Sprintf("label:%s", label)
+		query := "label:" + label
 		offset := 0
 		pageSize := 100
 
@@ -395,7 +396,7 @@ func runPhotoSimilarByUID(photoUID string, threshold float64, limit int, jsonOut
 
 	// Initialize PostgreSQL database
 	if cfg.Database.URL == "" {
-		return fmt.Errorf("DATABASE_URL environment variable is required")
+		return errors.New("DATABASE_URL environment variable is required")
 	}
 	if err := postgres.Initialize(&cfg.Database); err != nil {
 		return fmt.Errorf("failed to initialize PostgreSQL: %w", err)

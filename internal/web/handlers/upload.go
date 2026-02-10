@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -62,28 +63,31 @@ func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	// Save files to temp directory
 	var filePaths []string
 	for _, fileHeader := range files {
-		file, err := fileHeader.Open()
-		if err != nil {
-			respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to open file: %s", fileHeader.Filename))
-			return
-		}
-		defer file.Close()
+		if err := func() error {
+			file, err := fileHeader.Open()
+			if err != nil {
+				return fmt.Errorf("failed to open file: %s", fileHeader.Filename)
+			}
+			defer file.Close()
 
-		tempPath := filepath.Join(tempDir, fileHeader.Filename)
-		out, err := os.Create(tempPath)
-		if err != nil {
-			respondError(w, http.StatusInternalServerError, "failed to create temp file")
-			return
-		}
+			tempPath := filepath.Join(tempDir, fileHeader.Filename)
+			out, err := os.Create(tempPath) //nolint:gosec // filename from multipart upload to temp dir
+			if err != nil {
+				return errors.New("failed to create temp file")
+			}
 
-		if _, err := io.Copy(out, file); err != nil {
+			if _, err := io.Copy(out, file); err != nil {
+				out.Close()
+				return errors.New("failed to save file")
+			}
 			out.Close()
-			respondError(w, http.StatusInternalServerError, "failed to save file")
+
+			filePaths = append(filePaths, tempPath)
+			return nil
+		}(); err != nil {
+			respondError(w, http.StatusInternalServerError, err.Error())
 			return
 		}
-		out.Close()
-
-		filePaths = append(filePaths, tempPath)
 	}
 
 	// Upload files to PhotoPrism

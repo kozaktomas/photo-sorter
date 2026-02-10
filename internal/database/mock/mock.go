@@ -192,9 +192,9 @@ func (m *MockFaceReader) GetFacesBySubjectName(ctx context.Context, subjectName 
 
 	var results []database.StoredFace
 	for _, faces := range m.faces {
-		for _, face := range faces {
-			if face.SubjectName == subjectName {
-				results = append(results, face)
+		for i := range faces {
+			if faces[i].SubjectName == subjectName {
+				results = append(results, faces[i])
 			}
 		}
 	}
@@ -298,8 +298,8 @@ func (m *MockFaceReader) FindSimilar(ctx context.Context, embedding []float32, l
 
 	var results []database.StoredFace
 	for _, faces := range m.faces {
-		for _, face := range faces {
-			results = append(results, face)
+		for i := range faces {
+			results = append(results, faces[i])
 			if len(results) >= limit {
 				return results, nil
 			}
@@ -319,8 +319,8 @@ func (m *MockFaceReader) FindSimilarWithDistance(ctx context.Context, embedding 
 	var results []database.StoredFace
 	var distances []float64
 	for _, faces := range m.faces {
-		for _, face := range faces {
-			results = append(results, face)
+		for i := range faces {
+			results = append(results, faces[i])
 			distances = append(distances, 0.1) // Mock distance
 			if len(results) >= limit {
 				return results, distances, nil
@@ -953,7 +953,7 @@ func (m *MockBookWriter) SwapSlots(ctx context.Context, pageID string, slotA int
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	slots := m.pageSlots[pageID]
-	var idxA, idxB int = -1, -1
+	var idxA, idxB = -1, -1
 	for i := range slots {
 		if slots[i].SlotIndex == slotA {
 			idxA = i

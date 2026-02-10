@@ -333,7 +333,7 @@ func TestFacesHandler_FindOutliers_WithLimit(t *testing.T) {
 	mockReader := mock.NewMockFaceReader()
 
 	// Add multiple faces with different embeddings
-	for i := 0; i < 10; i++ {
+	for i := range 10 {
 		embedding := make([]float32, 512)
 		for j := range embedding {
 			embedding[j] = float32(i) * 0.1

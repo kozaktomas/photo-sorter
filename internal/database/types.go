@@ -65,8 +65,6 @@ type ExportData struct {
 	FacesProcessed []FaceProcessedRecord // Photos processed for face detection (v2+)
 }
 
-const currentExportVersion = 3
-
 // PhotoBook represents a photo book project
 type PhotoBook struct {
 	ID          string

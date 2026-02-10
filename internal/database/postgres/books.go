@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"time"
 
@@ -47,7 +48,7 @@ func (r *BookRepository) GetBook(ctx context.Context, id string) (*database.Phot
 	err := r.pool.QueryRow(ctx,
 		`SELECT id, title, description, created_at, updated_at FROM photo_books WHERE id = $1`, id).
 		Scan(&b.ID, &b.Title, &b.Description, &b.CreatedAt, &b.UpdatedAt)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
@@ -105,9 +106,11 @@ func (r *BookRepository) CreateSection(ctx context.Context, section *database.Bo
 
 	// Auto-assign sort_order as max+1
 	var maxOrder sql.NullInt64
-	r.pool.QueryRow(ctx,
+	if err := r.pool.QueryRow(ctx,
 		`SELECT MAX(sort_order) FROM book_sections WHERE book_id = $1`, section.BookID).
-		Scan(&maxOrder)
+		Scan(&maxOrder); err != nil {
+		return fmt.Errorf("get max sort order: %w", err)
+	}
 	if maxOrder.Valid {
 		section.SortOrder = int(maxOrder.Int64) + 1
 	}
@@ -268,9 +271,11 @@ func (r *BookRepository) CreatePage(ctx context.Context, page *database.BookPage
 
 	// Auto-assign sort_order as max+1
 	var maxOrder sql.NullInt64
-	r.pool.QueryRow(ctx,
+	if err := r.pool.QueryRow(ctx,
 		`SELECT MAX(sort_order) FROM book_pages WHERE book_id = $1`, page.BookID).
-		Scan(&maxOrder)
+		Scan(&maxOrder); err != nil {
+		return fmt.Errorf("get max sort order: %w", err)
+	}
 	if maxOrder.Valid {
 		page.SortOrder = int(maxOrder.Int64) + 1
 	}
@@ -295,7 +300,7 @@ func (r *BookRepository) GetPage(ctx context.Context, pageID string) (*database.
 		`SELECT id, book_id, COALESCE(section_id, ''), format, description, sort_order, created_at, updated_at
 		 FROM book_pages WHERE id = $1`, pageID).
 		Scan(&p.ID, &p.BookID, &p.SectionID, &p.Format, &p.Description, &p.SortOrder, &p.CreatedAt, &p.UpdatedAt)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
@@ -458,17 +463,10 @@ func (r *BookRepository) SwapSlots(ctx context.Context, pageID string, slotA int
 	if err != nil {
 		return fmt.Errorf("swap slots read: %w", err)
 	}
-	photos := make(map[int]string)
-	for rows.Next() {
-		var idx int
-		var uid string
-		if err := rows.Scan(&idx, &uid); err != nil {
-			rows.Close()
-			return fmt.Errorf("swap slots scan: %w", err)
-		}
-		photos[idx] = uid
+	photos, err := scanSlotRows(rows)
+	if err != nil {
+		return fmt.Errorf("swap slots scan: %w", err)
 	}
-	rows.Close()
 
 	if len(photos) != 2 {
 		return fmt.Errorf("swap slots: expected 2 slots, found %d", len(photos))
@@ -515,4 +513,18 @@ func (r *BookRepository) GetPhotoBookMemberships(ctx context.Context, photoUID s
 		memberships = append(memberships, m)
 	}
 	return memberships, rows.Err()
+}
+
+func scanSlotRows(rows *sql.Rows) (map[int]string, error) {
+	defer rows.Close()
+	photos := make(map[int]string)
+	for rows.Next() {
+		var idx int
+		var uid string
+		if err := rows.Scan(&idx, &uid); err != nil {
+			return nil, err
+		}
+		photos[idx] = uid
+	}
+	return photos, rows.Err()
 }

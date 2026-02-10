@@ -13,8 +13,8 @@ import (
 
 func createTestImage(width, height int, c color.Color) *image.RGBA {
 	img := image.NewRGBA(image.Rect(0, 0, width, height))
-	for x := 0; x < width; x++ {
-		for y := 0; y < height; y++ {
+	for x := range width {
+		for y := range height {
 			img.Set(x, y, c)
 		}
 	}
@@ -501,7 +501,7 @@ func BenchmarkResizeImage_Small(b *testing.B) {
 	data := encodeJPEG(img)
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		ResizeImage(data, 50)
 	}
 }
@@ -511,7 +511,7 @@ func BenchmarkResizeImage_Large(b *testing.B) {
 	data := encodeJPEG(img)
 
 	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
+	for range b.N {
 		ResizeImage(data, 1920)
 	}
 }

@@ -94,8 +94,8 @@ func runClear(cmd *cobra.Command, args []string) error {
 
 	// Extract photo UIDs
 	photoUIDs := make([]string, len(allPhotos))
-	for i, photo := range allPhotos {
-		photoUIDs[i] = photo.UID
+	for i := range allPhotos {
+		photoUIDs[i] = allPhotos[i].UID
 	}
 
 	// Remove photos from album

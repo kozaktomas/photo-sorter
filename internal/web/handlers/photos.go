@@ -553,7 +553,7 @@ func (h *PhotosHandler) FindSimilarToCollection(w http.ResponseWriter, r *http.R
 	}
 
 	// Sort by match count (desc), then by distance (asc)
-	for i := 0; i < len(results)-1; i++ {
+	for i := range len(results) - 1 {
 		for j := i + 1; j < len(results); j++ {
 			if results[j].MatchCount > results[i].MatchCount ||
 				(results[j].MatchCount == results[i].MatchCount && results[j].Distance < results[i].Distance) {
@@ -811,7 +811,8 @@ func (h *PhotosHandler) EstimateEra(w http.ResponseWriter, r *http.Request) {
 
 	// Compute cosine similarity for each era
 	matches := make([]EraMatch, 0, len(eras))
-	for _, era := range eras {
+	for i := range eras {
+		era := &eras[i]
 		sim := fingerprint.CosineSimilarity(photoEmb.Embedding, era.Embedding)
 		confidence := math.Max(0, math.Min(100, sim*100))
 		matches = append(matches, EraMatch{
@@ -1180,16 +1181,15 @@ func (h *PhotosHandler) SuggestAlbums(w http.ResponseWriter, r *http.Request) {
 
 	// Filter albums with enough photos
 	var candidateAlbums []photoprism.Album
-	for _, album := range albums {
-		if album.PhotoCount >= constants.MinAlbumPhotosForCentroid {
-			candidateAlbums = append(candidateAlbums, album)
+	for i := range albums {
+		if albums[i].PhotoCount >= constants.MinAlbumPhotosForCentroid {
+			candidateAlbums = append(candidateAlbums, albums[i])
 		}
 	}
 
 	// For each album: compute centroid, HNSW search, filter members
 	type albumResult struct {
 		suggestion AlbumSuggestion
-		skipped    bool
 	}
 
 	var mu sync.Mutex
@@ -1200,7 +1200,7 @@ func (h *PhotosHandler) SuggestAlbums(w http.ResponseWriter, r *http.Request) {
 
 	maxDistance := 1.0 - req.Threshold // Convert similarity threshold to distance
 
-	for _, album := range candidateAlbums {
+	for i := range candidateAlbums {
 		wg.Add(1)
 		go func(a photoprism.Album) {
 			defer wg.Done()
@@ -1288,7 +1288,7 @@ func (h *PhotosHandler) SuggestAlbums(w http.ResponseWriter, r *http.Request) {
 				})
 				mu.Unlock()
 			}
-		}(album)
+		}(candidateAlbums[i])
 	}
 	wg.Wait()
 
@@ -1344,19 +1344,3 @@ func computeCentroid(embeddings [][]float32) []float32 {
 	return centroid
 }
 
-// cosineSimilarity computes the cosine similarity between two vectors
-func cosineSimilarity(a, b []float32) float64 {
-	if len(a) != len(b) || len(a) == 0 {
-		return 0
-	}
-	var dot, normA, normB float64
-	for i := range a {
-		dot += float64(a[i]) * float64(b[i])
-		normA += float64(a[i]) * float64(a[i])
-		normB += float64(b[i]) * float64(b[i])
-	}
-	if normA == 0 || normB == 0 {
-		return 0
-	}
-	return dot / (math.Sqrt(normA) * math.Sqrt(normB))
-}

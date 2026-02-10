@@ -2,6 +2,7 @@ package photoprism
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,12 +15,12 @@ import (
 func doGetJSON[T any](pp *PhotoPrism, endpoint string) (*T, error) {
 	url := pp.Url + "/" + endpoint
 
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("could not create request: %w", err)
 	}
 
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", pp.token))
+	req.Header.Set("Authorization", "Bearer "+pp.token)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -46,36 +47,6 @@ func doGetJSON[T any](pp *PhotoPrism, endpoint string) (*T, error) {
 	return &result, nil
 }
 
-// doGetRaw performs a GET request and returns the raw response body.
-// Useful for non-JSON responses like file downloads.
-func doGetRaw(pp *PhotoPrism, endpoint string) ([]byte, string, error) {
-	url := pp.Url + "/" + endpoint
-
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		return nil, "", fmt.Errorf("could not create request: %w", err)
-	}
-
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", pp.token))
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return nil, "", fmt.Errorf("could not send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, "", fmt.Errorf("request failed with status %d: %s", resp.StatusCode, readErrorBody(resp.Body))
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, "", fmt.Errorf("could not read response body: %w", err)
-	}
-
-	return body, resp.Header.Get("Content-Type"), nil
-}
-
 // doPostJSON performs a POST request with a JSON body and unmarshals the JSON response.
 func doPostJSON[T any](pp *PhotoPrism, endpoint string, requestBody interface{}) (*T, error) {
 	return doRequestJSON[T](pp, "POST", endpoint, requestBody, http.StatusOK)
@@ -90,35 +61,6 @@ func doPostJSONCreated[T any](pp *PhotoPrism, endpoint string, requestBody inter
 // doPutJSON performs a PUT request with a JSON body and unmarshals the JSON response.
 func doPutJSON[T any](pp *PhotoPrism, endpoint string, requestBody interface{}) (*T, error) {
 	return doRequestJSON[T](pp, "PUT", endpoint, requestBody, http.StatusOK)
-}
-
-// doDelete performs a DELETE request.
-func doDelete(pp *PhotoPrism, endpoint string) error {
-	return doDeleteWithStatus(pp, endpoint, http.StatusOK)
-}
-
-// doDeleteWithStatus performs a DELETE request and accepts a specific status code.
-func doDeleteWithStatus(pp *PhotoPrism, endpoint string, expectedStatus int) error {
-	url := pp.Url + "/" + endpoint
-
-	req, err := http.NewRequest("DELETE", url, nil)
-	if err != nil {
-		return fmt.Errorf("could not create request: %w", err)
-	}
-
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", pp.token))
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return fmt.Errorf("could not send request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != expectedStatus {
-		return fmt.Errorf("request failed with status %d: %s", resp.StatusCode, readErrorBody(resp.Body))
-	}
-
-	return nil
 }
 
 // doDeleteJSON performs a DELETE request with a JSON body and returns the unmarshaled response.
@@ -140,12 +82,12 @@ func doRequestJSON[T any](pp *PhotoPrism, method, endpoint string, requestBody i
 		bodyReader = bytes.NewReader(jsonBody)
 	}
 
-	req, err := http.NewRequest(method, url, bodyReader)
+	req, err := http.NewRequestWithContext(context.Background(), method, url, bodyReader)
 	if err != nil {
 		return nil, fmt.Errorf("could not create request: %w", err)
 	}
 
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", pp.token))
+	req.Header.Set("Authorization", "Bearer "+pp.token)
 	if requestBody != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -182,45 +124,40 @@ func doRequestJSON[T any](pp *PhotoPrism, method, endpoint string, requestBody i
 	return &result, nil
 }
 
-// doRequestRaw performs an HTTP request and returns the raw response body without JSON unmarshaling.
-func doRequestRaw(pp *PhotoPrism, method, endpoint string, requestBody interface{}, expectedStatus int) ([]byte, error) {
+// doRequestRaw performs an HTTP request without JSON unmarshaling the response.
+func doRequestRaw(pp *PhotoPrism, method, endpoint string, requestBody interface{}) error {
 	url := pp.Url + "/" + endpoint
 
 	var bodyReader io.Reader
 	if requestBody != nil {
 		jsonBody, err := json.Marshal(requestBody)
 		if err != nil {
-			return nil, fmt.Errorf("could not marshal request body: %w", err)
+			return fmt.Errorf("could not marshal request body: %w", err)
 		}
 		bodyReader = bytes.NewReader(jsonBody)
 	}
 
-	req, err := http.NewRequest(method, url, bodyReader)
+	req, err := http.NewRequestWithContext(context.Background(), method, url, bodyReader)
 	if err != nil {
-		return nil, fmt.Errorf("could not create request: %w", err)
+		return fmt.Errorf("could not create request: %w", err)
 	}
 
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", pp.token))
+	req.Header.Set("Authorization", "Bearer "+pp.token)
 	if requestBody != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("could not send request: %w", err)
+		return fmt.Errorf("could not send request: %w", err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != expectedStatus {
-		return nil, fmt.Errorf("request failed with status %d: %s", resp.StatusCode, readErrorBody(resp.Body))
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("request failed with status %d: %s", resp.StatusCode, readErrorBody(resp.Body))
 	}
 
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("could not read response body: %w", err)
-	}
-
-	return body, nil
+	return nil
 }
 
 // IsNotFoundError returns true if the error indicates a 404 Not Found response.

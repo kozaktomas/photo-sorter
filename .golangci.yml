@@ -1,0 +1,123 @@
+version: "2"
+
+linters:
+  default: standard
+  enable:
+    - bodyclose
+    - cyclop
+    - dupl
+    - dupword
+    - durationcheck
+    - errorlint
+    - exhaustive
+    - fatcontext
+    - forcetypeassert
+    - goconst
+    - gocritic
+    - gosec
+    - intrange
+    - misspell
+    - nakedret
+    - nilnil
+    - nilerr
+    - noctx
+    - perfsprint
+    - predeclared
+    - recvcheck
+    - revive
+    - sqlclosecheck
+    - testifylint
+    - unconvert
+    - unparam
+    - usestdlibvars
+    - wastedassign
+    - whitespace
+
+  settings:
+    goconst:
+      min-occurrences: 3
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - performance
+      disabled-checks:
+        - ifElseChain
+        - singleCaseSwitch
+        - hugeParam
+        - rangeValCopy
+    gosec:
+      excludes:
+        - G104  # Unhandled errors - already covered by errcheck with granular exclusions
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+        - name: package-comments
+          disabled: true
+    exhaustive:
+      default-signifies-exhaustive: true
+    nakedret:
+      max-func-lines: 20
+    perfsprint:
+      err-error: true
+      errorf: true
+      sprintf1: true
+    errcheck:
+      exclude-functions:
+        # Progress bar updates - always best-effort
+        - (*github.com/schollz/progressbar/v3.ProgressBar).Add
+        # HNSW index add - errors logged internally
+        - (*github.com/kozaktomas/photo-sorter/internal/database.HNSWIndex).Add
+        # Database cache sync operations - best-effort fire-and-forget
+        - (github.com/kozaktomas/photo-sorter/internal/database.FaceWriter).DeleteFacesByPhoto
+        - (github.com/kozaktomas/photo-sorter/internal/database.FaceWriter).UpdateFaceMarker
+        - (github.com/kozaktomas/photo-sorter/internal/database.FaceWriter).UpdateFacePhotoInfo
+        - (github.com/kozaktomas/photo-sorter/internal/database.FaceWriter).MarkFacesProcessed
+        - (github.com/kozaktomas/photo-sorter/internal/database.EmbeddingWriter).DeleteEmbedding
+        - (github.com/kozaktomas/photo-sorter/internal/database.EmbeddingWriter).Save
+
+  exclusions:
+    presets:
+      - std-error-handling
+    rules:
+      # Don't check error return on Logout calls
+      - linters: [errcheck]
+        source: "\\.Logout\\(\\)"
+      # Don't check error return on fmt.Sscanf
+      - linters: [errcheck]
+        source: "fmt\\.Sscanf"
+      # Don't check error return on io.Copy to http.ResponseWriter
+      - linters: [errcheck]
+        source: "io\\.Copy\\("
+      # Don't check error return on w.Write (http response writes)
+      - linters: [errcheck]
+        source: "w\\.Write\\("
+      # Don't check error return on json.Encoder.Encode to http response
+      - linters: [errcheck]
+        source: "json\\.NewEncoder\\(w\\)"
+      # Don't check error return on tx.Rollback in defers
+      - linters: [errcheck]
+        source: "tx\\.Rollback\\(\\)"
+      # Don't check error return on embWriter.Save (best-effort cache update)
+      - linters: [errcheck]
+        source: "embWriter\\.Save\\("
+      # nil, nil return is a valid "not found" pattern in database layer
+      - path: "internal/database/"
+        linters:
+          - nilnil
+      # Relax rules in test files
+      - path: "_test\\.go"
+        linters:
+          - dupl
+          - gocritic
+          - errcheck
+          - goconst
+          - gosec
+          - forcetypeassert
+          - unparam
+          - usestdlibvars
+
+output:
+  sort-order:
+    - linter
+    - file

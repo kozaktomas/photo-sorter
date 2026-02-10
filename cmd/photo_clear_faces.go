@@ -5,6 +5,7 @@ import (
 
 	"github.com/spf13/cobra"
 	"github.com/kozaktomas/photo-sorter/internal/config"
+	"github.com/kozaktomas/photo-sorter/internal/constants"
 	"github.com/kozaktomas/photo-sorter/internal/photoprism"
 )
 
@@ -65,14 +66,15 @@ func runPhotoClearFaces(cmd *cobra.Command, args []string) error {
 
 	// Filter to face markers
 	var faceMarkers []photoprism.Marker
-	for _, m := range markers {
-		if m.Type != "face" {
+	for i := range markers {
+		m := &markers[i]
+		if m.Type != constants.MarkerTypeFace {
 			continue
 		}
 		if assignedOnly && m.Name == "" && m.SubjUID == "" {
 			continue
 		}
-		faceMarkers = append(faceMarkers, m)
+		faceMarkers = append(faceMarkers, *m)
 	}
 
 	if len(faceMarkers) == 0 {
@@ -85,12 +87,9 @@ func runPhotoClearFaces(cmd *cobra.Command, args []string) error {
 	}
 
 	fmt.Printf("Found %d face marker(s) to delete:\n", len(faceMarkers))
-	for i, m := range faceMarkers {
-		name := m.Name
-		if name == "" {
-			name = "(unassigned)"
-		}
-		fmt.Printf("  %d. %s (marker: %s)\n", i+1, name, m.UID)
+	for i := range faceMarkers {
+		m := &faceMarkers[i]
+		fmt.Printf("  %d. %s (marker: %s)\n", i+1, markerDisplayName(m.Name), m.UID)
 	}
 
 	if dryRun {
@@ -103,21 +102,20 @@ func runPhotoClearFaces(cmd *cobra.Command, args []string) error {
 	for _, m := range faceMarkers {
 		_, err := pp.DeleteMarker(m.UID)
 		if err != nil {
-			name := m.Name
-			if name == "" {
-				name = "(unassigned)"
-			}
-			fmt.Printf("  Failed to delete %s (%s): %v\n", name, m.UID, err)
+			fmt.Printf("  Failed to delete %s (%s): %v\n", markerDisplayName(m.Name), m.UID, err)
 			continue
 		}
-		name := m.Name
-		if name == "" {
-			name = "(unassigned)"
-		}
-		fmt.Printf("  Deleted: %s\n", name)
+		fmt.Printf("  Deleted: %s\n", markerDisplayName(m.Name))
 		deleted++
 	}
 
 	fmt.Printf("\nDeleted %d/%d face markers.\n", deleted, len(faceMarkers))
 	return nil
+}
+
+func markerDisplayName(name string) string {
+	if name == "" {
+		return "(unassigned)"
+	}
+	return name
 }

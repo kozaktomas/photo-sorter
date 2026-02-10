@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math"
 	"time"
@@ -376,7 +377,7 @@ func runCacheComputeEras(cmd *cobra.Command, args []string) error {
 
 	// Initialize PostgreSQL (needed even for dry-run to verify config)
 	if cfg.Database.URL == "" {
-		return fmt.Errorf("DATABASE_URL environment variable is required")
+		return errors.New("DATABASE_URL environment variable is required")
 	}
 	if !dryRun {
 		if err := postgres.Initialize(&cfg.Database); err != nil {
@@ -495,13 +496,13 @@ func runCacheComputeEras(cmd *cobra.Command, args []string) error {
 			currentSlugs[era.Slug] = true
 		}
 
-		for _, stored := range allStored {
-			if !currentSlugs[stored.EraSlug] {
-				if err := eraWriter.DeleteEra(ctx, stored.EraSlug); err != nil {
-					return fmt.Errorf("failed to delete stale era %s: %w", stored.EraSlug, err)
+		for i := range allStored {
+			if !currentSlugs[allStored[i].EraSlug] {
+				if err := eraWriter.DeleteEra(ctx, allStored[i].EraSlug); err != nil {
+					return fmt.Errorf("failed to delete stale era %s: %w", allStored[i].EraSlug, err)
 				}
 				if !jsonOutput {
-					fmt.Printf("Deleted stale era: %s\n", stored.EraSlug)
+					fmt.Printf("Deleted stale era: %s\n", allStored[i].EraSlug)
 				}
 			}
 		}

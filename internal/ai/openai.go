@@ -7,6 +7,7 @@ import (
 	_ "embed"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"strings"
@@ -74,7 +75,7 @@ func (p *OpenAIProvider) trackUsage(inputTokens, outputTokens int64) {
 }
 
 func (p *OpenAIProvider) Name() string {
-	return string(chatModel)
+	return chatModel
 }
 
 func (p *OpenAIProvider) AnalyzePhoto(ctx context.Context, imageData []byte, metadata *PhotoMetadata, availableLabels []string, estimateDate bool) (*PhotoAnalysis, error) {
@@ -88,7 +89,7 @@ func (p *OpenAIProvider) AnalyzePhoto(ctx context.Context, imageData []byte, met
 
 	systemPrompt := buildPhotoAnalysisPrompt(availableLabels, estimateDate)
 	base64Image := base64.StdEncoding.EncodeToString(resizedData)
-	imageURL := fmt.Sprintf("data:image/jpeg;base64,%s", base64Image)
+	imageURL := "data:image/jpeg;base64," + base64Image
 
 	// Build user message with metadata context
 	userMessage := buildUserMessageWithMetadata(metadata)
@@ -120,7 +121,7 @@ func (p *OpenAIProvider) AnalyzePhoto(ctx context.Context, imageData []byte, met
 	var lastError error
 	var lastResponse string
 
-	for attempt := 0; attempt < maxRetries; attempt++ {
+	for range maxRetries {
 		resp, err := p.client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
 			Model:    chatModel,
 			Messages: messages,
@@ -134,7 +135,7 @@ func (p *OpenAIProvider) AnalyzePhoto(ctx context.Context, imageData []byte, met
 		}
 
 		if len(resp.Choices) == 0 {
-			return nil, fmt.Errorf("no response from OpenAI")
+			return nil, errors.New("no response from OpenAI")
 		}
 
 		// Track usage
@@ -207,7 +208,7 @@ func (p *OpenAIProvider) EstimateAlbumDate(ctx context.Context, albumTitle strin
 	}
 
 	if len(resp.Choices) == 0 {
-		return nil, fmt.Errorf("no response from OpenAI")
+		return nil, errors.New("no response from OpenAI")
 	}
 
 	// Track usage
@@ -245,9 +246,9 @@ func buildUserMessageWithMetadata(metadata *PhotoMetadata) string {
 
 	// Add filename info
 	if metadata.OriginalName != "" {
-		parts = append(parts, fmt.Sprintf("Original filename: %s", metadata.OriginalName))
+		parts = append(parts, "Original filename: "+metadata.OriginalName)
 	} else if metadata.FileName != "" {
-		parts = append(parts, fmt.Sprintf("Filename: %s", metadata.FileName))
+		parts = append(parts, "Filename: "+metadata.FileName)
 	}
 
 	// Add date info from metadata
@@ -268,7 +269,7 @@ func buildUserMessageWithMetadata(metadata *PhotoMetadata) string {
 
 	// Add country
 	if metadata.Country != "" && metadata.Country != "zz" {
-		parts = append(parts, fmt.Sprintf("Country: %s", metadata.Country))
+		parts = append(parts, "Country: "+metadata.Country)
 	}
 
 	// Add dimensions
@@ -319,7 +320,7 @@ type batchResponse struct {
 
 func (p *OpenAIProvider) CreatePhotoBatch(ctx context.Context, requests []BatchPhotoRequest) (string, error) {
 	if len(requests) == 0 {
-		return "", fmt.Errorf("no requests provided")
+		return "", errors.New("no requests provided")
 	}
 
 	// Build JSONL content
@@ -333,7 +334,7 @@ func (p *OpenAIProvider) CreatePhotoBatch(ctx context.Context, requests []BatchP
 
 		systemPrompt := buildPhotoAnalysisPrompt(req.AvailableLabels, req.EstimateDate)
 		base64Image := base64.StdEncoding.EncodeToString(resizedData)
-		imageURL := fmt.Sprintf("data:image/jpeg;base64,%s", base64Image)
+		imageURL := "data:image/jpeg;base64," + base64Image
 		userMessage := buildUserMessageWithMetadata(req.Metadata)
 
 		batchReq := batchRequest{
@@ -341,7 +342,7 @@ func (p *OpenAIProvider) CreatePhotoBatch(ctx context.Context, requests []BatchP
 			Method:   "POST",
 			URL:      "/v1/chat/completions",
 			Body: batchRequestBody{
-				Model: string(chatModel),
+				Model: chatModel,
 				Messages: []map[string]interface{}{
 					{
 						"role":    "system",
@@ -420,7 +421,7 @@ func (p *OpenAIProvider) GetBatchResults(ctx context.Context, batchID string) ([
 	}
 
 	if batch.OutputFileID == "" {
-		return nil, fmt.Errorf("no output file available")
+		return nil, errors.New("no output file available")
 	}
 
 	// Download output file content

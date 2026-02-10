@@ -72,8 +72,8 @@ func computePHash(img image.Image) uint64 {
 	//    excluding DC component (0,0)
 	lowFreq := make([]float64, 64)
 	idx := 0
-	for u := 0; u < 8; u++ {
-		for v := 0; v < 8; v++ {
+	for u := range 8 {
+		for v := range 8 {
 			if u == 0 && v == 0 {
 				continue // Skip DC component
 			}
@@ -93,7 +93,7 @@ func computePHash(img image.Image) uint64 {
 
 	// 6. Generate hash: 1 if value > median, 0 otherwise
 	var hash uint64
-	for i := 0; i < 64; i++ {
+	for i := range 64 {
 		if lowFreq[i] > median {
 			hash |= 1 << (63 - i)
 		}
@@ -115,8 +115,8 @@ func computeDHash(img image.Image) uint64 {
 	//    8 rows * 8 comparisons = 64 bits
 	var hash uint64
 	bit := 63
-	for y := 0; y < 8; y++ {
-		for x := 0; x < 8; x++ {
+	for y := range 8 {
+		for x := range 8 {
 			if gray[x][y] > gray[x+1][y] {
 				hash |= 1 << bit
 			}
@@ -181,9 +181,9 @@ func toGrayscale(img *image.RGBA) [][]float64 {
 	height := bounds.Dy()
 
 	gray := make([][]float64, width)
-	for x := 0; x < width; x++ {
+	for x := range width {
 		gray[x] = make([]float64, height)
-		for y := 0; y < height; y++ {
+		for y := range height {
 			r, g, b, _ := img.At(x, y).RGBA()
 			// ITU-R BT.601 luma formula
 			luma := 0.299*float64(r>>8) + 0.587*float64(g>>8) + 0.114*float64(b>>8)
@@ -206,17 +206,17 @@ func computeDCT(gray [][]float64) [][]float64 {
 	cosTable := make([][]float64, size)
 	for i := range cosTable {
 		cosTable[i] = make([]float64, size)
-		for j := 0; j < size; j++ {
+		for j := range size {
 			cosTable[i][j] = math.Cos(math.Pi * float64(i) * (2*float64(j) + 1) / (2 * float64(size)))
 		}
 	}
 
 	// DCT-II formula
-	for u := 0; u < size; u++ {
-		for v := 0; v < size; v++ {
+	for u := range size {
+		for v := range size {
 			var sum float64
-			for x := 0; x < size; x++ {
-				for y := 0; y < size; y++ {
+			for x := range size {
+				for y := range size {
 					sum += gray[x][y] * cosTable[u][x] * cosTable[v][y]
 				}
 			}

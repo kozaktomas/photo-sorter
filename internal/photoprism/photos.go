@@ -1,6 +1,8 @@
 package photoprism
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -27,10 +29,10 @@ func (pp *PhotoPrism) GetPhotosWithQuery(count int, offset int, query string, qu
 func (pp *PhotoPrism) GetPhotosWithQueryAndOrder(count int, offset int, query string, order string, quality ...int) ([]Photo, error) {
 	endpoint := fmt.Sprintf("photos?count=%d&offset=%d", count, offset)
 	if query != "" {
-		endpoint += fmt.Sprintf("&q=%s", url.QueryEscape(query))
+		endpoint += "&q=" + url.QueryEscape(query)
 	}
 	if order != "" {
-		endpoint += fmt.Sprintf("&order=%s", url.QueryEscape(order))
+		endpoint += "&order=" + url.QueryEscape(order)
 	}
 	if len(quality) > 0 && quality[0] > 0 {
 		endpoint += fmt.Sprintf("&quality=%d", quality[0])
@@ -45,12 +47,12 @@ func (pp *PhotoPrism) GetPhotosWithQueryAndOrder(count int, offset int, query st
 
 // EditPhoto updates photo metadata
 func (pp *PhotoPrism) EditPhoto(photoUID string, updates PhotoUpdate) (*Photo, error) {
-	return doPutJSON[Photo](pp, fmt.Sprintf("photos/%s", photoUID), updates)
+	return doPutJSON[Photo](pp, "photos/"+photoUID, updates)
 }
 
 // GetPhotoDetails retrieves full photo details including all metadata
 func (pp *PhotoPrism) GetPhotoDetails(photoUID string) (map[string]interface{}, error) {
-	result, err := doGetJSON[map[string]interface{}](pp, fmt.Sprintf("photos/%s", photoUID))
+	result, err := doGetJSON[map[string]interface{}](pp, "photos/"+photoUID)
 	if err != nil {
 		return nil, err
 	}
@@ -121,7 +123,7 @@ func (pp *PhotoPrism) GetPhotoDownload(photoUID string) ([]byte, string, error) 
 	}
 
 	if fileHash == "" {
-		return nil, "", fmt.Errorf("could not find file hash for photo")
+		return nil, "", errors.New("could not find file hash for photo")
 	}
 
 	// Download using the file hash
@@ -143,7 +145,7 @@ func (pp *PhotoPrism) GetPhotoDownload(photoUID string) ([]byte, string, error) 
 //	err = os.WriteFile("thumbnail.jpg", data, 0644)
 func (pp *PhotoPrism) GetPhotoThumbnail(thumbHash string, size string) ([]byte, string, error) {
 	url := fmt.Sprintf("%s/t/%s/%s/%s", pp.Url, thumbHash, pp.downloadToken, size)
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
 	if err != nil {
 		return nil, "", fmt.Errorf("could not create request: %w", err)
 	}
@@ -171,7 +173,7 @@ func (pp *PhotoPrism) GetPhotoThumbnail(thumbHash string, size string) ([]byte, 
 // This endpoint may work differently than the photo download endpoint
 func (pp *PhotoPrism) GetFileDownload(fileHash string) ([]byte, string, error) {
 	url := fmt.Sprintf("%s/dl/%s?t=%s", pp.Url, fileHash, pp.downloadToken)
-	req, err := http.NewRequest("GET", url, nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
 	if err != nil {
 		return nil, "", fmt.Errorf("could not create request: %w", err)
 	}
@@ -208,8 +210,7 @@ func (pp *PhotoPrism) ArchivePhotos(photoUIDs []string) error {
 		Photos: photoUIDs,
 	}
 
-	_, err := doRequestRaw(pp, "POST", "batch/photos/archive", selection, http.StatusOK)
-	return err
+	return doRequestRaw(pp, http.MethodPost, "batch/photos/archive", selection)
 }
 
 // ApprovePhoto marks a photo in review as approved, allowing it to be downloaded

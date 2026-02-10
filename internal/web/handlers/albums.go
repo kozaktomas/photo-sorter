@@ -76,8 +76,8 @@ func (h *AlbumsHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := make([]AlbumResponse, len(albums))
-	for i, a := range albums {
-		response[i] = albumToResponse(a)
+	for i := range albums {
+		response[i] = albumToResponse(albums[i])
 	}
 
 	respondJSON(w, http.StatusOK, response)
@@ -218,41 +218,52 @@ func (h *AlbumsHandler) GetPhotos(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, response)
 }
 
-// AddPhotosRequest represents a request to add photos to an album
-type AddPhotosRequest struct {
+// albumPhotoRequest represents a request to add or remove photos from an album
+type albumPhotoRequest struct {
 	PhotoUIDs []string `json:"photo_uids"`
 }
 
-// AddPhotos adds photos to an album
-func (h *AlbumsHandler) AddPhotos(w http.ResponseWriter, r *http.Request) {
+// parseAlbumPhotoRequest parses and validates an album photo modification request.
+// Returns the album UID, photo UIDs, and PhotoPrism client; sends error response on failure.
+func (h *AlbumsHandler) parseAlbumPhotoRequest(w http.ResponseWriter, r *http.Request) (string, []string, *photoprism.PhotoPrism) {
 	uid := chi.URLParam(r, "uid")
 	if uid == "" {
 		respondError(w, http.StatusBadRequest, "missing album UID")
-		return
+		return "", nil, nil
 	}
 
-	var req AddPhotosRequest
+	var req albumPhotoRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, "invalid request body")
-		return
+		return "", nil, nil
 	}
 
 	if len(req.PhotoUIDs) == 0 {
 		respondError(w, http.StatusBadRequest, "photo_uids is required")
-		return
+		return "", nil, nil
 	}
 
 	pp := middleware.MustGetPhotoPrism(r.Context(), w)
 	if pp == nil {
+		return "", nil, nil
+	}
+
+	return uid, req.PhotoUIDs, pp
+}
+
+// AddPhotos adds photos to an album
+func (h *AlbumsHandler) AddPhotos(w http.ResponseWriter, r *http.Request) {
+	uid, photoUIDs, pp := h.parseAlbumPhotoRequest(w, r)
+	if pp == nil {
 		return
 	}
 
-	if err := pp.AddPhotosToAlbum(uid, req.PhotoUIDs); err != nil {
+	if err := pp.AddPhotosToAlbum(uid, photoUIDs); err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to add photos to album")
 		return
 	}
 
-	respondJSON(w, http.StatusOK, map[string]int{"added": len(req.PhotoUIDs)})
+	respondJSON(w, http.StatusOK, map[string]int{"added": len(photoUIDs)})
 }
 
 // ClearPhotos removes all photos from an album
@@ -295,39 +306,17 @@ func (h *AlbumsHandler) ClearPhotos(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]int{"removed": len(photoUIDs)})
 }
 
-// RemovePhotosRequest represents a request to remove specific photos from an album
-type RemovePhotosRequest struct {
-	PhotoUIDs []string `json:"photo_uids"`
-}
-
 // RemovePhotos removes specific photos from an album
 func (h *AlbumsHandler) RemovePhotos(w http.ResponseWriter, r *http.Request) {
-	uid := chi.URLParam(r, "uid")
-	if uid == "" {
-		respondError(w, http.StatusBadRequest, "missing album UID")
-		return
-	}
-
-	var req RemovePhotosRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, "invalid request body")
-		return
-	}
-
-	if len(req.PhotoUIDs) == 0 {
-		respondError(w, http.StatusBadRequest, "photo_uids is required")
-		return
-	}
-
-	pp := middleware.MustGetPhotoPrism(r.Context(), w)
+	uid, photoUIDs, pp := h.parseAlbumPhotoRequest(w, r)
 	if pp == nil {
 		return
 	}
 
-	if err := pp.RemovePhotosFromAlbum(uid, req.PhotoUIDs); err != nil {
+	if err := pp.RemovePhotosFromAlbum(uid, photoUIDs); err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to remove photos from album")
 		return
 	}
 
-	respondJSON(w, http.StatusOK, map[string]int{"removed": len(req.PhotoUIDs)})
+	respondJSON(w, http.StatusOK, map[string]int{"removed": len(photoUIDs)})
 }

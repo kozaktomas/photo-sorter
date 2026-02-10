@@ -1,4 +1,4 @@
-.PHONY: build build-web build-go clean dev serve test
+.PHONY: build build-web build-go clean dev serve test lint lint-fix
 
 # Build everything (frontend + Go binary)
 build: build-web build-go
@@ -67,3 +67,11 @@ web-lint:
 # Type check frontend
 web-typecheck:
 	cd web && npx tsc --noEmit
+
+# Lint Go code
+lint:
+	golangci-lint run ./...
+
+# Lint and auto-fix Go code
+lint-fix:
+	golangci-lint run --fix ./...

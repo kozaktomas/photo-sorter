@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -111,7 +112,7 @@ func (p *LlamaCppProvider) AnalyzePhoto(ctx context.Context, imageData []byte, m
 
 	systemPrompt := buildPhotoAnalysisPrompt(availableLabels, estimateDate)
 	base64Image := base64.StdEncoding.EncodeToString(resizedData)
-	imageURL := fmt.Sprintf("data:image/jpeg;base64,%s", base64Image)
+	imageURL := "data:image/jpeg;base64," + base64Image
 	userMessage := buildUserMessageWithMetadata(metadata)
 
 	// Build initial messages
@@ -132,7 +133,7 @@ func (p *LlamaCppProvider) AnalyzePhoto(ctx context.Context, imageData []byte, m
 	var lastError error
 	var lastResponse string
 
-	for attempt := 0; attempt < maxRetries; attempt++ {
+	for range maxRetries {
 		resp, err := p.sendRequest(ctx, messages)
 		if err != nil {
 			return nil, fmt.Errorf("llama.cpp API error: %w", err)
@@ -143,7 +144,7 @@ func (p *LlamaCppProvider) AnalyzePhoto(ctx context.Context, imageData []byte, m
 		p.usage.OutputTokens += resp.Usage.CompletionTokens
 
 		if len(resp.Choices) == 0 {
-			return nil, fmt.Errorf("no response from llama.cpp")
+			return nil, errors.New("no response from llama.cpp")
 		}
 
 		content := resp.Choices[0].Message.Content
@@ -201,7 +202,7 @@ func (p *LlamaCppProvider) EstimateAlbumDate(ctx context.Context, albumTitle str
 	p.usage.OutputTokens += resp.Usage.CompletionTokens
 
 	if len(resp.Choices) == 0 {
-		return nil, fmt.Errorf("no response from llama.cpp")
+		return nil, errors.New("no response from llama.cpp")
 	}
 
 	content := resp.Choices[0].Message.Content
@@ -229,7 +230,7 @@ func (p *LlamaCppProvider) sendRequest(ctx context.Context, messages []llamaCppM
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+"/v1/chat/completions", bytes.NewReader(jsonBody))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+"/v1/chat/completions", bytes.NewReader(jsonBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -260,17 +261,17 @@ func (p *LlamaCppProvider) sendRequest(ctx context.Context, messages []llamaCppM
 
 // Batch API methods - llama.cpp doesn't support batch operations
 func (p *LlamaCppProvider) CreatePhotoBatch(ctx context.Context, requests []BatchPhotoRequest) (string, error) {
-	return "", fmt.Errorf("llama.cpp does not support batch operations")
+	return "", errors.New("llama.cpp does not support batch operations")
 }
 
 func (p *LlamaCppProvider) GetBatchStatus(ctx context.Context, batchID string) (*BatchStatus, error) {
-	return nil, fmt.Errorf("llama.cpp does not support batch operations")
+	return nil, errors.New("llama.cpp does not support batch operations")
 }
 
 func (p *LlamaCppProvider) GetBatchResults(ctx context.Context, batchID string) ([]BatchPhotoResult, error) {
-	return nil, fmt.Errorf("llama.cpp does not support batch operations")
+	return nil, errors.New("llama.cpp does not support batch operations")
 }
 
 func (p *LlamaCppProvider) CancelBatch(ctx context.Context, batchID string) error {
-	return fmt.Errorf("llama.cpp does not support batch operations")
+	return errors.New("llama.cpp does not support batch operations")
 }

@@ -31,7 +31,6 @@ func init() {
 }
 
 func initConfig() {
-	if err := godotenv.Load(); err != nil {
-		// .env file is optional, don't fail if not found
-	}
+	// .env file is optional, don't fail if not found
+	_ = godotenv.Load()
 }

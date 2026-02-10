@@ -2,7 +2,7 @@ package database
 
 import (
 	"context"
-	"fmt"
+	"errors"
 )
 
 // HNSWRebuilder is an interface for repositories that support HNSW index rebuilding
@@ -85,10 +85,10 @@ func IsInitialized() bool {
 // GetEmbeddingReader returns an EmbeddingReader from the PostgreSQL backend
 func GetEmbeddingReader(ctx context.Context) (EmbeddingReader, error) {
 	if !postgresInitialized {
-		return nil, fmt.Errorf("PostgreSQL backend not initialized: DATABASE_URL is required")
+		return nil, errors.New("PostgreSQL backend not initialized: DATABASE_URL is required")
 	}
 	if postgresEmbeddingReader == nil {
-		return nil, fmt.Errorf("PostgreSQL embedding reader not registered")
+		return nil, errors.New("PostgreSQL embedding reader not registered")
 	}
 	return postgresEmbeddingReader(), nil
 }
@@ -96,10 +96,10 @@ func GetEmbeddingReader(ctx context.Context) (EmbeddingReader, error) {
 // GetFaceReader returns a FaceReader from the PostgreSQL backend
 func GetFaceReader(ctx context.Context) (FaceReader, error) {
 	if !postgresInitialized {
-		return nil, fmt.Errorf("PostgreSQL backend not initialized: DATABASE_URL is required")
+		return nil, errors.New("PostgreSQL backend not initialized: DATABASE_URL is required")
 	}
 	if postgresFaceReader == nil {
-		return nil, fmt.Errorf("PostgreSQL face reader not registered")
+		return nil, errors.New("PostgreSQL face reader not registered")
 	}
 	return postgresFaceReader(), nil
 }
@@ -107,10 +107,10 @@ func GetFaceReader(ctx context.Context) (FaceReader, error) {
 // GetFaceWriter returns a FaceWriter from the PostgreSQL backend
 func GetFaceWriter(ctx context.Context) (FaceWriter, error) {
 	if !postgresInitialized {
-		return nil, fmt.Errorf("PostgreSQL backend not initialized: DATABASE_URL is required")
+		return nil, errors.New("PostgreSQL backend not initialized: DATABASE_URL is required")
 	}
 	if postgresFaceWriter == nil {
-		return nil, fmt.Errorf("PostgreSQL face writer not registered")
+		return nil, errors.New("PostgreSQL face writer not registered")
 	}
 	return postgresFaceWriter(), nil
 }
@@ -124,10 +124,10 @@ func RegisterEmbeddingWriter(writer func() EmbeddingWriter) {
 // GetEmbeddingWriter returns an EmbeddingWriter from the PostgreSQL backend
 func GetEmbeddingWriter(ctx context.Context) (EmbeddingWriter, error) {
 	if !postgresInitialized {
-		return nil, fmt.Errorf("PostgreSQL backend not initialized: DATABASE_URL is required")
+		return nil, errors.New("PostgreSQL backend not initialized: DATABASE_URL is required")
 	}
 	if postgresEmbeddingWriter == nil {
-		return nil, fmt.Errorf("PostgreSQL embedding writer not registered")
+		return nil, errors.New("PostgreSQL embedding writer not registered")
 	}
 	return postgresEmbeddingWriter(), nil
 }
@@ -140,10 +140,10 @@ func RegisterEraEmbeddingWriter(writer func() EraEmbeddingWriter) {
 // GetEraEmbeddingWriter returns an EraEmbeddingWriter from the PostgreSQL backend
 func GetEraEmbeddingWriter(ctx context.Context) (EraEmbeddingWriter, error) {
 	if !postgresInitialized {
-		return nil, fmt.Errorf("PostgreSQL backend not initialized: DATABASE_URL is required")
+		return nil, errors.New("PostgreSQL backend not initialized: DATABASE_URL is required")
 	}
 	if postgresEraEmbeddingWriter == nil {
-		return nil, fmt.Errorf("PostgreSQL era embedding writer not registered")
+		return nil, errors.New("PostgreSQL era embedding writer not registered")
 	}
 	return postgresEraEmbeddingWriter(), nil
 }
@@ -151,10 +151,10 @@ func GetEraEmbeddingWriter(ctx context.Context) (EraEmbeddingWriter, error) {
 // GetEraEmbeddingReader returns an EraEmbeddingReader from the PostgreSQL backend
 func GetEraEmbeddingReader(ctx context.Context) (EraEmbeddingReader, error) {
 	if !postgresInitialized {
-		return nil, fmt.Errorf("PostgreSQL backend not initialized: DATABASE_URL is required")
+		return nil, errors.New("PostgreSQL backend not initialized: DATABASE_URL is required")
 	}
 	if postgresEraEmbeddingWriter == nil {
-		return nil, fmt.Errorf("PostgreSQL era embedding writer not registered")
+		return nil, errors.New("PostgreSQL era embedding writer not registered")
 	}
 	return postgresEraEmbeddingWriter(), nil
 }
@@ -167,10 +167,10 @@ func RegisterBookWriter(writer func() BookWriter) {
 // GetBookWriter returns a BookWriter from the PostgreSQL backend
 func GetBookWriter(ctx context.Context) (BookWriter, error) {
 	if !postgresInitialized {
-		return nil, fmt.Errorf("PostgreSQL backend not initialized: DATABASE_URL is required")
+		return nil, errors.New("PostgreSQL backend not initialized: DATABASE_URL is required")
 	}
 	if postgresBookWriter == nil {
-		return nil, fmt.Errorf("PostgreSQL book writer not registered")
+		return nil, errors.New("PostgreSQL book writer not registered")
 	}
 	return postgresBookWriter(), nil
 }
@@ -178,10 +178,10 @@ func GetBookWriter(ctx context.Context) (BookWriter, error) {
 // GetBookReader returns a BookReader from the PostgreSQL backend
 func GetBookReader(ctx context.Context) (BookReader, error) {
 	if !postgresInitialized {
-		return nil, fmt.Errorf("PostgreSQL backend not initialized: DATABASE_URL is required")
+		return nil, errors.New("PostgreSQL backend not initialized: DATABASE_URL is required")
 	}
 	if postgresBookWriter == nil {
-		return nil, fmt.Errorf("PostgreSQL book writer not registered")
+		return nil, errors.New("PostgreSQL book writer not registered")
 	}
 	return postgresBookWriter(), nil
 }

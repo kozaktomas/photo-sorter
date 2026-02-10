@@ -71,8 +71,8 @@ func (h *FacesHandler) ListSubjects(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := make([]SubjectResponse, len(subjects))
-	for i, s := range subjects {
-		response[i] = subjectToResponse(s)
+	for i := range subjects {
+		response[i] = subjectToResponse(subjects[i])
 	}
 
 	respondJSON(w, http.StatusOK, response)

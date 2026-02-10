@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -113,10 +114,10 @@ func (p *OllamaProvider) AnalyzePhoto(ctx context.Context, imageData []byte, met
 	var lastError error
 	var lastResponse string
 
-	for attempt := 0; attempt < maxRetries; attempt++ {
+	for range maxRetries {
 		resp, err := p.sendRequest(ctx, messages)
 		if err != nil {
-			return nil, fmt.Errorf("Ollama API error: %w", err)
+			return nil, fmt.Errorf("ollama API error: %w", err)
 		}
 
 		// Track usage (Ollama is free, but we track tokens for stats)
@@ -170,7 +171,7 @@ func (p *OllamaProvider) EstimateAlbumDate(ctx context.Context, albumTitle strin
 
 	resp, err := p.sendRequest(ctx, messages)
 	if err != nil {
-		return nil, fmt.Errorf("Ollama API error: %w", err)
+		return nil, fmt.Errorf("ollama API error: %w", err)
 	}
 
 	// Track usage
@@ -204,7 +205,7 @@ func (p *OllamaProvider) sendRequest(ctx context.Context, messages []ollamaMessa
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", p.baseURL+"/api/chat", bytes.NewReader(jsonBody))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+"/api/chat", bytes.NewReader(jsonBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -261,17 +262,17 @@ func extractJSON(content string) string {
 
 // Batch API methods - Ollama doesn't support batch operations
 func (p *OllamaProvider) CreatePhotoBatch(ctx context.Context, requests []BatchPhotoRequest) (string, error) {
-	return "", fmt.Errorf("Ollama does not support batch operations")
+	return "", errors.New("ollama does not support batch operations")
 }
 
 func (p *OllamaProvider) GetBatchStatus(ctx context.Context, batchID string) (*BatchStatus, error) {
-	return nil, fmt.Errorf("Ollama does not support batch operations")
+	return nil, errors.New("ollama does not support batch operations")
 }
 
 func (p *OllamaProvider) GetBatchResults(ctx context.Context, batchID string) ([]BatchPhotoResult, error) {
-	return nil, fmt.Errorf("Ollama does not support batch operations")
+	return nil, errors.New("ollama does not support batch operations")
 }
 
 func (p *OllamaProvider) CancelBatch(ctx context.Context, batchID string) error {
-	return fmt.Errorf("Ollama does not support batch operations")
+	return errors.New("ollama does not support batch operations")
 }

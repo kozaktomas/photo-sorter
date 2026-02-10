@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -55,10 +56,10 @@ func runPhotoInfo(cmd *cobra.Command, args []string) error {
 
 	// Validate args
 	if albumUID == "" && len(args) == 0 {
-		return fmt.Errorf("either provide a photo UID or use --album flag")
+		return errors.New("either provide a photo UID or use --album flag")
 	}
 	if albumUID != "" && len(args) > 0 {
-		return fmt.Errorf("cannot specify both photo UID and --album flag")
+		return errors.New("cannot specify both photo UID and --album flag")
 	}
 
 	cfg := config.Load()
@@ -164,7 +165,7 @@ func runPhotoInfoAlbum(pp *photoprism.PhotoPrism, albumUID string, limit, concur
 	sem := make(chan struct{}, concurrency)
 	var wg sync.WaitGroup
 
-	for i, photo := range photos {
+	for i := range photos {
 		wg.Add(1)
 		go func(idx int, p photoprism.Photo) {
 			defer wg.Done()
@@ -205,7 +206,7 @@ func runPhotoInfoAlbum(pp *photoprism.PhotoPrism, albumUID string, limit, concur
 			if bar != nil {
 				bar.Add(1)
 			}
-		}(i, photo)
+		}(i, photos[i])
 	}
 
 	wg.Wait()
@@ -217,9 +218,9 @@ func runPhotoInfoAlbum(pp *photoprism.PhotoPrism, albumUID string, limit, concur
 
 	// Filter out empty results (from errors)
 	validResults := make([]fingerprint.PhotoInfo, 0, len(results))
-	for _, r := range results {
-		if r.UID != "" {
-			validResults = append(validResults, r)
+	for i := range results {
+		if results[i].UID != "" {
+			validResults = append(validResults, results[i])
 		}
 	}
 
@@ -396,7 +397,8 @@ func outputHumanReadableBatch(results []fingerprint.PhotoInfo, ppCfg *config.Pho
 	fmt.Fprintln(w, "PHOTO\tDIMENSIONS\tTAKEN\tPHASH\tDHASH")
 	fmt.Fprintln(w, "-----\t----------\t-----\t-----\t-----")
 
-	for _, info := range results {
+	for i := range results {
+		info := &results[i]
 		taken := ""
 		if info.Year > 0 {
 			taken = fmt.Sprintf("%d-%02d-%02d", info.Year, info.Month, info.Day)

@@ -3,7 +3,9 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
+	"math"
 	"sync"
 
 	"github.com/lib/pq"
@@ -11,6 +13,17 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/database"
 	"github.com/kozaktomas/photo-sorter/internal/facematch"
 )
+
+// safeIntToInt32 converts int to int32 with clamping to prevent overflow
+func safeIntToInt32(v int) int32 {
+	if v > math.MaxInt32 {
+		return math.MaxInt32
+	}
+	if v < math.MinInt32 {
+		return math.MinInt32
+	}
+	return int32(v)
+}
 
 // FaceRepository provides PostgreSQL-backed face storage with optional in-memory HNSW index
 type FaceRepository struct {
@@ -213,7 +226,7 @@ func (r *FaceRepository) findSimilarHNSW(embedding []float32, limit int) ([]data
 	defer r.hnswMu.RUnlock()
 
 	if r.hnswIndex == nil {
-		return nil, fmt.Errorf("HNSW index not initialized")
+		return nil, errors.New("HNSW index not initialized")
 	}
 
 	ids, _, err := r.hnswIndex.Search(embedding, limit)
@@ -286,7 +299,7 @@ func (r *FaceRepository) findSimilarWithDistanceHNSW(embedding []float32, limit 
 	defer r.hnswMu.RUnlock()
 
 	if r.hnswIndex == nil {
-		return nil, nil, fmt.Errorf("HNSW index not initialized")
+		return nil, nil, errors.New("HNSW index not initialized")
 	}
 
 	// Request more candidates to ensure we have enough after distance filtering
@@ -387,19 +400,11 @@ func (r *FaceRepository) SaveFaces(ctx context.Context, photoUID string, faces [
 
 	var oldFaceIDs []int64
 	if hnswEnabled {
-		rows, err := tx.QueryContext(ctx, "SELECT id FROM faces WHERE photo_uid = $1", photoUID)
+		ids, err := scanFaceIDs(tx, ctx, photoUID)
 		if err != nil {
-			return fmt.Errorf("query existing face IDs: %w", err)
+			return err
 		}
-		for rows.Next() {
-			var id int64
-			if err := rows.Scan(&id); err != nil {
-				rows.Close()
-				return fmt.Errorf("scan face ID: %w", err)
-			}
-			oldFaceIDs = append(oldFaceIDs, id)
-		}
-		rows.Close()
+		oldFaceIDs = ids
 	}
 
 	// Delete existing faces for this photo
@@ -446,13 +451,13 @@ func (r *FaceRepository) SaveFaces(ctx context.Context, photoUID string, faces [
 			fileUID = sql.NullString{String: face.FileUID, Valid: true}
 		}
 		if face.PhotoWidth > 0 {
-			photoWidth = sql.NullInt32{Int32: int32(face.PhotoWidth), Valid: true}
+			photoWidth = sql.NullInt32{Int32: safeIntToInt32(face.PhotoWidth), Valid: true}
 		}
 		if face.PhotoHeight > 0 {
-			photoHeight = sql.NullInt32{Int32: int32(face.PhotoHeight), Valid: true}
+			photoHeight = sql.NullInt32{Int32: safeIntToInt32(face.PhotoHeight), Valid: true}
 		}
 		if face.Orientation > 0 {
-			orientation = sql.NullInt32{Int32: int32(face.Orientation), Valid: true}
+			orientation = sql.NullInt32{Int32: safeIntToInt32(face.Orientation), Valid: true}
 		}
 
 		var newID int64
@@ -604,7 +609,8 @@ func (r *FaceRepository) SaveFacesBatch(ctx context.Context, facesByPhoto map[st
 	defer stmt.Close()
 
 	for photoUID, faces := range facesByPhoto {
-		for _, face := range faces {
+		for j := range faces {
+			face := &faces[j]
 			vec := pgvector.NewVector(face.Embedding)
 			bbox := pq.Array(face.BBox)
 
@@ -624,13 +630,13 @@ func (r *FaceRepository) SaveFacesBatch(ctx context.Context, facesByPhoto map[st
 				fileUID = sql.NullString{String: face.FileUID, Valid: true}
 			}
 			if face.PhotoWidth > 0 {
-				photoWidth = sql.NullInt32{Int32: int32(face.PhotoWidth), Valid: true}
+				photoWidth = sql.NullInt32{Int32: safeIntToInt32(face.PhotoWidth), Valid: true}
 			}
 			if face.PhotoHeight > 0 {
-				photoHeight = sql.NullInt32{Int32: int32(face.PhotoHeight), Valid: true}
+				photoHeight = sql.NullInt32{Int32: safeIntToInt32(face.PhotoHeight), Valid: true}
 			}
 			if face.Orientation > 0 {
-				orientation = sql.NullInt32{Int32: int32(face.Orientation), Valid: true}
+				orientation = sql.NullInt32{Int32: safeIntToInt32(face.Orientation), Valid: true}
 			}
 
 			if _, err := stmt.ExecContext(ctx,
@@ -967,20 +973,10 @@ func (r *FaceRepository) DeleteFacesByPhoto(ctx context.Context, photoUID string
 	defer tx.Rollback()
 
 	// Get face IDs before deleting (for HNSW cleanup)
-	rows, err := tx.QueryContext(ctx, "SELECT id FROM faces WHERE photo_uid = $1", photoUID)
+	faceIDs, err := scanFaceIDs(tx, ctx, photoUID)
 	if err != nil {
-		return nil, fmt.Errorf("query face IDs: %w", err)
+		return nil, err
 	}
-	var faceIDs []int64
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			rows.Close()
-			return nil, fmt.Errorf("scan face ID: %w", err)
-		}
-		faceIDs = append(faceIDs, id)
-	}
-	rows.Close()
 
 	// Delete faces
 	if _, err := tx.ExecContext(ctx, "DELETE FROM faces WHERE photo_uid = $1", photoUID); err != nil {
@@ -1010,6 +1006,24 @@ func (r *FaceRepository) DeleteFacesByPhoto(ctx context.Context, photoUID string
 	}
 
 	return faceIDs, nil
+}
+
+// scanFaceIDs reads face IDs from a query and properly closes the rows.
+func scanFaceIDs(tx *sql.Tx, ctx context.Context, photoUID string) ([]int64, error) {
+	rows, err := tx.QueryContext(ctx, "SELECT id FROM faces WHERE photo_uid = $1", photoUID)
+	if err != nil {
+		return nil, fmt.Errorf("query face IDs: %w", err)
+	}
+	defer rows.Close()
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("scan face ID: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
 }
 
 // Verify interface compliance

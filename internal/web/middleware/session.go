@@ -59,7 +59,7 @@ type SessionManager struct {
 func NewSessionManager(secret string, repo SessionRepository) *SessionManager {
 	// Use a default secret if none provided (for development)
 	if secret == "" {
-		secret = "photo-sorter-dev-secret-change-in-production"
+		secret = "photo-sorter-dev-secret-change-in-production" //nolint:gosec // dev fallback, not a real credential
 	}
 	sm := &SessionManager{
 		secret:   []byte(secret),

@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"sync"
 
@@ -44,7 +45,7 @@ func (r *EmbeddingRepository) Get(ctx context.Context, photoUID string) (*databa
 		&emb.Dim,
 		&emb.CreatedAt,
 	)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {
@@ -110,7 +111,7 @@ func (r *EmbeddingRepository) findSimilarHNSW(embedding []float32, limit int) ([
 	defer r.hnswMu.RUnlock()
 
 	if r.hnswIndex == nil {
-		return nil, fmt.Errorf("HNSW index not initialized")
+		return nil, errors.New("HNSW index not initialized")
 	}
 
 	ids, _, err := r.hnswIndex.Search(embedding, limit)
@@ -182,7 +183,7 @@ func (r *EmbeddingRepository) findSimilarWithDistanceHNSW(embedding []float32, l
 	defer r.hnswMu.RUnlock()
 
 	if r.hnswIndex == nil {
-		return nil, nil, fmt.Errorf("HNSW index not initialized")
+		return nil, nil, errors.New("HNSW index not initialized")
 	}
 
 	// Request more candidates to ensure we have enough after distance filtering

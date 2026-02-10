@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -84,7 +85,7 @@ func (c *EmbeddingClient) postMultipartImage(ctx context.Context, endpoint strin
 		return nil, fmt.Errorf("failed to close multipart writer: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+endpoint, &buf)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+endpoint, &buf)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -121,7 +122,7 @@ func (c *EmbeddingClient) ComputeEmbedding(ctx context.Context, imageData []byte
 	}
 
 	if len(embResp.Embedding) == 0 {
-		return nil, fmt.Errorf("empty embedding returned")
+		return nil, errors.New("empty embedding returned")
 	}
 
 	return embResp.Embedding, nil
@@ -165,7 +166,7 @@ func (c *EmbeddingClient) ComputeEmbeddingWithMetadata(ctx context.Context, imag
 	}
 
 	if len(embResp.Embedding) == 0 {
-		return nil, fmt.Errorf("empty embedding returned")
+		return nil, errors.New("empty embedding returned")
 	}
 
 	return &EmbeddingResult{
@@ -209,7 +210,7 @@ func (c *EmbeddingClient) ComputeTextEmbedding(ctx context.Context, text string)
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/embed/text", bytes.NewReader(reqBody))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/embed/text", bytes.NewReader(reqBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -236,7 +237,7 @@ func (c *EmbeddingClient) ComputeTextEmbedding(ctx context.Context, text string)
 	}
 
 	if len(embResp.Embedding) == 0 {
-		return nil, fmt.Errorf("empty embedding returned")
+		return nil, errors.New("empty embedding returned")
 	}
 
 	return embResp.Embedding, nil
@@ -249,7 +250,7 @@ func (c *EmbeddingClient) ComputeTextEmbeddingWithMetadata(ctx context.Context, 
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, "POST", c.baseURL+"/embed/text", bytes.NewReader(reqBody))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/embed/text", bytes.NewReader(reqBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
@@ -276,7 +277,7 @@ func (c *EmbeddingClient) ComputeTextEmbeddingWithMetadata(ctx context.Context, 
 	}
 
 	if len(embResp.Embedding) == 0 {
-		return nil, fmt.Errorf("empty embedding returned")
+		return nil, errors.New("empty embedding returned")
 	}
 
 	return &EmbeddingResult{

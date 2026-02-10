@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -171,7 +172,7 @@ func runUpload(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(uploadTokens) == 0 {
-		return fmt.Errorf("no files were uploaded successfully")
+		return errors.New("no files were uploaded successfully")
 	}
 
 	// Process all uploads and add to album

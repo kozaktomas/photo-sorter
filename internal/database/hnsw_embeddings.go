@@ -3,6 +3,7 @@ package database
 import (
 	"encoding/gob"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"sync"
@@ -28,7 +29,7 @@ func NewHNSWEmbeddingIndex() *HNSWEmbeddingIndex {
 }
 
 // BuildFromEmbeddings builds the index from a slice of embeddings
-func (h *HNSWEmbeddingIndex) BuildFromEmbeddings(embeddings []StoredEmbedding) error {
+func (h *HNSWEmbeddingIndex) BuildFromEmbeddings(embeddings []StoredEmbedding) error { //nolint:dupl
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -69,7 +70,7 @@ func (h *HNSWEmbeddingIndex) Search(query []float32, k int) ([]string, []float64
 	defer h.mu.RUnlock()
 
 	if h.graph == nil && h.savedGraph == nil {
-		return nil, nil, fmt.Errorf("index not initialized")
+		return nil, nil, errors.New("index not initialized")
 	}
 
 	var neighbors []hnsw.Node[string]
@@ -126,8 +127,8 @@ func (h *HNSWEmbeddingIndex) Save() error {
 	}
 
 	if h.graph == nil {
-		// Remove existing file if index is empty
-		os.Remove(h.path)
+		// Remove existing file if index is empty (best-effort cleanup)
+		_ = os.Remove(h.path)
 		return nil
 	}
 
@@ -196,7 +197,7 @@ func (h *HNSWEmbeddingIndex) SearchWithDistance(query []float32, k int, maxDista
 	defer h.mu.RUnlock()
 
 	if h.graph == nil && h.savedGraph == nil {
-		return nil, nil, fmt.Errorf("index not initialized")
+		return nil, nil, errors.New("index not initialized")
 	}
 
 	// Search with more candidates for better recall after filtering
@@ -243,7 +244,7 @@ type HNSWEmbeddingIndexMetadata struct {
 // LoadHNSWEmbeddingMetadata loads just the metadata file for staleness checking
 func LoadHNSWEmbeddingMetadata(basePath string) (*HNSWEmbeddingIndexMetadata, error) {
 	metaPath := basePath + ".meta"
-	data, err := os.ReadFile(metaPath)
+	data, err := os.ReadFile(metaPath) //nolint:gosec // path is from trusted config
 	if err != nil {
 		return nil, err
 	}
@@ -260,32 +261,32 @@ func (h *HNSWEmbeddingIndex) SaveWithEmbeddingMetadata(basePath string, metadata
 	defer h.mu.RUnlock()
 
 	if h.graph == nil && h.savedGraph == nil {
-		// Remove existing files if index is empty
+		// Remove existing files if index is empty (best-effort cleanup)
 		fmt.Printf("Embedding index save: no graph loaded, removing files\n")
-		os.Remove(basePath)
-		os.Remove(basePath + ".meta")
-		os.Remove(basePath + ".embeddings")
+		_ = os.Remove(basePath)
+		_ = os.Remove(basePath + ".meta")
+		_ = os.Remove(basePath + ".embeddings")
 		return nil
 	}
 
 	// Save HNSW graph - use savedGraph if available (loaded from disk), otherwise use graph (built fresh)
-	f, err := os.Create(basePath)
+	f, err := os.Create(basePath) //nolint:gosec // path is from trusted config
 	if err != nil {
 		return fmt.Errorf("failed to create HNSW embedding index file: %w", err)
 	}
 	if h.savedGraph != nil {
 		// SavedGraph embeds *Graph, so we can call Export on it
 		if err := h.savedGraph.Export(f); err != nil {
-			f.Close()
+			_ = f.Close()
 			return fmt.Errorf("failed to export HNSW graph from savedGraph: %w", err)
 		}
 	} else {
 		if err := h.graph.Export(f); err != nil {
-			f.Close()
+			_ = f.Close()
 			return fmt.Errorf("failed to export HNSW graph: %w", err)
 		}
 	}
-	f.Close()
+	_ = f.Close()
 
 	// Save metadata
 	metaPath := basePath + ".meta"
@@ -293,13 +294,13 @@ func (h *HNSWEmbeddingIndex) SaveWithEmbeddingMetadata(basePath string, metadata
 	if err != nil {
 		return fmt.Errorf("failed to marshal metadata: %w", err)
 	}
-	if err := os.WriteFile(metaPath, metaData, 0644); err != nil {
+	if err := os.WriteFile(metaPath, metaData, 0600); err != nil {
 		return fmt.Errorf("failed to write metadata: %w", err)
 	}
 
 	// Save embedding data (for fast startup)
 	embPath := basePath + ".embeddings"
-	embFile, err := os.Create(embPath)
+	embFile, err := os.Create(embPath) //nolint:gosec // path is from trusted config
 	if err != nil {
 		return fmt.Errorf("failed to create embeddings file: %w", err)
 	}
@@ -335,7 +336,7 @@ func (h *HNSWEmbeddingIndex) LoadWithEmbeddingMetadata(basePath string) error {
 
 	// Try to load embedding metadata
 	embPath := basePath + ".embeddings"
-	embFile, err := os.Open(embPath)
+	embFile, err := os.Open(embPath) //nolint:gosec // path is from trusted config
 	if err != nil {
 		return fmt.Errorf("failed to open embeddings file: %w", err)
 	}

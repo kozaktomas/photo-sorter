@@ -2,12 +2,15 @@ package photoprism
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"time"
 )
 
@@ -15,14 +18,14 @@ import (
 // Returns the upload token used for processing
 func (pp *PhotoPrism) UploadFile(filePath string) (string, error) {
 	if pp.userUID == "" {
-		return "", fmt.Errorf("user UID not available")
+		return "", errors.New("user UID not available")
 	}
 
 	// Generate upload token (use current timestamp)
-	uploadToken := fmt.Sprintf("%d", time.Now().UnixNano())
+	uploadToken := strconv.FormatInt(time.Now().UnixNano(), 10)
 
 	// Open the file
-	file, err := os.Open(filePath)
+	file, err := os.Open(filePath) //nolint:gosec // user-provided file path for upload
 	if err != nil {
 		return "", fmt.Errorf("could not open file: %w", err)
 	}
@@ -49,12 +52,12 @@ func (pp *PhotoPrism) UploadFile(filePath string) (string, error) {
 
 	// Send request
 	url := fmt.Sprintf("%s/users/%s/upload/%s", pp.Url, pp.userUID, uploadToken)
-	req, err := http.NewRequest("POST", url, &body)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url, &body)
 	if err != nil {
 		return "", fmt.Errorf("could not create request: %w", err)
 	}
 
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", pp.token))
+	req.Header.Set("Authorization", "Bearer "+pp.token)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 
 	resp, err := http.DefaultClient.Do(req)
@@ -75,15 +78,15 @@ func (pp *PhotoPrism) UploadFile(filePath string) (string, error) {
 // Returns the upload token used for processing
 func (pp *PhotoPrism) UploadFiles(filePaths []string) (string, error) {
 	if pp.userUID == "" {
-		return "", fmt.Errorf("user UID not available")
+		return "", errors.New("user UID not available")
 	}
 
 	if len(filePaths) == 0 {
-		return "", fmt.Errorf("no files to upload")
+		return "", errors.New("no files to upload")
 	}
 
 	// Generate upload token (use current timestamp)
-	uploadToken := fmt.Sprintf("%d", time.Now().UnixNano())
+	uploadToken := strconv.FormatInt(time.Now().UnixNano(), 10)
 
 	// Create multipart form
 	var body bytes.Buffer
@@ -91,7 +94,7 @@ func (pp *PhotoPrism) UploadFiles(filePaths []string) (string, error) {
 
 	// Add all files to form
 	for _, filePath := range filePaths {
-		file, err := os.Open(filePath)
+		file, err := os.Open(filePath) //nolint:gosec // user-provided file path for upload
 		if err != nil {
 			return "", fmt.Errorf("could not open file %s: %w", filePath, err)
 		}
@@ -99,16 +102,16 @@ func (pp *PhotoPrism) UploadFiles(filePaths []string) (string, error) {
 		fileName := filepath.Base(filePath)
 		part, err := writer.CreateFormFile("files", fileName)
 		if err != nil {
-			file.Close()
+			_ = file.Close()
 			return "", fmt.Errorf("could not create form file: %w", err)
 		}
 
 		if _, err := io.Copy(part, file); err != nil {
-			file.Close()
+			_ = file.Close()
 			return "", fmt.Errorf("could not copy file data: %w", err)
 		}
 
-		file.Close()
+		_ = file.Close()
 	}
 
 	if err := writer.Close(); err != nil {
@@ -117,12 +120,12 @@ func (pp *PhotoPrism) UploadFiles(filePaths []string) (string, error) {
 
 	// Send request
 	url := fmt.Sprintf("%s/users/%s/upload/%s", pp.Url, pp.userUID, uploadToken)
-	req, err := http.NewRequest("POST", url, &body)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url, &body)
 	if err != nil {
 		return "", fmt.Errorf("could not create request: %w", err)
 	}
 
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", pp.token))
+	req.Header.Set("Authorization", "Bearer "+pp.token)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 
 	resp, err := http.DefaultClient.Do(req)
@@ -142,7 +145,7 @@ func (pp *PhotoPrism) UploadFiles(filePaths []string) (string, error) {
 // ProcessUpload processes previously uploaded files and optionally adds them to albums
 func (pp *PhotoPrism) ProcessUpload(uploadToken string, albumUIDs []string) error {
 	if pp.userUID == "" {
-		return fmt.Errorf("user UID not available")
+		return errors.New("user UID not available")
 	}
 
 	options := struct {
@@ -151,6 +154,5 @@ func (pp *PhotoPrism) ProcessUpload(uploadToken string, albumUIDs []string) erro
 		Albums: albumUIDs,
 	}
 
-	_, err := doRequestRaw(pp, "PUT", fmt.Sprintf("users/%s/upload/%s", pp.userUID, uploadToken), options, http.StatusOK)
-	return err
+	return doRequestRaw(pp, "PUT", fmt.Sprintf("users/%s/upload/%s", pp.userUID, uploadToken), options)
 }

@@ -182,12 +182,7 @@ func (h *ProcessHandler) Start(w http.ResponseWriter, r *http.Request) {
 		ID:        jobID,
 		Status:    JobStatusPending,
 		StartedAt: time.Now(),
-		Options: ProcessJobOptions{
-			Concurrency:  req.Concurrency,
-			Limit:        req.Limit,
-			NoFaces:      req.NoFaces,
-			NoEmbeddings: req.NoEmbeddings,
-		},
+		Options: ProcessJobOptions(req),
 	}
 
 	h.jobManager.SetActiveJob(job)
@@ -508,7 +503,6 @@ func (h *ProcessHandler) cancelJob(job *ProcessJob) {
 
 func (h *ProcessHandler) completeJob(job *ProcessJob, embRepo database.EmbeddingReader, faceWriter database.FaceWriter,
 	embedSuccess, embedError, faceSuccess, faceError, totalNewFaces int64) {
-
 	// Refresh handlers to use updated data
 	if h.facesHandler != nil {
 		h.facesHandler.RefreshReader()
@@ -580,7 +574,8 @@ func enrichFacesWithMarkerData(pp *photoprism.PhotoPrism, faceWriter database.Fa
 
 	// Convert markers to facematch.MarkerInfo
 	markerInfos := make([]facematch.MarkerInfo, 0, len(markers))
-	for _, m := range markers {
+	for i := range markers {
+		m := &markers[i]
 		markerInfos = append(markerInfos, facematch.MarkerInfo{
 			UID:     m.UID,
 			Type:    m.Type,
@@ -626,7 +621,7 @@ type SyncCacheResponse struct {
 }
 
 // RebuildIndex rebuilds the HNSW indexes and reloads them in memory
-func (h *ProcessHandler) RebuildIndex(w http.ResponseWriter, r *http.Request) {
+func (h *ProcessHandler) RebuildIndex(w http.ResponseWriter, _ *http.Request) {
 	ctx := context.Background()
 	startTime := time.Now()
 
@@ -826,7 +821,8 @@ func (h *ProcessHandler) syncPhotoCache(ctx context.Context, pp *photoprism.Phot
 
 	// Convert markers to facematch.MarkerInfo
 	markerInfos := make([]facematch.MarkerInfo, 0, len(markers))
-	for _, m := range markers {
+	for i := range markers {
+		m := &markers[i]
 		markerInfos = append(markerInfos, facematch.MarkerInfo{
 			UID:     m.UID,
 			Type:    m.Type,

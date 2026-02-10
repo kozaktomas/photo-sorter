@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -70,12 +71,12 @@ func runCachePushEmbeddings(cmd *cobra.Command, args []string) error {
 
 	// Validate PhotoPrism database URL
 	if cfg.PhotoPrism.DatabaseURL == "" {
-		return fmt.Errorf("PHOTOPRISM_DATABASE_URL environment variable is required")
+		return errors.New("PHOTOPRISM_DATABASE_URL environment variable is required")
 	}
 
 	// Initialize PostgreSQL
 	if cfg.Database.URL == "" {
-		return fmt.Errorf("DATABASE_URL environment variable is required")
+		return errors.New("DATABASE_URL environment variable is required")
 	}
 	if err := postgres.Initialize(&cfg.Database); err != nil {
 		return fmt.Errorf("failed to initialize PostgreSQL: %w", err)
@@ -134,7 +135,8 @@ func runCachePushEmbeddings(cmd *cobra.Command, args []string) error {
 	markersUpdated := 0
 	markerErrors := 0
 
-	for _, face := range faces {
+	for i := range faces {
+		face := &faces[i]
 		if !jsonOutput {
 			fmt.Printf("  Marker %s (photo %s, face %d)", face.MarkerUID, face.PhotoUID, face.FaceIndex)
 		}
@@ -177,8 +179,8 @@ func runCachePushEmbeddings(cmd *cobra.Command, args []string) error {
 
 		// Build marker_uid → embedding lookup from our faces
 		embeddingByMarker := make(map[string][]float32, len(faces))
-		for _, face := range faces {
-			embeddingByMarker[face.MarkerUID] = face.Embedding
+		for i := range faces {
+			embeddingByMarker[faces[i].MarkerUID] = faces[i].Embedding
 		}
 
 		for _, cluster := range clusters {

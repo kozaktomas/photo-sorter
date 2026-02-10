@@ -1,6 +1,5 @@
 package photoprism
 
-import "fmt"
 
 // GetPhotoMarkers extracts markers from photo details
 // Returns markers found in the photo's files
@@ -93,7 +92,7 @@ func (pp *PhotoPrism) CreateMarker(marker MarkerCreate) (*Marker, error) {
 
 // UpdateMarker updates an existing marker (e.g., to assign a person)
 func (pp *PhotoPrism) UpdateMarker(markerUID string, update MarkerUpdate) (*Marker, error) {
-	return doPutJSON[Marker](pp, fmt.Sprintf("markers/%s", markerUID), update)
+	return doPutJSON[Marker](pp, "markers/"+markerUID, update)
 }
 
 // DeleteMarker marks a marker as invalid (soft delete)
@@ -104,5 +103,5 @@ func (pp *PhotoPrism) DeleteMarker(markerUID string) (*Marker, error) {
 
 // ClearMarkerSubject removes the person assignment from a marker
 func (pp *PhotoPrism) ClearMarkerSubject(markerUID string) (*Marker, error) {
-	return doDeleteJSON[Marker](pp, fmt.Sprintf("markers/%s/subject", markerUID), nil)
+	return doDeleteJSON[Marker](pp, "markers/"+markerUID+"/subject", nil)
 }

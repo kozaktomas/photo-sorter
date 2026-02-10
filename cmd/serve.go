@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/signal"
@@ -37,7 +38,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	// Initialize PostgreSQL database backend (required)
 	if cfg.Database.URL == "" {
-		return fmt.Errorf("DATABASE_URL environment variable is required")
+		return errors.New("DATABASE_URL environment variable is required")
 	}
 
 	fmt.Printf("Connecting to PostgreSQL database...\n")
@@ -132,7 +133,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	// Validate PhotoPrism connection
 	if cfg.PhotoPrism.URL == "" {
-		return fmt.Errorf("PHOTOPRISM_URL environment variable is required")
+		return errors.New("PHOTOPRISM_URL environment variable is required")
 	}
 
 	// Create and start server

@@ -15,7 +15,7 @@ func TestNewConfigHandler(t *testing.T) {
 	handler := NewConfigHandler(cfg)
 
 	if handler == nil {
-		t.Error("expected non-nil handler")
+		t.Fatal("expected non-nil handler")
 	}
 
 	if handler.config != cfg {

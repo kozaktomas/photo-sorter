@@ -54,8 +54,8 @@ func runAlbums(cmd *cobra.Command, args []string) error {
 	fmt.Fprintln(w, "UID\tTITLE\tPHOTOS\tTYPE")
 	fmt.Fprintln(w, "---\t-----\t------\t----")
 
-	for _, album := range albums {
-		fmt.Fprintf(w, "%s\t%s\t%d\t%s\n", album.UID, album.Title, album.PhotoCount, album.Type)
+	for i := range albums {
+		fmt.Fprintf(w, "%s\t%s\t%d\t%s\n", albums[i].UID, albums[i].Title, albums[i].PhotoCount, albums[i].Type)
 	}
 
 	w.Flush()

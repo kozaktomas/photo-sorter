@@ -92,7 +92,8 @@ func (h *FacesHandler) FindOutliers(w http.ResponseWriter, r *http.Request) {
 	var faces []faceData
 	var missingEmbFaces []faceData
 
-	for _, face := range allPersonFaces {
+	for i := range allPersonFaces {
+		face := &allPersonFaces[i]
 		if len(face.Embedding) == 0 {
 			// Face exists but no embedding (shouldn't happen, but handle it)
 			missingEmbFaces = append(missingEmbFaces, faceData{

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -136,7 +137,7 @@ func (c *authClient) auth(url, username, password string) error {
 		return fmt.Errorf("could not marshal input: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", url+"/api/v1/sessions", bytes.NewReader(inputBody))
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url+"/api/v1/sessions", bytes.NewReader(inputBody))
 	if err != nil {
 		return fmt.Errorf("could not create request: %w", err)
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -152,7 +153,9 @@ func (h *FacesHandler) syncFaceCache(photoUID string, faceIndex int, markerUID, 
 
 	ctx := context.Background()
 	// Update face marker data in PostgreSQL (persisted automatically)
-	h.faceWriter.UpdateFaceMarker(ctx, photoUID, faceIndex, markerUID, subjectUID, subjectName)
+	if err := h.faceWriter.UpdateFaceMarker(ctx, photoUID, faceIndex, markerUID, subjectUID, subjectName); err != nil {
+		log.Printf("Warning: failed to update face cache for %s face %d: %v", photoUID, faceIndex, err)
+	}
 }
 
 // ComputeFacesResponse represents the response after computing faces

@@ -2,6 +2,7 @@ package sorter
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -165,7 +166,7 @@ func (s *Sorter) sortImmediate(ctx context.Context, albumUID string, albumTitle 
 	}
 
 	// Process photos concurrently
-	for i, photo := range photos {
+	for i := range photos {
 		wg.Add(1)
 		go func(idx int, p photoprism.Photo) {
 			defer wg.Done()
@@ -206,7 +207,7 @@ func (s *Sorter) sortImmediate(ctx context.Context, albumUID string, albumTitle 
 			}
 			resultsChan <- photoResult{index: idx, suggestion: suggestion}
 			reportProgress(p.UID)
-		}(i, photo)
+		}(i, photos[i])
 	}
 
 	// Wait for all goroutines to complete and close results channel
@@ -260,8 +261,8 @@ func (s *Sorter) sortImmediate(ctx context.Context, albumUID string, albumTitle 
 	if !opts.DryRun {
 		// Build a map of photo UID to photo for applying results
 		photoMap := make(map[string]photoprism.Photo)
-		for _, p := range photos {
-			photoMap[p.UID] = p
+		for i := range photos {
+			photoMap[photos[i].UID] = photos[i]
 		}
 
 		for _, suggestion := range result.Suggestions {
@@ -329,28 +330,28 @@ func (s *Sorter) sortBatch(ctx context.Context, albumUID string, albumTitle stri
 	var batchRequests []ai.BatchPhotoRequest
 	photoMap := make(map[string]photoprism.Photo)
 
-	for _, photo := range photos {
-		imageData, _, err := s.photoprism.GetPhotoDownload(photo.UID)
+	for i := range photos {
+		imageData, _, err := s.photoprism.GetPhotoDownload(photos[i].UID)
 		if err != nil {
-			result.Errors = append(result.Errors, fmt.Errorf("failed to download photo %s: %w", photo.UID, err))
+			result.Errors = append(result.Errors, fmt.Errorf("failed to download photo %s: %w", photos[i].UID, err))
 			bar.Add(1)
 			continue
 		}
 
 		batchRequests = append(batchRequests, ai.BatchPhotoRequest{
-			PhotoUID:        photo.UID,
+			PhotoUID:        photos[i].UID,
 			ImageData:       imageData,
-			Metadata:        photoToMetadata(photo, opts.ForceDate),
+			Metadata:        photoToMetadata(photos[i], opts.ForceDate),
 			AvailableLabels: availableLabels,
 			EstimateDate:    opts.IndividualDates,
 		})
-		photoMap[photo.UID] = photo
+		photoMap[photos[i].UID] = photos[i]
 		bar.Add(1)
 	}
 	fmt.Println()
 
 	if len(batchRequests) == 0 {
-		return nil, fmt.Errorf("no photos to process")
+		return nil, errors.New("no photos to process")
 	}
 
 	// Create batch
@@ -533,14 +534,14 @@ func (s *Sorter) applySorting(photo photoprism.Photo, suggestion ai.SortSuggesti
 	if desc != "" {
 		desc = fmt.Sprintf("%s\n\nAI_MODEL: %s", desc, s.aiProvider.Name())
 	} else {
-		desc = fmt.Sprintf("AI_MODEL: %s", s.aiProvider.Name())
+		desc = "AI_MODEL: " + s.aiProvider.Name()
 	}
 	update.Description = &desc
 	descSrc := "manual"
 	update.DescriptionSrc = &descSrc
 
 	// Set notes with model info
-	notes := fmt.Sprintf("Analyzed by: %s", s.aiProvider.Name())
+	notes := "Analyzed by: " + s.aiProvider.Name()
 	update.Details = &photoprism.PhotoDetails{
 		Notes: &notes,
 	}

@@ -4,12 +4,12 @@ import "fmt"
 
 // GetSubject retrieves a single subject by UID
 func (pp *PhotoPrism) GetSubject(uid string) (*Subject, error) {
-	return doGetJSON[Subject](pp, fmt.Sprintf("subjects/%s", uid))
+	return doGetJSON[Subject](pp, "subjects/"+uid)
 }
 
 // UpdateSubject updates a subject's metadata
 func (pp *PhotoPrism) UpdateSubject(uid string, update SubjectUpdate) (*Subject, error) {
-	return doPutJSON[Subject](pp, fmt.Sprintf("subjects/%s", uid), update)
+	return doPutJSON[Subject](pp, "subjects/"+uid, update)
 }
 
 // GetSubjects retrieves subjects (people) from PhotoPrism

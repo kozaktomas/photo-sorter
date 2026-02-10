@@ -28,6 +28,12 @@ go test -v ./...
 # Run a single test
 go test -v ./internal/photoprism/ -run TestGetAlbum
 
+# Lint Go code
+make lint
+
+# Lint and auto-fix
+make lint-fix
+
 # Run the CLI
 go run . <command>
 

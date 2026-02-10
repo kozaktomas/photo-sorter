@@ -2,9 +2,8 @@ package cmd
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
-	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -68,7 +67,7 @@ func runCacheSync(cmd *cobra.Command, args []string) error {
 
 	// Initialize PostgreSQL database
 	if cfg.Database.URL == "" {
-		return fmt.Errorf("DATABASE_URL environment variable is required")
+		return errors.New("DATABASE_URL environment variable is required")
 	}
 	if err := postgres.Initialize(&cfg.Database); err != nil {
 		return fmt.Errorf("failed to initialize PostgreSQL: %w", err)
@@ -307,7 +306,8 @@ func syncPhotoCache(ctx context.Context, pp *photoprism.PhotoPrism, faceWriter d
 
 	// Convert markers to facematch.MarkerInfo
 	markerInfos := make([]facematch.MarkerInfo, 0, len(markers))
-	for _, m := range markers {
+	for i := range markers {
+		m := &markers[i]
 		markerInfos = append(markerInfos, facematch.MarkerInfo{
 			UID:     m.UID,
 			Type:    m.Type,
@@ -354,9 +354,3 @@ func formatDuration(d time.Duration) string {
 	return fmt.Sprintf("%dh%dm", int(d.Hours()), int(d.Minutes())%60)
 }
 
-// outputJSON outputs data as pretty-printed JSON
-func outputCacheSyncJSON(data interface{}) error {
-	encoder := json.NewEncoder(os.Stdout)
-	encoder.SetIndent("", "  ")
-	return encoder.Encode(data)
-}

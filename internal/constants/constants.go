@@ -37,6 +37,20 @@ const (
 	MaxImageSize = 1920
 )
 
+// Marker type constants
+const (
+	// MarkerTypeFace is the PhotoPrism marker type for face detections
+	MarkerTypeFace = "face"
+)
+
+// AI provider constants
+const (
+	ProviderOpenAI   = "openai"
+	ProviderGemini   = "gemini"
+	ProviderOllama   = "ollama"
+	ProviderLlamaCpp = "llamacpp"
+)
+
 // Label constants
 const (
 	// DefaultLabelConfidence is the minimum confidence score for AI-suggested labels

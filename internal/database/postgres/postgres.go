@@ -3,6 +3,7 @@ package postgres
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -13,9 +14,7 @@ import (
 
 // Pool manages a PostgreSQL connection pool
 type Pool struct {
-	db   *sql.DB
-	mu   sync.RWMutex
-	once sync.Once
+	db *sql.DB
 }
 
 var (
@@ -26,7 +25,7 @@ var (
 // NewPool creates a new PostgreSQL connection pool
 func NewPool(cfg *config.DatabaseConfig) (*Pool, error) {
 	if cfg.URL == "" {
-		return nil, fmt.Errorf("database URL is required")
+		return nil, errors.New("database URL is required")
 	}
 
 	db, err := sql.Open("postgres", cfg.URL)
@@ -110,7 +109,7 @@ func (p *Pool) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error
 // as the active storage backend.
 func Initialize(cfg *config.DatabaseConfig) error {
 	if cfg == nil || cfg.URL == "" {
-		return fmt.Errorf("database URL is required")
+		return errors.New("database URL is required")
 	}
 
 	pool, err := NewPool(cfg)

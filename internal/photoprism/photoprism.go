@@ -2,6 +2,7 @@ package photoprism
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -39,7 +40,7 @@ func (pp *PhotoPrism) SetCaptureDir(dir string) error {
 		return nil
 	}
 
-	if err := os.MkdirAll(dir, 0755); err != nil {
+	if err := os.MkdirAll(dir, 0750); err != nil {
 		return fmt.Errorf("could not create capture directory: %w", err)
 	}
 	pp.captureDir = dir
@@ -68,7 +69,7 @@ func (pp *PhotoPrism) captureResponse(endpoint string, body []byte) {
 	}
 
 	// WriteFile error is non-critical for capturing - log and continue
-	if err := os.WriteFile(filepath, body, 0644); err != nil {
+	if err := os.WriteFile(filepath, body, 0600); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: failed to capture response to %s: %v\n", filepath, err)
 	}
 }
@@ -113,7 +114,7 @@ func (pp *PhotoPrism) auth(username, password string) error {
 		return fmt.Errorf("could not marshal input: %w", err)
 	}
 
-	req, err := http.NewRequest("POST", pp.Url+"/sessions", bytes.NewReader(inputBody))
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, pp.Url+"/sessions", bytes.NewReader(inputBody))
 	if err != nil {
 		return fmt.Errorf("could not create request: %w", err)
 	}
@@ -162,12 +163,12 @@ func (pp *PhotoPrism) Logout() error {
 		return nil // Already logged out
 	}
 
-	req, err := http.NewRequest("DELETE", pp.Url+"/session", nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodDelete, pp.Url+"/session", nil)
 	if err != nil {
 		return fmt.Errorf("could not create request: %w", err)
 	}
 
-	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", pp.token))
+	req.Header.Set("Authorization", "Bearer "+pp.token)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {

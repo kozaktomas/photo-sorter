@@ -109,7 +109,8 @@ func (h *FacesHandler) Match(w http.ResponseWriter, r *http.Request) {
 	var sourceFaces []sourceData
 	sourcePhotoSet := make(map[string]bool)
 
-	for _, face := range allPersonFaces {
+	for i := range allPersonFaces {
+		face := &allPersonFaces[i]
 		if len(face.Embedding) == 0 {
 			continue
 		}
@@ -211,7 +212,8 @@ func (h *FacesHandler) Match(w http.ResponseWriter, r *http.Request) {
 	// Collect results with cached data
 	matchMap := make(map[string]*matchCandidate)
 	for result := range resultsChan {
-		for i, face := range result.faces {
+		for i := range result.faces {
+			face := &result.faces[i]
 			if sourcePhotoSet[face.PhotoUID] {
 				continue
 			}
@@ -262,7 +264,7 @@ func (h *FacesHandler) Match(w http.ResponseWriter, r *http.Request) {
 		candidates = append(candidates, *m)
 	}
 
-	for i := 0; i < len(candidates)-1; i++ {
+	for i := range len(candidates) - 1 {
 		for j := i + 1; j < len(candidates); j++ {
 			if candidates[j].Distance < candidates[i].Distance {
 				candidates[i], candidates[j] = candidates[j], candidates[i]
@@ -278,7 +280,8 @@ func (h *FacesHandler) Match(w http.ResponseWriter, r *http.Request) {
 	matches := make([]FaceMatchResult, 0, len(candidates))
 	summary := MatchSummary{}
 
-	for _, c := range candidates {
+	for ci := range candidates {
+		c := &candidates[ci]
 		// Use cached dimensions if available, otherwise need to fetch (fallback)
 		width, height, orientation := c.PhotoWidth, c.PhotoHeight, c.Orientation
 		fileUID := c.FileUID

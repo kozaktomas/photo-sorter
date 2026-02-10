@@ -53,7 +53,7 @@ func TestPhotoURL_ContainsUID(t *testing.T) {
 	// OSC 8 format: \e]8;;URL\e\\TEXT\e]8;;\e\\
 	// So the UID should appear between the two escape sequences
 	found := false
-	for i := 0; i < len(result)-len(uid); i++ {
+	for i := range len(result) - len(uid) {
 		if result[i:i+len(uid)] == uid {
 			found = true
 			break

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"sort"
@@ -138,7 +139,7 @@ func runLabelsDelete(cmd *cobra.Command, args []string) error {
 	}
 
 	if len(validUIDs) == 0 {
-		return fmt.Errorf("no valid labels to delete")
+		return errors.New("no valid labels to delete")
 	}
 
 	// Confirm deletion
