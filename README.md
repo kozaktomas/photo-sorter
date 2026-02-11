@@ -13,12 +13,19 @@ A CLI tool and web interface for organizing photos in [PhotoPrism](https://photo
 - **Text-to-Image Search** - Search photos by text description with automatic Czech-to-English translation
 - **Face Recognition** - Detect faces, find matches across your library, and assign people
 - **Face Outlier Detection** - Find incorrectly assigned faces by computing distance from centroid
+- **Photo Books** - Create and manage photo book layouts with multiple page formats
+- **Era Estimation** - Estimate photo time periods using CLIP embedding comparison
+- **Duplicate Detection** - Find near-duplicate photos via embedding similarity
+- **Album Suggestions** - Find photos missing from albums via HNSW centroid search
+- **Photo Comparison** - Side-by-side photo comparison with metadata diff
+- **Slideshow** - Full-screen photo slideshow with keyboard navigation
 - **Web Interface** - Browser-based UI with real-time progress updates via SSE
+- **Internationalization** - Czech and English language support
 - **Dry Run Mode** - Preview changes before applying them
 
 ## Requirements
 
-- Go 1.21+
+- Go 1.25+
 - Node.js 18+ (for web UI)
 - A running PhotoPrism instance
 - PostgreSQL 15+ with pgvector extension (for vector storage)
@@ -174,7 +181,7 @@ Set up PostgreSQL with pgvector for storing embeddings and face data:
 docker run -d --name pgvector \
   -e POSTGRES_PASSWORD=secret \
   -p 5432:5432 \
-  pgvector/pgvector:pg16
+  pgvector/pgvector:pg17
 
 # Create database
 docker exec -it pgvector psql -U postgres -c "CREATE DATABASE photosorter;"
@@ -205,6 +212,23 @@ photo-sorter cache sync --concurrency 5
 
 # JSON output for scripting
 photo-sorter cache sync --json
+```
+
+Push InsightFace embeddings to PhotoPrism's MariaDB:
+
+```bash
+# Preview what would be updated
+photo-sorter cache push-embeddings --dry-run
+
+# Push embeddings
+photo-sorter cache push-embeddings
+```
+
+Compute CLIP era embedding centroids for photo era estimation:
+
+```bash
+# Compute and save era centroids
+photo-sorter cache compute-eras
 ```
 
 ### Web Interface
@@ -262,8 +286,11 @@ photo-sorter/
 
 - [CLI Reference](docs/cli-reference.md) - Complete reference for all CLI commands
 - [Web UI Guide](docs/web-ui.md) - Guide to the web interface features
-- [Face Markers](docs/markers.md) - Face matching and marker coordinate handling
 - [API Reference](docs/API.md) - REST API documentation
+- [Face Markers](docs/markers.md) - Face matching and marker coordinate handling
+- [Era Estimation](docs/era-estimation.md) - Era estimation using CLIP embeddings
+- [Photo Books](docs/photo-book.md) - Photo book planning tool
+- [Testing Environment](docs/testing-environment.md) - Dev/test environment setup
 
 ## Development
 

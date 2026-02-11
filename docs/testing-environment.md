@@ -300,7 +300,7 @@ The test container:
 |------|-------------|
 | `TestEmbeddingRepository` | Save, Get, Has, Count, FindSimilar operations for 768-dim embeddings |
 | `TestFaceRepository` | SaveFaces, GetFaces, HasFaces, MarkProcessed, UpdateMarker, FindSimilar for 512-dim face embeddings |
-| `TestMigrations` | Verifies all 5 migrations are applied correctly |
+| `TestMigrations` | Verifies the first 5 migrations are applied correctly (11 total migrations exist) |
 
 ### Manual Testing with docker-compose
 

@@ -261,7 +261,6 @@ photo-sorter photo info --album <album-uid> [flags]
 | `--json` | bool | false | Output as JSON |
 | `--limit` | int | 0 | Limit number of photos in album mode |
 | `--concurrency` | int | 5 | Number of parallel workers |
-| `--embedding` | bool | false | Compute image embeddings |
 
 **Examples:**
 ```bash
@@ -270,9 +269,6 @@ photo-sorter photo info pq8abc123def
 
 # Album with JSON output
 photo-sorter photo info --album aq8xyz789 --json
-
-# With embeddings
-photo-sorter photo info --embedding pq8abc123def
 ```
 
 ---

@@ -1395,6 +1395,7 @@ interface PhotoResponse {
   type: string;           // "image", "video", etc.
   original_name: string;
   file_name: string;
+  camera_model: string;
 }
 ```
 
