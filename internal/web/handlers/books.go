@@ -542,6 +542,8 @@ func (h *BooksHandler) UpdatePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	oldSlotCount := database.PageFormatSlotCount(page.Format)
+
 	if errMsg := applyPageUpdates(page, req); errMsg != "" {
 		respondError(w, http.StatusBadRequest, errMsg)
 		return
@@ -550,6 +552,15 @@ func (h *BooksHandler) UpdatePage(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to update page")
 		return
 	}
+
+	// If format changed to fewer slots, clear excess slots
+	if req.Format != nil {
+		newSlotCount := database.PageFormatSlotCount(*req.Format)
+		for i := newSlotCount; i < oldSlotCount; i++ {
+			_ = bw.ClearSlot(r.Context(), id, i)
+		}
+	}
+
 	respondJSON(w, http.StatusOK, map[string]string{"id": id})
 }
 

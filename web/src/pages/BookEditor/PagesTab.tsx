@@ -6,7 +6,7 @@ import { PageSidebar } from './PageSidebar';
 import { PageTemplate } from './PageTemplate';
 import { UnassignedPool } from './UnassignedPool';
 import { PhotoDescriptionDialog } from './PhotoDescriptionDialog';
-import type { BookDetail, SectionPhoto } from '../../types';
+import type { BookDetail, SectionPhoto, PageFormat } from '../../types';
 
 // Snap the DragOverlay center to the cursor so large source elements don't cause offset
 const snapCenterToCursor: Modifier = ({ activatorEvent, activeNodeRect, draggingNodeRect, transform }) => {
@@ -210,6 +210,14 @@ export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRe
     } catch { /* silent */ }
   }, [selectedPage, onRefresh]);
 
+  const handleChangeFormat = useCallback(async (format: PageFormat) => {
+    if (!selectedPage) return;
+    try {
+      await updatePage(selectedPage.id, { format });
+      onRefresh();
+    } catch { /* silent */ }
+  }, [selectedPage, onRefresh]);
+
   const handleDescSaved = useCallback(() => {
     if (editingPhoto) {
       loadSectionPhotos(editingPhoto.sectionId);
@@ -260,6 +268,7 @@ export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRe
                 sectionPhotos={currentSectionPhotos}
                 onEditDescription={handleEditDescription}
                 onUpdatePageDescription={handleUpdatePageDescription}
+                onChangeFormat={handleChangeFormat}
               />
               <UnassignedPool
                 photoUids={unassignedPhotos}

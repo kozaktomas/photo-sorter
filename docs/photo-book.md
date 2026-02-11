@@ -167,6 +167,7 @@ Deleting a book cascades to all sections, pages, and slots.
 - `ClearSlot`: `DELETE FROM page_slots WHERE page_id = $1 AND slot_index = $2`
 - `SwapSlots`: Atomic swap in a transaction — reads both slots, deletes both, re-inserts with swapped `photo_uid` values. Required because `UNIQUE(page_id, photo_uid)` prevents concurrent updates
 - `CreateSection` / `CreatePage`: auto-assign `sort_order` as `MAX(sort_order) + 1`
+- **Format change**: When a page's format is changed to one with fewer slots, excess slots are automatically cleared (photos returned to the unassigned pool). Slots within the new format's capacity are preserved.
 
 ## Frontend Architecture
 

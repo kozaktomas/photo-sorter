@@ -1,8 +1,18 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PageSlotComponent } from './PageSlot';
-import type { BookPage, SectionPhoto } from '../../types';
+import type { BookPage, SectionPhoto, PageFormat } from '../../types';
 import { pageFormatSlotCount, getGridClasses, getSlotClasses, getSlotPhotoUid } from '../../utils/pageFormats';
+
+const ALL_PAGE_FORMATS: PageFormat[] = ['4_landscape', '2l_1p', '1p_2l', '2_portrait', '1_fullscreen'];
+
+const formatKeyMap: Record<PageFormat, string> = {
+  '4_landscape': '4Landscape',
+  '2l_1p': '2l1p',
+  '1p_2l': '1p2l',
+  '2_portrait': '2Portrait',
+  '1_fullscreen': '1Fullscreen',
+};
 
 interface Props {
   page: BookPage;
@@ -10,9 +20,10 @@ interface Props {
   sectionPhotos?: SectionPhoto[];
   onEditDescription?: (photoUid: string) => void;
   onUpdatePageDescription?: (desc: string) => void;
+  onChangeFormat?: (format: PageFormat) => void;
 }
 
-export function PageTemplate({ page, onClearSlot, sectionPhotos, onEditDescription, onUpdatePageDescription }: Props) {
+export function PageTemplate({ page, onClearSlot, sectionPhotos, onEditDescription, onUpdatePageDescription, onChangeFormat }: Props) {
   const { t } = useTranslation('pages');
   const slotCount = pageFormatSlotCount(page.format);
   const gridClasses = getGridClasses(page.format);
@@ -65,6 +76,22 @@ export function PageTemplate({ page, onClearSlot, sectionPhotos, onEditDescripti
               {page.description || t('books.editor.pageDescriptionPlaceholder')}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Format selector */}
+      {onChangeFormat && (
+        <div className="mb-2 flex items-center gap-2">
+          <label className="text-xs text-slate-400">{t('books.editor.pageFormat')}</label>
+          <select
+            value={page.format}
+            onChange={(e) => onChangeFormat(e.target.value as PageFormat)}
+            className="px-2 py-1 bg-slate-900 border border-slate-600 rounded text-sm text-white focus:outline-none focus:ring-1 focus:ring-rose-500"
+          >
+            {ALL_PAGE_FORMATS.map(f => (
+              <option key={f} value={f}>{t(`books.editor.format${formatKeyMap[f]}`)}</option>
+            ))}
+          </select>
         </div>
       )}
 

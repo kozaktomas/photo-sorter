@@ -2,7 +2,9 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -885,6 +887,83 @@ func TestBooksHandler_UpdatePage_BackendError(t *testing.T) {
 
 	assertStatusCode(t, recorder, http.StatusInternalServerError)
 	assertJSONError(t, recorder, "failed to update page")
+}
+
+func TestBooksHandler_UpdatePage_FormatDownsizeClearsExcessSlots(t *testing.T) {
+	mockBW, handler := setupBookTest(t)
+	mockBW.AddPage(database.BookPage{ID: "p1", BookID: "b1", SectionID: "s1", Format: "4_landscape"})
+	// Assign 4 slots (indices 0-3)
+	ctx := context.TODO()
+	for i := range 4 {
+		_ = mockBW.AssignSlot(ctx, "p1", i, fmt.Sprintf("photo%d", i))
+	}
+
+	// Change format to 2_portrait (2 slots) — slots 2 and 3 should be cleared
+	body := bytes.NewBufferString(`{"format":"2_portrait"}`)
+	req := httptest.NewRequest("PUT", "/api/v1/pages/p1", body)
+	req.Header.Set("Content-Type", "application/json")
+	req = requestWithChiParams(req, map[string]string{"id": "p1"})
+	recorder := httptest.NewRecorder()
+	handler.UpdatePage(recorder, req)
+
+	assertStatusCode(t, recorder, http.StatusOK)
+
+	// Verify page format was updated
+	page, _ := mockBW.GetPage(ctx, "p1")
+	if page.Format != "2_portrait" {
+		t.Errorf("expected format '2_portrait', got '%s'", page.Format)
+	}
+
+	// Verify slots 0 and 1 still have photos
+	slots, _ := mockBW.GetPageSlots(ctx, "p1")
+	for _, s := range slots {
+		if s.SlotIndex < 2 && s.PhotoUID == "" {
+			t.Errorf("slot %d should still have a photo", s.SlotIndex)
+		}
+		if s.SlotIndex >= 2 && s.PhotoUID != "" {
+			t.Errorf("slot %d should have been cleared, but has '%s'", s.SlotIndex, s.PhotoUID)
+		}
+	}
+}
+
+func TestBooksHandler_UpdatePage_FormatUpsizePreservesSlots(t *testing.T) {
+	mockBW, handler := setupBookTest(t)
+	mockBW.AddPage(database.BookPage{ID: "p1", BookID: "b1", SectionID: "s1", Format: "2_portrait"})
+	// Assign 2 slots
+	ctx := context.TODO()
+	_ = mockBW.AssignSlot(ctx, "p1", 0, "photoA")
+	_ = mockBW.AssignSlot(ctx, "p1", 1, "photoB")
+
+	// Change format to 4_landscape (4 slots) — both existing slots should be preserved
+	body := bytes.NewBufferString(`{"format":"4_landscape"}`)
+	req := httptest.NewRequest("PUT", "/api/v1/pages/p1", body)
+	req.Header.Set("Content-Type", "application/json")
+	req = requestWithChiParams(req, map[string]string{"id": "p1"})
+	recorder := httptest.NewRecorder()
+	handler.UpdatePage(recorder, req)
+
+	assertStatusCode(t, recorder, http.StatusOK)
+
+	// Verify page format was updated
+	page, _ := mockBW.GetPage(ctx, "p1")
+	if page.Format != "4_landscape" {
+		t.Errorf("expected format '4_landscape', got '%s'", page.Format)
+	}
+
+	// Verify both original slots are preserved
+	slots, _ := mockBW.GetPageSlots(ctx, "p1")
+	photosBySlot := make(map[int]string)
+	for _, s := range slots {
+		if s.PhotoUID != "" {
+			photosBySlot[s.SlotIndex] = s.PhotoUID
+		}
+	}
+	if photosBySlot[0] != "photoA" {
+		t.Errorf("slot 0 expected 'photoA', got '%s'", photosBySlot[0])
+	}
+	if photosBySlot[1] != "photoB" {
+		t.Errorf("slot 1 expected 'photoB', got '%s'", photosBySlot[1])
+	}
 }
 
 func TestBooksHandler_DeletePage_Success(t *testing.T) {
