@@ -110,6 +110,7 @@ func TestEmbeddingRepository(t *testing.T) {
 		}
 		if got == nil {
 			t.Fatal("Expected embedding, got nil")
+			return
 		}
 		if got.PhotoUID != "photo123" {
 			t.Errorf("Expected PhotoUID 'photo123', got '%s'", got.PhotoUID)

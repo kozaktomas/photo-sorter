@@ -281,6 +281,7 @@ func TestPhotoFields(t *testing.T) {
 
 	if photoWithCaption == nil {
 		t.Fatal("expected to find at least one photo with caption")
+		return
 	}
 
 	if photoWithCaption.Caption == "" {
@@ -298,6 +299,7 @@ func TestPhotoFields(t *testing.T) {
 
 	if portraitPhoto == nil {
 		t.Fatal("expected to find at least one portrait photo")
+		return
 	}
 
 	if portraitPhoto.Width >= portraitPhoto.Height {

@@ -427,6 +427,7 @@ func TestJobManager_CreateAndGet(t *testing.T) {
 	retrieved := jm.GetJob("job123")
 	if retrieved == nil {
 		t.Fatal("expected to retrieve job")
+		return
 	}
 
 	if retrieved.ID != job.ID {

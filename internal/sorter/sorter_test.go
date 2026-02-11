@@ -158,6 +158,7 @@ func TestPhotoToMetadata_EmptyPhoto(t *testing.T) {
 	// Should not panic, should return zero values
 	if metadata == nil {
 		t.Fatal("expected non-nil metadata")
+		return
 	}
 
 	if metadata.OriginalName != "" {
@@ -269,6 +270,7 @@ func TestPhotoToMetadata_ReturnsPointer(t *testing.T) {
 
 	if metadata == nil {
 		t.Fatal("expected non-nil pointer")
+		return
 	}
 
 	// Modifying the returned metadata should not affect the original photo

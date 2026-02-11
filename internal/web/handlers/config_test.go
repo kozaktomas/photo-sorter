@@ -16,6 +16,7 @@ func TestNewConfigHandler(t *testing.T) {
 
 	if handler == nil {
 		t.Fatal("expected non-nil handler")
+		return
 	}
 
 	if handler.config != cfg {
@@ -102,6 +103,7 @@ func TestConfigHandler_Get_OpenAIAvailable(t *testing.T) {
 
 	if openaiProvider == nil {
 		t.Fatal("expected openai provider in response")
+		return
 	}
 
 	if !openaiProvider.Available {
@@ -138,6 +140,7 @@ func TestConfigHandler_Get_OpenAINotAvailable(t *testing.T) {
 
 	if openaiProvider == nil {
 		t.Fatal("expected openai provider in response")
+		return
 	}
 
 	if openaiProvider.Available {
@@ -174,6 +177,7 @@ func TestConfigHandler_Get_GeminiAvailable(t *testing.T) {
 
 	if geminiProvider == nil {
 		t.Fatal("expected gemini provider in response")
+		return
 	}
 
 	if !geminiProvider.Available {
@@ -210,6 +214,7 @@ func TestConfigHandler_Get_GeminiNotAvailable(t *testing.T) {
 
 	if geminiProvider == nil {
 		t.Fatal("expected gemini provider in response")
+		return
 	}
 
 	if geminiProvider.Available {

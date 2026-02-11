@@ -282,6 +282,7 @@ func TestNewUploadHandler(t *testing.T) {
 
 	if handler == nil {
 		t.Fatal("expected non-nil handler")
+		return
 	}
 
 	if handler.config != cfg {

@@ -86,6 +86,7 @@ func TestProcessJob_Listeners(t *testing.T) {
 	ch := job.AddListener()
 	if ch == nil {
 		t.Fatal("expected channel from AddListener")
+		return
 	}
 
 	// Send an event

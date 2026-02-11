@@ -12,6 +12,7 @@ func TestNewSessionManager(t *testing.T) {
 	sm := NewSessionManager("test-secret", nil)
 	if sm == nil {
 		t.Fatal("NewSessionManager returned nil")
+		return
 	}
 	if sm.sessions == nil {
 		t.Error("sessions map is nil")
@@ -49,6 +50,7 @@ func TestSessionManager_GetSession(t *testing.T) {
 	retrieved := sm.GetSession(session.ID)
 	if retrieved == nil {
 		t.Fatal("GetSession() returned nil for existing session")
+		return
 	}
 	if retrieved.Token != "token123" {
 		t.Errorf("Token = %s, want token123", retrieved.Token)
@@ -99,6 +101,7 @@ func TestSessionManager_SetAndGetSessionCookie(t *testing.T) {
 	}
 	if sessionCookie == nil {
 		t.Fatal("Session cookie not found")
+		return
 	}
 
 	// Create a request with the cookie
@@ -109,6 +112,7 @@ func TestSessionManager_SetAndGetSessionCookie(t *testing.T) {
 	retrieved := sm.GetSessionFromRequest(req)
 	if retrieved == nil {
 		t.Fatal("GetSessionFromRequest() returned nil")
+		return
 	}
 	if retrieved.ID != session.ID {
 		t.Errorf("Session ID = %s, want %s", retrieved.ID, session.ID)
@@ -142,6 +146,7 @@ func TestSessionManager_BearerAuth(t *testing.T) {
 	retrieved := sm.GetSessionFromRequest(req)
 	if retrieved == nil {
 		t.Fatal("GetSessionFromRequest() returned nil for Bearer auth")
+		return
 	}
 	if retrieved.ID != session.ID {
 		t.Errorf("Session ID = %s, want %s", retrieved.ID, session.ID)
@@ -208,6 +213,7 @@ func TestGetSessionFromContext(t *testing.T) {
 	retrieved := GetSessionFromContext(ctx)
 	if retrieved == nil {
 		t.Fatal("GetSessionFromContext() returned nil")
+		return
 	}
 	if retrieved.ID != "test123" {
 		t.Errorf("Session ID = %s, want test123", retrieved.ID)
@@ -241,6 +247,7 @@ func TestSessionManager_ClearSessionCookie(t *testing.T) {
 	}
 	if sessionCookie == nil {
 		t.Fatal("Session cookie not found")
+		return
 	}
 
 	if sessionCookie.MaxAge != -1 {
