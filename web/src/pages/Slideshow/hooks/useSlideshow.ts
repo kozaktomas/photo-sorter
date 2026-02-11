@@ -1,7 +1,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { getThumbnailUrl } from '../../../api/client';
 import type { Photo } from '../../../types';
+
+export type SlideshowEffect = 'none' | 'kenBurns' | 'reflections' | 'dissolve' | 'push' | 'origami';
+
+const EFFECT_ORDER: SlideshowEffect[] = ['none', 'kenBurns', 'reflections', 'dissolve', 'push', 'origami'];
 
 interface SlideshowState {
   currentIndex: number;
@@ -9,12 +12,15 @@ interface SlideshowState {
   interval: number;
   isFullscreen: boolean;
   showInfo: boolean;
+  activeEffect: SlideshowEffect;
+  kenBurnsVariant: number;
   goToNext: () => void;
   goToPrev: () => void;
   togglePlayPause: () => void;
   setInterval: (ms: number) => void;
   toggleFullscreen: () => void;
   toggleInfo: () => void;
+  toggleEffect: () => void;
   exit: () => void;
 }
 
@@ -25,6 +31,8 @@ export function useSlideshow(photos: Photo[]): SlideshowState {
   const [interval, setIntervalValue] = useState(5000);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [showInfo, setShowInfo] = useState(true);
+  const [activeEffect, setActiveEffect] = useState<SlideshowEffect>('none');
+  const [kenBurnsVariant, setKenBurnsVariant] = useState(0);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const total = photos.length;
@@ -76,6 +84,19 @@ export function useSlideshow(photos: Photo[]): SlideshowState {
     setShowInfo((prev) => !prev);
   }, []);
 
+  const toggleEffect = useCallback(() => {
+    setActiveEffect((prev) => {
+      const idx = EFFECT_ORDER.indexOf(prev);
+      return EFFECT_ORDER[(idx + 1) % EFFECT_ORDER.length];
+    });
+  }, []);
+
+  // Randomize Ken Burns variant on each photo change
+  const KB_VARIANT_COUNT = 6;
+  useEffect(() => {
+    setKenBurnsVariant(Math.floor(Math.random() * KB_VARIANT_COUNT));
+  }, [currentIndex]);
+
   // Sync fullscreen state with browser
   useEffect(() => {
     function handleFullscreenChange() {
@@ -102,17 +123,6 @@ export function useSlideshow(photos: Photo[]): SlideshowState {
       }
     };
   }, [isPlaying, currentIndex, interval, total, goToNext]);
-
-  // Preload next image
-  useEffect(() => {
-    if (currentIndex < total - 1) {
-      const nextPhoto = photos[currentIndex + 1];
-      if (nextPhoto) {
-        const img = new Image();
-        img.src = getThumbnailUrl(nextPhoto.uid, 'fit_1920');
-      }
-    }
-  }, [currentIndex, photos, total]);
 
   // Keyboard controls
   useEffect(() => {
@@ -143,12 +153,16 @@ export function useSlideshow(photos: Photo[]): SlideshowState {
         case 'I':
           toggleInfo();
           break;
+        case 'k':
+        case 'K':
+          toggleEffect();
+          break;
       }
     }
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [goToNext, goToPrev, togglePlayPause, exit, toggleFullscreen, toggleInfo]);
+  }, [goToNext, goToPrev, togglePlayPause, exit, toggleFullscreen, toggleInfo, toggleEffect]);
 
   return {
     currentIndex,
@@ -156,12 +170,15 @@ export function useSlideshow(photos: Photo[]): SlideshowState {
     interval,
     isFullscreen,
     showInfo,
+    activeEffect,
+    kenBurnsVariant,
     goToNext,
     goToPrev,
     togglePlayPause,
     setInterval,
     toggleFullscreen,
     toggleInfo,
+    toggleEffect,
     exit,
   };
 }

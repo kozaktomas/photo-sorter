@@ -1,4 +1,6 @@
-import { Play, Pause, X, Maximize, Minimize, Info } from 'lucide-react';
+import { Play, Pause, X, Maximize, Minimize, Info, Wand2 } from 'lucide-react';
+import type { SlideshowEffect } from './hooks/useSlideshow';
+import { EFFECT_LABELS } from './effectConfigs';
 
 interface SlideshowControlsProps {
   isPlaying: boolean;
@@ -7,10 +9,12 @@ interface SlideshowControlsProps {
   totalPhotos: number;
   isFullscreen: boolean;
   showInfo: boolean;
+  activeEffect: SlideshowEffect;
   onTogglePlayPause: () => void;
   onSetInterval: (ms: number) => void;
   onToggleFullscreen: () => void;
   onToggleInfo: () => void;
+  onToggleEffect: () => void;
   onExit: () => void;
 }
 
@@ -39,10 +43,12 @@ export function SlideshowControls({
   totalPhotos,
   isFullscreen,
   showInfo,
+  activeEffect,
   onTogglePlayPause,
   onSetInterval,
   onToggleFullscreen,
   onToggleInfo,
+  onToggleEffect,
   onExit,
 }: SlideshowControlsProps) {
   const totalSeconds = totalPhotos * (interval / 1000);
@@ -83,8 +89,24 @@ export function SlideshowControls({
           <span className="text-white/40 ml-2">~{formatDuration(totalSeconds)}</span>
         </div>
 
-        {/* Info toggle + Fullscreen + Exit */}
+        {/* Effect toggle + Info toggle + Fullscreen + Exit */}
         <div className="flex items-center space-x-2">
+          <button
+            onClick={onToggleEffect}
+            className={`flex items-center space-x-1.5 rounded-full transition-colors ${
+              activeEffect !== 'none'
+                ? 'bg-white/25 text-white pl-3 pr-3.5 py-2'
+                : 'bg-white/15 text-white/50 hover:bg-white/25 hover:text-white p-2.5'
+            }`}
+            aria-label={`Effect: ${EFFECT_LABELS[activeEffect]}`}
+            title={`${EFFECT_LABELS[activeEffect]} (K)`}
+          >
+            <Wand2 className="h-5 w-5" />
+            {activeEffect !== 'none' && (
+              <span className="text-sm font-medium">{EFFECT_LABELS[activeEffect]}</span>
+            )}
+          </button>
+
           <button
             onClick={onToggleInfo}
             className={`p-2.5 rounded-full transition-colors ${

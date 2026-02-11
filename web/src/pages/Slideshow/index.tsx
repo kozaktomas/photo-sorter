@@ -1,9 +1,11 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, type CSSProperties } from 'react';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { getThumbnailUrl } from '../../api/client';
 import { useSlideshowPhotos } from './hooks/useSlideshowPhotos';
 import { useSlideshow } from './hooks/useSlideshow';
 import { SlideshowControls } from './SlideshowControls';
+import { EFFECT_CONFIGS } from './effectConfigs';
+import type { Photo } from '../../types';
 
 function useMouseActivity(isFullscreen: boolean) {
   const [controlsVisible, setControlsVisible] = useState(true);
@@ -48,14 +50,66 @@ export function SlideshowPage() {
   const { photos, title, isLoading, error, sourceType } = useSlideshowPhotos();
   const slideshow = useSlideshow(photos);
   const [imageLoaded, setImageLoaded] = useState(false);
+  const [prevPhoto, setPrevPhoto] = useState<Photo | null>(null);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const [outgoingEndStyle, setOutgoingEndStyle] = useState<CSSProperties | null>(null);
+  const prevPhotoRef = useRef<Photo | null>(null);
+  const preloadedRef = useRef<Set<string>>(new Set());
   const { controlsVisible, onMouseMove } = useMouseActivity(slideshow.isFullscreen);
 
   const currentPhoto = photos[slideshow.currentIndex];
+  const activeConfig = slideshow.activeEffect !== 'none'
+    ? EFFECT_CONFIGS[slideshow.activeEffect]
+    : null;
 
-  // Reset imageLoaded when photo changes
+  // Preload upcoming photos and track readiness
   useEffect(() => {
-    setImageLoaded(false);
-  }, [currentPhoto?.uid]);
+    for (let offset = 1; offset <= 2; offset++) {
+      const idx = slideshow.currentIndex + offset;
+      if (idx < photos.length) {
+        const photo = photos[idx];
+        if (photo && !preloadedRef.current.has(photo.uid)) {
+          const img = new Image();
+          img.onload = () => preloadedRef.current.add(photo.uid);
+          img.src = getThumbnailUrl(photo.uid, 'fit_1920');
+        }
+      }
+    }
+  }, [slideshow.currentIndex, photos]);
+
+  // Set up transition state before browser paints to avoid blink
+  useLayoutEffect(() => {
+    const isPreloaded = currentPhoto && preloadedRef.current.has(currentPhoto.uid);
+    if (!isPreloaded) {
+      setImageLoaded(false);
+    } else {
+      setImageLoaded(true);
+    }
+    if (activeConfig && prevPhotoRef.current && prevPhotoRef.current.uid !== currentPhoto?.uid) {
+      // Freeze the outgoing photo at its during-animation end state via static CSS
+      // kenBurnsVariant still holds the OLD value here (effect hasn't updated it yet)
+      if (activeConfig.duringEndStyle) {
+        setOutgoingEndStyle(activeConfig.duringEndStyle(slideshow.kenBurnsVariant));
+      } else {
+        setOutgoingEndStyle(null);
+      }
+      setPrevPhoto(prevPhotoRef.current);
+      setIsTransitioning(true);
+      const timer = setTimeout(() => {
+        setIsTransitioning(false);
+        setPrevPhoto(null);
+        setOutgoingEndStyle(null);
+      }, activeConfig.transitionDuration);
+      return () => clearTimeout(timer);
+    }
+  }, [currentPhoto?.uid]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Track current photo for crossfade
+  useEffect(() => {
+    if (currentPhoto) {
+      prevPhotoRef.current = currentPhoto;
+    }
+  }, [currentPhoto]);
   const hasPrev = slideshow.currentIndex > 0;
   const hasNext = slideshow.currentIndex < photos.length - 1;
 
@@ -142,7 +196,8 @@ export function SlideshowPage() {
       )}
 
       {/* Main photo */}
-      <div className="absolute inset-0 flex items-center justify-center">
+      <div className={`absolute inset-0 flex items-center justify-center ${activeConfig?.overflowHidden !== false ? 'overflow-hidden' : ''}`}>
+        {/* Current photo (underneath) */}
         {currentPhoto && (
           <img
             key={currentPhoto.uid}
@@ -151,8 +206,35 @@ export function SlideshowPage() {
             className={`h-full w-full object-contain transition-opacity duration-300 ${
               imageLoaded ? 'opacity-100' : 'opacity-0'
             }`}
+            style={(() => {
+              if (!activeConfig || !imageLoaded) return undefined;
+              // Build animation list: during animation first (stable index), incoming on top
+              const anims: string[] = [];
+              if (activeConfig.during) {
+                anims.push(activeConfig.during(slideshow.kenBurnsVariant, slideshow.interval));
+              }
+              if (isTransitioning && activeConfig.incoming) {
+                anims.push(activeConfig.incoming);
+              }
+              if (anims.length === 0) return undefined;
+              return { animation: anims.join(', '), ...activeConfig.incomingStyle };
+            })()}
             onLoad={() => setImageLoaded(true)}
             onError={() => setImageLoaded(true)}
+          />
+        )}
+        {/* Outgoing photo (on top, fading/animating out) */}
+        {activeConfig && isTransitioning && prevPhoto && (
+          <img
+            key={`prev-${prevPhoto.uid}`}
+            src={getThumbnailUrl(prevPhoto.uid, 'fit_1920')}
+            alt=""
+            className="absolute inset-0 h-full w-full object-contain"
+            style={{
+              animation: activeConfig.outgoing ?? undefined,
+              ...activeConfig.outgoingStyle,
+              ...outgoingEndStyle,
+            }}
           />
         )}
       </div>
@@ -202,10 +284,12 @@ export function SlideshowPage() {
           totalPhotos={photos.length}
           isFullscreen={slideshow.isFullscreen}
           showInfo={slideshow.showInfo}
+          activeEffect={slideshow.activeEffect}
           onTogglePlayPause={slideshow.togglePlayPause}
           onSetInterval={slideshow.setInterval}
           onToggleFullscreen={slideshow.toggleFullscreen}
           onToggleInfo={slideshow.toggleInfo}
+          onToggleEffect={slideshow.toggleEffect}
           onExit={slideshow.exit}
         />
       </div>

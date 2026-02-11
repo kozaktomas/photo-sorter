@@ -458,8 +458,19 @@ Fullscreen slideshow viewer for photos in an album or label.
 - Auto-play advances photos every 5 seconds by default
 - Photo info overlay (source name, photo title, date) fades in on hover
 - Controls bar fades in on hover with play/pause, speed selection, counter, and exit
-- Preloads next image for instant transitions
+- Preloads next 2 images for instant transitions
 - Stops at last photo (no loop); pressing play at the end restarts from the beginning
+- Transition effects with smooth crossfade animations
+
+**Transition Effects:**
+- **No effect** - Simple opacity fade-in (default)
+- **Ken Burns** - Pan/zoom during display with fade-through-black transition
+- **Reflections** - Subtle breathing pulse during display with slide-up transition
+- **Dissolve** - Smooth cross-dissolve between photos
+- **Push** - Outgoing photo slides left, incoming slides from right
+- **Origami** - 3D fold/unfold page-turn effect
+
+Press `K` or click the wand button to cycle through effects. The active effect name is shown next to the wand icon.
 
 **Speed Options:**
 - 3 seconds
@@ -469,6 +480,9 @@ Fullscreen slideshow viewer for photos in an album or label.
 **Keyboard Shortcuts:**
 - `←` / `→` - Previous / next photo
 - `Space` - Toggle play/pause
+- `K` - Cycle transition effect (None → Ken Burns → Reflections → Dissolve → Push → Origami)
+- `I` - Toggle info overlay
+- `F` - Toggle fullscreen
 - `Escape` - Exit slideshow (returns to previous page)
 
 ### Photo Book (`/books`)
@@ -548,6 +562,9 @@ Find photos that belong in existing albums but aren't there yet by searching the
 ### Slideshow
 - `←` / `→` - Previous / next photo
 - `Space` - Toggle play/pause
+- `K` - Cycle transition effect
+- `I` - Toggle info overlay
+- `F` - Toggle fullscreen
 - `Escape` - Exit slideshow
 
 ## API Endpoints
@@ -706,6 +723,7 @@ web/src/
 │   ├── Slideshow/            # Fullscreen slideshow
 │   │   ├── hooks/useSlideshow.ts
 │   │   ├── hooks/useSlideshowPhotos.ts
+│   │   ├── effectConfigs.ts
 │   │   ├── SlideshowControls.tsx
 │   │   └── index.tsx
 │   ├── Books/               # Photo books list
