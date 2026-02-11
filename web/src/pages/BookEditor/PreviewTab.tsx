@@ -74,7 +74,7 @@ function PreviewPage({ page, pageNumber, sectionTitle, photoInfo }: {
       )}
       <div
         className={`${gridClasses} gap-2 bg-slate-950 border border-slate-700 rounded-lg p-3`}
-        style={{ aspectRatio: '4/3', maxWidth: '700px' }}
+        style={{ aspectRatio: '4/3' }}
       >
         {Array.from({ length: slotCount }, (_, i) => {
           const uid = getSlotPhotoUid(page, i);
@@ -160,7 +160,7 @@ export function PreviewTab({ book, sectionPhotos, loadSectionPhotos, initialPage
   let lastSectionId = '';
 
   return (
-    <div>
+    <div className="w-[100vw] relative left-[50%] -ml-[50vw] px-4 sm:px-6 lg:px-8">
       {orderedPages.map((page, i) => {
         const showDivider = page.section_id && page.section_id !== lastSectionId;
         if (page.section_id) lastSectionId = page.section_id;
