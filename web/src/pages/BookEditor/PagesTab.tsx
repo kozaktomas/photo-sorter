@@ -1,12 +1,14 @@
 import { useState, useEffect, useCallback, useMemo, type Dispatch, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
-import { DndContext, DragOverlay, PointerSensor, pointerWithin, useSensor, useSensors, type DragEndEvent, type DragStartEvent, type Modifier } from '@dnd-kit/core';
-import { assignSlot, clearSlot, swapSlots, updatePage, getThumbnailUrl } from '../../api/client';
+import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, pointerWithin, useSensor, useSensors, type DragEndEvent, type DragStartEvent, type Modifier } from '@dnd-kit/core';
+import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
+import { assignSlot, clearSlot, swapSlots, updatePage, reorderPages, getThumbnailUrl } from '../../api/client';
 import { PageSidebar } from './PageSidebar';
 import { PageTemplate } from './PageTemplate';
 import { UnassignedPool } from './UnassignedPool';
 import { PhotoDescriptionDialog } from './PhotoDescriptionDialog';
 import type { BookDetail, SectionPhoto, PageFormat } from '../../types';
+import { pageFormatSlotCount } from '../../types';
 
 // Snap the DragOverlay center to the cursor so large source elements don't cause offset
 const snapCenterToCursor: Modifier = ({ activatorEvent, activeNodeRect, draggingNodeRect, transform }) => {
@@ -39,8 +41,12 @@ export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRe
     : (book.pages.length > 0 ? book.pages[0].id : null);
   const [selectedId, setSelectedId] = useState<string | null>(defaultPageId);
   const [activePhotoUid, setActivePhotoUid] = useState<string | null>(null);
+  const [isPhotoDrag, setIsPhotoDrag] = useState(false);
   const [editingPhoto, setEditingPhoto] = useState<{ sectionId: string; photoUid: string } | null>(null);
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 5 } }));
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
 
   const selectedPage = book.pages.find(p => p.id === selectedId);
 
@@ -96,26 +102,108 @@ export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRe
     const data = event.active.data.current as Record<string, unknown> | undefined;
     if (data?.photoUid) {
       setActivePhotoUid(data.photoUid as string);
+      setIsPhotoDrag(true);
+    } else {
+      setIsPhotoDrag(false);
     }
   }, []);
 
   const handleDragEnd = useCallback(async (event: DragEndEvent) => {
     setActivePhotoUid(null);
+    setIsPhotoDrag(false);
     const { active, over } = event;
-    if (!over || !selectedPage) return;
+    if (!over) return;
 
     const activeData = active.data.current as Record<string, unknown> | undefined;
-    const targetData = over.data.current as Record<string, unknown> | undefined;
-    const photoUid = activeData?.photoUid as string | undefined;
-    if (!photoUid || !targetData) return;
+    const overData = over.data.current as Record<string, unknown> | undefined;
+    if (!activeData || !overData) return;
 
-    const targetPageId = targetData.pageId as string;
-    const targetSlotIndex = targetData.slotIndex as number;
-    const targetPhotoUid = targetData.photoUid as string | undefined;
+    // Case 1: Page reorder (both active and over are page-reorder items)
+    if (activeData.type === 'page-reorder' && overData.type === 'page-reorder') {
+      if (active.id === over.id) return;
+      const activePage = book.pages.find(p => p.id === activeData.pageId);
+      const overPage = book.pages.find(p => p.id === overData.pageId);
+      if (!activePage || !overPage) return;
+      // Block cross-section drag
+      if (activePage.section_id !== overPage.section_id) return;
+      const oldIndex = book.pages.findIndex(p => p.id === activeData.pageId);
+      const newIndex = book.pages.findIndex(p => p.id === overData.pageId);
+      const reordered = arrayMove(book.pages, oldIndex, newIndex);
+      try {
+        await reorderPages(book.id, reordered.map(p => p.id));
+        onRefresh();
+      } catch { /* silent */ }
+      return;
+    }
+
+    // Case 2 & 3: Photo drag operations
+    const photoUid = activeData.photoUid as string | undefined;
+    if (!photoUid) return;
+
+    // Case 2: Photo dropped on a sidebar page
+    if (overData.type === 'page-reorder') {
+      const targetPageId = overData.pageId as string;
+      const targetPage = book.pages.find(p => p.id === targetPageId);
+      if (!targetPage) return;
+
+      const totalSlots = pageFormatSlotCount(targetPage.format);
+      // Check if photo already on target page
+      if (targetPage.slots.some(s => s.photo_uid === photoUid)) return;
+      // Find first empty slot
+      const filledIndices = new Set(targetPage.slots.filter(s => s.photo_uid).map(s => s.slot_index));
+      let emptySlotIndex = -1;
+      for (let i = 0; i < totalSlots; i++) {
+        if (!filledIndices.has(i)) { emptySlotIndex = i; break; }
+      }
+      if (emptySlotIndex === -1) return; // Page full
+
+      const sourcePageId = activeData.sourcePageId as string | undefined;
+      const sourceSlotIndex = activeData.sourceSlotIndex as number | undefined;
+      const isFromSlot = sourcePageId !== undefined && sourceSlotIndex !== undefined;
+
+      // Optimistic update
+      setBook(prev => {
+        if (!prev) return prev;
+        const pages = prev.pages.map(p => ({ ...p, slots: p.slots.map(s => ({ ...s })) }));
+        if (isFromSlot) {
+          const srcPage = pages.find(p => p.id === sourcePageId);
+          const srcSlot = srcPage?.slots.find(s => s.slot_index === sourceSlotIndex);
+          if (srcSlot) srcSlot.photo_uid = '';
+        }
+        const tgtPage = pages.find(p => p.id === targetPageId);
+        if (tgtPage) {
+          const tgtSlot = tgtPage.slots.find(s => s.slot_index === emptySlotIndex);
+          if (tgtSlot) {
+            tgtSlot.photo_uid = photoUid;
+          } else {
+            tgtPage.slots.push({ slot_index: emptySlotIndex, photo_uid: photoUid });
+          }
+        }
+        return { ...prev, pages };
+      });
+
+      try {
+        if (isFromSlot) {
+          await clearSlot(sourcePageId, sourceSlotIndex);
+        }
+        await assignSlot(targetPageId, emptySlotIndex, photoUid);
+        onRefresh();
+      } catch {
+        onRefresh();
+      }
+      return;
+    }
+
+    // Case 3: Photo dropped on a slot (existing logic)
+    if (!selectedPage) return;
+
+    const targetPageId = overData.pageId as string;
+    const targetSlotIndex = overData.slotIndex as number;
+    const targetPhotoUid = overData.photoUid as string | undefined;
 
     // Check if dragging from a slot (has source slot info)
-    const sourcePageId = activeData?.sourcePageId as string | undefined;
-    const sourceSlotIndex = activeData?.sourceSlotIndex as number | undefined;
+    const sourcePageId = activeData.sourcePageId as string | undefined;
+    const sourceSlotIndex = activeData.sourceSlotIndex as number | undefined;
     const isFromSlot = sourcePageId !== undefined && sourceSlotIndex !== undefined;
 
     // Don't drop on the same slot
@@ -187,7 +275,7 @@ export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRe
       // Revert on error
       onRefresh();
     }
-  }, [selectedPage, setBook, onRefresh]);
+  }, [book, selectedPage, setBook, onRefresh]);
 
   const handleClearSlot = useCallback(async (slotIndex: number) => {
     if (!selectedPage) return;
@@ -249,17 +337,18 @@ export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRe
     : null;
 
   return (
-    <div className="flex gap-4">
-      <PageSidebar
-        bookId={book.id}
-        pages={book.pages}
-        sections={book.sections}
-        selectedId={selectedId}
-        onSelect={setSelectedId}
-        onRefresh={onRefresh}
-      />
-      <div className="flex-1 space-y-4">
-        <DndContext sensors={sensors} collisionDetection={pointerWithin} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+    <DndContext sensors={sensors} collisionDetection={pointerWithin} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+      <div className="flex gap-4">
+        <PageSidebar
+          bookId={book.id}
+          pages={book.pages}
+          sections={book.sections}
+          selectedId={selectedId}
+          onSelect={setSelectedId}
+          onRefresh={onRefresh}
+          isPhotoDragActive={isPhotoDrag}
+        />
+        <div className="flex-1 space-y-4">
           {selectedPage && (
             <>
               <PageTemplate
@@ -288,19 +377,19 @@ export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRe
               </div>
             )}
           </DragOverlay>
-        </DndContext>
-      </div>
+        </div>
 
-      {editingPhoto && editingPhotoData && (
-        <PhotoDescriptionDialog
-          sectionId={editingPhoto.sectionId}
-          photoUid={editingPhoto.photoUid}
-          description={editingPhotoData.description}
-          note={editingPhotoData.note}
-          onSaved={handleDescSaved}
-          onClose={() => setEditingPhoto(null)}
-        />
-      )}
-    </div>
+        {editingPhoto && editingPhotoData && (
+          <PhotoDescriptionDialog
+            sectionId={editingPhoto.sectionId}
+            photoUid={editingPhoto.photoUid}
+            description={editingPhotoData.description}
+            note={editingPhotoData.note}
+            onSaved={handleDescSaved}
+            onClose={() => setEditingPhoto(null)}
+          />
+        )}
+      </div>
+    </DndContext>
   );
 }

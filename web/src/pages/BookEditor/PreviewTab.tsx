@@ -137,7 +137,18 @@ export function PreviewTab({ book, sectionPhotos, loadSectionPhotos, initialPage
     return map;
   }, [book.sections]);
 
-  if (book.pages.length === 0) {
+  // Order pages section-by-section for consistent numbering (1..n)
+  const orderedPages = useMemo(() => {
+    const sectionOrder = new Map(book.sections.map((s, i) => [s.id, i]));
+    return [...book.pages].sort((a, b) => {
+      const sa = sectionOrder.get(a.section_id) ?? 9999;
+      const sb = sectionOrder.get(b.section_id) ?? 9999;
+      if (sa !== sb) return sa - sb;
+      return a.sort_order - b.sort_order;
+    });
+  }, [book.pages, book.sections]);
+
+  if (orderedPages.length === 0) {
     return (
       <div className="text-center text-slate-500 py-12">
         {t('books.editor.previewEmpty')}
@@ -150,7 +161,7 @@ export function PreviewTab({ book, sectionPhotos, loadSectionPhotos, initialPage
 
   return (
     <div>
-      {book.pages.map((page, i) => {
+      {orderedPages.map((page, i) => {
         const showDivider = page.section_id && page.section_id !== lastSectionId;
         if (page.section_id) lastSectionId = page.section_id;
 

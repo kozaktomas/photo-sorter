@@ -2,23 +2,13 @@ import { useState, useMemo, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { GripVertical, Plus, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
 import {
-  DndContext,
-  closestCenter,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
-  type DragEndEvent,
-} from '@dnd-kit/core';
-import {
-  arrayMove,
   SortableContext,
-  sortableKeyboardCoordinates,
   useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
+import { useDndContext } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import { createPage, deletePage, reorderPages } from '../../api/client';
+import { createPage, deletePage } from '../../api/client';
 import type { BookPage, BookSection, PageFormat } from '../../types';
 import { pageFormatLabelKey, pageFormatSlotCount } from '../../types';
 
@@ -29,24 +19,39 @@ interface Props {
   selectedId: string | null;
   onSelect: (id: string) => void;
   onRefresh: () => void;
+  isPhotoDragActive?: boolean;
 }
 
-function SortablePageItem({ page, globalIndex, isSelected, onSelect, onDelete }: {
+function SortablePageItem({ page, globalIndex, isSelected, onSelect, onDelete, isPhotoDragActive }: {
   page: BookPage;
   globalIndex: number;
   isSelected: boolean;
   onSelect: () => void;
   onDelete: () => void;
+  isPhotoDragActive?: boolean;
 }) {
   const { t } = useTranslation('pages');
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: page.id });
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
+    id: page.id,
+    data: { type: 'page-reorder', pageId: page.id, sectionId: page.section_id },
+  });
+  const { over } = useDndContext();
+  const isOver = over?.id === page.id;
   const style = { transform: CSS.Transform.toString(transform), transition };
   const filledSlots = page.slots.filter(s => s.photo_uid).length;
   const totalSlots = pageFormatSlotCount(page.format);
   const isComplete = filledSlots === totalSlots && totalSlots > 0;
+  const hasEmptySlots = filledSlots < totalSlots;
+
+  // Photo drag hover styling
+  const isPhotoHover = isOver && isPhotoDragActive;
 
   let boxClass: string;
-  if (isSelected) {
+  if (isPhotoHover && hasEmptySlots) {
+    boxClass = 'bg-rose-500/20 border-2 border-rose-400 ring-1 ring-rose-400/30';
+  } else if (isPhotoHover && !hasEmptySlots) {
+    boxClass = 'bg-slate-800/50 border border-slate-600 opacity-50';
+  } else if (isSelected) {
     boxClass = isComplete
       ? 'bg-emerald-500/20 border-2 border-emerald-400 ring-1 ring-emerald-400/30'
       : 'bg-rose-500/20 border-2 border-rose-400 ring-1 ring-rose-400/30';
@@ -90,26 +95,19 @@ interface SectionGroup {
   globalIndices: number[];
 }
 
-export function PageSidebar({ bookId, pages, sections, selectedId, onSelect, onRefresh }: Props) {
+export function PageSidebar({ bookId, pages, sections, selectedId, onSelect, onRefresh, isPhotoDragActive }: Props) {
   const { t } = useTranslation('pages');
   const [newFormat, setNewFormat] = useState<PageFormat>('4_landscape');
   const [newSectionId, setNewSectionId] = useState('');
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
-    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
-  );
-
   // Compute global page number map and section groups
+  // Pages are numbered sequentially (1..n) based on visual display order:
+  // all pages in section 1, then all pages in section 2, etc.
   const { sectionGroups, pageNumberMap } = useMemo(() => {
-    const numberMap = new Map<string, number>();
-    pages.forEach((page, i) => numberMap.set(page.id, i));
-
     const groups: SectionGroup[] = sections.map(section => {
       const sectionPages = pages.filter(p => p.section_id === section.id);
-      const indices = sectionPages.map(p => numberMap.get(p.id)!);
-      return { section, pages: sectionPages, globalIndices: indices };
+      return { section, pages: sectionPages, globalIndices: [] };
     });
 
     // Add pages without a section (shouldn't happen, but handle gracefully)
@@ -119,7 +117,17 @@ export function PageSidebar({ bookId, pages, sections, selectedId, onSelect, onR
       groups.push({
         section: { id: '__unassigned__', title: t('books.editor.noSection'), sort_order: 9999, photo_count: 0 },
         pages: unassigned,
-        globalIndices: unassigned.map(p => numberMap.get(p.id)!),
+        globalIndices: [],
+      });
+    }
+
+    // Number pages sequentially based on visual order (section by section)
+    const numberMap = new Map<string, number>();
+    let counter = 0;
+    for (const group of groups) {
+      group.globalIndices = group.pages.map(p => {
+        numberMap.set(p.id, counter);
+        return counter++;
       });
     }
 
@@ -157,74 +165,53 @@ export function PageSidebar({ bookId, pages, sections, selectedId, onSelect, onR
     } catch { /* silent */ }
   };
 
-  const handleDragEnd = async (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-
-    const activePage = pages.find(p => p.id === active.id);
-    const overPage = pages.find(p => p.id === over.id);
-    if (!activePage || !overPage) return;
-
-    // Block cross-section drag
-    if (activePage.section_id !== overPage.section_id) return;
-
-    const oldIndex = pages.findIndex(p => p.id === active.id);
-    const newIndex = pages.findIndex(p => p.id === over.id);
-    const reordered = arrayMove(pages, oldIndex, newIndex);
-    try {
-      await reorderPages(bookId, reordered.map(p => p.id));
-      onRefresh();
-    } catch { /* silent */ }
-  };
-
   return (
     <div className="w-64 shrink-0 flex flex-col gap-2">
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
-        {sectionGroups.map(group => {
-          const sectionId = group.section.id;
-          const isCollapsed = collapsedSections[sectionId];
-          const pageIds = group.pages.map(p => p.id);
+      {sectionGroups.map(group => {
+        const sectionId = group.section.id;
+        const isCollapsed = collapsedSections[sectionId];
+        const pageIds = group.pages.map(p => p.id);
 
-          return (
-            <div key={sectionId}>
-              {/* Section header */}
-              <button
-                onClick={() => toggleSection(sectionId)}
-                className="w-full flex items-center gap-1.5 px-1 py-1.5 text-left group"
-              >
-                {isCollapsed
-                  ? <ChevronRight className="h-3.5 w-3.5 text-slate-500 shrink-0" />
-                  : <ChevronDown className="h-3.5 w-3.5 text-slate-500 shrink-0" />
-                }
-                <span className="text-xs font-medium text-rose-400 truncate flex-1">
-                  {group.section.title}
-                </span>
-                <span className="text-xs text-slate-500 shrink-0">
-                  {t('books.editor.sectionPageCount', { count: group.pages.length })}
-                </span>
-              </button>
+        return (
+          <div key={sectionId}>
+            {/* Section header */}
+            <button
+              onClick={() => toggleSection(sectionId)}
+              className="w-full flex items-center gap-1.5 px-1 py-1.5 text-left group"
+            >
+              {isCollapsed
+                ? <ChevronRight className="h-3.5 w-3.5 text-slate-500 shrink-0" />
+                : <ChevronDown className="h-3.5 w-3.5 text-slate-500 shrink-0" />
+              }
+              <span className="text-xs font-medium text-rose-400 truncate flex-1">
+                {group.section.title}
+              </span>
+              <span className="text-xs text-slate-500 shrink-0">
+                {t('books.editor.sectionPageCount', { count: group.pages.length })}
+              </span>
+            </button>
 
-              {/* Pages (collapsible) */}
-              {!isCollapsed && (
-                <SortableContext items={pageIds} strategy={verticalListSortingStrategy}>
-                  <div className="flex flex-col gap-1 ml-2">
-                    {group.pages.map((page) => (
-                      <SortablePageItem
-                        key={page.id}
-                        page={page}
-                        globalIndex={pageNumberMap.get(page.id) ?? 0}
-                        isSelected={page.id === selectedId}
-                        onSelect={() => onSelect(page.id)}
-                        onDelete={() => handleDelete(page.id)}
-                      />
-                    ))}
-                  </div>
-                </SortableContext>
-              )}
-            </div>
-          );
-        })}
-      </DndContext>
+            {/* Pages (collapsible) */}
+            {!isCollapsed && (
+              <SortableContext items={pageIds} strategy={verticalListSortingStrategy}>
+                <div className="flex flex-col gap-1 ml-2">
+                  {group.pages.map((page) => (
+                    <SortablePageItem
+                      key={page.id}
+                      page={page}
+                      globalIndex={pageNumberMap.get(page.id) ?? 0}
+                      isSelected={page.id === selectedId}
+                      onSelect={() => onSelect(page.id)}
+                      onDelete={() => handleDelete(page.id)}
+                      isPhotoDragActive={isPhotoDragActive}
+                    />
+                  ))}
+                </div>
+              </SortableContext>
+            )}
+          </div>
+        );
+      })}
 
       <div className="mt-2 space-y-1.5">
         <select
