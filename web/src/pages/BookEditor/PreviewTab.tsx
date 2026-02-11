@@ -1,6 +1,7 @@
-import { useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getThumbnailUrl } from '../../api/client';
+import { PhotoInfoOverlay } from './PhotoInfoOverlay';
 import type { BookDetail, BookPage, SectionPhoto } from '../../types';
 import { pageFormatLabelKey, pageFormatSlotCount, getGridClasses, getSlotClasses, getSlotPhotoUid } from '../../utils/pageFormats';
 
@@ -11,25 +12,32 @@ interface Props {
   initialPageId?: string | null;
 }
 
-function PreviewPageSlot({ photoUid, description, className }: {
+function PreviewPageSlot({ photoUid, description, note, className }: {
   photoUid: string;
   description: string;
+  note: string;
   className?: string;
 }) {
+  const [orientation, setOrientation] = useState<'L' | 'P' | null>(null);
+
   return (
-    <div className={`relative ${className || ''}`}>
+    <div className={`relative ${className ?? ''}`}>
       {photoUid ? (
-        <div className="w-full h-full">
+        <div className="relative w-full h-full">
           <img
             src={getThumbnailUrl(photoUid, 'fit_720')}
             alt=""
             className="w-full h-full object-cover rounded"
+            onLoad={(e) => {
+              const img = e.currentTarget;
+              setOrientation(img.naturalWidth >= img.naturalHeight ? 'L' : 'P');
+            }}
           />
-          {description && (
-            <div className="absolute bottom-0 left-0 right-0 bg-black/60 text-white text-xs px-2 py-1 rounded-b">
-              {description}
-            </div>
-          )}
+          <PhotoInfoOverlay
+            description={description}
+            note={note}
+            orientation={orientation}
+          />
         </div>
       ) : (
         <div className="w-full h-full bg-slate-800 rounded flex items-center justify-center text-slate-600 text-xs">
@@ -40,11 +48,11 @@ function PreviewPageSlot({ photoUid, description, className }: {
   );
 }
 
-function PreviewPage({ page, pageNumber, sectionTitle, descriptions }: {
+function PreviewPage({ page, pageNumber, sectionTitle, photoInfo }: {
   page: BookPage;
   pageNumber: number;
   sectionTitle?: string;
-  descriptions: Record<string, string>;
+  photoInfo: Record<string, { description: string; note: string }>;
 }) {
   const { t } = useTranslation('pages');
   const slotCount = pageFormatSlotCount(page.format);
@@ -70,11 +78,13 @@ function PreviewPage({ page, pageNumber, sectionTitle, descriptions }: {
       >
         {Array.from({ length: slotCount }, (_, i) => {
           const uid = getSlotPhotoUid(page, i);
+          const info = uid ? photoInfo[uid] : undefined;
           return (
             <PreviewPageSlot
               key={i}
               photoUid={uid}
-              description={uid ? descriptions[uid] || '' : ''}
+              description={info?.description ?? ''}
+              note={info?.note ?? ''}
               className={getSlotClasses(page.format, i)}
             />
           );
@@ -104,12 +114,17 @@ export function PreviewTab({ book, sectionPhotos, loadSectionPhotos, initialPage
     }
   }, [initialPageId]);
 
-  // Build description lookup from all section photos
-  const descriptions = useMemo(() => {
-    const map: Record<string, string> = {};
+  // Build photo info lookup from all section photos
+  const photoInfo = useMemo(() => {
+    const map: Record<string, { description: string; note: string }> = {};
     Object.values(sectionPhotos).forEach(photos => {
       photos.forEach(p => {
-        if (p.description) map[p.photo_uid] = p.description;
+        if (p.description || p.note) {
+          map[p.photo_uid] = {
+            description: p.description || '',
+            note: p.note || '',
+          };
+        }
       });
     });
     return map;
@@ -154,7 +169,7 @@ export function PreviewTab({ book, sectionPhotos, loadSectionPhotos, initialPage
               page={page}
               pageNumber={i + 1}
               sectionTitle={sectionMap[page.section_id]}
-              descriptions={descriptions}
+              photoInfo={photoInfo}
             />
           </div>
         );

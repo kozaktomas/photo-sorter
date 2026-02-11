@@ -1,9 +1,9 @@
 import { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useDraggable } from '@dnd-kit/core';
-import { AlignLeft, StickyNote } from 'lucide-react';
 import { getThumbnailUrl } from '../../api/client';
 import { PhotoActionOverlay } from './PhotoActionOverlay';
+import { PhotoInfoOverlay } from './PhotoInfoOverlay';
 import type { SectionPhoto } from '../../types';
 
 interface Props {
@@ -12,13 +12,11 @@ interface Props {
   onEditDescription?: (photoUid: string) => void;
 }
 
-function DraggablePhoto({ uid, hasDescription, hasNote, onEditDescription }: {
+function DraggablePhoto({ uid, description, note }: {
   uid: string;
-  hasDescription: boolean;
-  hasNote: boolean;
-  onEditDescription?: () => void;
+  description: string;
+  note: string;
 }) {
-  const { t } = useTranslation('pages');
   const [orientation, setOrientation] = useState<'L' | 'P' | null>(null);
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
     id: `photo-${uid}`,
@@ -47,33 +45,18 @@ function DraggablePhoto({ uid, hasDescription, hasNote, onEditDescription }: {
           setOrientation(img.naturalWidth >= img.naturalHeight ? 'L' : 'P');
         }}
       />
-      {orientation && (
-        <span className={`absolute bottom-0.5 right-0.5 text-[9px] font-bold leading-none px-1 py-0.5 rounded ${
-          orientation === 'L' ? 'bg-blue-600/80 text-blue-100' : 'bg-amber-600/80 text-amber-100'
-        }`}>
-          {orientation === 'L' ? t('books.editor.orientationLandscape') : t('books.editor.orientationPortrait')}
-        </span>
-      )}
-      {onEditDescription && (hasDescription || hasNote) && (
-        <div className="absolute top-0.5 left-0.5 flex gap-0.5">
-          {hasDescription && (
-            <span className="bg-black/60 rounded p-0.5">
-              <AlignLeft className="h-2.5 w-2.5 text-blue-400" />
-            </span>
-          )}
-          {hasNote && (
-            <span className="bg-black/60 rounded p-0.5">
-              <StickyNote className="h-2.5 w-2.5 text-amber-400" />
-            </span>
-          )}
-        </div>
-      )}
+      <PhotoInfoOverlay
+        description={description}
+        note={note}
+        orientation={orientation}
+        compact
+      />
       <PhotoActionOverlay photoUid={uid} />
     </div>
   );
 }
 
-export function UnassignedPool({ photoUids, sectionPhotos, onEditDescription }: Props) {
+export function UnassignedPool({ photoUids, sectionPhotos }: Props) {
   const { t } = useTranslation('pages');
 
   const photoLookup = useMemo(() => {
@@ -102,9 +85,8 @@ export function UnassignedPool({ photoUids, sectionPhotos, onEditDescription }: 
             <DraggablePhoto
               key={uid}
               uid={uid}
-              hasDescription={!!sp?.description}
-              hasNote={!!sp?.note}
-              onEditDescription={onEditDescription ? () => onEditDescription(uid) : undefined}
+              description={sp?.description ?? ''}
+              note={sp?.note ?? ''}
             />
           );
         })}

@@ -109,8 +109,8 @@ export function PageTemplate({ page, onClearSlot, sectionPhotos, onEditDescripti
               slotIndex={i}
               photoUid={uid}
               onClear={() => onClearSlot(i)}
-              hasDescription={!!sp?.description}
-              hasNote={!!sp?.note}
+              description={sp?.description ?? ''}
+              note={sp?.note ?? ''}
               onEditDescription={uid && onEditDescription ? () => onEditDescription(uid) : undefined}
               className={getSlotClasses(page.format, i)}
             />

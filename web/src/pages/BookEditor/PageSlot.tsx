@@ -1,23 +1,25 @@
-import { useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { useDroppable, useDraggable } from '@dnd-kit/core';
 import { useTranslation } from 'react-i18next';
-import { X, AlignLeft, StickyNote } from 'lucide-react';
+import { X, Pencil } from 'lucide-react';
 import { getThumbnailUrl } from '../../api/client';
 import { PhotoActionOverlay } from './PhotoActionOverlay';
+import { PhotoInfoOverlay } from './PhotoInfoOverlay';
 
 interface Props {
   pageId: string;
   slotIndex: number;
   photoUid: string;
   onClear: () => void;
-  hasDescription?: boolean;
-  hasNote?: boolean;
+  description?: string;
+  note?: string;
   onEditDescription?: () => void;
   className?: string;
 }
 
-export function PageSlotComponent({ pageId, slotIndex, photoUid, onClear, hasDescription, hasNote, onEditDescription, className }: Props) {
+export function PageSlotComponent({ pageId, slotIndex, photoUid, onClear, description, note, onEditDescription, className }: Props) {
   const { t } = useTranslation('pages');
+  const [orientation, setOrientation] = useState<'L' | 'P' | null>(null);
   const droppableId = `slot-${pageId}-${slotIndex}`;
   const { isOver, setNodeRef: setDropRef } = useDroppable({
     id: droppableId,
@@ -52,6 +54,10 @@ export function PageSlotComponent({ pageId, slotIndex, photoUid, onClear, hasDes
             src={getThumbnailUrl(photoUid, 'fit_720')}
             alt=""
             className="w-full h-full object-cover"
+            onLoad={(e) => {
+              const img = e.currentTarget;
+              setOrientation(img.naturalWidth >= img.naturalHeight ? 'L' : 'P');
+            }}
           />
           <button
             onClick={onClear}
@@ -61,25 +67,20 @@ export function PageSlotComponent({ pageId, slotIndex, photoUid, onClear, hasDes
             <X className="h-3.5 w-3.5" />
           </button>
           {onEditDescription && (
-            <div className="absolute top-1 left-1 flex gap-0.5">
-              <button
-                onClick={onEditDescription}
-                onPointerDown={(e) => e.stopPropagation()}
-                className="bg-black/60 hover:bg-black/80 rounded p-0.5 transition-colors"
-                title={t('books.editor.descriptionLabel')}
-              >
-                <AlignLeft className={`h-3 w-3 ${hasDescription ? 'text-blue-400' : 'text-slate-500'}`} />
-              </button>
-              <button
-                onClick={onEditDescription}
-                onPointerDown={(e) => e.stopPropagation()}
-                className="bg-black/60 hover:bg-black/80 rounded p-0.5 transition-colors"
-                title={t('books.editor.noteLabel')}
-              >
-                <StickyNote className={`h-3 w-3 ${hasNote ? 'text-amber-400' : 'text-slate-500'}`} />
-              </button>
-            </div>
+            <button
+              onClick={onEditDescription}
+              onPointerDown={(e) => e.stopPropagation()}
+              className="absolute top-1 left-1 bg-black/60 hover:bg-black/80 text-white rounded p-0.5 transition-colors"
+              title={t('books.editor.descriptionLabel')}
+            >
+              <Pencil className="h-3 w-3" />
+            </button>
           )}
+          <PhotoInfoOverlay
+            description={description}
+            note={note}
+            orientation={orientation}
+          />
           <PhotoActionOverlay photoUid={photoUid} />
         </div>
       ) : (
