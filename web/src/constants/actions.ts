@@ -40,7 +40,7 @@ const ACTION_CONFIG: Record<MatchAction, ActionStyle> = {
 };
 
 // Backward-compatible derived exports
-function derive<K extends keyof ActionStyle>(key: K): Record<MatchAction, string> {
+function derive(key: keyof ActionStyle): Record<MatchAction, string> {
   const result = {} as Record<MatchAction, string>;
   for (const [action, style] of Object.entries(ACTION_CONFIG)) {
     result[action as MatchAction] = style[key];

@@ -32,7 +32,7 @@ export function usePhotoData(uid: string | undefined) {
     setError(null);
     getPhoto(uid)
       .then(setPhoto)
-      .catch(err => setError(err.message))
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Unknown error'))
       .finally(() => setLoading(false));
 
     // Check embedding status

@@ -63,7 +63,7 @@ export function AnalyzePage() {
         setIsLoading(false);
       }
     }
-    loadData();
+    void loadData();
   }, []);
 
   const handleStart = async () => {

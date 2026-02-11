@@ -27,7 +27,7 @@ export function BooksPage() {
     }
   };
 
-  useEffect(() => { loadBooks(); }, []);
+  useEffect(() => { void loadBooks(); }, []);
 
   const handleCreate = async () => {
     if (!newTitle.trim()) return;
@@ -70,7 +70,7 @@ export function BooksPage() {
           type="text"
           value={newTitle}
           onChange={(e) => setNewTitle(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleCreate()}
+          onKeyDown={(e) => { if (e.key === 'Enter') void handleCreate(); }}
           placeholder={t('books.titlePlaceholder')}
           className="flex-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-rose-500"
         />
@@ -110,7 +110,7 @@ export function BooksPage() {
               </Link>
               <div className="px-4 pb-3 flex justify-end">
                 <button
-                  onClick={(e) => { e.preventDefault(); handleDelete(book.id); }}
+                  onClick={(e) => { e.preventDefault(); void handleDelete(book.id); }}
                   className="text-slate-500 hover:text-red-400 transition-colors p-1"
                 >
                   <Trash2 className="h-4 w-4" />

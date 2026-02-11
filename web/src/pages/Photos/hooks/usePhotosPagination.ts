@@ -41,7 +41,7 @@ export function usePhotosPagination(filters: FilterParams): UsePhotosPaginationR
     try {
       const cached = sessionStorage.getItem(PHOTOS_CACHE_KEY);
       if (cached) {
-        const cache: PhotosCache = JSON.parse(cached);
+        const cache = JSON.parse(cached) as PhotosCache;
         if (cache.filterKey === filters.filterKey && cache.photos.length > 0) {
           restoredFromCache.current = true;
           pendingScrollRestore.current = cache.scrollY;
@@ -110,7 +110,7 @@ export function usePhotosPagination(filters: FilterParams): UsePhotosPaginationR
 
   const handleLoadMore = useCallback(() => {
     if (!isLoadingMore && hasMore) {
-      loadPhotos(false);
+      void loadPhotos(false);
     }
   }, [isLoadingMore, hasMore, loadPhotos]);
 

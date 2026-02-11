@@ -22,7 +22,7 @@ export function LoginPage() {
   // Redirect if already authenticated
   useEffect(() => {
     if (isAuthenticated) {
-      navigate(from, { replace: true });
+      void navigate(from, { replace: true });
     }
   }, [isAuthenticated, navigate, from]);
 
@@ -40,7 +40,7 @@ export function LoginPage() {
     try {
       const success = await login(username, password);
       if (success) {
-        navigate(from, { replace: true });
+        void navigate(from, { replace: true });
       } else {
         setError(t('common:errors.invalidCredentials'));
       }

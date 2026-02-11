@@ -23,7 +23,7 @@ export function useBookData(bookId: string) {
 
   const refresh = useCallback(() => fetchBook(false), [fetchBook]);
 
-  useEffect(() => { fetchBook(true); }, [fetchBook]);
+  useEffect(() => { void fetchBook(true); }, [fetchBook]);
 
   const loadSectionPhotos = useCallback(async (sectionId: string) => {
     try {

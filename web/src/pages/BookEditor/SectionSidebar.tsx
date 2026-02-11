@@ -132,7 +132,7 @@ export function SectionSidebar({ bookId, sections, selectedId, onSelect, onRefre
     try {
       const section = await createSection(bookId, newTitle.trim());
       setNewTitle('');
-      await onRefresh();
+      onRefresh();
       onSelect(section.id);
     } catch { /* silent */ }
   };

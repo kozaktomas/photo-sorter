@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { Button } from './Button';
 import { Card, CardContent } from './Card';
 
-// Functional component for translated error UI
+// eslint-disable-next-line react-refresh/only-export-components
 function ErrorFallbackUI({ error, onReset, onReload }: {
   error: Error | null;
   onReset: () => void;

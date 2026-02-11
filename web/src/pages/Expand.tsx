@@ -39,7 +39,7 @@ export function ExpandPage() {
 
   // Load labels and albums for dropdowns on mount
   useEffect(() => {
-    loadOptions();
+    void loadOptions();
   }, []);
 
   const loadOptions = async () => {
@@ -308,7 +308,7 @@ export function ExpandPage() {
       </div>
 
       {/* Photo Grid */}
-      {result && result.results && result.results.length > 0 && (
+      {result?.results && result.results.length > 0 && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <h2 className="text-lg font-semibold text-white">

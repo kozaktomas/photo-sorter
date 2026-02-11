@@ -6,7 +6,7 @@ export function LanguageSwitcher() {
 
   const toggleLanguage = () => {
     const newLang = i18n.language === 'cs' ? 'en' : 'cs';
-    i18n.changeLanguage(newLang);
+    void i18n.changeLanguage(newLang);
   };
 
   const currentFlag = i18n.language === 'cs' ? '🇨🇿' : '🇬🇧';

@@ -43,7 +43,7 @@ export function usePhotoNavigation(photoUid: string | undefined): PhotoNavigatio
       const cached = sessionStorage.getItem(PHOTOS_CACHE_KEY);
       if (cached) {
         try {
-          const data: { photos: Photo[] } = JSON.parse(cached);
+          const data = JSON.parse(cached) as { photos: Photo[] };
           if (data.photos && data.photos.length > 0) {
             setPhotoUids(data.photos.map((p) => p.uid));
             return;
@@ -61,7 +61,7 @@ export function usePhotoNavigation(photoUid: string | undefined): PhotoNavigatio
       const cached = sessionStorage.getItem(ALBUM_PHOTOS_CACHE_KEY);
       if (cached) {
         try {
-          const data: PhotosCache = JSON.parse(cached);
+          const data = JSON.parse(cached) as PhotosCache;
           if (data.id === albumUid && data.photoUids.length > 0) {
             setPhotoUids(data.photoUids);
             return;
@@ -97,7 +97,7 @@ export function usePhotoNavigation(photoUid: string | undefined): PhotoNavigatio
       const cached = sessionStorage.getItem(LABEL_PHOTOS_CACHE_KEY);
       if (cached) {
         try {
-          const data: PhotosCache = JSON.parse(cached);
+          const data = JSON.parse(cached) as PhotosCache;
           if (data.id === labelSlug && data.photoUids.length > 0) {
             setPhotoUids(data.photoUids);
             return;
@@ -146,13 +146,13 @@ export function usePhotoNavigation(photoUid: string | undefined): PhotoNavigatio
   const goToPrev = useCallback(() => {
     if (!hasPrev || currentIndex <= 0) return;
     const prevUid = photoUids[currentIndex - 1];
-    navigate(`/photos/${prevUid}?${getQueryParam()}`);
+    void navigate(`/photos/${prevUid}?${getQueryParam()}`);
   }, [hasPrev, currentIndex, photoUids, getQueryParam, navigate]);
 
   const goToNext = useCallback(() => {
     if (!hasNext || currentIndex < 0) return;
     const nextUid = photoUids[currentIndex + 1];
-    navigate(`/photos/${nextUid}?${getQueryParam()}`);
+    void navigate(`/photos/${nextUid}?${getQueryParam()}`);
   }, [hasNext, currentIndex, photoUids, getQueryParam, navigate]);
 
   return {

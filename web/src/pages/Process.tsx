@@ -95,7 +95,7 @@ export function ProcessPage() {
         setIsLoading(false);
       }
     }
-    loadData();
+    void loadData();
   }, []);
 
   const handleStart = async () => {

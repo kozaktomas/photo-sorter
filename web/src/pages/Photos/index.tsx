@@ -45,7 +45,7 @@ export function PhotosPage() {
   const handlePhotoClick = (photo: Photo) => {
     // Save current state to cache before navigating
     pagination.saveCache();
-    navigate(`/photos/${photo.uid}?source=photos`);
+    void navigate(`/photos/${photo.uid}?source=photos`);
   };
 
   const exitSelectionMode = () => {
@@ -69,7 +69,7 @@ export function PhotosPage() {
         console.error('Failed to load filter data:', err);
       }
     }
-    loadFilterData();
+    void loadFilterData();
   }, []);
 
   // Reload photos when filters change (skip if restored from cache on first render)
@@ -82,7 +82,7 @@ export function PhotosPage() {
     isFirstRender.current = false;
     // Clear cache when filters change (user is browsing, not returning)
     sessionStorage.removeItem(PHOTOS_CACHE_KEY);
-    pagination.loadPhotos(true);
+    void pagination.loadPhotos(true);
   }, [filters.search, filters.selectedYear, filters.selectedLabel, filters.selectedAlbum, filters.sortBy]);
 
   return (

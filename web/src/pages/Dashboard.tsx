@@ -35,7 +35,7 @@ export function DashboardPage() {
         setIsLoading(false);
       }
     }
-    loadData();
+    void loadData();
   }, []);
 
   return (

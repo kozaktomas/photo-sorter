@@ -26,12 +26,12 @@ export function LabelDetailPage() {
 
   useEffect(() => {
     if (!uid) return;
-    loadLabel();
+    void loadLabel();
   }, [uid]);
 
   useEffect(() => {
     if (!label) return;
-    loadPhotos();
+    void loadPhotos();
   }, [label?.slug]);
 
   async function loadLabel() {
@@ -85,7 +85,7 @@ export function LabelDetailPage() {
       LABEL_PHOTOS_CACHE_KEY,
       JSON.stringify({ id: label.slug, photoUids: photos.map((p) => p.uid) })
     );
-    navigate(`/photos/${photo.uid}?label=${label.slug}`);
+    void navigate(`/photos/${photo.uid}?label=${label.slug}`);
   }
 
   if (isLoading) {
@@ -126,7 +126,7 @@ export function LabelDetailPage() {
                 value={editName}
                 onChange={(e) => setEditName(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleSave();
+                  if (e.key === 'Enter') void handleSave();
                   if (e.key === 'Escape') handleCancel();
                 }}
                 autoFocus

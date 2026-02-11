@@ -38,7 +38,7 @@ function AlbumListPage() {
         setIsLoading(false);
       }
     }
-    loadAlbums();
+    void loadAlbums();
   }, [search]);
 
   const filteredAlbums = albums.filter(
@@ -126,7 +126,7 @@ function AlbumDetailPage({ uid }: { uid: string }) {
       ALBUM_PHOTOS_CACHE_KEY,
       JSON.stringify({ id: uid, photoUids: photos.map((p) => p.uid) })
     );
-    navigate(`/photos/${photo.uid}?album=${uid}`);
+    void navigate(`/photos/${photo.uid}?album=${uid}`);
   };
 
   useEffect(() => {
@@ -146,7 +146,7 @@ function AlbumDetailPage({ uid }: { uid: string }) {
         setIsLoading(false);
       }
     }
-    loadData();
+    void loadData();
   }, [uid]);
 
   if (isLoading) {

@@ -144,7 +144,7 @@ export function SectionPhotoPool({ sectionId, photos, onRefresh, onReloadPhotos 
                   value={descText}
                   onChange={(e) => setDescText(e.target.value)}
                   onBlur={() => handleDescBlur(photo.photo_uid)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleDescBlur(photo.photo_uid); } }}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleDescBlur(photo.photo_uid); } }}
                   className="w-full px-2 py-1 bg-slate-900 border border-slate-600 rounded text-xs text-white resize-none focus:outline-none focus:ring-1 focus:ring-rose-500"
                   rows={2}
                   autoFocus
@@ -165,7 +165,7 @@ export function SectionPhotoPool({ sectionId, photos, onRefresh, onReloadPhotos 
                   value={noteText}
                   onChange={(e) => setNoteText(e.target.value)}
                   onBlur={() => handleNoteBlur(photo.photo_uid)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleNoteBlur(photo.photo_uid); } }}
+                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleNoteBlur(photo.photo_uid); } }}
                   className="w-full px-2 py-1 bg-slate-900 border border-amber-700/50 rounded text-xs text-white resize-none focus:outline-none focus:ring-1 focus:ring-amber-500"
                   rows={2}
                   autoFocus

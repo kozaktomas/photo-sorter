@@ -31,7 +31,7 @@ export function SuggestAlbumsPage() {
 
   // Load config on mount
   useEffect(() => {
-    getConfig().then(setConfig).catch(() => null);
+    void getConfig().then(setConfig).catch(() => null);
   }, []);
 
   const handleSuggest = async () => {
@@ -175,7 +175,7 @@ export function SuggestAlbumsPage() {
       </div>
 
       {/* Suggested Albums */}
-      {result && result.suggestions && result.suggestions.length > 0 && (
+      {result?.suggestions && result.suggestions.length > 0 && (
         <div className="space-y-4">
           {result.suggestions.map((suggestion) => (
             <Card key={suggestion.album_uid}>
@@ -189,7 +189,7 @@ export function SuggestAlbumsPage() {
                 <div className="flex items-center gap-2">
                   <Button
                     size="sm"
-                    onClick={() => handleAddAllToAlbum(suggestion.album_uid, suggestion.photos.map(p => p.photo_uid))}
+                    onClick={() => void handleAddAllToAlbum(suggestion.album_uid, suggestion.photos.map(p => p.photo_uid))}
                     disabled={addingAlbum === suggestion.album_uid}
                     isLoading={addingAlbum === suggestion.album_uid}
                   >
@@ -200,7 +200,7 @@ export function SuggestAlbumsPage() {
               </CardHeader>
 
               {/* Action message for this album */}
-              {actionMessage && actionMessage.albumUid === suggestion.album_uid && (
+              {actionMessage?.albumUid === suggestion.album_uid && (
                 <div className={`mx-4 mb-2 text-sm ${actionMessage.type === 'success' ? 'text-green-400' : 'text-red-400'}`}>
                   {actionMessage.text}
                 </div>

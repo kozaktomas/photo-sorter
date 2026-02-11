@@ -28,7 +28,7 @@ export function ComparePage() {
   // Redirect if no state
   useEffect(() => {
     if (!state?.photoUids?.length) {
-      navigate('/duplicates', { replace: true });
+      void navigate('/duplicates', { replace: true });
     }
   }, [state, navigate]);
 
@@ -50,7 +50,7 @@ export function ComparePage() {
         setIsLoading(false);
       }
     }
-    loadPhotos();
+    void loadPhotos();
   }, [state]);
 
   if (!state?.photoUids?.length) {
@@ -119,11 +119,11 @@ function ComparePageContent({
       switch (e.key) {
         case '1':
           e.preventDefault();
-          compare.keepLeft();
+          void compare.keepLeft();
           break;
         case '2':
           e.preventDefault();
-          compare.keepRight();
+          void compare.keepRight();
           break;
         case ' ':
           e.preventDefault();

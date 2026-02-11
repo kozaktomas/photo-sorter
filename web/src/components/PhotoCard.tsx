@@ -54,7 +54,7 @@ export function PhotoCard({
 
   const handleCopyId = (e: React.MouseEvent) => {
     e.stopPropagation();
-    navigator.clipboard.writeText(photoUid);
+    void navigator.clipboard.writeText(photoUid);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
@@ -72,7 +72,7 @@ export function PhotoCard({
     if (e.metaKey || e.ctrlKey) {
       window.open(`/photos/${photoUid}`, '_blank');
     } else {
-      navigate(`/photos/${photoUid}`);
+      void navigate(`/photos/${photoUid}`);
     }
   };
 
@@ -81,7 +81,7 @@ export function PhotoCard({
     if (e.metaKey || e.ctrlKey) {
       window.open(`/similar?photo=${photoUid}`, '_blank');
     } else {
-      navigate(`/similar?photo=${photoUid}`);
+      void navigate(`/similar?photo=${photoUid}`);
     }
   };
 
@@ -136,7 +136,7 @@ export function PhotoCard({
         )}
 
         {/* Bounding box overlay for faces */}
-        {bboxRel && bboxRel.length === 4 && (() => {
+        {bboxRel?.length === 4 && (() => {
           const padX = bboxRel[2] * bboxPadding;
           const padY = bboxRel[3] * bboxPadding;
           const x = Math.max(0, bboxRel[0] - padX);
@@ -287,7 +287,7 @@ export function PhotoCardLink({
   const handleCopyId = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    navigator.clipboard.writeText(photoUid);
+    void navigator.clipboard.writeText(photoUid);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };

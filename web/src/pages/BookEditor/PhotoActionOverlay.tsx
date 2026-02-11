@@ -16,7 +16,7 @@ export function PhotoActionOverlay({ photoUid }: Props) {
     if (e.metaKey || e.ctrlKey) {
       window.open(`/photos/${photoUid}`, '_blank');
     } else {
-      navigate(`/photos/${photoUid}`);
+      void navigate(`/photos/${photoUid}`);
     }
   };
 
@@ -26,14 +26,14 @@ export function PhotoActionOverlay({ photoUid }: Props) {
     if (e.metaKey || e.ctrlKey) {
       window.open(`/similar?photo=${photoUid}`, '_blank');
     } else {
-      navigate(`/similar?photo=${photoUid}`);
+      void navigate(`/similar?photo=${photoUid}`);
     }
   };
 
   const handleCopyId = (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
-    navigator.clipboard.writeText(photoUid);
+    void navigator.clipboard.writeText(photoUid);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };

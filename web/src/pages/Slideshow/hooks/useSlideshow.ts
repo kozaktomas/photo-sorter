@@ -55,9 +55,9 @@ export function useSlideshow(photos: Photo[]): SlideshowState {
 
   const exit = useCallback(() => {
     if (document.fullscreenElement) {
-      document.exitFullscreen();
+      void document.exitFullscreen();
     }
-    navigate(-1);
+    void navigate(-1);
   }, [navigate]);
 
   const setInterval = useCallback((ms: number) => {
@@ -66,9 +66,9 @@ export function useSlideshow(photos: Photo[]): SlideshowState {
 
   const toggleFullscreen = useCallback(() => {
     if (document.fullscreenElement) {
-      document.exitFullscreen();
+      void document.exitFullscreen();
     } else {
-      document.documentElement.requestFullscreen();
+      void document.documentElement.requestFullscreen();
     }
   }, []);
 
@@ -130,7 +130,7 @@ export function useSlideshow(photos: Photo[]): SlideshowState {
           break;
         case 'Escape':
           if (document.fullscreenElement) {
-            document.exitFullscreen();
+            void document.exitFullscreen();
           } else {
             exit();
           }

@@ -36,7 +36,7 @@ export function RecognitionPage() {
   const [acceptProgress, setAcceptProgress] = useState({ current: 0, total: 0 });
 
   const handleScan = () => {
-    startScan(subjects);
+    void startScan(subjects);
   };
 
   const handleApprove = (personSlug: string, personName: string) => async (match: FaceMatch) => {

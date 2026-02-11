@@ -68,7 +68,7 @@ export function usePhotoSelection(): UsePhotoSelectionReturn {
         next.add(photoUID);
       }
       if (next.size === 1 && !dataLoaded) {
-        loadAlbumsAndLabels();
+        void loadAlbumsAndLabels();
       }
       return next;
     });
@@ -77,7 +77,7 @@ export function usePhotoSelection(): UsePhotoSelectionReturn {
   const selectAll = useCallback((uids: string[]) => {
     setSelectedPhotos(new Set(uids));
     if (!dataLoaded) {
-      loadAlbumsAndLabels();
+      void loadAlbumsAndLabels();
     }
   }, [dataLoaded, loadAlbumsAndLabels]);
 

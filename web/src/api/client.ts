@@ -51,33 +51,37 @@ async function request<T>(
   options: RequestInit = {}
 ): Promise<T> {
   const url = `${API_BASE}${endpoint}`;
+  const headers = new Headers({ 'Content-Type': 'application/json' });
+  if (options.headers) {
+    new Headers(options.headers).forEach((value, key) => {
+      headers.set(key, value);
+    });
+  }
   const response = await fetch(url, {
     ...options,
     credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      ...options.headers,
-    },
+    headers,
   });
 
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
+    const errorData = (await response.json().catch(() => ({}))) as Record<string, unknown>;
 
     // Emit event on 401 to trigger re-authentication (except for auth endpoints)
     if (response.status === 401 && !endpoint.startsWith('/auth/')) {
       window.dispatchEvent(new CustomEvent(AUTH_ERROR_EVENT));
     }
 
+    const errorMessage = typeof errorData.error === 'string' ? errorData.error : `Request failed with status ${response.status}`;
     throw new ApiError(
       response.status,
-      errorData.error || `Request failed with status ${response.status}`
+      errorMessage
     );
   }
 
   // Handle empty responses
   const text = await response.text();
   if (!text) return {} as T;
-  return JSON.parse(text);
+  return JSON.parse(text) as T;
 }
 
 // Auth
@@ -278,8 +282,8 @@ export async function uploadPhotos(
 ): Promise<{ uploaded: number; album: string }> {
   const formData = new FormData();
   formData.append('album_uid', albumUid);
-  for (let i = 0; i < files.length; i++) {
-    formData.append('files', files[i]);
+  for (const file of files) {
+    formData.append('files', file);
   }
 
   const response = await fetch(`${API_BASE}/upload`, {
@@ -289,14 +293,15 @@ export async function uploadPhotos(
   });
 
   if (!response.ok) {
-    const errorData = await response.json().catch(() => ({}));
+    const errorData = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+    const errorMessage = typeof errorData.error === 'string' ? errorData.error : 'Upload failed';
     throw new ApiError(
       response.status,
-      errorData.error || 'Upload failed'
+      errorMessage
     );
   }
 
-  return response.json();
+  return response.json() as Promise<{ uploaded: number; album: string }>;
 }
 
 // Config
@@ -542,7 +547,7 @@ export async function getBooks(): Promise<PhotoBook[]> {
 export async function createBook(title: string, description?: string): Promise<PhotoBook> {
   return request<PhotoBook>('/books', {
     method: 'POST',
-    body: JSON.stringify({ title, description: description || '' }),
+    body: JSON.stringify({ title, description: description ?? '' }),
   });
 }
 

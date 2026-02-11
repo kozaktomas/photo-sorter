@@ -47,7 +47,7 @@ export function OutliersPage() {
         setIsLoading(false);
       }
     }
-    loadData();
+    void loadData();
   }, []);
 
   const handleAnalyze = async () => {

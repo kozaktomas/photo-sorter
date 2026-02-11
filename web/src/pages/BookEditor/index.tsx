@@ -66,7 +66,7 @@ export function BookEditorPage() {
     try {
       await updateBook(book.id, { title: editTitle.trim() });
       setEditing(false);
-      refresh();
+      void refresh();
     } catch { /* silent */ }
   };
 
@@ -74,7 +74,7 @@ export function BookEditorPage() {
     if (!book || !confirm(t('books.deleteConfirm'))) return;
     try {
       await deleteBook(book.id);
-      navigate('/books');
+      void navigate('/books');
     } catch { /* silent */ }
   };
 
@@ -106,11 +106,11 @@ export function BookEditorPage() {
                       type="text"
                       value={editTitle}
                       onChange={(e) => setEditTitle(e.target.value)}
-                      onKeyDown={(e) => e.key === 'Enter' && handleSaveTitle()}
+                      onKeyDown={(e) => { if (e.key === 'Enter') void handleSaveTitle(); }}
                       className="px-2 py-1 bg-slate-800 border border-slate-600 rounded text-white text-xl font-bold focus:outline-none focus:ring-1 focus:ring-rose-500"
                       autoFocus
                     />
-                    <button onClick={handleSaveTitle} className="text-green-400 hover:text-green-300">
+                    <button onClick={() => void handleSaveTitle()} className="text-green-400 hover:text-green-300">
                       <Check className="h-5 w-5" />
                     </button>
                     <button onClick={() => setEditing(false)} className="text-slate-400 hover:text-white">

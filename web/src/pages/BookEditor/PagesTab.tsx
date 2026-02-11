@@ -93,9 +93,9 @@ export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRe
   }, [selectedPage, sectionPhotos, book.pages]);
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
-    const data = event.active.data.current;
+    const data = event.active.data.current as Record<string, unknown> | undefined;
     if (data?.photoUid) {
-      setActivePhotoUid(data.photoUid);
+      setActivePhotoUid(data.photoUid as string);
     }
   }, []);
 
@@ -104,13 +104,14 @@ export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRe
     const { active, over } = event;
     if (!over || !selectedPage) return;
 
-    const activeData = active.data.current;
-    const targetData = over.data.current;
-    const photoUid = activeData?.photoUid;
+    const activeData = active.data.current as Record<string, unknown> | undefined;
+    const targetData = over.data.current as Record<string, unknown> | undefined;
+    const photoUid = activeData?.photoUid as string | undefined;
     if (!photoUid || !targetData) return;
 
-    const { pageId: targetPageId, slotIndex: targetSlotIndex, photoUid: targetPhotoUid } =
-      targetData as { pageId: string; slotIndex: number; photoUid?: string };
+    const targetPageId = targetData.pageId as string;
+    const targetSlotIndex = targetData.slotIndex as number;
+    const targetPhotoUid = targetData.photoUid as string | undefined;
 
     // Check if dragging from a slot (has source slot info)
     const sourcePageId = activeData?.sourcePageId as string | undefined;

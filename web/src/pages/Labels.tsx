@@ -23,7 +23,7 @@ export function LabelsPage() {
   const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
-    loadLabels();
+    void loadLabels();
   }, []);
 
   async function loadLabels() {

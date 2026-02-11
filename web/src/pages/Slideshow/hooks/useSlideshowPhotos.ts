@@ -57,7 +57,7 @@ export function useSlideshowPhotos(): SlideshowPhotosResult {
       }
     }
 
-    load();
+    void load();
   }, [sourceType, sourceId]);
 
   return { photos, title, isLoading, error, sourceType, sourceId };

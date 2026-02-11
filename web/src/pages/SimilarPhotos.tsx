@@ -55,7 +55,7 @@ export function SimilarPhotosPage() {
       setPhotoUID(photoParam);
       hasAutoSearched.current = true;
       setTimeout(() => {
-        performSearch(photoParam);
+        void performSearch(photoParam);
       }, 0);
     }
   }, [searchParams]);
@@ -87,11 +87,11 @@ export function SimilarPhotosPage() {
   };
 
   const handleSearch = () => {
-    performSearch(photoUID);
+    void performSearch(photoUID);
   };
 
   const handlePhotoClick = (uid: string) => {
-    navigate(`/photos/${uid}`);
+    void navigate(`/photos/${uid}`);
   };
 
   const handleOpenInPhotoprism = (uid: string) => {
@@ -102,7 +102,7 @@ export function SimilarPhotosPage() {
   };
 
   const handleCopyUID = (uid: string) => {
-    navigator.clipboard.writeText(uid);
+    void navigator.clipboard.writeText(uid);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -271,7 +271,7 @@ export function SimilarPhotosPage() {
       </div>
 
       {/* Photo Grid */}
-      {result && result.results && result.results.length > 0 && (
+      {result?.results && result.results.length > 0 && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <h2 className="text-lg font-semibold text-white">

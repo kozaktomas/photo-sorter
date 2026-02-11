@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
-export type SortOption = {
+export interface SortOption {
   value: string;
   label: string;
-};
+}
 
 export const SORT_OPTIONS: SortOption[] = [
   { value: 'newest', label: 'Date (Newest)' },

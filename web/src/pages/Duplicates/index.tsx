@@ -48,7 +48,7 @@ export function DuplicatesPage() {
         console.error('Failed to load data:', err);
       }
     }
-    loadData();
+    void loadData();
   }, []);
 
   const handleScan = async () => {
@@ -195,7 +195,7 @@ export function DuplicatesPage() {
       )}
 
       {/* Duplicate Groups */}
-      {result && result.duplicate_groups && result.duplicate_groups.length > 0 && (
+      {result?.duplicate_groups && result.duplicate_groups.length > 0 && (
         <div className="space-y-4">
           {result.duplicate_groups.map((group, groupIdx) => (
             <Card key={groupIdx}>

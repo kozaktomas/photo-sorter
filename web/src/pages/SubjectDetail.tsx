@@ -25,12 +25,12 @@ export function SubjectDetailPage() {
 
   useEffect(() => {
     if (!uid) return;
-    loadSubject();
+    void loadSubject();
   }, [uid]);
 
   useEffect(() => {
     if (!subject) return;
-    loadPhotos();
+    void loadPhotos();
   }, [subject?.slug]);
 
   async function loadSubject() {
@@ -117,7 +117,7 @@ export function SubjectDetailPage() {
                 value={editName}
                 onChange={(e) => setEditName(e.target.value)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleSave();
+                  if (e.key === 'Enter') void handleSave();
                   if (e.key === 'Escape') handleCancel();
                 }}
                 autoFocus

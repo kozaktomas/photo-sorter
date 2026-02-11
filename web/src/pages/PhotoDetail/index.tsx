@@ -111,11 +111,11 @@ export function PhotoDetailPage() {
   }, [facesData?.faces]);
 
   const handleFindSimilar = () => {
-    navigate(`/similar?photo=${uid}`);
+    void navigate(`/similar?photo=${uid}`);
   };
 
   const handleCopyUid = () => {
-    if (uid) navigator.clipboard.writeText(uid);
+    if (uid) void navigator.clipboard.writeText(uid);
   };
 
   const handleOpenInPhotoprism = () => {

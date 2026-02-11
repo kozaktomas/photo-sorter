@@ -145,7 +145,7 @@ export function PageSidebar({ bookId, pages, sections, selectedId, onSelect, onR
     if (!newSectionId) return;
     try {
       const page = await createPage(bookId, newFormat, newSectionId);
-      await onRefresh();
+      onRefresh();
       onSelect(page.id);
     } catch { /* silent */ }
   };
@@ -182,7 +182,7 @@ export function PageSidebar({ bookId, pages, sections, selectedId, onSelect, onR
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         {sectionGroups.map(group => {
           const sectionId = group.section.id;
-          const isCollapsed = !!collapsedSections[sectionId];
+          const isCollapsed = collapsedSections[sectionId];
           const pageIds = group.pages.map(p => p.id);
 
           return (

@@ -46,9 +46,9 @@ export function PhotoBrowserModal({ sectionId, existingUids, onClose, onAdded }:
     }
   }, [offset, query]);
 
-  useEffect(() => { loadPhotos(true); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { void loadPhotos(true); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleSearch = () => { loadPhotos(true); };
+  const handleSearch = () => { void loadPhotos(true); };
 
   const toggleSelect = (uid: string) => {
     setSelected(prev => {

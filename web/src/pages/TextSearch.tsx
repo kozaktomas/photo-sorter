@@ -78,7 +78,7 @@ export function TextSearchPage() {
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && text.trim()) {
-      handleSearch();
+      void handleSearch();
     }
   };
 
@@ -107,7 +107,7 @@ export function TextSearchPage() {
     setSelectedPhotos(newSelection);
 
     if (newSelection.size === 1 && albums.length === 0) {
-      loadAlbumsAndLabels();
+      void loadAlbumsAndLabels();
     }
   };
 
@@ -116,7 +116,7 @@ export function TextSearchPage() {
     const allUIDs = new Set(result.results.map((p) => p.photo_uid));
     setSelectedPhotos(allUIDs);
     if (albums.length === 0) {
-      loadAlbumsAndLabels();
+      void loadAlbumsAndLabels();
     }
   };
 
@@ -309,7 +309,7 @@ export function TextSearchPage() {
       </div>
 
       {/* Photo Grid */}
-      {result && result.results && result.results.length > 0 && (
+      {result?.results && result.results.length > 0 && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between">
             <h2 className="text-lg font-semibold text-white">

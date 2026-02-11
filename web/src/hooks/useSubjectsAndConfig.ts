@@ -52,7 +52,7 @@ export function useSubjectsAndConfig(
   };
 
   useEffect(() => {
-    loadData();
+    void loadData();
   }, []);
 
   return {
@@ -86,7 +86,7 @@ export function useConfig(): {
         setIsLoading(false);
       }
     }
-    loadConfig();
+    void loadConfig();
   }, []);
 
   return { config, isLoading, error };

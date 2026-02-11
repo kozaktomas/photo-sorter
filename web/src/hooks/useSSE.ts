@@ -50,11 +50,12 @@ export function useSSE(url: string | null, options: SSEOptions = {}) {
     };
 
     eventSource.onmessage = (event) => {
+      const rawData = String(event.data);
       try {
-        const data = JSON.parse(event.data);
+        const data: unknown = JSON.parse(rawData);
         optionsRef.current.onMessage?.({ type: 'message', data });
       } catch {
-        optionsRef.current.onMessage?.({ type: 'message', data: event.data });
+        optionsRef.current.onMessage?.({ type: 'message', data: rawData });
       }
     };
 
@@ -62,11 +63,12 @@ export function useSSE(url: string | null, options: SSEOptions = {}) {
     // Note: 'error' is excluded because it conflicts with native EventSource error event
     ['status', 'started', 'progress', 'photos_counted', 'filtering_done', 'completed', 'job_error', 'cancelled'].forEach((type) => {
       eventSource.addEventListener(type, (event) => {
+        const rawData = String(event.data);
         try {
-          const data = JSON.parse((event as MessageEvent).data);
+          const data: unknown = JSON.parse(rawData);
           optionsRef.current.onMessage?.({ type, data });
         } catch {
-          optionsRef.current.onMessage?.({ type, data: (event as MessageEvent).data });
+          optionsRef.current.onMessage?.({ type, data: rawData });
         }
       });
     });
