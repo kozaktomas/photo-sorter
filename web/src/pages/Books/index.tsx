@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { BookOpen, Plus, Trash2, Layers, FileText, Image } from 'lucide-react';
 import { getBooks, createBook, deleteBook } from '../../api/client';
 import { LoadingState } from '../../components/LoadingState';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import type { PhotoBook } from '../../types';
 
 export function BooksPage() {
@@ -13,6 +14,7 @@ export function BooksPage() {
   const [error, setError] = useState<string | null>(null);
   const [newTitle, setNewTitle] = useState('');
   const [creating, setCreating] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<string | null>(null);
 
   const loadBooks = async () => {
     try {
@@ -43,10 +45,15 @@ export function BooksPage() {
     }
   };
 
-  const handleDelete = async (id: string) => {
-    if (!confirm(t('books.deleteConfirm'))) return;
+  const handleDelete = (id: string) => {
+    setDeleteTarget(id);
+  };
+
+  const confirmDeleteBook = async () => {
+    if (!deleteTarget) return;
+    setDeleteTarget(null);
     try {
-      await deleteBook(id);
+      await deleteBook(deleteTarget);
       await loadBooks();
     } catch {
       setError('Failed to delete book');
@@ -72,7 +79,7 @@ export function BooksPage() {
           onChange={(e) => setNewTitle(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') void handleCreate(); }}
           placeholder={t('books.titlePlaceholder')}
-          className="flex-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-rose-500"
+          className="flex-1 px-3 py-2 bg-slate-800 border border-slate-700 rounded-md text-white placeholder-slate-500 focus:outline-none focus-visible:ring-1 focus-visible:ring-rose-500"
         />
         <button
           onClick={handleCreate}
@@ -120,6 +127,16 @@ export function BooksPage() {
           ))}
         </div>
       </LoadingState>
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title={t('books.deleteBook')}
+        message={t('books.deleteConfirm')}
+        confirmLabel={t('books.deleteBook')}
+        variant="danger"
+        onConfirm={confirmDeleteBook}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }

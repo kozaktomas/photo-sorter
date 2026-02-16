@@ -100,7 +100,7 @@ export function DuplicatesPage() {
                 value={scopeAlbum}
                 onChange={(e) => setScopeAlbum(e.target.value)}
                 disabled={isSearching}
-                className="w-full px-4 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                className="w-full px-4 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50"
               >
                 <option value="">{t('pages:duplicates.allPhotos')}</option>
                 {availableAlbums.map((album) => (
@@ -144,7 +144,7 @@ export function DuplicatesPage() {
                 disabled={isSearching}
                 min={1}
                 max={500}
-                className="w-full px-4 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                className="w-full px-4 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50"
               />
             </div>
 

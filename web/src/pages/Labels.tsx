@@ -4,6 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { Tags, Trash2, Search, ChevronUp, ChevronDown } from 'lucide-react';
 import { Card, CardContent } from '../components/Card';
 import { Button } from '../components/Button';
+import { ConfirmDialog } from '../components/ConfirmDialog';
+import { Alert } from '../components/Alert';
 import { PageHeader } from '../components/PageHeader';
 import { PAGE_CONFIGS } from '../constants/pageConfig';
 import { getLabels, deleteLabels } from '../api/client';
@@ -21,6 +23,8 @@ export function LabelsPage() {
   const [sortDirection, setSortDirection] = useState<SortDirection>('asc');
   const [selectedLabels, setSelectedLabels] = useState<Set<string>>(new Set());
   const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   useEffect(() => {
     void loadLabels();
@@ -76,18 +80,22 @@ export function LabelsPage() {
     setSelectedLabels(newSelected);
   };
 
-  const handleDelete = async () => {
+  const handleDelete = () => {
     if (selectedLabels.size === 0) return;
-    if (!confirm(t('pages:labels.deleteConfirm', { count: selectedLabels.size }))) return;
+    setShowDeleteConfirm(true);
+  };
 
+  const confirmDelete = async () => {
+    setShowDeleteConfirm(false);
     setIsDeleting(true);
+    setDeleteError(null);
     try {
       await deleteLabels(Array.from(selectedLabels));
       setSelectedLabels(new Set());
       await loadLabels();
     } catch (err) {
       console.error('Failed to delete labels:', err);
-      alert(t('common:errors.failedToDelete'));
+      setDeleteError(t('common:errors.failedToDelete'));
     } finally {
       setIsDeleting(false);
     }
@@ -128,7 +136,7 @@ export function LabelsPage() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder={t('pages:labels.searchPlaceholder')}
-          className="w-full pl-10 pr-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          className="w-full pl-10 pr-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
         />
       </div>
 
@@ -212,6 +220,21 @@ export function LabelsPage() {
           )}
         </CardContent>
       </Card>
+
+      {deleteError && (
+        <Alert variant="error" className="mt-4">{deleteError}</Alert>
+      )}
+
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        title={t('common:buttons.delete')}
+        message={t('pages:labels.deleteConfirm', { count: selectedLabels.size })}
+        confirmLabel={t('common:buttons.delete')}
+        cancelLabel={t('common:buttons.cancel')}
+        variant="danger"
+        onConfirm={confirmDelete}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
     </div>
   );
 }

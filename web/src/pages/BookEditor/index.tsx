@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { BookOpen, ArrowLeft, Pencil, Trash2, Check, X, Download } from 'lucide-react';
 import { updateBook, deleteBook, exportBookPDF } from '../../api/client';
 import { LoadingState } from '../../components/LoadingState';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useBookData } from './hooks/useBookData';
 import { SectionsTab } from './SectionsTab';
 import { PagesTab } from './PagesTab';
@@ -54,6 +55,7 @@ export function BookEditorPage() {
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState('');
   const [exporting, setExporting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
 
   const handleStartEdit = () => {
     if (book) {
@@ -71,8 +73,14 @@ export function BookEditorPage() {
     } catch (e) { console.error('Failed to save title:', e); }
   };
 
-  const handleDelete = async () => {
-    if (!book || !confirm(t('books.deleteConfirm'))) return;
+  const handleDelete = () => {
+    if (!book) return;
+    setShowDeleteConfirm(true);
+  };
+
+  const confirmDelete = async () => {
+    if (!book) return;
+    setShowDeleteConfirm(false);
     try {
       await deleteBook(book.id);
       void navigate('/books');
@@ -117,7 +125,7 @@ export function BookEditorPage() {
                       value={editTitle}
                       onChange={(e) => setEditTitle(e.target.value)}
                       onKeyDown={(e) => { if (e.key === 'Enter') void handleSaveTitle(); }}
-                      className="px-2 py-1 bg-slate-800 border border-slate-600 rounded text-white text-xl font-bold focus:outline-none focus:ring-1 focus:ring-rose-500"
+                      className="px-2 py-1 bg-slate-800 border border-slate-600 rounded text-white text-xl font-bold focus:outline-none focus-visible:ring-1 focus-visible:ring-rose-500"
                       autoFocus
                     />
                     <button onClick={() => void handleSaveTitle()} className="text-green-400 hover:text-green-300">
@@ -194,6 +202,16 @@ export function BookEditorPage() {
           </>
         )}
       </LoadingState>
+
+      <ConfirmDialog
+        open={showDeleteConfirm}
+        title={t('books.deleteBook')}
+        message={t('books.deleteConfirm')}
+        confirmLabel={t('books.deleteBook')}
+        variant="danger"
+        onConfirm={confirmDelete}
+        onCancel={() => setShowDeleteConfirm(false)}
+      />
     </div>
   );
 }

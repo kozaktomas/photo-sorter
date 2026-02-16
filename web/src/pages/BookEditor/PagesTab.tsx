@@ -107,7 +107,7 @@ function TextSlotDialog({ text, onSave, onClose }: { text: string; onSave: (text
             ref={textareaRef}
             value={value}
             onChange={e => setValue(e.target.value)}
-            className="w-full h-48 px-3 py-2 bg-slate-900 border border-slate-600 rounded text-sm text-white font-mono focus:outline-none focus:ring-1 focus:ring-rose-500 resize-none"
+            className="w-full h-48 px-3 py-2 bg-slate-900 border border-slate-600 rounded text-sm text-white font-mono focus:outline-none focus-visible:ring-1 focus-visible:ring-rose-500 resize-none"
             placeholder={t('books.editor.textPlaceholder')}
             autoFocus
           />

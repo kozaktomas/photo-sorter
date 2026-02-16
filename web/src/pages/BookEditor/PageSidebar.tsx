@@ -217,7 +217,7 @@ export function PageSidebar({ bookId, pages, sections, selectedId, onSelect, onR
         <select
           value={newFormat}
           onChange={(e) => setNewFormat(e.target.value as PageFormat)}
-          className="w-full px-2 py-1.5 bg-slate-800 border border-slate-700 rounded text-sm text-white focus:outline-none focus:ring-1 focus:ring-rose-500"
+          className="w-full px-2 py-1.5 bg-slate-800 border border-slate-700 rounded text-sm text-white focus:outline-none focus-visible:ring-1 focus-visible:ring-rose-500"
         >
           <option value="4_landscape">{t('books.editor.format4Landscape')}</option>
           <option value="2l_1p">{t('books.editor.format2l1p')}</option>
@@ -228,7 +228,7 @@ export function PageSidebar({ bookId, pages, sections, selectedId, onSelect, onR
         <select
           value={newSectionId}
           onChange={(e) => setNewSectionId(e.target.value)}
-          className="w-full px-2 py-1.5 bg-slate-800 border border-slate-700 rounded text-sm text-white focus:outline-none focus:ring-1 focus:ring-rose-500"
+          className="w-full px-2 py-1.5 bg-slate-800 border border-slate-700 rounded text-sm text-white focus:outline-none focus-visible:ring-1 focus-visible:ring-rose-500"
         >
           <option value="" disabled>{t('books.editor.selectSection')}</option>
           {sections.map(s => (

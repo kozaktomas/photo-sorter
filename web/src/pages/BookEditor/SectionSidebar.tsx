@@ -83,7 +83,7 @@ function SortableItem({ section, isSelected, onSelect, onDelete, onRename }: {
                 if (e.key === 'Enter') handleSave();
                 if (e.key === 'Escape') handleCancel();
               }}
-              className="flex-1 min-w-0 px-1.5 py-0.5 bg-slate-900 border border-slate-600 rounded text-sm text-white focus:outline-none focus:ring-1 focus:ring-rose-500"
+              className="flex-1 min-w-0 px-1.5 py-0.5 bg-slate-900 border border-slate-600 rounded text-sm text-white focus:outline-none focus-visible:ring-1 focus-visible:ring-rose-500"
             />
             <button onClick={handleSave} className="text-green-400 hover:text-green-300 p-0.5">
               <Check className="h-3.5 w-3.5" />
@@ -187,7 +187,7 @@ export function SectionSidebar({ bookId, sections, selectedId, onSelect, onRefre
           onChange={(e) => setNewTitle(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
           placeholder={t('books.editor.sectionTitle')}
-          className="flex-1 px-2 py-1.5 bg-slate-800 border border-slate-700 rounded text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-rose-500"
+          className="flex-1 px-2 py-1.5 bg-slate-800 border border-slate-700 rounded text-sm text-white placeholder-slate-500 focus:outline-none focus-visible:ring-1 focus-visible:ring-rose-500"
         />
         <button
           onClick={handleAdd}

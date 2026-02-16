@@ -376,6 +376,7 @@
     "sections": "Sections",
     "pages": "Pages",
     "photos": "Photos",
+    "deleteBook": "Delete Book",
     "deleteConfirm": "Delete this book? All sections, pages, and assignments will be removed.",
     "editor": {
       "sectionsTab": "Sections",

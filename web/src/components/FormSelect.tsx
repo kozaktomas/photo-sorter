@@ -11,13 +11,14 @@ interface FormSelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
 export const FormSelect = forwardRef<HTMLSelectElement, FormSelectProps>(
   ({ className = '', label, error, fullWidth = true, selectSize = 'md', id, children, ...props }, ref) => {
     const selectId = id ?? (label ? label.toLowerCase().replace(/\s+/g, '-') : undefined);
+    const errorId = error && selectId ? `${selectId}-error` : undefined;
 
     const sizeStyles = {
       sm: 'px-3 py-1.5 text-sm rounded',
       md: 'px-4 py-2 rounded-lg',
     };
 
-    const baseStyles = `bg-slate-900 border border-slate-600 text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 ${sizeStyles[selectSize]}`;
+    const baseStyles = `bg-slate-900 border border-slate-600 text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50 ${sizeStyles[selectSize]}`;
     const widthStyles = fullWidth ? 'w-full' : '';
 
     return (
@@ -33,13 +34,15 @@ export const FormSelect = forwardRef<HTMLSelectElement, FormSelectProps>(
         <select
           ref={ref}
           id={selectId}
+          aria-invalid={!!error}
+          aria-describedby={errorId}
           className={`${baseStyles} ${widthStyles} ${className}`}
           {...props}
         >
           {children}
         </select>
         {error && (
-          <p className="mt-1 text-sm text-red-400">{error}</p>
+          <p id={errorId} role="alert" className="mt-1 text-sm text-red-400">{error}</p>
         )}
       </div>
     );

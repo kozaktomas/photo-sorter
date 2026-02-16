@@ -53,7 +53,7 @@ export function PhotosFilters({
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder={t('pages:photos.searchPlaceholder')}
-              className="w-full pl-10 pr-4 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="w-full pl-10 pr-4 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
             />
           </div>
 
@@ -63,7 +63,7 @@ export function PhotosFilters({
             <select
               value={selectedYear}
               onChange={(e) => setSelectedYear(e.target.value ? parseInt(e.target.value) : '')}
-              className="w-full pl-10 pr-8 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer"
+              className="w-full pl-10 pr-8 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 appearance-none cursor-pointer"
             >
               <option value="">{t('pages:photos.allYears')}</option>
               {yearOptions.map(year => (
@@ -79,7 +79,7 @@ export function PhotosFilters({
             <select
               value={selectedLabel}
               onChange={(e) => setSelectedLabel(e.target.value)}
-              className="w-full pl-10 pr-8 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer"
+              className="w-full pl-10 pr-8 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 appearance-none cursor-pointer"
             >
               <option value="">{t('pages:photos.allLabels')}</option>
               {labels.map(label => (
@@ -97,7 +97,7 @@ export function PhotosFilters({
             <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value)}
-              className="w-full pl-10 pr-8 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer"
+              className="w-full pl-10 pr-8 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 appearance-none cursor-pointer"
             >
               {SORT_OPTIONS.map(option => (
                 <option key={option.value} value={option.value}>
@@ -115,7 +115,7 @@ export function PhotosFilters({
             <select
               value={selectedAlbum}
               onChange={(e) => setSelectedAlbum(e.target.value)}
-              className="w-full pl-4 pr-8 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer"
+              className="w-full pl-4 pr-8 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 appearance-none cursor-pointer"
             >
               <option value="">{t('pages:photos.allAlbums')}</option>
               {albums.map(album => (

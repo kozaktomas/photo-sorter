@@ -60,7 +60,7 @@ export function PhotoDescriptionDialog({ sectionId, photoUid, description, note,
               value={desc}
               onChange={(e) => setDesc(e.target.value)}
               placeholder={t('books.editor.descriptionPlaceholder')}
-              className="w-full px-3 py-2 bg-slate-900 border border-slate-600 rounded text-sm text-white resize-none focus:outline-none focus:ring-1 focus:ring-rose-500"
+              className="w-full px-3 py-2 bg-slate-900 border border-slate-600 rounded text-sm text-white resize-none focus:outline-none focus-visible:ring-1 focus-visible:ring-rose-500"
               rows={3}
               autoFocus
             />
@@ -75,7 +75,7 @@ export function PhotoDescriptionDialog({ sectionId, photoUid, description, note,
               value={noteText}
               onChange={(e) => setNoteText(e.target.value)}
               placeholder={t('books.editor.notePlaceholder')}
-              className="w-full px-3 py-2 bg-slate-900 border border-slate-600 rounded text-sm text-white resize-none focus:outline-none focus:ring-1 focus:ring-amber-500"
+              className="w-full px-3 py-2 bg-slate-900 border border-slate-600 rounded text-sm text-white resize-none focus:outline-none focus-visible:ring-1 focus-visible:ring-amber-500"
               rows={2}
             />
             <p className="text-xs text-slate-500 mt-1">{t('books.editor.noteHelp')}</p>

@@ -30,6 +30,7 @@ export function OutliersPage() {
   const [isSearching, setIsSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [unassigned, setUnassigned] = useState<Set<string>>(new Set());
+  const [applyError, setApplyError] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadData() {
@@ -77,6 +78,7 @@ export function OutliersPage() {
 
   const handleUnassign = async (outlier: OutlierResult) => {
     if (!outlier.marker_uid) return;
+    setApplyError(null);
 
     try {
       const response = await applyFaceMatch({
@@ -94,11 +96,11 @@ export function OutliersPage() {
           return next;
         });
       } else {
-        alert(`Failed to unassign: ${response.error}`);
+        setApplyError(`Failed to unassign: ${response.error}`);
       }
     } catch (err) {
       console.error('Failed to unassign face:', err);
-      alert('Failed to unassign face');
+      setApplyError('Failed to unassign face');
     }
   };
 
@@ -229,6 +231,10 @@ export function OutliersPage() {
           </CardContent>
         </Card>
       </div>
+
+      {applyError && (
+        <Alert variant="error">{applyError}</Alert>
+      )}
 
       {/* Photo Grid */}
       {result && result.outliers.length > 0 && (

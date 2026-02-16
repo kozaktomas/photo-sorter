@@ -67,7 +67,7 @@ export function PageTemplate({ page, onClearSlot, sectionPhotos, onEditDescripti
               onChange={(e) => setPageDescText(e.target.value)}
               onBlur={handlePageDescBlur}
               onKeyDown={(e) => { if (e.key === 'Enter') handlePageDescBlur(); if (e.key === 'Escape') setEditingPageDesc(false); }}
-              className="w-full px-2 py-1 bg-slate-900 border border-slate-600 rounded text-sm text-white focus:outline-none focus:ring-1 focus:ring-rose-500"
+              className="w-full px-2 py-1 bg-slate-900 border border-slate-600 rounded text-sm text-white focus:outline-none focus-visible:ring-1 focus-visible:ring-rose-500"
               placeholder={t('books.editor.pageDescriptionPlaceholder')}
               autoFocus
             />
@@ -93,7 +93,7 @@ export function PageTemplate({ page, onClearSlot, sectionPhotos, onEditDescripti
               <select
                 value={page.format}
                 onChange={(e) => onChangeFormat(e.target.value as PageFormat)}
-                className="px-2 py-1 bg-slate-900 border border-slate-600 rounded text-sm text-white focus:outline-none focus:ring-1 focus:ring-rose-500"
+                className="px-2 py-1 bg-slate-900 border border-slate-600 rounded text-sm text-white focus:outline-none focus-visible:ring-1 focus-visible:ring-rose-500"
               >
                 {ALL_PAGE_FORMATS.map(f => (
                   <option key={f} value={f}>{t(`books.editor.format${formatKeyMap[f]}`)}</option>
@@ -107,7 +107,7 @@ export function PageTemplate({ page, onClearSlot, sectionPhotos, onEditDescripti
               <select
                 value={page.style || 'modern'}
                 onChange={(e) => onChangeStyle(e.target.value as PageStyle)}
-                className="px-2 py-1 bg-slate-900 border border-slate-600 rounded text-sm text-white focus:outline-none focus:ring-1 focus:ring-rose-500"
+                className="px-2 py-1 bg-slate-900 border border-slate-600 rounded text-sm text-white focus:outline-none focus-visible:ring-1 focus-visible:ring-rose-500"
               >
                 <option value="modern">{t('books.editor.styleModern')}</option>
                 <option value="archival">{t('books.editor.styleArchival')}</option>

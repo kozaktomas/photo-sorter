@@ -46,10 +46,34 @@ function NavDropdown({ group, isActive }: { group: NavGroup; isActive: (path: st
     return () => document.removeEventListener('mousedown', handleClick);
   }, []);
 
+  useEffect(() => {
+    if (!open) return;
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        setOpen(false);
+        // Return focus to the trigger button
+        const button = ref.current?.querySelector('button');
+        button?.focus();
+      }
+    }
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [open]);
+
+  const handleButtonKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setOpen(true);
+    }
+  };
+
   return (
     <div ref={ref} className="relative">
       <button
         onClick={() => setOpen(!open)}
+        onKeyDown={handleButtonKeyDown}
+        aria-expanded={open}
+        aria-haspopup="true"
         className={`flex items-center space-x-1.5 px-3 py-2 rounded-md text-sm font-medium transition-colors ${
           hasActiveChild && activeColor
             ? `${activeColor.navActiveBg} ${activeColor.navActive}`
@@ -60,7 +84,7 @@ function NavDropdown({ group, isActive }: { group: NavGroup; isActive: (path: st
         <ChevronDown className={`h-3.5 w-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
       </button>
       {open && (
-        <div className="absolute top-full left-0 mt-1 w-44 bg-slate-800 border border-slate-700 rounded-md shadow-lg py-1 z-50">
+        <div role="menu" className="absolute top-full left-0 mt-1 w-44 bg-slate-800 border border-slate-700 rounded-md shadow-lg py-1 z-50">
           {group.items.map(({ path, icon: Icon, label }) => {
             const itemActive = isActive(path);
             const itemColor = itemActive ? getColorForPath(path) : null;
@@ -68,6 +92,8 @@ function NavDropdown({ group, isActive }: { group: NavGroup; isActive: (path: st
               <Link
                 key={path}
                 to={path}
+                role="menuitem"
+                tabIndex={0}
                 onClick={() => setOpen(false)}
                 className={`flex items-center space-x-2 px-3 py-2 text-sm transition-colors ${
                   itemActive && itemColor
@@ -141,6 +167,12 @@ export function Layout({ children }: LayoutProps) {
 
   return (
     <div className="min-h-screen flex flex-col">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:absolute focus:z-50 focus:top-2 focus:left-2 focus:px-4 focus:py-2 focus:bg-blue-600 focus:text-white focus:rounded-md focus:text-sm focus:font-medium"
+      >
+        Skip to content
+      </a>
       <header className="bg-slate-800 border-b border-slate-700">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
@@ -195,7 +227,7 @@ export function Layout({ children }: LayoutProps) {
         </div>
       </header>
 
-      <main className="flex-1 bg-slate-900">
+      <main id="main-content" className="flex-1 bg-slate-900">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           {children}
         </div>

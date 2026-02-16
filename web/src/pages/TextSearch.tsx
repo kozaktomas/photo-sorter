@@ -174,7 +174,7 @@ export function TextSearchPage() {
         category="ai"
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {/* Search Panel */}
         <Card>
           <CardHeader>
@@ -193,7 +193,7 @@ export function TextSearchPage() {
                 onKeyDown={handleKeyDown}
                 disabled={isSearching}
                 placeholder={t('pages:textSearch.queryPlaceholder')}
-                className="w-full px-4 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                className="w-full px-4 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50"
               />
               <p className="text-xs text-slate-500 mt-1">
                 {t('pages:textSearch.queryHelp')}
@@ -233,7 +233,7 @@ export function TextSearchPage() {
                 disabled={isSearching}
                 min={1}
                 max={200}
-                className="w-full px-4 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                className="w-full px-4 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50"
               />
             </div>
 
@@ -339,7 +339,7 @@ export function TextSearchPage() {
 
           {/* Action Panel - shown when photos are selected */}
           {selectedPhotos.size > 0 && (
-            <div className="mx-4 mb-4 p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+            <div className="mx-4 mb-4 p-4 bg-blue-500/10 border border-blue-500/20 rounded-lg sticky top-0 z-10">
               <div className="flex flex-wrap items-center gap-4">
                 <span className="text-blue-400 font-medium">
                   {t('common:units.selected', { count: selectedPhotos.size })}
@@ -350,7 +350,7 @@ export function TextSearchPage() {
                   <select
                     value={selectedAlbum}
                     onChange={(e) => setSelectedAlbum(e.target.value)}
-                    className="px-3 py-1.5 bg-slate-900 border border-slate-600 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="px-3 py-1.5 bg-slate-900 border border-slate-600 rounded text-white text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
                   >
                     <option value="">{t('pages:similar.selectAlbum')}</option>
                     {albums.map((album) => (
@@ -378,7 +378,7 @@ export function TextSearchPage() {
                     onChange={(e) => setLabelInput(e.target.value)}
                     placeholder={t('pages:similar.enterLabel')}
                     list="text-search-label-suggestions"
-                    className="px-3 py-1.5 bg-slate-900 border border-slate-600 rounded text-white text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 w-40"
+                    className="px-3 py-1.5 bg-slate-900 border border-slate-600 rounded text-white text-sm placeholder-slate-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 w-40"
                   />
                   <datalist id="text-search-label-suggestions">
                     {labels.map((label) => (

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Copy, ExternalLink, Search, Check, Loader2, X, Eye } from 'lucide-react';
+import { Copy, ExternalLink, Search, Check, Loader2, X, Eye, Star } from 'lucide-react';
 import { getThumbnailUrl } from '../api/client';
 import { LazyImage } from './LazyImage';
 import { ACTION_LABELS, ACTION_BORDER_COLORS, ACTION_BG_COLORS } from '../constants/actions';
@@ -201,6 +201,7 @@ export function PhotoCard({
               onClick={handleOpenDetail}
               className="p-1.5 bg-black/60 rounded text-white hover:bg-black/80 transition-colors"
               title="View details"
+              aria-label="View details"
             >
               <Eye className="h-3 w-3" />
             </button>
@@ -210,6 +211,7 @@ export function PhotoCard({
               onClick={handleFindSimilar}
               className="p-1.5 bg-black/60 rounded text-white hover:bg-black/80 transition-colors"
               title="Find similar"
+              aria-label="Find similar"
             >
               <Search className="h-3 w-3" />
             </button>
@@ -221,6 +223,7 @@ export function PhotoCard({
                 copied ? 'bg-green-600' : 'bg-black/60 hover:bg-black/80'
               }`}
               title={copied ? 'Copied!' : 'Copy photo ID'}
+              aria-label={copied ? 'Copied!' : 'Copy photo ID'}
             >
               {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
             </button>
@@ -231,6 +234,7 @@ export function PhotoCard({
                 onClick={handleOpenPhotoprism}
                 className="p-1.5 bg-black/60 rounded text-white hover:bg-black/80 transition-colors"
                 title="Open in PhotoPrism"
+                aria-label="Open in PhotoPrism"
               >
                 <ExternalLink className="h-3 w-3" />
               </button>
@@ -248,6 +252,7 @@ export function PhotoCard({
               disabled={isApproving}
               className="p-1.5 bg-green-600 hover:bg-green-500 disabled:bg-green-800 text-white rounded transition-colors"
               title="Approve"
+              aria-label="Approve"
             >
               {isApproving ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -262,6 +267,7 @@ export function PhotoCard({
               disabled={isApproving}
               className="p-1.5 bg-red-600 hover:bg-red-500 disabled:bg-red-800 text-white rounded transition-colors"
               title="Reject"
+              aria-label="Reject"
             >
               <X className="h-4 w-4" />
             </button>
@@ -324,7 +330,7 @@ export function PhotoCardLink({
 
       {favorite && (
         <div className="absolute top-2 right-2 text-yellow-400">
-          ★
+          <Star className="h-4 w-4 fill-current" />
         </div>
       )}
 
@@ -336,6 +342,7 @@ export function PhotoCardLink({
             onClick={handleFindSimilar}
             className="p-1.5 bg-black/60 rounded text-white hover:bg-black/80 transition-colors"
             title="Find similar"
+            aria-label="Find similar"
           >
             <Search className="h-3 w-3" />
           </button>
@@ -347,6 +354,7 @@ export function PhotoCardLink({
               copied ? 'bg-green-600' : 'bg-black/60 hover:bg-black/80'
             }`}
             title={copied ? 'Copied!' : 'Copy photo ID'}
+            aria-label={copied ? 'Copied!' : 'Copy photo ID'}
           >
             {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
           </button>
@@ -357,6 +365,7 @@ export function PhotoCardLink({
               onClick={handleOpenPhotoprism}
               className="p-1.5 bg-black/60 rounded text-white hover:bg-black/80 transition-colors"
               title="Open in PhotoPrism"
+              aria-label="Open in PhotoPrism"
             >
               <ExternalLink className="h-3 w-3" />
             </button>

@@ -11,13 +11,14 @@ interface FormInputProps extends InputHTMLAttributes<HTMLInputElement> {
 export const FormInput = forwardRef<HTMLInputElement, FormInputProps>(
   ({ className = '', label, error, fullWidth = true, inputSize = 'md', id, ...props }, ref) => {
     const inputId = id ?? (label ? label.toLowerCase().replace(/\s+/g, '-') : undefined);
+    const errorId = error && inputId ? `${inputId}-error` : undefined;
 
     const sizeStyles = {
       sm: 'px-3 py-1.5 text-sm rounded',
       md: 'px-4 py-2 rounded-lg',
     };
 
-    const baseStyles = `bg-slate-900 border border-slate-600 text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 ${sizeStyles[inputSize]}`;
+    const baseStyles = `bg-slate-900 border border-slate-600 text-white placeholder-slate-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50 ${sizeStyles[inputSize]}`;
     const widthStyles = fullWidth ? 'w-full' : '';
 
     return (
@@ -33,11 +34,13 @@ export const FormInput = forwardRef<HTMLInputElement, FormInputProps>(
         <input
           ref={ref}
           id={inputId}
+          aria-invalid={!!error}
+          aria-describedby={errorId}
           className={`${baseStyles} ${widthStyles} ${className}`}
           {...props}
         />
         {error && (
-          <p className="mt-1 text-sm text-red-400">{error}</p>
+          <p id={errorId} role="alert" className="mt-1 text-sm text-red-400">{error}</p>
         )}
       </div>
     );

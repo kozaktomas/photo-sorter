@@ -95,7 +95,7 @@ export function PhotoBrowserModal({ sectionId, existingUids, onClose, onAdded }:
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
             placeholder="Search photos..."
-            className="flex-1 px-3 py-1.5 bg-slate-800 border border-slate-700 rounded text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-rose-500"
+            className="flex-1 px-3 py-1.5 bg-slate-800 border border-slate-700 rounded text-sm text-white placeholder-slate-500 focus:outline-none focus-visible:ring-1 focus-visible:ring-rose-500"
           />
           <button
             onClick={handleSearch}

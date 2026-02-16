@@ -363,6 +363,7 @@
     "sections": "Sekce",
     "pages": "Stránky",
     "photos": "Fotky",
+    "deleteBook": "Smazat knihu",
     "deleteConfirm": "Smazat tuto knihu? Všechny sekce, stránky a přiřazení budou odstraněny.",
     "editor": {
       "sectionsTab": "Sekce",

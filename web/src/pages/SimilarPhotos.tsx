@@ -140,7 +140,7 @@ export function SimilarPhotosPage() {
                 onKeyDown={handleKeyDown}
                 disabled={isSearching}
                 placeholder={t('pages:similar.photoUidPlaceholder')}
-                className="w-full px-4 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                className="w-full px-4 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50"
               />
               <p className="text-xs text-slate-500 mt-1">
                 {t('pages:similar.photoUidHelp')}
@@ -180,7 +180,7 @@ export function SimilarPhotosPage() {
                 disabled={isSearching}
                 min={1}
                 max={200}
-                className="w-full px-4 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
+                className="w-full px-4 py-2 bg-slate-900 border border-slate-600 rounded-lg text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 disabled:opacity-50"
               />
             </div>
 

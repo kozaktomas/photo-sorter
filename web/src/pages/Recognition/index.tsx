@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertCircle, ShieldCheck } from 'lucide-react';
 import { applyFaceMatch } from '../../api/client';
+import { Alert } from '../../components/Alert';
 import { PageHeader } from '../../components/PageHeader';
 import { PAGE_CONFIGS } from '../../constants/pageConfig';
 import { useSubjectsAndConfig } from '../../hooks/useSubjectsAndConfig';
@@ -34,12 +35,14 @@ export function RecognitionPage() {
   // Accept all state (per person)
   const [acceptingPerson, setAcceptingPerson] = useState<string | null>(null);
   const [acceptProgress, setAcceptProgress] = useState({ current: 0, total: 0 });
+  const [applyError, setApplyError] = useState<string | null>(null);
 
   const handleScan = () => {
     void startScan(subjects);
   };
 
   const handleApprove = (personSlug: string, personName: string) => async (match: FaceMatch) => {
+    setApplyError(null);
     try {
       const response = await applyFaceMatch({
         photo_uid: match.photo_uid,
@@ -60,11 +63,11 @@ export function RecognitionPage() {
           alreadyDone: prev.alreadyDone + 1,
         }));
       } else {
-        alert(`Failed to apply: ${response.error}`);
+        setApplyError(`Failed to apply: ${response.error}`);
       }
     } catch (err) {
       console.error('Failed to apply match:', err);
-      alert('Failed to apply match');
+      setApplyError('Failed to apply match');
     }
   };
 
@@ -161,6 +164,10 @@ export function RecognitionPage() {
           isScanning={isScanning}
         />
       </div>
+
+      {applyError && (
+        <Alert variant="error">{applyError}</Alert>
+      )}
 
       {/* Per-person results */}
       {results.map((personResult) => (

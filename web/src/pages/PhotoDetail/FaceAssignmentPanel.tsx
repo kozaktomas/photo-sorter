@@ -131,7 +131,7 @@ export function FaceAssignmentPanel({
                 if (filteredSubjects.length > 0) setShowAutocomplete(true);
               }}
               placeholder={t('pages:photoDetail.manualNamePlaceholder')}
-              className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm"
+              className="w-full px-3 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white placeholder-slate-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 text-sm"
             />
 
             {showAutocomplete && filteredSubjects.length > 0 && (

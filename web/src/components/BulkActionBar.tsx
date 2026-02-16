@@ -42,7 +42,7 @@ export function BulkActionBar({
           <select
             value={selection.selectedAlbum}
             onChange={(e) => selection.setSelectedAlbum(e.target.value)}
-            className="px-3 py-1.5 bg-slate-900 border border-slate-600 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            className="px-3 py-1.5 bg-slate-900 border border-slate-600 rounded text-white text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
           >
             <option value="">{t('pages:similar.selectAlbum')}</option>
             {selection.albums.map((album) => (
@@ -70,7 +70,7 @@ export function BulkActionBar({
             onChange={(e) => selection.setLabelInput(e.target.value)}
             placeholder={t('pages:similar.enterLabel')}
             list={datalistId}
-            className="px-3 py-1.5 bg-slate-900 border border-slate-600 rounded text-white text-sm placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-blue-500 w-40"
+            className="px-3 py-1.5 bg-slate-900 border border-slate-600 rounded text-white text-sm placeholder-slate-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 w-40"
           />
           <datalist id={datalistId}>
             {selection.labels.map((label) => (

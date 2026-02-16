@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertCircle } from 'lucide-react';
 import { applyFaceMatch } from '../../api/client';
+import { Alert } from '../../components/Alert';
 import { PageHeader } from '../../components/PageHeader';
 import { PAGE_CONFIGS } from '../../constants/pageConfig';
 import { useSubjectsAndConfig } from '../../hooks/useSubjectsAndConfig';
@@ -37,6 +38,7 @@ export function FacesPage() {
   // Accept all state
   const [isAcceptingAll, setIsAcceptingAll] = useState(false);
   const [acceptAllProgress, setAcceptAllProgress] = useState({ current: 0, total: 0 });
+  const [applyError, setApplyError] = useState<string | null>(null);
 
   const handlePhotoClick = (match: { photo_uid: string }) => {
     if (config?.photoprism_domain) {
@@ -52,6 +54,7 @@ export function FacesPage() {
 
   const handleApprove = async (match: FaceMatch) => {
     const personName = getPersonName();
+    setApplyError(null);
 
     try {
       const response = await applyFaceMatch({
@@ -67,11 +70,11 @@ export function FacesPage() {
       if (response.success) {
         updateMatchToAlreadyDone(match);
       } else {
-        alert(`Failed to apply: ${response.error}`);
+        setApplyError(`Failed to apply: ${response.error}`);
       }
     } catch (err) {
       console.error('Failed to apply match:', err);
-      alert('Failed to apply match');
+      setApplyError('Failed to apply match');
     }
   };
 
@@ -145,7 +148,7 @@ export function FacesPage() {
         category="faces"
       />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         <FacesConfigPanel
           subjects={subjects}
           selectedPerson={selectedPerson}
@@ -161,6 +164,10 @@ export function FacesPage() {
 
         <FacesResultsSummary result={result} />
       </div>
+
+      {applyError && (
+        <Alert variant="error">{applyError}</Alert>
+      )}
 
       {result && result.matches.length > 0 && (
         <FacesMatchGridCard

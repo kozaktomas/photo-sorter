@@ -130,7 +130,7 @@ export function LabelDetailPage() {
                   if (e.key === 'Escape') handleCancel();
                 }}
                 autoFocus
-                className="bg-slate-800 border border-slate-600 rounded px-3 py-1 text-white text-2xl font-bold focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="bg-slate-800 border border-slate-600 rounded px-3 py-1 text-white text-2xl font-bold focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
               />
               <Button variant="primary" size="sm" onClick={handleSave} isLoading={isSaving}>
                 <Check className="h-4 w-4" />
