@@ -1,14 +1,17 @@
 package handlers
 
 import (
-	"context"
 	"encoding/json"
+	"fmt"
+	"log"
 	"net/http"
+	"os/exec"
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/kozaktomas/photo-sorter/internal/config"
 	"github.com/kozaktomas/photo-sorter/internal/database"
+	"github.com/kozaktomas/photo-sorter/internal/latex"
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
 
@@ -23,8 +26,8 @@ func NewBooksHandler(cfg *config.Config, sm *middleware.SessionManager) *BooksHa
 	return &BooksHandler{config: cfg, sessionManager: sm}
 }
 
-func getBookWriter(w http.ResponseWriter) database.BookWriter {
-	writer, err := database.GetBookWriter(context.TODO())
+func getBookWriter(r *http.Request, w http.ResponseWriter) database.BookWriter {
+	writer, err := database.GetBookWriter(r.Context())
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "book storage not available")
 		return nil
@@ -70,17 +73,23 @@ type sectionPhotoResponse struct {
 }
 
 type pageResponse struct {
-	ID          string         `json:"id"`
-	SectionID   string         `json:"section_id"`
-	Format      string         `json:"format"`
-	Description string         `json:"description"`
-	SortOrder   int            `json:"sort_order"`
-	Slots       []slotResponse `json:"slots"`
+	ID            string         `json:"id"`
+	SectionID     string         `json:"section_id"`
+	Format        string         `json:"format"`
+	Style         string         `json:"style"`
+	Description   string         `json:"description"`
+	SplitPosition *float64       `json:"split_position"`
+	SortOrder     int            `json:"sort_order"`
+	Slots         []slotResponse `json:"slots"`
 }
 
 type slotResponse struct {
-	SlotIndex int    `json:"slot_index"`
-	PhotoUID  string `json:"photo_uid"`
+	SlotIndex   int     `json:"slot_index"`
+	PhotoUID    string  `json:"photo_uid"`
+	TextContent string  `json:"text_content"`
+	CropX       float64 `json:"crop_x"`
+	CropY       float64 `json:"crop_y"`
+	CropScale   float64 `json:"crop_scale"`
 }
 
 // --- Photo Book Memberships ---
@@ -93,7 +102,7 @@ type photoBookMembershipResponse struct {
 }
 
 func (h *BooksHandler) GetPhotoBookMemberships(w http.ResponseWriter, r *http.Request) {
-	bw := getBookWriter(w)
+	bw := getBookWriter(r, w)
 	if bw == nil {
 		return
 	}
@@ -118,32 +127,25 @@ func (h *BooksHandler) GetPhotoBookMemberships(w http.ResponseWriter, r *http.Re
 // --- Books CRUD ---
 
 func (h *BooksHandler) ListBooks(w http.ResponseWriter, r *http.Request) {
-	bw := getBookWriter(w)
+	bw := getBookWriter(r, w)
 	if bw == nil {
 		return
 	}
-	books, err := bw.ListBooks(r.Context())
+	books, err := bw.ListBooksWithCounts(r.Context())
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to list books")
 		return
 	}
 
-	// Compute counts for each book
 	result := make([]bookResponse, len(books))
 	for i, b := range books {
-		sections, _ := bw.GetSections(r.Context(), b.ID)
-		pages, _ := bw.GetPages(r.Context(), b.ID)
-		photoCount := 0
-		for _, s := range sections {
-			photoCount += s.PhotoCount
-		}
 		result[i] = bookResponse{
 			ID:           b.ID,
 			Title:        b.Title,
 			Description:  b.Description,
-			SectionCount: len(sections),
-			PageCount:    len(pages),
-			PhotoCount:   photoCount,
+			SectionCount: b.SectionCount,
+			PageCount:    b.PageCount,
+			PhotoCount:   b.PhotoCount,
 			CreatedAt:    b.CreatedAt.Format("2006-01-02T15:04:05Z"),
 			UpdatedAt:    b.UpdatedAt.Format("2006-01-02T15:04:05Z"),
 		}
@@ -152,7 +154,7 @@ func (h *BooksHandler) ListBooks(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *BooksHandler) CreateBook(w http.ResponseWriter, r *http.Request) {
-	bw := getBookWriter(w)
+	bw := getBookWriter(r, w)
 	if bw == nil {
 		return
 	}
@@ -184,7 +186,7 @@ func (h *BooksHandler) CreateBook(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *BooksHandler) GetBook(w http.ResponseWriter, r *http.Request) {
-	bw := getBookWriter(w)
+	bw := getBookWriter(r, w)
 	if bw == nil {
 		return
 	}
@@ -195,8 +197,16 @@ func (h *BooksHandler) GetBook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	sections, _ := bw.GetSections(r.Context(), id)
-	pages, _ := bw.GetPages(r.Context(), id)
+	sections, err2 := bw.GetSections(r.Context(), id)
+	if err2 != nil {
+		respondError(w, http.StatusInternalServerError, "failed to get sections")
+		return
+	}
+	pages, err2 := bw.GetPages(r.Context(), id)
+	if err2 != nil {
+		respondError(w, http.StatusInternalServerError, "failed to get pages")
+		return
+	}
 
 	sectionResps := make([]sectionResponse, len(sections))
 	for i, s := range sections {
@@ -213,15 +223,17 @@ func (h *BooksHandler) GetBook(w http.ResponseWriter, r *http.Request) {
 		p := &pages[i]
 		slots := make([]slotResponse, len(p.Slots))
 		for j := range p.Slots {
-			slots[j] = slotResponse{SlotIndex: p.Slots[j].SlotIndex, PhotoUID: p.Slots[j].PhotoUID}
+			slots[j] = slotResponse{SlotIndex: p.Slots[j].SlotIndex, PhotoUID: p.Slots[j].PhotoUID, TextContent: p.Slots[j].TextContent, CropX: p.Slots[j].CropX, CropY: p.Slots[j].CropY, CropScale: p.Slots[j].CropScale}
 		}
 		pageResps[i] = pageResponse{
-			ID:          p.ID,
-			SectionID:   p.SectionID,
-			Format:      p.Format,
-			Description: p.Description,
-			SortOrder:   p.SortOrder,
-			Slots:       slots,
+			ID:            p.ID,
+			SectionID:     p.SectionID,
+			Format:        p.Format,
+			Style:         p.Style,
+			Description:   p.Description,
+			SplitPosition: p.SplitPosition,
+			SortOrder:     p.SortOrder,
+			Slots:         slots,
 		}
 	}
 
@@ -237,7 +249,7 @@ func (h *BooksHandler) GetBook(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *BooksHandler) UpdateBook(w http.ResponseWriter, r *http.Request) {
-	bw := getBookWriter(w)
+	bw := getBookWriter(r, w)
 	if bw == nil {
 		return
 	}
@@ -269,7 +281,7 @@ func (h *BooksHandler) UpdateBook(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *BooksHandler) DeleteBook(w http.ResponseWriter, r *http.Request) {
-	bw := getBookWriter(w)
+	bw := getBookWriter(r, w)
 	if bw == nil {
 		return
 	}
@@ -284,7 +296,7 @@ func (h *BooksHandler) DeleteBook(w http.ResponseWriter, r *http.Request) {
 // --- Sections ---
 
 func (h *BooksHandler) CreateSection(w http.ResponseWriter, r *http.Request) {
-	bw := getBookWriter(w)
+	bw := getBookWriter(r, w)
 	if bw == nil {
 		return
 	}
@@ -313,7 +325,7 @@ func (h *BooksHandler) CreateSection(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *BooksHandler) UpdateSection(w http.ResponseWriter, r *http.Request) {
-	bw := getBookWriter(w)
+	bw := getBookWriter(r, w)
 	if bw == nil {
 		return
 	}
@@ -334,7 +346,7 @@ func (h *BooksHandler) UpdateSection(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *BooksHandler) DeleteSection(w http.ResponseWriter, r *http.Request) {
-	bw := getBookWriter(w)
+	bw := getBookWriter(r, w)
 	if bw == nil {
 		return
 	}
@@ -347,7 +359,7 @@ func (h *BooksHandler) DeleteSection(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *BooksHandler) ReorderSections(w http.ResponseWriter, r *http.Request) {
-	bw := getBookWriter(w)
+	bw := getBookWriter(r, w)
 	if bw == nil {
 		return
 	}
@@ -369,7 +381,7 @@ func (h *BooksHandler) ReorderSections(w http.ResponseWriter, r *http.Request) {
 // --- Section Photos ---
 
 func (h *BooksHandler) GetSectionPhotos(w http.ResponseWriter, r *http.Request) {
-	bw := getBookWriter(w)
+	bw := getBookWriter(r, w)
 	if bw == nil {
 		return
 	}
@@ -392,7 +404,7 @@ func (h *BooksHandler) GetSectionPhotos(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *BooksHandler) AddSectionPhotos(w http.ResponseWriter, r *http.Request) {
-	bw := getBookWriter(w)
+	bw := getBookWriter(r, w)
 	if bw == nil {
 		return
 	}
@@ -416,7 +428,7 @@ func (h *BooksHandler) AddSectionPhotos(w http.ResponseWriter, r *http.Request) 
 }
 
 func (h *BooksHandler) RemoveSectionPhotos(w http.ResponseWriter, r *http.Request) {
-	bw := getBookWriter(w)
+	bw := getBookWriter(r, w)
 	if bw == nil {
 		return
 	}
@@ -436,7 +448,7 @@ func (h *BooksHandler) RemoveSectionPhotos(w http.ResponseWriter, r *http.Reques
 }
 
 func (h *BooksHandler) UpdatePhotoDescription(w http.ResponseWriter, r *http.Request) {
-	bw := getBookWriter(w)
+	bw := getBookWriter(r, w)
 	if bw == nil {
 		return
 	}
@@ -460,7 +472,7 @@ func (h *BooksHandler) UpdatePhotoDescription(w http.ResponseWriter, r *http.Req
 // --- Pages ---
 
 func (h *BooksHandler) CreatePage(w http.ResponseWriter, r *http.Request) {
-	bw := getBookWriter(w)
+	bw := getBookWriter(r, w)
 	if bw == nil {
 		return
 	}
@@ -468,6 +480,7 @@ func (h *BooksHandler) CreatePage(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Format    string `json:"format"`
 		SectionID string `json:"section_id"`
+		Style     string `json:"style"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
@@ -481,26 +494,35 @@ func (h *BooksHandler) CreatePage(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "section_id is required")
 		return
 	}
-	page := &database.BookPage{BookID: bookID, SectionID: req.SectionID, Format: req.Format}
+	if req.Style != "" && req.Style != "modern" && req.Style != "archival" {
+		respondError(w, http.StatusBadRequest, "style must be 'modern' or 'archival'")
+		return
+	}
+	page := &database.BookPage{BookID: bookID, SectionID: req.SectionID, Format: req.Format, Style: req.Style}
 	if err := bw.CreatePage(r.Context(), page); err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to create page")
 		return
 	}
 	respondJSON(w, http.StatusCreated, pageResponse{
-		ID:          page.ID,
-		SectionID:   page.SectionID,
-		Format:      page.Format,
-		Description: page.Description,
-		SortOrder:   page.SortOrder,
-		Slots:       []slotResponse{},
+		ID:            page.ID,
+		SectionID:     page.SectionID,
+		Format:        page.Format,
+		Style:         page.Style,
+		Description:   page.Description,
+		SplitPosition: page.SplitPosition,
+		SortOrder:     page.SortOrder,
+		Slots:         []slotResponse{},
 	})
 }
 
-// updatePageRequest holds the parsed update page request fields
+// updatePageRequest holds the parsed update page request fields.
+// SplitPosition uses json.RawMessage to distinguish "not sent" (nil) from "sent as null" ([]byte("null")).
 type updatePageRequest struct {
-	Format      *string `json:"format"`
-	SectionID   *string `json:"section_id"`
-	Description *string `json:"description"`
+	Format        *string         `json:"format"`
+	SectionID     *string         `json:"section_id"`
+	Description   *string         `json:"description"`
+	Style         *string         `json:"style"`
+	SplitPosition json.RawMessage `json:"split_position"`
 }
 
 // applyPageUpdates applies the request fields to the page, returning an error message if validation fails
@@ -510,6 +532,10 @@ func applyPageUpdates(page *database.BookPage, req updatePageRequest) string {
 			return "invalid format"
 		}
 		page.Format = *req.Format
+		// Clear split_position when switching to 1_fullscreen
+		if *req.Format == "1_fullscreen" {
+			page.SplitPosition = nil
+		}
 	}
 	if req.SectionID != nil {
 		if *req.SectionID == "" {
@@ -520,11 +546,32 @@ func applyPageUpdates(page *database.BookPage, req updatePageRequest) string {
 	if req.Description != nil {
 		page.Description = *req.Description
 	}
+	if req.Style != nil {
+		if *req.Style != "modern" && *req.Style != "archival" {
+			return "style must be 'modern' or 'archival'"
+		}
+		page.Style = *req.Style
+	}
+	if req.SplitPosition != nil {
+		raw := req.SplitPosition
+		if string(raw) == "null" {
+			page.SplitPosition = nil
+		} else {
+			var sp float64
+			if err := json.Unmarshal(raw, &sp); err != nil {
+				return "split_position must be a number or null"
+			}
+			if sp < 0.2 || sp > 0.8 {
+				return "split_position must be between 0.2 and 0.8"
+			}
+			page.SplitPosition = &sp
+		}
+	}
 	return ""
 }
 
 func (h *BooksHandler) UpdatePage(w http.ResponseWriter, r *http.Request) {
-	bw := getBookWriter(w)
+	bw := getBookWriter(r, w)
 	if bw == nil {
 		return
 	}
@@ -557,7 +604,9 @@ func (h *BooksHandler) UpdatePage(w http.ResponseWriter, r *http.Request) {
 	if req.Format != nil {
 		newSlotCount := database.PageFormatSlotCount(*req.Format)
 		for i := newSlotCount; i < oldSlotCount; i++ {
-			_ = bw.ClearSlot(r.Context(), id, i)
+			if err := bw.ClearSlot(r.Context(), id, i); err != nil {
+				log.Printf("warning: failed to clear excess slot %d on page %s: %v", i, id, err)
+			}
 		}
 	}
 
@@ -565,7 +614,7 @@ func (h *BooksHandler) UpdatePage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *BooksHandler) DeletePage(w http.ResponseWriter, r *http.Request) {
-	bw := getBookWriter(w)
+	bw := getBookWriter(r, w)
 	if bw == nil {
 		return
 	}
@@ -578,7 +627,7 @@ func (h *BooksHandler) DeletePage(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *BooksHandler) ReorderPages(w http.ResponseWriter, r *http.Request) {
-	bw := getBookWriter(w)
+	bw := getBookWriter(r, w)
 	if bw == nil {
 		return
 	}
@@ -599,8 +648,23 @@ func (h *BooksHandler) ReorderPages(w http.ResponseWriter, r *http.Request) {
 
 // --- Slots ---
 
+type assignSlotRequest struct {
+	PhotoUID    string `json:"photo_uid"`
+	TextContent string `json:"text_content"`
+}
+
+func (r assignSlotRequest) validate() string {
+	if r.PhotoUID != "" && r.TextContent != "" {
+		return "slot must have either photo_uid or text_content, not both"
+	}
+	if r.PhotoUID == "" && r.TextContent == "" {
+		return "photo_uid or text_content is required"
+	}
+	return ""
+}
+
 func (h *BooksHandler) AssignSlot(w http.ResponseWriter, r *http.Request) {
-	bw := getBookWriter(w)
+	bw := getBookWriter(r, w)
 	if bw == nil {
 		return
 	}
@@ -610,26 +674,31 @@ func (h *BooksHandler) AssignSlot(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "invalid slot index")
 		return
 	}
-	var req struct {
-		PhotoUID string `json:"photo_uid"`
-	}
+	var req assignSlotRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return
 	}
-	if req.PhotoUID == "" {
-		respondError(w, http.StatusBadRequest, "photo_uid is required")
+	if errMsg := req.validate(); errMsg != "" {
+		respondError(w, http.StatusBadRequest, errMsg)
 		return
 	}
-	if err := bw.AssignSlot(r.Context(), pageID, slotIndex, req.PhotoUID); err != nil {
-		respondError(w, http.StatusInternalServerError, "failed to assign slot")
-		return
+	if req.TextContent != "" {
+		if err := bw.AssignTextSlot(r.Context(), pageID, slotIndex, req.TextContent); err != nil {
+			respondError(w, http.StatusInternalServerError, "failed to assign text slot")
+			return
+		}
+	} else {
+		if err := bw.AssignSlot(r.Context(), pageID, slotIndex, req.PhotoUID); err != nil {
+			respondError(w, http.StatusInternalServerError, "failed to assign slot")
+			return
+		}
 	}
 	respondJSON(w, http.StatusOK, map[string]bool{"assigned": true})
 }
 
 func (h *BooksHandler) SwapSlots(w http.ResponseWriter, r *http.Request) {
-	bw := getBookWriter(w)
+	bw := getBookWriter(r, w)
 	if bw == nil {
 		return
 	}
@@ -653,8 +722,47 @@ func (h *BooksHandler) SwapSlots(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]bool{"swapped": true})
 }
 
+func (h *BooksHandler) UpdateSlotCrop(w http.ResponseWriter, r *http.Request) {
+	bw := getBookWriter(r, w)
+	if bw == nil {
+		return
+	}
+	pageID := chi.URLParam(r, "id")
+	slotIndex, err := strconv.Atoi(chi.URLParam(r, "index"))
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid slot index")
+		return
+	}
+	var req struct {
+		CropX     float64  `json:"crop_x"`
+		CropY     float64  `json:"crop_y"`
+		CropScale *float64 `json:"crop_scale"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
+		return
+	}
+	if req.CropX < 0 || req.CropX > 1 || req.CropY < 0 || req.CropY > 1 {
+		respondError(w, http.StatusBadRequest, "crop_x and crop_y must be between 0.0 and 1.0")
+		return
+	}
+	cropScale := 1.0
+	if req.CropScale != nil {
+		cropScale = *req.CropScale
+	}
+	if cropScale < 0.1 || cropScale > 1.0 {
+		respondError(w, http.StatusBadRequest, "crop_scale must be between 0.1 and 1.0")
+		return
+	}
+	if err := bw.UpdateSlotCrop(r.Context(), pageID, slotIndex, req.CropX, req.CropY, cropScale); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to update slot crop")
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]bool{"updated": true})
+}
+
 func (h *BooksHandler) ClearSlot(w http.ResponseWriter, r *http.Request) {
-	bw := getBookWriter(w)
+	bw := getBookWriter(r, w)
 	if bw == nil {
 		return
 	}
@@ -669,4 +777,81 @@ func (h *BooksHandler) ClearSlot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respondJSON(w, http.StatusOK, map[string]bool{"cleared": true})
+}
+
+// --- PDF Export ---
+
+func (h *BooksHandler) ExportPDF(w http.ResponseWriter, r *http.Request) {
+	pp := middleware.MustGetPhotoPrism(r.Context(), w)
+	if pp == nil {
+		return
+	}
+	bw := getBookWriter(r, w)
+	if bw == nil {
+		return
+	}
+
+	id := chi.URLParam(r, "id")
+	book, err := bw.GetBook(r.Context(), id)
+	if err != nil || book == nil {
+		respondError(w, http.StatusNotFound, "book not found")
+		return
+	}
+
+	// Check lualatex availability
+	if _, err := exec.LookPath("lualatex"); err != nil {
+		respondError(w, http.StatusServiceUnavailable, "lualatex is not installed on the server")
+		return
+	}
+
+	// Diagnostic test PDF
+	if r.URL.Query().Get("format") == "test" {
+		testPDF, err := latex.GenerateTestPDF(r.Context())
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, fmt.Sprintf("test PDF generation failed: %v", err))
+			return
+		}
+		w.Header().Set("Content-Type", "application/pdf")
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s-test.pdf"`, book.Title))
+		w.Header().Set("Content-Length", strconv.Itoa(len(testPDF)))
+		w.Write(testPDF)
+		return
+	}
+
+	// Debug overlay PDF
+	if r.URL.Query().Get("format") == "debug" {
+		pdfData, report, err := latex.GeneratePDFWithOptions(r.Context(), pp, bw, id, true)
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, fmt.Sprintf("PDF generation failed: %v", err))
+			return
+		}
+		if report != nil && len(report.Warnings) > 0 {
+			w.Header().Set("X-Export-Warnings", strconv.Itoa(len(report.Warnings)))
+		}
+		w.Header().Set("Content-Type", "application/pdf")
+		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s-debug.pdf"`, book.Title))
+		w.Header().Set("Content-Length", strconv.Itoa(len(pdfData)))
+		w.Write(pdfData)
+		return
+	}
+
+	pdfData, report, err := latex.GeneratePDF(r.Context(), pp, bw, id)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("PDF generation failed: %v", err))
+		return
+	}
+
+	// Return JSON report instead of PDF if requested
+	if r.URL.Query().Get("format") == "report" {
+		respondJSON(w, http.StatusOK, report)
+		return
+	}
+
+	if report != nil && len(report.Warnings) > 0 {
+		w.Header().Set("X-Export-Warnings", strconv.Itoa(len(report.Warnings)))
+	}
+	w.Header().Set("Content-Type", "application/pdf")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.pdf"`, book.Title))
+	w.Header().Set("Content-Length", strconv.Itoa(len(pdfData)))
+	w.Write(pdfData)
 }

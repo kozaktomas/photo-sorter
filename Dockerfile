@@ -19,7 +19,8 @@ RUN go build -ldflags "-s -w" -o photo-sorter .
 # Stage 3: Runtime
 FROM alpine:3
 RUN apk update && \
-    apk add --no-cache ca-certificates tzdata && \
+    apk add --no-cache ca-certificates tzdata \
+    texlive-luatex texmf-dist-latexrecommended texmf-dist-fontsrecommended texmf-dist-langczechslovak texmf-dist-pictures && \
     rm -rf /var/cache/apk/* && \
     mkdir /app
 

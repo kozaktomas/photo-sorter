@@ -29,8 +29,8 @@ export function useBookData(bookId: string) {
     try {
       const photos = await getSectionPhotos(sectionId);
       setSectionPhotos(prev => ({ ...prev, [sectionId]: photos || [] }));
-    } catch {
-      // silent fail
+    } catch (e) {
+      console.error('Failed to load section photos:', e);
     }
   }, []);
 

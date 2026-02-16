@@ -78,6 +78,35 @@ func (r *BookRepository) ListBooks(ctx context.Context) ([]database.PhotoBook, e
 	return books, nil
 }
 
+func (r *BookRepository) ListBooksWithCounts(ctx context.Context) ([]database.PhotoBookWithCounts, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT pb.id, pb.title, pb.description, pb.created_at, pb.updated_at,
+			(SELECT COUNT(*) FROM book_sections WHERE book_id = pb.id) as section_count,
+			(SELECT COUNT(*) FROM book_pages WHERE book_id = pb.id) as page_count,
+			COALESCE((SELECT SUM(cnt) FROM (
+				SELECT COUNT(*) as cnt FROM section_photos
+				WHERE section_id IN (SELECT id FROM book_sections WHERE book_id = pb.id)
+			) t), 0) as photo_count
+		 FROM photo_books pb ORDER BY created_at DESC`)
+	if err != nil {
+		return nil, fmt.Errorf("list books with counts: %w", err)
+	}
+	defer rows.Close()
+	var books []database.PhotoBookWithCounts
+	for rows.Next() {
+		var b database.PhotoBookWithCounts
+		if err := rows.Scan(&b.ID, &b.Title, &b.Description, &b.CreatedAt, &b.UpdatedAt,
+			&b.SectionCount, &b.PageCount, &b.PhotoCount); err != nil {
+			return nil, fmt.Errorf("scan book with counts: %w", err)
+		}
+		books = append(books, b)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate books with counts: %w", err)
+	}
+	return books, nil
+}
+
 func (r *BookRepository) UpdateBook(ctx context.Context, book *database.PhotoBook) error {
 	book.UpdatedAt = time.Now()
 	_, err := r.pool.Exec(ctx,
@@ -303,9 +332,13 @@ func (r *BookRepository) CreatePage(ctx context.Context, page *database.BookPage
 		sectionID = &page.SectionID
 	}
 
+	if page.Style == "" {
+		page.Style = "modern"
+	}
+
 	_, err := r.pool.Exec(ctx,
-		`INSERT INTO book_pages (id, book_id, section_id, format, description, sort_order, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-		page.ID, page.BookID, sectionID, page.Format, page.Description, page.SortOrder, page.CreatedAt, page.UpdatedAt)
+		`INSERT INTO book_pages (id, book_id, section_id, format, style, description, sort_order, split_position, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		page.ID, page.BookID, sectionID, page.Format, page.Style, page.Description, page.SortOrder, page.SplitPosition, page.CreatedAt, page.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("create page: %w", err)
 	}
@@ -315,9 +348,9 @@ func (r *BookRepository) CreatePage(ctx context.Context, page *database.BookPage
 func (r *BookRepository) GetPage(ctx context.Context, pageID string) (*database.BookPage, error) {
 	var p database.BookPage
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, book_id, COALESCE(section_id, ''), format, description, sort_order, created_at, updated_at
+		`SELECT id, book_id, COALESCE(section_id, ''), format, style, description, sort_order, split_position, created_at, updated_at
 		 FROM book_pages WHERE id = $1`, pageID).
-		Scan(&p.ID, &p.BookID, &p.SectionID, &p.Format, &p.Description, &p.SortOrder, &p.CreatedAt, &p.UpdatedAt)
+		Scan(&p.ID, &p.BookID, &p.SectionID, &p.Format, &p.Style, &p.Description, &p.SortOrder, &p.SplitPosition, &p.CreatedAt, &p.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -334,7 +367,7 @@ func (r *BookRepository) GetPage(ctx context.Context, pageID string) (*database.
 
 func (r *BookRepository) GetPages(ctx context.Context, bookID string) ([]database.BookPage, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, book_id, COALESCE(section_id, ''), format, description, sort_order, created_at, updated_at
+		`SELECT id, book_id, COALESCE(section_id, ''), format, style, description, sort_order, split_position, created_at, updated_at
 		 FROM book_pages WHERE book_id = $1 ORDER BY sort_order`, bookID)
 	if err != nil {
 		return nil, fmt.Errorf("get pages: %w", err)
@@ -343,7 +376,7 @@ func (r *BookRepository) GetPages(ctx context.Context, bookID string) ([]databas
 	var pages []database.BookPage
 	for rows.Next() {
 		var p database.BookPage
-		if err := rows.Scan(&p.ID, &p.BookID, &p.SectionID, &p.Format, &p.Description, &p.SortOrder, &p.CreatedAt, &p.UpdatedAt); err != nil {
+		if err := rows.Scan(&p.ID, &p.BookID, &p.SectionID, &p.Format, &p.Style, &p.Description, &p.SortOrder, &p.SplitPosition, &p.CreatedAt, &p.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan page: %w", err)
 		}
 		pages = append(pages, p)
@@ -352,13 +385,32 @@ func (r *BookRepository) GetPages(ctx context.Context, bookID string) ([]databas
 		return nil, fmt.Errorf("iterate pages: %w", err)
 	}
 
-	// Load slots for each page
-	for i := range pages {
-		slots, err := r.GetPageSlots(ctx, pages[i].ID)
-		if err != nil {
-			return nil, err
+	// Batch-load all slots for the book in one query
+	slotRows, err := r.pool.Query(ctx,
+		`SELECT ps.page_id, ps.slot_index, COALESCE(ps.photo_uid, ''), COALESCE(ps.text_content, ''), ps.crop_x, ps.crop_y, ps.crop_scale
+		 FROM page_slots ps
+		 JOIN book_pages bp ON bp.id = ps.page_id
+		 WHERE bp.book_id = $1
+		 ORDER BY ps.page_id, ps.slot_index`, bookID)
+	if err != nil {
+		return nil, fmt.Errorf("get all slots for book: %w", err)
+	}
+	defer slotRows.Close()
+	slotsByPage := make(map[string][]database.PageSlot)
+	for slotRows.Next() {
+		var pageID string
+		var s database.PageSlot
+		if err := slotRows.Scan(&pageID, &s.SlotIndex, &s.PhotoUID, &s.TextContent, &s.CropX, &s.CropY, &s.CropScale); err != nil {
+			return nil, fmt.Errorf("scan slot: %w", err)
 		}
-		pages[i].Slots = slots
+		slotsByPage[pageID] = append(slotsByPage[pageID], s)
+	}
+	if err := slotRows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate slots: %w", err)
+	}
+
+	for i := range pages {
+		pages[i].Slots = slotsByPage[pages[i].ID]
 	}
 	return pages, nil
 }
@@ -369,9 +421,12 @@ func (r *BookRepository) UpdatePage(ctx context.Context, page *database.BookPage
 	if page.SectionID != "" {
 		sectionID = &page.SectionID
 	}
+	if page.Style == "" {
+		page.Style = "modern"
+	}
 	_, err := r.pool.Exec(ctx,
-		`UPDATE book_pages SET section_id = $1, format = $2, description = $3, updated_at = $4 WHERE id = $5`,
-		sectionID, page.Format, page.Description, page.UpdatedAt, page.ID)
+		`UPDATE book_pages SET section_id = $1, format = $2, style = $3, description = $4, split_position = $5, updated_at = $6 WHERE id = $7`,
+		sectionID, page.Format, page.Style, page.Description, page.SplitPosition, page.UpdatedAt, page.ID)
 	if err != nil {
 		return fmt.Errorf("update page: %w", err)
 	}
@@ -411,7 +466,7 @@ func (r *BookRepository) ReorderPages(ctx context.Context, bookID string, pageID
 
 func (r *BookRepository) GetPageSlots(ctx context.Context, pageID string) ([]database.PageSlot, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT slot_index, COALESCE(photo_uid, '') FROM page_slots WHERE page_id = $1 ORDER BY slot_index`, pageID)
+		`SELECT slot_index, COALESCE(photo_uid, ''), COALESCE(text_content, ''), crop_x, crop_y, crop_scale FROM page_slots WHERE page_id = $1 ORDER BY slot_index`, pageID)
 	if err != nil {
 		return nil, fmt.Errorf("get page slots: %w", err)
 	}
@@ -419,7 +474,7 @@ func (r *BookRepository) GetPageSlots(ctx context.Context, pageID string) ([]dat
 	var slots []database.PageSlot
 	for rows.Next() {
 		var s database.PageSlot
-		if err := rows.Scan(&s.SlotIndex, &s.PhotoUID); err != nil {
+		if err := rows.Scan(&s.SlotIndex, &s.PhotoUID, &s.TextContent, &s.CropX, &s.CropY, &s.CropScale); err != nil {
 			return nil, fmt.Errorf("scan slot: %w", err)
 		}
 		slots = append(slots, s)
@@ -430,38 +485,24 @@ func (r *BookRepository) GetPageSlots(ctx context.Context, pageID string) ([]dat
 	return slots, nil
 }
 
-func (r *BookRepository) GetAllPageSlots(ctx context.Context, bookID string) ([]database.PageSlot, error) {
-	rows, err := r.pool.Query(ctx,
-		`SELECT ps.slot_index, COALESCE(ps.photo_uid, '')
-		 FROM page_slots ps
-		 JOIN book_pages bp ON bp.id = ps.page_id
-		 WHERE bp.book_id = $1
-		 ORDER BY bp.sort_order, ps.slot_index`, bookID)
-	if err != nil {
-		return nil, fmt.Errorf("get all page slots: %w", err)
-	}
-	defer rows.Close()
-	var slots []database.PageSlot
-	for rows.Next() {
-		var s database.PageSlot
-		if err := rows.Scan(&s.SlotIndex, &s.PhotoUID); err != nil {
-			return nil, fmt.Errorf("scan slot: %w", err)
-		}
-		slots = append(slots, s)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate all page slots: %w", err)
-	}
-	return slots, nil
-}
-
 func (r *BookRepository) AssignSlot(ctx context.Context, pageID string, slotIndex int, photoUID string) error {
 	_, err := r.pool.Exec(ctx,
-		`INSERT INTO page_slots (page_id, slot_index, photo_uid) VALUES ($1, $2, $3)
-		 ON CONFLICT (page_id, slot_index) DO UPDATE SET photo_uid = EXCLUDED.photo_uid`,
+		`INSERT INTO page_slots (page_id, slot_index, photo_uid, text_content, crop_x, crop_y, crop_scale) VALUES ($1, $2, $3, '', 0.5, 0.5, 1.0)
+		 ON CONFLICT (page_id, slot_index) DO UPDATE SET photo_uid = EXCLUDED.photo_uid, text_content = '', crop_x = 0.5, crop_y = 0.5, crop_scale = 1.0`,
 		pageID, slotIndex, photoUID)
 	if err != nil {
 		return fmt.Errorf("assign slot: %w", err)
+	}
+	return nil
+}
+
+func (r *BookRepository) AssignTextSlot(ctx context.Context, pageID string, slotIndex int, textContent string) error {
+	_, err := r.pool.Exec(ctx,
+		`INSERT INTO page_slots (page_id, slot_index, photo_uid, text_content, crop_x, crop_y, crop_scale) VALUES ($1, $2, NULL, $3, 0.5, 0.5, 1.0)
+		 ON CONFLICT (page_id, slot_index) DO UPDATE SET photo_uid = NULL, text_content = EXCLUDED.text_content, crop_x = 0.5, crop_y = 0.5, crop_scale = 1.0`,
+		pageID, slotIndex, textContent)
+	if err != nil {
+		return fmt.Errorf("assign text slot: %w", err)
 	}
 	return nil
 }
@@ -483,20 +524,20 @@ func (r *BookRepository) SwapSlots(ctx context.Context, pageID string, slotA int
 	}
 	defer tx.Rollback()
 
-	// Read current photo UIDs for both slots
+	// Read current slot data (photo_uid + text_content + crop) for both slots
 	rows, err := tx.QueryContext(ctx,
-		`SELECT slot_index, photo_uid FROM page_slots WHERE page_id = $1 AND slot_index IN ($2, $3)`,
+		`SELECT slot_index, photo_uid, COALESCE(text_content, ''), crop_x, crop_y, crop_scale FROM page_slots WHERE page_id = $1 AND slot_index IN ($2, $3)`,
 		pageID, slotA, slotB)
 	if err != nil {
 		return fmt.Errorf("swap slots read: %w", err)
 	}
-	photos, err := scanSlotRows(rows)
+	slotDataMap, err := scanSlotRows(rows)
 	if err != nil {
 		return fmt.Errorf("swap slots scan: %w", err)
 	}
 
-	if len(photos) != 2 {
-		return fmt.Errorf("swap slots: expected 2 slots, found %d", len(photos))
+	if len(slotDataMap) != 2 {
+		return fmt.Errorf("swap slots: expected 2 slots, found %d", len(slotDataMap))
 	}
 
 	// Delete both slots to avoid unique constraint violations
@@ -506,15 +547,27 @@ func (r *BookRepository) SwapSlots(ctx context.Context, pageID string, slotA int
 		return fmt.Errorf("swap slots delete: %w", err)
 	}
 
-	// Re-insert with swapped photo UIDs
+	// Re-insert with swapped data (crop travels with photo)
+	dataA := slotDataMap[slotA]
+	dataB := slotDataMap[slotB]
 	if _, err := tx.ExecContext(ctx,
-		`INSERT INTO page_slots (page_id, slot_index, photo_uid) VALUES ($1, $2, $3), ($1, $4, $5)`,
-		pageID, slotA, photos[slotB], slotB, photos[slotA]); err != nil {
+		`INSERT INTO page_slots (page_id, slot_index, photo_uid, text_content, crop_x, crop_y, crop_scale) VALUES ($1, $2, $3, $4, $5, $6, $7), ($1, $8, $9, $10, $11, $12, $13)`,
+		pageID, slotA, dataB.photoUID, dataB.textContent, dataB.cropX, dataB.cropY, dataB.cropScale, slotB, dataA.photoUID, dataA.textContent, dataA.cropX, dataA.cropY, dataA.cropScale); err != nil {
 		return fmt.Errorf("swap slots insert: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("swap slots commit: %w", err)
+	}
+	return nil
+}
+
+func (r *BookRepository) UpdateSlotCrop(ctx context.Context, pageID string, slotIndex int, cropX, cropY, cropScale float64) error {
+	_, err := r.pool.Exec(ctx,
+		`UPDATE page_slots SET crop_x = $1, crop_y = $2, crop_scale = $3 WHERE page_id = $4 AND slot_index = $5`,
+		cropX, cropY, cropScale, pageID, slotIndex)
+	if err != nil {
+		return fmt.Errorf("update slot crop: %w", err)
 	}
 	return nil
 }
@@ -545,19 +598,30 @@ func (r *BookRepository) GetPhotoBookMemberships(ctx context.Context, photoUID s
 	return memberships, nil
 }
 
-func scanSlotRows(rows *sql.Rows) (map[int]string, error) {
+// slotData holds photo_uid, text_content, and crop values for swap operations.
+type slotData struct {
+	photoUID    *string // nil means NULL in DB
+	textContent string
+	cropX       float64
+	cropY       float64
+	cropScale   float64
+}
+
+func scanSlotRows(rows *sql.Rows) (map[int]slotData, error) {
 	defer rows.Close()
-	photos := make(map[int]string)
+	result := make(map[int]slotData)
 	for rows.Next() {
 		var idx int
-		var uid string
-		if err := rows.Scan(&idx, &uid); err != nil {
+		var uid *string
+		var text string
+		var cropX, cropY, cropScale float64
+		if err := rows.Scan(&idx, &uid, &text, &cropX, &cropY, &cropScale); err != nil {
 			return nil, fmt.Errorf("scan slot row: %w", err)
 		}
-		photos[idx] = uid
+		result[idx] = slotData{photoUID: uid, textContent: text, cropX: cropX, cropY: cropY, cropScale: cropScale}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate slot rows: %w", err)
 	}
-	return photos, nil
+	return result, nil
 }

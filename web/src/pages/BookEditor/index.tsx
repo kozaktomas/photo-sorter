@@ -1,8 +1,8 @@
 import { useState, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { BookOpen, ArrowLeft, Pencil, Trash2, Check, X } from 'lucide-react';
-import { updateBook, deleteBook } from '../../api/client';
+import { BookOpen, ArrowLeft, Pencil, Trash2, Check, X, Download } from 'lucide-react';
+import { updateBook, deleteBook, exportBookPDF } from '../../api/client';
 import { LoadingState } from '../../components/LoadingState';
 import { useBookData } from './hooks/useBookData';
 import { SectionsTab } from './SectionsTab';
@@ -53,6 +53,7 @@ export function BookEditorPage() {
 
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState('');
+  const [exporting, setExporting] = useState(false);
 
   const handleStartEdit = () => {
     if (book) {
@@ -67,7 +68,7 @@ export function BookEditorPage() {
       await updateBook(book.id, { title: editTitle.trim() });
       setEditing(false);
       void refresh();
-    } catch { /* silent */ }
+    } catch (e) { console.error('Failed to save title:', e); }
   };
 
   const handleDelete = async () => {
@@ -75,7 +76,16 @@ export function BookEditorPage() {
     try {
       await deleteBook(book.id);
       void navigate('/books');
-    } catch { /* silent */ }
+    } catch (e) { console.error('Failed to delete book:', e); }
+  };
+
+  const handleExportPDF = async () => {
+    if (!book || exporting) return;
+    setExporting(true);
+    try {
+      await exportBookPDF(book.id);
+    } catch (e) { console.error('Failed to export PDF:', e); }
+    setExporting(false);
   };
 
   const tabs: { key: Tab; label: string }[] = [
@@ -123,9 +133,19 @@ export function BookEditorPage() {
               </div>
               <div className="flex items-center gap-2">
                 {!editing && (
-                  <button onClick={handleStartEdit} className="text-slate-400 hover:text-white p-1 transition-colors">
-                    <Pencil className="h-4 w-4" />
-                  </button>
+                  <>
+                    <button
+                      onClick={() => void handleExportPDF()}
+                      disabled={exporting || !book.pages?.length}
+                      className="text-slate-400 hover:text-white p-1 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                      title={exporting ? t('books.editor.exporting') : t('books.editor.exportPDF')}
+                    >
+                      <Download className={`h-4 w-4 ${exporting ? 'animate-pulse' : ''}`} />
+                    </button>
+                    <button onClick={handleStartEdit} className="text-slate-400 hover:text-white p-1 transition-colors">
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                  </>
                 )}
                 <button onClick={handleDelete} className="text-slate-400 hover:text-red-400 p-1 transition-colors">
                   <Trash2 className="h-4 w-4" />

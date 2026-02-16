@@ -1,6 +1,6 @@
 # Photo Book
 
-A planning tool for organizing photos into a printed landscape photo book. This is a planning-only tool — no PDF export.
+A tool for organizing photos into a printed landscape photo book with PDF export via LaTeX.
 
 ## Workflow
 
@@ -11,7 +11,11 @@ A planning tool for organizing photos into a printed landscape photo book. This 
 5. **Create pages** — Choose a page format and assign to a section
 6. **Add page descriptions** — Optional text displayed at the top of each page
 7. **Assign photos to slots** — Drag photos from the unassigned pool into page slots
-8. **Preview** — Review the full book layout with page descriptions and photo captions
+8. **Adjust crops** — Fine-tune crop position and zoom for each photo slot (drag to reposition, scroll to zoom)
+9. **Adjust split position** — For mixed landscape/portrait formats, adjust the column split ratio
+10. **Add text to slots** — Click "Add text" on empty slots to place text content instead of photos
+11. **Preview** — Review the full book layout with page descriptions and photo captions
+12. **Export PDF** — Generate a print-ready A4 landscape PDF via LaTeX
 
 ## Page Formats
 
@@ -49,6 +53,9 @@ Migration: `internal/database/postgres/migrations/008_create_photo_books.sql`
 Format constraint update: `internal/database/postgres/migrations/009_add_1p_2l_format.sql`
 Fullscreen format: `internal/database/postgres/migrations/011_add_1_fullscreen_format.sql`
 Page description + photo note: `internal/database/postgres/migrations/010_add_page_desc_and_photo_note.sql`
+Slot text content: `internal/database/postgres/migrations/012_add_slot_text_content.sql`
+Page style (modern/archival): `internal/database/postgres/migrations/013_add_page_style.sql`
+Crop scale (zoom): `internal/database/postgres/migrations/015_add_crop_scale.sql`
 
 ### Tables
 
@@ -82,6 +89,8 @@ book_pages
 ├── book_id (FK → photo_books, CASCADE)
 ├── section_id (FK → book_sections, SET NULL)
 ├── format (CHECK: 4_landscape, 2l_1p, 1p_2l, 2_portrait, 1_fullscreen)
+├── style (CHECK: modern, archival; DEFAULT 'modern')
+├── split_position (REAL, default 0.5, range 0.2-0.8, for 2l_1p/1p_2l formats)
 ├── description (text displayed at top of page)
 ├── sort_order
 ├── created_at
@@ -91,7 +100,12 @@ page_slots
 ├── id (PK, BIGSERIAL)
 ├── page_id (FK → book_pages, CASCADE)
 ├── slot_index
-├── photo_uid
+├── photo_uid (NULL for text slots)
+├── text_content (TEXT, default '', non-empty for text slots)
+├── crop_x (REAL, default 0.5, range 0.0-1.0, horizontal crop center)
+├── crop_y (REAL, default 0.5, range 0.0-1.0, vertical crop center)
+├── crop_scale (REAL, default 1.0, range 0.1-1.0, zoom level: 1.0 = fill, lower = zoom in)
+├── CHECK(photo_uid IS NULL OR text_content = '')  -- mutual exclusivity
 ├── UNIQUE(page_id, slot_index)
 └── UNIQUE(page_id, photo_uid)
 ```
@@ -132,18 +146,285 @@ Deleting a book cascades to all sections, pages, and slots.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/v1/books/:id/pages` | Create page (`{ format, section_id? }`) |
+| POST | `/api/v1/books/:id/pages` | Create page (`{ format, section_id, style? }`) |
 | PUT | `/api/v1/books/:id/pages/reorder` | Reorder pages (`{ ids: [...] }`) |
-| PUT | `/api/v1/pages/:id` | Update page (`{ format, section_id, description }`) |
+| PUT | `/api/v1/pages/:id` | Update page (`{ format, section_id, description, style }`) |
 | DELETE | `/api/v1/pages/:id` | Delete page |
 
 ### Slots
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| PUT | `/api/v1/pages/:id/slots/:index` | Assign photo to slot (`{ photo_uid }`) |
+| PUT | `/api/v1/pages/:id/slots/:index` | Assign photo or text to slot (`{ photo_uid }` or `{ text_content }`) |
+| PUT | `/api/v1/pages/:id/slots/:index/crop` | Update crop for a slot (`{ crop_x, crop_y, crop_scale? }`) |
 | POST | `/api/v1/pages/:id/slots/swap` | Swap two slots atomically (`{ slot_a, slot_b }`) |
 | DELETE | `/api/v1/pages/:id/slots/:index` | Clear slot |
+
+## PDF Export
+
+The book can be exported to a print-ready A4 landscape PDF via the "Export PDF" button in the editor header.
+
+### How It Works
+
+1. Backend collects all pages (ordered by section, then sort_order)
+2. Loads section photo descriptions to build a caption map
+3. Downloads high-resolution thumbnails (`fit_3840`) for all photos in slots
+4. Computes layout geometry with configurable margins (asymmetric for binding)
+5. Generates a LaTeX document using TikZ for precise photo placement with object-cover cropping
+6. Compiles with `lualatex` (Czech typography via `polyglossia` + Latin Modern Roman font)
+7. Returns the PDF and an export report with DPI warnings
+
+### Requirements
+
+- `lualatex` must be installed on the server (packages: `texlive-luatex`, `texmf-dist-latexrecommended`, `texmf-dist-fontsrecommended`, `texmf-dist-langczechslovak`)
+- Returns HTTP 503 if `lualatex` is not available
+
+### Layout Configuration — 12-Column Grid System
+
+The layout uses a 12-column grid with 3 fixed page zones. Configurable via `LayoutConfig` in `internal/latex/formats.go`:
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `InsideMarginMM` | 20.0 | Binding side margin |
+| `OutsideMarginMM` | 12.0 | Away from binding |
+| `TopMarginMM` | 10.0 | Top margin |
+| `BottomMarginMM` | 16.0 | Bottom margin |
+| `GridColumns` | 12 | Number of grid columns |
+| `ColumnGutterMM` | 4.0 | Gap between columns |
+| `RowGapMM` | 4.0 | Gap between rows in multi-row layouts |
+| `HeaderHeightMM` | 4.0 | Running header zone |
+| `CanvasHeightMM` | 172.0 | Photo/text canvas zone |
+| `FooterHeightMM` | 8.0 | Captions + folio zone |
+| `ArchivalInsetMM` | 3.0 | Mat inset for archival photos |
+| `GutterSafeMM` | 8.0 | Inset from binding edge for safe content placement |
+| `BaselineUnitMM` | 4.0 | Vertical rhythm unit (all spacing is multiples of this) |
+
+**Content width**: 297 - 20 - 12 = **265mm**. Column width: (265 - 11×4) / 12 = **18.42mm**.
+
+**Margins are asymmetric** (mirrored for binding): recto pages have inside margin (20mm) on the left, verso pages have outside margin (12mm) on the left.
+
+### Page Zones
+
+Each content page has 3 fixed zones:
+
+```
+TOP MARGIN (10mm)
+├── HEADER ZONE (4mm): Running section/page titles
+├── CANVAS ZONE (172mm): Photo/text slots on 12-col grid
+├── ──────────────────── ← 0.4pt separation rule (black!50)
+├── FOOTER ZONE (8mm): Numbered captions + mirrored folio
+BOTTOM MARGIN (16mm)
+```
+
+Zones sum exactly to page height: 10 + 4 + 172 + 8 + 16 = 210mm.
+
+### Grid Column Mapping
+
+| Format | Slot | Columns | Width | Height |
+|--------|------|---------|-------|--------|
+| `1_fullscreen` | 0 | 1-12 | 265mm | 172mm |
+| `2_portrait` | 0,1 | 1-6, 7-12 | 130.5mm | 172mm |
+| `4_landscape` | 0-3 | 1-6/7-12 × top/bottom | 130.5mm | 84mm |
+| `2l_1p` | 0,1 (landscape) | 1-8 stacked | 175.3mm | 84mm |
+| `2l_1p` | 2 (portrait) | 9-12 | 85.7mm | 172mm |
+| `1p_2l` | 0 (portrait) | 1-4 | 85.7mm | 172mm |
+| `1p_2l` | 1,2 (landscape) | 5-12 stacked | 175.3mm | 84mm |
+
+Half-canvas height: (172 - 4) / 2 = 84mm.
+
+**Note:** For `2l_1p` and `1p_2l` formats, the column split can be adjusted via the `split_position` field on `book_pages` (default 0.5 = 8:4 columns). This allows customizing the width ratio between landscape and portrait slots.
+
+### Canvas Zone Clipping
+
+The entire canvas zone is wrapped in a TikZ `\clip` scope that prevents any content (photos, text, markers) from bleeding into the header or footer zones. This is a safety net — all slots are already positioned within the canvas bounds, but the clip ensures integrity at scale.
+
+### Running Headers
+
+- **Verso (even) pages**: Section title flush left (outside edge), 7.5pt italic, `black!40`
+- **Recto (odd) pages**: Page description flush right (outside edge), 7.5pt italic, `black!40`
+- **Fallback**: If a recto page has no description, the section title is shown instead
+- Header zone (4mm) is always reserved even when empty
+
+### Photo Captions — Footer System
+
+Captions are sourced from `section_photos.description` (section-scoped). Instead of per-slot inline captions, all captions are collected into the footer zone:
+
+- **Single-photo pages**: Caption alone in footer, no marker number
+- **Multi-photo pages**: Sequential marker numbers (1, 2, 3...) assigned to photos with captions
+  - **Marker overlay**: 4×4mm bold number (6pt) on outside edge of photo (away from binding), white on semi-transparent dark background
+  - **Footer text**: `**1** Caption text  **2** Caption text` in 8/10pt, `black!70`, 4mm below separation rule
+
+### Page Styles
+
+Each page has a `style` field: `"modern"` (default) or `"archival"`.
+
+- **Modern**: Full-bleed photos clipped to slot boundary (existing behavior)
+- **Archival**: 0.5pt gray border (`black!45`) at slot boundary, image inset 3mm inside (pasparta/mat effect). DPI computed against inset dimensions.
+
+### Page Numbers (Folio)
+
+Pages are numbered continuously from 1. Folio renders in 8.5/10pt `black!35`, mirrored to outside-bottom corners:
+- Recto (odd): bottom-right (`south east` anchor)
+- Verso (even): bottom-left (`south west` anchor)
+
+A 0.4pt separation rule (`black!50`) spans the full content width between canvas and footer zones.
+
+### Gutter-Safe Zone
+
+An 8mm gutter-safe zone is enforced from the binding (inside) edge. Caption markers are automatically placed on the **outside edge** (away from binding) of each photo to avoid the gutter zone:
+- **Recto pages**: Marker in top-right corner
+- **Verso pages**: Marker in top-left corner
+
+The layout validation layer checks that markers don't fall within the gutter-safe zone and reports warnings if they do.
+
+### Spacing Discipline
+
+All spacing values follow a 4mm baseline rhythm:
+- **Canvas text leading**: 11.34pt (= 4mm exactly) for T1, T2, T3 body text
+- **Footer caption gap**: 4mm below separation rule (1 baseline unit)
+- **Text slot padding**: Multiples of 4mm (T1/T3: 8mm/side, T2: 8mm accent bar offset)
+- **Markdown vspace**: `\vspace{4mm}` for paragraph breaks and after headings
+- **Parskip suppressed**: `\parskip=0pt\parindent=0pt` inside all text slot parboxes to prevent LaTeX default spacing from breaking baseline grid
+
+### Section Dividers
+
+Each section with a title generates a full-page divider with the title centered in 28pt EBGaramond SemiBold with letter-spacing (LetterSpace=5). Paired decorative rules (100mm wide, `black!20`) appear above and below the title for visual balance. No page number is displayed on divider pages.
+
+**Recto alignment:** Section dividers always appear on recto (right-hand, odd) pages. If a divider would land on a verso (even) page, a blank page is automatically inserted before it.
+
+### Text Slots
+
+Text slots support Markdown formatting with auto-detected rendering types:
+
+| Syntax | Result |
+|--------|--------|
+| `# Heading` | Large bold heading |
+| `## Subheading` | Medium bold subheading |
+| `**bold**` | **Bold text** |
+| `*italic*` | *Italic text* |
+| `- item` | Bulleted list |
+| `1. item` | Numbered list |
+| `> quote` | Blockquote (italic) |
+| Blank line | Paragraph break |
+
+**Text type auto-detection** (`DetectTextType`):
+- **T1 (explanation)**: Default — 5% gray fill, 10/13pt body, headings via markdown
+- **T2 (fact box)**: All lines are list items — 5% gray fill, left accent bar (2pt `black!20`), compact list
+- **T3 (oral history)**: Contains `> ` blockquote lines — 5% gray fill, centered italic quote
+
+All text slots render on a light gray background (`black!5`), replacing the previous white-on-dark style.
+
+### Czech Typography
+
+The template uses `polyglossia` with Czech as the default language and Latin Modern Roman as the main font. This provides proper Czech hyphenation, ligatures, and diacritics support.
+
+### Export Report
+
+The export generates a JSON report alongside the PDF containing:
+- Book title, total page count, unique photo count
+- Per-page details: page number, format, section title, divider flag
+- Per-photo details: UID, slot index, effective DPI
+- Warnings for photos with effective DPI < 200 (below print quality)
+- **Layout validation warnings**: Zone integrity violations, slot overlaps, gutter-safe marker issues
+
+Access the report via `?format=report` query parameter (returns JSON instead of PDF).
+
+### Layout Validation
+
+The export pipeline runs automatic layout validation (`ValidatePages`) after building the template data. Checks include:
+1. **Zone integrity**: Every slot's clip rect is within canvas bounds
+2. **Grid alignment**: Every slot's X offset matches a column left edge (±0.01mm)
+3. **No overlaps**: No pair of slots has intersecting clip rects (0.01mm tolerance)
+4. **Gutter-safe markers**: Caption markers don't fall within 8mm of the binding edge
+5. **Footer bounds**: Caption block and folio are within the footer zone
+
+Validation warnings appear in the export report alongside DPI warnings.
+
+### Diagnostic Test PDF
+
+A diagnostic test PDF can be generated to verify the grid system and layout constraints:
+
+```
+GET /api/v1/books/:id/export-pdf?format=test
+```
+
+The test PDF contains 6 pages:
+1. **Grid overlay**: Red column boundaries, blue canvas bounds, green header/footer zones
+2. **Baseline overlay**: Gray 4mm horizontal lines within the canvas zone
+3. **Format samples**: One page per format (`1_fullscreen`, `2_portrait`, `4_landscape`, `2l_1p`, `1p_2l`) with colored placeholder rectangles labeled with dimensions
+4-5. **Additional format samples** (continued)
+6. **Gutter-safe visualization**: Red overlay on the 8mm gutter-safe zone with sample marker placement
+
+### Professional Print Features
+
+**Bleed & Crop Marks:** The PDF includes 3mm bleed on all sides using the LaTeX `crop` package. The total paper size is 303×216mm (A4 landscape + 3mm per side). Crop marks (corner registration marks) are rendered in the bleed area for precise trimming. The TikZ content coordinate system remains anchored to the A4 trim area — no coordinate adjustments needed.
+
+**PDF Compatibility:** `\pdfvariable minorversion 4` ensures PDF 1.4 output for broad printer compatibility.
+
+**Blank Page Insertion:** Section dividers always appear on recto (odd) pages. Blank pages are automatically inserted to maintain this convention. These appear in the export report with format `"blank"`.
+
+### Slot Aspect Ratios
+
+With asymmetric margins (20mm inside, 12mm outside) and 4mm column gutters:
+
+| Format | Slot | Size (mm) | Ratio | Closest Standard |
+|--------|------|-----------|-------|-----------------|
+| `4_landscape` | each | 130.5 × 84 | 1.55:1 | 3:2 landscape |
+| `2_portrait` | each | 130.5 × 172 | 0.76:1 | 3:4 portrait |
+| `1_fullscreen` | single | 265 × 172 | 1.54:1 | 3:2 landscape |
+| `2l_1p` | landscape | 175.3 × 84 | 2.09:1 | panoramic |
+| `2l_1p` | portrait | 85.7 × 172 | 0.50:1 | narrow portrait |
+| `1p_2l` | portrait | 85.7 × 172 | 0.50:1 | narrow portrait |
+| `1p_2l` | landscape | 175.3 × 84 | 2.09:1 | panoramic |
+
+`4_landscape`, `2_portrait`, and `1_fullscreen` work well with standard photo ratios. The mixed formats (`2l_1p`, `1p_2l`) use 8:4 column splits for wider/narrower slots.
+
+### Print Preparation Checklist
+
+- **Recommended DPI**: 300+ for high-quality prints, 200+ minimum
+- **Fonts**: All text is embedded via EBGaramond (OpenType)
+- **Deterministic output**: PDF timestamps are suppressed for reproducible builds
+- **Bleed**: 3mm bleed on all sides with crop marks — ready for professional trimming
+- **Color**: Decorative elements use subtle grays (`black!20`–`black!50`) for clean print output
+- **Review**: Check export report for DPI warnings before sending to printer
+
+### Backend Files
+
+| File | Description |
+|------|-------------|
+| `internal/latex/formats.go` | `LayoutConfig`, 12-column grid system, `FormatSlotsGrid`, page format slot positions |
+| `internal/latex/latex.go` | PDF generation, caption lookup, DPI computation, export report |
+| `internal/latex/markdown.go` | Markdown-to-LaTeX converter for text slots |
+| `internal/latex/validate.go` | Layout validation (zone integrity, overlaps, gutter-safe markers) |
+| `internal/latex/testpages.go` | Diagnostic test PDF generator |
+| `internal/latex/templates/book.tex` | LaTeX template with TikZ, polyglossia, configurable layout |
+| `internal/latex/templates/testpage.tex` | Diagnostic test page template |
+
+### API
+
+```
+GET /api/v1/books/:id/export-pdf
+```
+
+Returns `application/pdf` with `Content-Disposition: attachment`.
+
+**Query parameters:**
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| `format` | `report` | Return JSON export report instead of PDF |
+| `format` | `test` | Return diagnostic test PDF (grid overlay, baseline, format samples, gutter-safe) |
+| `format` | `debug` | Return real book PDF with debug overlay (canvas bounds, column grid, zone edges) |
+
+**Response headers (PDF mode):**
+| Header | Description |
+|--------|-------------|
+| `X-Export-Warnings` | Number of DPI warnings (only present when > 0) |
+
+**Error responses:**
+- 404: Book not found
+- 400: Book has no pages
+- 503: `lualatex` not installed
+- 500: LaTeX compilation or other error
 
 ## Backend Architecture
 
@@ -163,9 +444,10 @@ Deleting a book cascades to all sections, pages, and slots.
 
 - UUIDs generated in Go via `google/uuid`
 - `ReorderSections` / `ReorderPages`: accept ordered ID slices, update `sort_order` in a transaction
-- `AssignSlot`: UPSERT via `INSERT ... ON CONFLICT(page_id, slot_index) DO UPDATE`
+- `AssignSlot`: UPSERT via `INSERT ... ON CONFLICT(page_id, slot_index) DO UPDATE` — clears `text_content` when assigning a photo
+- `AssignTextSlot`: UPSERT with `photo_uid = NULL, text_content = $3` — clears photo when assigning text
 - `ClearSlot`: `DELETE FROM page_slots WHERE page_id = $1 AND slot_index = $2`
-- `SwapSlots`: Atomic swap in a transaction — reads both slots, deletes both, re-inserts with swapped `photo_uid` values. Required because `UNIQUE(page_id, photo_uid)` prevents concurrent updates
+- `SwapSlots`: Atomic swap in a transaction — reads both slots (photo_uid + text_content), deletes both, re-inserts with swapped values. Required because `UNIQUE(page_id, photo_uid)` prevents concurrent updates
 - `CreateSection` / `CreatePage`: auto-assign `sort_order` as `MAX(sort_order) + 1`
 - **Format change**: When a page's format is changed to one with fewer slots, excess slots are automatically cleared (photos returned to the unassigned pool). Slots within the new format's capacity are preserved.
 
@@ -208,6 +490,9 @@ Deleting a book cascades to all sections, pages, and slots.
 - Drag assigned photo → drop on empty slot: moves photo (clears old slot first)
 - Drag assigned photo → drop on another assigned photo: swaps both photos atomically
 - Click X on a slot: clears the assignment
+- Click "Add text" on empty slot: opens text editing dialog
+- Click pencil on text slot: opens text editing dialog to modify content
+- Text slots are draggable and can be swapped with photo slots
 
 Slot photos are both draggable (via `useDraggable`) and droppable (via `useDroppable`) using a combined ref on the same DOM element. The `DragOverlay` uses a `snapCenterToCursor` modifier to keep the small drag thumbnail centered on the cursor regardless of the source element's size. Collision detection uses `pointerWithin` for accurate drop target resolution.
 

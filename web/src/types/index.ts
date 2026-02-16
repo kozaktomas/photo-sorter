@@ -427,11 +427,15 @@ export interface SectionPhoto {
   added_at: string;
 }
 
+export type PageStyle = 'modern' | 'archival';
+
 export interface BookPage {
   id: string;
   section_id: string;
   format: PageFormat;
+  style: PageStyle;
   description: string;
+  split_position: number | null;
   sort_order: number;
   slots: PageSlot[];
 }
@@ -439,6 +443,10 @@ export interface BookPage {
 export interface PageSlot {
   slot_index: number;
   photo_uid: string;
+  text_content: string;
+  crop_x: number;
+  crop_y: number;
+  crop_scale: number;
 }
 
 export interface BookDetail {

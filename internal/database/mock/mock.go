@@ -551,10 +551,10 @@ type MockBookWriter struct {
 	DeletePageError            error
 	ReorderPagesError          error
 	GetPageSlotsError          error
-	GetAllPageSlotsError       error
 	AssignSlotError            error
 	ClearSlotError             error
-	SwapSlotsError             error
+	SwapSlotsError               error
+	UpdateSlotCropError          error
 	GetPhotoBookMembershipsError error
 }
 
@@ -621,6 +621,31 @@ func (m *MockBookWriter) ListBooks(ctx context.Context) ([]database.PhotoBook, e
 	var result []database.PhotoBook
 	for _, b := range m.books {
 		result = append(result, *b)
+	}
+	return result, nil
+}
+
+func (m *MockBookWriter) ListBooksWithCounts(ctx context.Context) ([]database.PhotoBookWithCounts, error) {
+	if m.ListBooksError != nil {
+		return nil, m.ListBooksError
+	}
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	var result []database.PhotoBookWithCounts
+	for _, b := range m.books {
+		bwc := database.PhotoBookWithCounts{PhotoBook: *b}
+		for _, s := range m.sections {
+			if s.BookID == b.ID {
+				bwc.SectionCount++
+				bwc.PhotoCount += len(m.sectionPhotos[s.ID])
+			}
+		}
+		for _, p := range m.pages {
+			if p.BookID == b.ID {
+				bwc.PageCount++
+			}
+		}
+		result = append(result, bwc)
 	}
 	return result, nil
 }
@@ -896,21 +921,6 @@ func (m *MockBookWriter) GetPageSlots(ctx context.Context, pageID string) ([]dat
 	return m.pageSlots[pageID], nil
 }
 
-func (m *MockBookWriter) GetAllPageSlots(ctx context.Context, bookID string) ([]database.PageSlot, error) {
-	if m.GetAllPageSlotsError != nil {
-		return nil, m.GetAllPageSlotsError
-	}
-	m.mu.RLock()
-	defer m.mu.RUnlock()
-	var result []database.PageSlot
-	for _, p := range m.pages {
-		if p.BookID == bookID {
-			result = append(result, m.pageSlots[p.ID]...)
-		}
-	}
-	return result, nil
-}
-
 func (m *MockBookWriter) AssignSlot(ctx context.Context, pageID string, slotIndex int, photoUID string) error {
 	if m.AssignSlotError != nil {
 		return m.AssignSlotError
@@ -921,11 +931,31 @@ func (m *MockBookWriter) AssignSlot(ctx context.Context, pageID string, slotInde
 	for i := range slots {
 		if slots[i].SlotIndex == slotIndex {
 			slots[i].PhotoUID = photoUID
+			slots[i].TextContent = ""
+			slots[i].CropX = 0.5
+			slots[i].CropY = 0.5
+			slots[i].CropScale = 1.0
 			m.pageSlots[pageID] = slots
 			return nil
 		}
 	}
-	m.pageSlots[pageID] = append(slots, database.PageSlot{SlotIndex: slotIndex, PhotoUID: photoUID})
+	m.pageSlots[pageID] = append(slots, database.PageSlot{SlotIndex: slotIndex, PhotoUID: photoUID, CropX: 0.5, CropY: 0.5, CropScale: 1.0})
+	return nil
+}
+
+func (m *MockBookWriter) AssignTextSlot(ctx context.Context, pageID string, slotIndex int, textContent string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	slots := m.pageSlots[pageID]
+	for i := range slots {
+		if slots[i].SlotIndex == slotIndex {
+			slots[i].PhotoUID = ""
+			slots[i].TextContent = textContent
+			m.pageSlots[pageID] = slots
+			return nil
+		}
+	}
+	m.pageSlots[pageID] = append(slots, database.PageSlot{SlotIndex: slotIndex, TextContent: textContent})
 	return nil
 }
 
@@ -964,7 +994,30 @@ func (m *MockBookWriter) SwapSlots(ctx context.Context, pageID string, slotA int
 	}
 	if idxA >= 0 && idxB >= 0 {
 		slots[idxA].PhotoUID, slots[idxB].PhotoUID = slots[idxB].PhotoUID, slots[idxA].PhotoUID
+		slots[idxA].TextContent, slots[idxB].TextContent = slots[idxB].TextContent, slots[idxA].TextContent
+		slots[idxA].CropX, slots[idxB].CropX = slots[idxB].CropX, slots[idxA].CropX
+		slots[idxA].CropY, slots[idxB].CropY = slots[idxB].CropY, slots[idxA].CropY
+		slots[idxA].CropScale, slots[idxB].CropScale = slots[idxB].CropScale, slots[idxA].CropScale
 		m.pageSlots[pageID] = slots
+	}
+	return nil
+}
+
+func (m *MockBookWriter) UpdateSlotCrop(ctx context.Context, pageID string, slotIndex int, cropX, cropY, cropScale float64) error {
+	if m.UpdateSlotCropError != nil {
+		return m.UpdateSlotCropError
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	slots := m.pageSlots[pageID]
+	for i := range slots {
+		if slots[i].SlotIndex == slotIndex {
+			slots[i].CropX = cropX
+			slots[i].CropY = cropY
+			slots[i].CropScale = cropScale
+			m.pageSlots[pageID] = slots
+			return nil
+		}
 	}
 	return nil
 }

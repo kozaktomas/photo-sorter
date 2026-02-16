@@ -1,0 +1,120 @@
+\documentclass[a4paper,landscape,twoside]{article}
+\usepackage[margin=0mm]{geometry}
+\usepackage{tikz}
+\usepackage{graphicx}
+\usepackage{fontspec}
+\usepackage{polyglossia}
+\setdefaultlanguage{czech}
+\setmainfont{EBGaramond}[
+  Extension      = .otf,
+  UprightFont    = *-Regular,
+  BoldFont       = *-SemiBold,
+  ItalicFont     = *-Italic,
+  BoldItalicFont = *-SemiBoldItalic,
+  Ligatures      = TeX,
+  Numbers        = {Proportional,OldStyle}
+]
+\newfontfamily\ebgaramondsb{EBGaramond}[
+  Extension      = .otf,
+  UprightFont    = *-SemiBold,
+  ItalicFont     = *-SemiBoldItalic,
+  Ligatures      = TeX,
+  Numbers        = {Proportional,OldStyle}
+]
+\usepackage{enumitem}
+\usepackage{microtype}
+
+% Bleed: extend paper by 3mm on each side with crop marks
+\usepackage[cam,width=303truemm,height=216truemm,center]{crop}
+
+\pdfvariable minorversion 4
+\pdfvariable suppressoptionalinfo 511
+
+\pagestyle{empty}
+
+\begin{document}
+% === Page 1: Grid Overlay ===
+\begin{tikzpicture}[remember picture,overlay,shift={(current page.south west)},x=1mm,y=1mm]
+  % Title
+  \node[anchor=north,font=\fontsize{14}{18}\selectfont\bfseries] at (148.50,200) {Grid Overlay -- 12 Column System};
+  \node[anchor=north,font=\fontsize{9}{11}\selectfont,text=black!60] at (148.50,194) {Red: columns | Blue: canvas bounds | Green: header/footer zones};
+  % Column grid lines (recto layout: inside margin 24mm on left)
+{{- range $i, $col := .Columns}}
+  \draw[red!40,line width=0.1pt] ({{printf "%.2f" $col.LeftX}},{{printf "%.2f" $.CanvasBottomY}}) -- ({{printf "%.2f" $col.LeftX}},{{printf "%.2f" $.CanvasTopY}});
+  \draw[red!40,line width=0.1pt] ({{printf "%.2f" $col.RightX}},{{printf "%.2f" $.CanvasBottomY}}) -- ({{printf "%.2f" $col.RightX}},{{printf "%.2f" $.CanvasTopY}});
+  \node[anchor=north,font=\fontsize{5}{5}\selectfont,text=red!60] at ({{printf "%.2f" $col.CenterX}},{{printf "%.2f" $.CanvasBottomY}}) {{"{"}}{{$col.Number}}{{"}"}};
+{{- end}}
+  % Canvas zone bounds (blue)
+  \draw[blue!50,line width=0.3pt] ({{printf "%.2f" .ContentLeftX}},{{printf "%.2f" .CanvasTopY}}) -- ({{printf "%.2f" .ContentRightX}},{{printf "%.2f" .CanvasTopY}});
+  \draw[blue!50,line width=0.3pt] ({{printf "%.2f" .ContentLeftX}},{{printf "%.2f" .CanvasBottomY}}) -- ({{printf "%.2f" .ContentRightX}},{{printf "%.2f" .CanvasBottomY}});
+  \draw[blue!50,line width=0.3pt] ({{printf "%.2f" .ContentLeftX}},{{printf "%.2f" .CanvasBottomY}}) -- ({{printf "%.2f" .ContentLeftX}},{{printf "%.2f" .CanvasTopY}});
+  \draw[blue!50,line width=0.3pt] ({{printf "%.2f" .ContentRightX}},{{printf "%.2f" .CanvasBottomY}}) -- ({{printf "%.2f" .ContentRightX}},{{printf "%.2f" .CanvasTopY}});
+  % Header zone (green)
+  \draw[green!50,line width=0.3pt,dashed] ({{printf "%.2f" .ContentLeftX}},{{printf "%.2f" .HeaderTopY}}) -- ({{printf "%.2f" .ContentRightX}},{{printf "%.2f" .HeaderTopY}});
+  \node[anchor=south east,font=\fontsize{5}{5}\selectfont,text=green!60] at ({{printf "%.2f" .ContentRightX}},{{printf "%.2f" .HeaderTopY}}) {header top};
+  % Footer zone (green)
+  \draw[green!50,line width=0.3pt,dashed] ({{printf "%.2f" .ContentLeftX}},{{printf "%.2f" .FooterBottomY}}) -- ({{printf "%.2f" .ContentRightX}},{{printf "%.2f" .FooterBottomY}});
+  \node[anchor=north east,font=\fontsize{5}{5}\selectfont,text=green!60] at ({{printf "%.2f" .ContentRightX}},{{printf "%.2f" .FooterBottomY}}) {footer bottom};
+  % Dimensions
+  \node[anchor=south west,font=\fontsize{7}{9}\selectfont,text=black!50] at ({{printf "%.2f" .ContentLeftX}},22) {Content: {{printf "%.1f" .ContentW}}mm | Column: {{printf "%.2f" .ColumnW}}mm | Gutter: {{printf "%.1f" .GutterW}}mm};
+\end{tikzpicture}
+\newpage
+% === Page 2: Baseline Overlay ===
+\begin{tikzpicture}[remember picture,overlay,shift={(current page.south west)},x=1mm,y=1mm]
+  \node[anchor=north,font=\fontsize{14}{18}\selectfont\bfseries] at (148.50,200) {Baseline Grid -- {{printf "%.0f" .BaselineUnit}}mm Rhythm};
+  \node[anchor=north,font=\fontsize{9}{11}\selectfont,text=black!60] at (148.50,194) {Gray lines at every {{printf "%.0f" .BaselineUnit}}mm interval within canvas zone};
+{{- range $i, $y := .BaselineYs}}
+  \draw[black!15,line width=0.1pt] ({{printf "%.2f" $.ContentLeftX}},{{printf "%.2f" $y}}) -- ({{printf "%.2f" $.ContentRightX}},{{printf "%.2f" $y}});
+{{- end}}
+  % Canvas bounds
+  \draw[blue!50,line width=0.3pt] ({{printf "%.2f" .ContentLeftX}},{{printf "%.2f" .CanvasTopY}}) -- ({{printf "%.2f" .ContentRightX}},{{printf "%.2f" .CanvasTopY}});
+  \draw[blue!50,line width=0.3pt] ({{printf "%.2f" .ContentLeftX}},{{printf "%.2f" .CanvasBottomY}}) -- ({{printf "%.2f" .ContentRightX}},{{printf "%.2f" .CanvasBottomY}});
+\end{tikzpicture}
+\newpage
+% === Pages 3-5: Format Samples ===
+{{- range $fi, $fmt := .Formats}}
+\begin{tikzpicture}[remember picture,overlay,shift={(current page.south west)},x=1mm,y=1mm]
+  \node[anchor=north,font=\fontsize{14}{18}\selectfont\bfseries] at (148.50,200) {Format: {{$fmt.Name}}};
+  \node[anchor=north,font=\fontsize{9}{11}\selectfont,text=black!60] at (148.50,194) {Slots: {{$fmt.SlotCount}} | Style: modern};
+{{- range $si, $slot := $fmt.Slots}}
+  \draw[{{$slot.Color}},line width=0.5pt,fill={{$slot.Color}}!10]
+    ({{printf "%.2f" $slot.X}},{{printf "%.2f" $slot.Y}})
+    rectangle ++({{printf "%.2f" $slot.W}},{{printf "%.2f" $slot.H}});
+  \node[anchor=center,font=\fontsize{8}{10}\selectfont]
+    at ({{printf "%.2f" $slot.CX}},{{printf "%.2f" $slot.CY}})
+    {Slot {{$si}}: {{printf "%.1f" $slot.W}} x {{printf "%.1f" $slot.H}}mm};
+{{- end}}
+  % Canvas bounds
+  \draw[blue!50,line width=0.3pt] ({{printf "%.2f" $.ContentLeftX}},{{printf "%.2f" $.CanvasTopY}}) -- ({{printf "%.2f" $.ContentRightX}},{{printf "%.2f" $.CanvasTopY}});
+  \draw[blue!50,line width=0.3pt] ({{printf "%.2f" $.ContentLeftX}},{{printf "%.2f" $.CanvasBottomY}}) -- ({{printf "%.2f" $.ContentRightX}},{{printf "%.2f" $.CanvasBottomY}});
+\end{tikzpicture}
+\newpage
+{{- end}}
+% === Page 6: Gutter-Safe Visualization ===
+\begin{tikzpicture}[remember picture,overlay,shift={(current page.south west)},x=1mm,y=1mm]
+  \node[anchor=north,font=\fontsize{14}{18}\selectfont\bfseries] at (148.50,200) {Gutter-Safe Zone -- {{printf "%.0f" .GutterSafeMM}}mm from Binding};
+  \node[anchor=north,font=\fontsize{9}{11}\selectfont,text=black!60] at (148.50,194) {Red overlay: gutter-safe zone at binding edge (recto page shown)};
+  % Canvas bounds
+  \draw[blue!50,line width=0.3pt]
+    ({{printf "%.2f" .ContentLeftX}},{{printf "%.2f" .CanvasBottomY}})
+    rectangle ({{printf "%.2f" .ContentRightX}},{{printf "%.2f" .CanvasTopY}});
+  % Gutter-safe zone (recto: binding on left)
+  \fill[red!20,opacity=0.4]
+    ({{printf "%.2f" .ContentLeftX}},{{printf "%.2f" .CanvasBottomY}})
+    rectangle ({{printf "%.2f" .GutterSafeRightX}},{{printf "%.2f" .CanvasTopY}});
+  \draw[red!60,line width=0.5pt,dashed]
+    ({{printf "%.2f" .GutterSafeRightX}},{{printf "%.2f" .CanvasBottomY}})
+    -- ({{printf "%.2f" .GutterSafeRightX}},{{printf "%.2f" .CanvasTopY}});
+  \node[anchor=south,font=\fontsize{7}{9}\selectfont,text=red!70] at ({{printf "%.2f" .GutterSafeRightX}},{{printf "%.2f" .CanvasTopY}}) {gutter-safe: {{printf "%.0f" .GutterSafeMM}}mm};
+  % Sample marker (correctly placed on outside edge)
+  \fill[black,opacity=0.55]
+    ({{printf "%.2f" .SampleMarkerX}},{{printf "%.2f" .SampleMarkerY}})
+    rectangle ++(4,4);
+  \node[anchor=center,inner sep=0,font=\fontsize{6}{6}\selectfont\bfseries,text=white]
+    at ({{printf "%.2f" .SampleMarkerCX}},{{printf "%.2f" .SampleMarkerCY}})
+    {1};
+  \node[anchor=west,font=\fontsize{7}{9}\selectfont,text=black!60]
+    at ({{printf "%.2f" .SampleMarkerLabelX}},{{printf "%.2f" .SampleMarkerCY}})
+    {marker on outside edge};
+\end{tikzpicture}
+\end{document}

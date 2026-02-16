@@ -24,3 +24,6 @@ internal/photoprism/swagger.yaml
 screenshots/
 .playwright-mcp/
 docker-compose.claude.yml
+Dockerfile.claude
+
+

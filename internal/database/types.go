@@ -74,6 +74,14 @@ type PhotoBook struct {
 	UpdatedAt   time.Time
 }
 
+// PhotoBookWithCounts extends PhotoBook with precomputed counts for list views
+type PhotoBookWithCounts struct {
+	PhotoBook
+	SectionCount int
+	PageCount    int
+	PhotoCount   int
+}
+
 // BookSection represents an ordered group within a book
 type BookSection struct {
 	ID         string
@@ -97,21 +105,38 @@ type SectionPhoto struct {
 
 // BookPage represents a page with a specific format
 type BookPage struct {
-	ID          string
-	BookID      string
-	SectionID   string // optional, may be empty
-	Format      string
-	Description string
-	SortOrder   int
-	Slots       []PageSlot // populated on read
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID            string
+	BookID        string
+	SectionID     string   // optional, may be empty
+	Format        string
+	Style         string   // "modern" or "archival"
+	Description   string
+	SplitPosition *float64 // nullable; 0.2-0.8 column ratio; nil = format default
+	SortOrder     int
+	Slots         []PageSlot // populated on read
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
 }
 
-// PageSlot represents a photo assignment to a position on a page
+// PageSlot represents a photo or text assignment to a position on a page.
+// A slot holds either a PhotoUID or TextContent, never both.
 type PageSlot struct {
-	SlotIndex int
-	PhotoUID  string // empty = unoccupied
+	SlotIndex   int
+	PhotoUID    string  // empty = unoccupied (photo)
+	TextContent string  // non-empty = text slot
+	CropX       float64 // 0.0-1.0, default 0.5 (center)
+	CropY       float64 // 0.0-1.0, default 0.5 (center)
+	CropScale   float64 // 0.1-1.0, default 1.0 (no zoom)
+}
+
+// IsTextSlot returns true if this slot contains text content (no photo).
+func (s PageSlot) IsTextSlot() bool {
+	return s.TextContent != "" && s.PhotoUID == ""
+}
+
+// IsEmpty returns true if the slot has neither a photo nor text.
+func (s PageSlot) IsEmpty() bool {
+	return s.PhotoUID == "" && s.TextContent == ""
 }
 
 // PhotoBookMembership represents a book+section that contains a photo
@@ -120,6 +145,18 @@ type PhotoBookMembership struct {
 	BookTitle   string
 	SectionID   string
 	SectionTitle string
+}
+
+// DefaultSplitPosition returns the default left-column fraction for a format.
+func DefaultSplitPosition(format string) float64 {
+	switch format {
+	case "2l_1p":
+		return 2.0 / 3.0
+	case "1p_2l":
+		return 1.0 / 3.0
+	default:
+		return 0.5
+	}
 }
 
 // PageFormatSlotCount returns the number of slots for a given page format

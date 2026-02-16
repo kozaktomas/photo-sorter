@@ -6,7 +6,7 @@ services:
       - seccomp:unconfined
       - apparmor:unconfined
     ports:
-      - "2342:2342"
+        - "2342:2342"
     environment:
       PHOTOPRISM_ADMIN_USER: "admin"
       PHOTOPRISM_ADMIN_PASSWORD: "photoprism"

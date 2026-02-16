@@ -623,7 +623,7 @@ export async function createPage(bookId: string, format: PageFormat, sectionId: 
   });
 }
 
-export async function updatePage(pageId: string, updates: { format?: PageFormat; section_id?: string; description?: string }): Promise<void> {
+export async function updatePage(pageId: string, updates: { format?: PageFormat; section_id?: string; description?: string; style?: string; split_position?: number | null }): Promise<void> {
   await request(`/pages/${pageId}`, {
     method: 'PUT',
     body: JSON.stringify(updates),
@@ -648,6 +648,13 @@ export async function assignSlot(pageId: string, slotIndex: number, photoUid: st
   });
 }
 
+export async function assignTextSlot(pageId: string, slotIndex: number, textContent: string): Promise<void> {
+  await request(`/pages/${pageId}/slots/${slotIndex}`, {
+    method: 'PUT',
+    body: JSON.stringify({ text_content: textContent }),
+  });
+}
+
 export async function swapSlots(pageId: string, slotA: number, slotB: number): Promise<void> {
   await request(`/pages/${pageId}/slots/swap`, {
     method: 'POST',
@@ -655,6 +662,36 @@ export async function swapSlots(pageId: string, slotA: number, slotB: number): P
   });
 }
 
+export async function updateSlotCrop(pageId: string, slotIndex: number, cropX: number, cropY: number, cropScale: number = 1.0): Promise<void> {
+  await request(`/pages/${pageId}/slots/${slotIndex}/crop`, {
+    method: 'PUT',
+    body: JSON.stringify({ crop_x: cropX, crop_y: cropY, crop_scale: cropScale }),
+  });
+}
+
 export async function clearSlot(pageId: string, slotIndex: number): Promise<void> {
   await request(`/pages/${pageId}/slots/${slotIndex}`, { method: 'DELETE' });
+}
+
+// PDF Export
+export async function exportBookPDF(bookId: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/books/${bookId}/export-pdf`, {
+    credentials: 'include',
+  });
+  if (!response.ok) {
+    const errorData = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+    const errorMessage = typeof errorData.error === 'string' ? errorData.error : 'PDF export failed';
+    throw new Error(errorMessage);
+  }
+  const blob = await response.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  const disposition = response.headers.get('Content-Disposition');
+  const match = disposition?.match(/filename="(.+?)"/);
+  a.download = match?.[1] ?? 'book.pdf';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }

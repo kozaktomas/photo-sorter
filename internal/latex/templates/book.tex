@@ -1,0 +1,139 @@
+\documentclass[a4paper,landscape,twoside]{article}
+\usepackage[margin=0mm]{geometry}
+\usepackage{tikz}
+\usepackage{graphicx}
+\usepackage{fontspec}
+\usepackage{polyglossia}
+\setdefaultlanguage{czech}
+\setmainfont{EBGaramond}[
+  Extension      = .otf,
+  UprightFont    = *-Regular,
+  BoldFont       = *-SemiBold,
+  ItalicFont     = *-Italic,
+  BoldItalicFont = *-SemiBoldItalic,
+  Ligatures      = TeX,
+  Numbers        = {Proportional,OldStyle}
+]
+\newfontfamily\ebgaramondsb{EBGaramond}[
+  Extension      = .otf,
+  UprightFont    = *-SemiBold,
+  ItalicFont     = *-SemiBoldItalic,
+  Ligatures      = TeX,
+  Numbers        = {Proportional,OldStyle}
+]
+\usepackage{enumitem}
+\usepackage{microtype}
+
+% Bleed: extend paper by 3mm on each side with crop marks
+\usepackage[cam,noinfo,width=303truemm,height=216truemm,center]{crop}
+
+% Broad printer compatibility
+\pdfvariable minorversion 4
+
+% Suppress timestamps for deterministic output
+\pdfvariable suppressoptionalinfo 511
+
+\pagestyle{empty}
+
+\begin{document}
+{{- if .BookTitle}}
+% --- Title page ---
+\begin{tikzpicture}[remember picture,overlay,shift={(current page.south west)},x=1mm,y=1mm]
+  \draw[black!30,line width=0.4pt] (73.50,128.00) -- (223.50,128.00);
+  \node[anchor=north,inner sep=0,text width=150mm,align=center,
+    font=\fontsize{30}{36}\selectfont\ebgaramondsb] at (148.50,126.00) {%
+    {{latexEscape .BookTitle}}%
+  };
+\end{tikzpicture}
+\newpage
+{{- end}}
+{{- range $si, $section := .Sections}}
+{{- range $pi, $page := $section.Pages}}
+% --- Page {{$page.PageNumber}} ({{$page.Style}}) ---
+\begin{tikzpicture}[remember picture,overlay,shift={(current page.south west)},x=1mm,y=1mm]
+% --- Header zone (disabled) ---
+{{- if $page.HasSectionTitle}}
+% --- Inline section heading ---
+  \draw[black!20,line width=0.4pt]
+    ({{printf "%.2f" $page.ContentLeftX}},{{printf "%.2f" $page.SectionRuleY}})
+    -- ({{printf "%.2f" $page.ContentRightX}},{{printf "%.2f" $page.SectionRuleY}});
+  \node[anchor=north west,inner sep=0,
+    font=\fontsize{18}{22}\selectfont\ebgaramondsb]
+    at ({{printf "%.2f" $page.ContentLeftX}},{{printf "%.2f" $page.SectionTitleY}})
+    {%
+    \addfontfeatures{LetterSpace=5}{{latexEscape $page.SectionTitle}}%
+  };
+{{- end}}
+% --- Canvas zone (clipped) ---
+  \begin{scope}
+    \clip ({{printf "%.2f" $page.ContentLeftX}},{{printf "%.2f" $page.CanvasBottomY}})
+      rectangle ({{printf "%.2f" $page.ContentRightX}},{{printf "%.2f" $page.CanvasTopY}});
+{{- range $si, $slot := $page.Slots}}
+{{- if $slot.HasPhoto}}
+{{- if $slot.IsArchival}}
+  % Archival border
+  \draw[black!45,line width=0.5pt]
+    ({{printf "%.2f" $slot.BorderX}},{{printf "%.2f" $slot.BorderY}})
+    rectangle ++({{printf "%.2f" $slot.BorderW}},{{printf "%.2f" $slot.BorderH}});
+{{- end}}
+  \begin{scope}
+    \clip ({{printf "%.2f" $slot.ClipX}},{{printf "%.2f" $slot.ClipY}})
+      rectangle ++({{printf "%.2f" $slot.ClipW}},{{printf "%.2f" $slot.ClipH}});
+    \node[anchor=south west,inner sep=0]
+      at ({{printf "%.2f" $slot.ImgX}},{{printf "%.2f" $slot.ImgY}})
+      {\includegraphics[{{$slot.SizeDim}}={{printf "%.2f" $slot.SizeVal}}mm]{{print "{"}}{{$slot.FilePath}}{{print "}"}}};
+  \end{scope}
+{{- if gt $slot.CaptionMarker 0}}
+  % Caption marker
+  \fill[black,opacity=0.55]
+    ({{printf "%.2f" $slot.CaptionMarkerX}},{{printf "%.2f" $slot.CaptionMarkerY}})
+    rectangle ++(4,4);
+  \node[anchor=center,inner sep=0,font=\fontsize{6}{6}\selectfont\bfseries,text=white]
+    at ({{printf "%.2f" $slot.CaptionMarkerCenterX}},{{printf "%.2f" $slot.CaptionMarkerCenterY}})
+    {{print "{"}}{{$slot.CaptionMarker}}{{print "}"}};
+{{- end}}
+{{- else if $slot.HasText}}
+  % Text slot ({{$slot.TextType}})
+  \node[anchor=north west,inner sep=0]
+    at ({{printf "%.2f" $slot.ClipX}},{{printf "%.2f" (addFloat $slot.ClipY $slot.ClipH)}})
+    {\parbox{{print "{"}}{{printf "%.2f" $slot.ClipW}}mm}{%
+      \parskip=0pt\parindent=0pt\fontsize{12}{14.4}\selectfont%
+      {{markdownToLatex $slot.TextContent}}%
+    }};
+{{- end}}
+{{- end}}
+  \end{scope}
+% --- Footer zone ---
+{{- if $page.HasCaptions}}
+  \node[anchor=north west,inner sep=0,text width={{printf "%.2f" $page.CaptionBlockW}}mm,
+    font=\fontsize{8}{10}\selectfont,text=black!70]
+    at ({{printf "%.2f" $page.CaptionBlockX}},{{printf "%.2f" $page.CaptionBlockY}})
+    {{print "{"}}{{- range $ci, $cap := $page.Captions}}{{- if gt $ci 0}}\enspace {{end}}{{- if gt $cap.Marker 0}}\textbf{{print "{"}}{{$cap.Marker}}{{print "}"}} {{end}}{{latexEscape $cap.Caption}}{{- end}}{{print "}"}};
+{{- end}}
+  \node[anchor={{$page.FolioAnchor}},inner sep=0,font=\fontsize{8.5}{10}\selectfont,text=black!35]
+    at ({{printf "%.2f" $page.FolioX}},{{printf "%.2f" $page.FolioY}})
+    {{print "{"}}{{$page.PageNumber}}{{print "}"}};
+{{- if $.DebugOverlay}}
+% --- Debug overlay ---
+  \draw[blue!40,line width=0.3pt]
+    ({{printf "%.2f" $page.ContentLeftX}},{{printf "%.2f" $page.CanvasBottomY}})
+    rectangle ({{printf "%.2f" $page.ContentRightX}},{{printf "%.2f" $page.CanvasTopY}});
+  \draw[green!40,line width=0.2pt,dashed]
+    ({{printf "%.2f" $page.ContentLeftX}},{{printf "%.2f" $page.HeaderY}})
+    -- ({{printf "%.2f" $page.ContentRightX}},{{printf "%.2f" $page.HeaderY}});
+  \draw[green!40,line width=0.2pt,dashed]
+    ({{printf "%.2f" $page.ContentLeftX}},{{printf "%.2f" $page.FooterRuleY}})
+    -- ({{printf "%.2f" $page.ContentRightX}},{{printf "%.2f" $page.FooterRuleY}});
+{{- range $off := $.DebugColOffsets}}
+  \draw[red!25,line width=0.2pt]
+    ({{printf "%.2f" (addFloat $page.ContentLeftX $off)}},{{printf "%.2f" $page.CanvasBottomY}})
+    -- ({{printf "%.2f" (addFloat $page.ContentLeftX $off)}},{{printf "%.2f" $page.CanvasTopY}});
+{{- end}}
+{{- end}}
+\end{tikzpicture}
+{{- if not $page.IsLast}}
+\newpage
+{{- end}}
+{{- end}}
+{{- end}}
+\end{document}

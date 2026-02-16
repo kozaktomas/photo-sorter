@@ -2,8 +2,9 @@ import { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { getThumbnailUrl } from '../../api/client';
 import { PhotoInfoOverlay } from './PhotoInfoOverlay';
+import { MarkdownContent } from '../../utils/markdown';
 import type { BookDetail, BookPage, SectionPhoto } from '../../types';
-import { pageFormatLabelKey, pageFormatSlotCount, getGridClasses, getSlotClasses, getSlotPhotoUid } from '../../utils/pageFormats';
+import { pageFormatLabelKey, pageFormatSlotCount, getGridClasses, getGridColumnStyle, getSlotClasses, getSlotPhotoUid, getSlotTextContent, getSlotCrop } from '../../utils/pageFormats';
 
 interface Props {
   book: BookDetail;
@@ -12,10 +13,14 @@ interface Props {
   initialPageId?: string | null;
 }
 
-function PreviewPageSlot({ photoUid, description, note, className }: {
+function PreviewPageSlot({ photoUid, textContent, description, note, cropX, cropY, cropScale, className }: {
   photoUid: string;
+  textContent: string;
   description: string;
   note: string;
+  cropX?: number;
+  cropY?: number;
+  cropScale?: number;
   className?: string;
 }) {
   const [orientation, setOrientation] = useState<'L' | 'P' | null>(null);
@@ -28,6 +33,10 @@ function PreviewPageSlot({ photoUid, description, note, className }: {
             src={getThumbnailUrl(photoUid, 'fit_720')}
             alt=""
             className="w-full h-full object-cover rounded"
+            style={{
+              objectPosition: `${(cropX ?? 0.5) * 100}% ${(cropY ?? 0.5) * 100}%`,
+              ...(cropScale && cropScale < 1 ? { transform: `scale(${1 / cropScale})`, transformOrigin: `${(cropX ?? 0.5) * 100}% ${(cropY ?? 0.5) * 100}%` } : {}),
+            }}
             onLoad={(e) => {
               const img = e.currentTarget;
               setOrientation(img.naturalWidth >= img.naturalHeight ? 'L' : 'P');
@@ -38,6 +47,10 @@ function PreviewPageSlot({ photoUid, description, note, className }: {
             note={note}
             orientation={orientation}
           />
+        </div>
+      ) : textContent ? (
+        <div className="w-full h-full rounded p-4">
+          <MarkdownContent content={textContent} />
         </div>
       ) : (
         <div className="w-full h-full bg-slate-800 rounded flex items-center justify-center text-slate-600 text-xs">
@@ -74,17 +87,23 @@ function PreviewPage({ page, pageNumber, sectionTitle, photoInfo }: {
       )}
       <div
         className={`${gridClasses} gap-2 bg-slate-950 border border-slate-700 rounded-lg p-3`}
-        style={{ aspectRatio: '4/3' }}
+        style={{ aspectRatio: '297/210', ...getGridColumnStyle(page.format, page.split_position) }}
       >
         {Array.from({ length: slotCount }, (_, i) => {
           const uid = getSlotPhotoUid(page, i);
+          const textContent = getSlotTextContent(page, i);
+          const { cropX, cropY, cropScale } = getSlotCrop(page, i);
           const info = uid ? photoInfo[uid] : undefined;
           return (
             <PreviewPageSlot
               key={i}
               photoUid={uid}
+              textContent={textContent}
               description={info?.description ?? ''}
               note={info?.note ?? ''}
+              cropX={cropX}
+              cropY={cropY}
+              cropScale={cropScale}
               className={getSlotClasses(page.format, i)}
             />
           );

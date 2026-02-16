@@ -108,13 +108,13 @@ type EraEmbeddingWriter interface {
 type BookReader interface {
 	GetBook(ctx context.Context, id string) (*PhotoBook, error)
 	ListBooks(ctx context.Context) ([]PhotoBook, error)
+	ListBooksWithCounts(ctx context.Context) ([]PhotoBookWithCounts, error)
 	GetSections(ctx context.Context, bookID string) ([]BookSection, error)
 	GetSectionPhotos(ctx context.Context, sectionID string) ([]SectionPhoto, error)
 	CountSectionPhotos(ctx context.Context, sectionID string) (int, error)
 	GetPages(ctx context.Context, bookID string) ([]BookPage, error)
 	GetPage(ctx context.Context, pageID string) (*BookPage, error)
 	GetPageSlots(ctx context.Context, pageID string) ([]PageSlot, error)
-	GetAllPageSlots(ctx context.Context, bookID string) ([]PageSlot, error)
 	GetPhotoBookMemberships(ctx context.Context, photoUID string) ([]PhotoBookMembership, error)
 }
 
@@ -136,7 +136,9 @@ type BookWriter interface {
 	DeletePage(ctx context.Context, id string) error
 	ReorderPages(ctx context.Context, bookID string, pageIDs []string) error
 	AssignSlot(ctx context.Context, pageID string, slotIndex int, photoUID string) error
+	AssignTextSlot(ctx context.Context, pageID string, slotIndex int, textContent string) error
 	ClearSlot(ctx context.Context, pageID string, slotIndex int) error
 	SwapSlots(ctx context.Context, pageID string, slotA int, slotB int) error
+	UpdateSlotCrop(ctx context.Context, pageID string, slotIndex int, cropX, cropY, cropScale float64) error
 }
 

@@ -1474,6 +1474,385 @@ interface UsageInfo {
 }
 ```
 
+---
+
+## Photo Books
+
+**Page `style` field:** Each page has a `style` field (`"modern"` or `"archival"`, default `"modern"`). Set via `POST /books/{id}/pages` (`{ format, section_id, style? }`) or `PUT /pages/{id}` (`{ style }`).
+
+**Page `split_position` field:** For `2l_1p` and `1p_2l` formats, the `split_position` field (0.0-1.0, default 0.5) controls the column split ratio between landscape and portrait slots. Set via `POST /books/{id}/pages` (`{ format, section_id, split_position? }`) or `PUT /pages/{id}` (`{ split_position }`).
+
+**Slot crop control:** Each photo slot has `crop_x` and `crop_y` fields (0.0-1.0, default 0.5) that control the crop center position, and a `crop_scale` field (0.1-1.0, default 1.0) that controls the zoom level (1.0 = fill one axis, lower = zoom in). Use `PUT /pages/{id}/slots/{index}/crop` to adjust.
+
+### Books CRUD
+
+#### List Books
+
+```
+GET /books
+```
+
+Returns all photo books.
+
+#### Create Book
+
+```
+POST /books
+```
+
+**Request:**
+```json
+{
+  "title": "My Photo Book"
+}
+```
+
+#### Get Book
+
+```
+GET /books/{id}
+```
+
+Returns book details with sections and pages.
+
+#### Update Book
+
+```
+PUT /books/{id}
+```
+
+**Request:**
+```json
+{
+  "title": "Updated Title",
+  "description": "Updated description"
+}
+```
+
+#### Delete Book
+
+```
+DELETE /books/{id}
+```
+
+Deletes the book and all associated sections, pages, and slots (cascades).
+
+### Sections
+
+#### Create Section
+
+```
+POST /books/{id}/sections
+```
+
+**Request:**
+```json
+{
+  "title": "Childhood"
+}
+```
+
+#### Update Section
+
+```
+PUT /sections/{id}
+```
+
+**Request:**
+```json
+{
+  "title": "Updated Section Title"
+}
+```
+
+#### Reorder Sections
+
+```
+PUT /books/{id}/sections/reorder
+```
+
+**Request:**
+```json
+{
+  "ids": ["section-uuid-1", "section-uuid-2", "section-uuid-3"]
+}
+```
+
+#### Delete Section
+
+```
+DELETE /sections/{id}
+```
+
+### Section Photos
+
+#### Get Section Photos
+
+```
+GET /sections/{id}/photos
+```
+
+#### Add Photos to Section
+
+```
+POST /sections/{id}/photos
+```
+
+**Request:**
+```json
+{
+  "photo_uids": ["pq8abc123", "pq8def456"]
+}
+```
+
+#### Remove Photos from Section
+
+```
+DELETE /sections/{id}/photos
+```
+
+**Request:**
+```json
+{
+  "photo_uids": ["pq8abc123"]
+}
+```
+
+#### Update Photo Description
+
+```
+PUT /sections/{id}/photos/{photoUid}/description
+```
+
+**Request:**
+```json
+{
+  "description": "Caption for print",
+  "note": "Internal note"
+}
+```
+
+### Pages
+
+#### Create Page
+
+```
+POST /books/{id}/pages
+```
+
+**Request:**
+```json
+{
+  "format": "4_landscape",
+  "section_id": "section-uuid",
+  "style": "modern",
+  "split_position": 0.5
+}
+```
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `format` | string | Yes | - | `4_landscape`, `2l_1p`, `1p_2l`, `2_portrait`, `1_fullscreen` |
+| `section_id` | string | No | null | Section UUID |
+| `style` | string | No | `modern` | `modern` or `archival` |
+| `split_position` | float | No | 0.5 | Column split ratio (0.0-1.0) for `2l_1p`/`1p_2l` formats |
+
+#### Update Page
+
+```
+PUT /pages/{id}
+```
+
+**Request:**
+```json
+{
+  "format": "2l_1p",
+  "section_id": "section-uuid",
+  "description": "Page title",
+  "style": "archival",
+  "split_position": 0.6
+}
+```
+
+All fields are optional.
+
+#### Reorder Pages
+
+```
+PUT /books/{id}/pages/reorder
+```
+
+**Request:**
+```json
+{
+  "ids": ["page-uuid-1", "page-uuid-2", "page-uuid-3"]
+}
+```
+
+#### Delete Page
+
+```
+DELETE /pages/{id}
+```
+
+### Slots
+
+#### Assign Photo to Slot
+
+```
+PUT /pages/{id}/slots/{index}
+```
+
+**Request:**
+```json
+{
+  "photo_uid": "pq8abc123"
+}
+```
+
+#### Assign Text to Slot
+
+```
+PUT /pages/{id}/slots/{index}
+```
+
+**Request:**
+```json
+{
+  "text_content": "# Heading\n\nParagraph text"
+}
+```
+
+#### Update Slot Crop Position
+
+```
+PUT /pages/{id}/slots/{index}/crop
+```
+
+**Request:**
+```json
+{
+  "crop_x": 0.4,
+  "crop_y": 0.6,
+  "crop_scale": 0.5
+}
+```
+
+| Field | Type | Required | Range | Description |
+|-------|------|----------|-------|-------------|
+| `crop_x` | float | Yes | 0.0-1.0 | Horizontal crop center (0.0 = left, 1.0 = right) |
+| `crop_y` | float | Yes | 0.0-1.0 | Vertical crop center (0.0 = top, 1.0 = bottom) |
+| `crop_scale` | float | No | 0.1-1.0 | Zoom level (1.0 = fill one axis, lower = zoom in). Defaults to 1.0 if omitted. |
+
+**Response (200):**
+```json
+{
+  "success": true
+}
+```
+
+#### Swap Slots
+
+```
+POST /pages/{id}/slots/swap
+```
+
+**Request:**
+```json
+{
+  "slot_a": 0,
+  "slot_b": 2
+}
+```
+
+Atomically swaps both photo assignments, crop positions, and crop scales.
+
+#### Clear Slot
+
+```
+DELETE /pages/{id}/slots/{index}
+```
+
+Removes photo/text assignment and resets crop to defaults (0.5, 0.5, scale 1.0).
+
+### PDF Export
+
+#### Export Book as PDF
+
+```
+GET /books/{id}/export-pdf
+```
+
+Generates and downloads a print-ready A4 landscape PDF of the book. Features include:
+- 12-column grid layout with 3 fixed page zones (header/canvas/footer)
+- Asymmetric mirrored margins for binding (inside 20mm, outside 12mm)
+- Running headers: section title (verso), page description (recto)
+- Numbered footer captions with marker overlays on multi-photo pages
+- Modern (full-bleed) and archival (mat border/inset) photo styles per page
+- Adjustable column split for mixed landscape/portrait formats
+- Per-photo crop control for fine-tuned framing
+- Section divider pages (24pt bold centered title)
+- Text slots with auto-detected types (T1 explanation, T2 fact box, T3 oral history)
+- Czech typography via polyglossia + EBGaramond font
+- Effective DPI computation for print quality analysis
+
+**Query Parameters:**
+
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| `format` | `report` | Return JSON export report instead of PDF binary |
+| `format` | `test` | Generate diagnostic test PDF (layout grid, font samples) |
+| `format` | `debug` | Generate real book PDF with debug overlay (grid lines, slot borders) |
+
+**Response (200 — default):** Binary PDF file with headers:
+- `Content-Type: application/pdf`
+- `Content-Disposition: attachment; filename="<book-title>.pdf"`
+- `X-Export-Warnings: <count>` (only present when there are DPI warnings)
+
+**Response (200 — `?format=report`):**
+```json
+{
+  "book_title": "My Book",
+  "page_count": 12,
+  "photo_count": 25,
+  "pages": [
+    {
+      "page_number": 1,
+      "format": "divider",
+      "section_title": "Childhood",
+      "is_divider": true
+    },
+    {
+      "page_number": 2,
+      "format": "4_landscape",
+      "section_title": "Childhood",
+      "title": "Summer 1995",
+      "is_divider": false,
+      "photos": [
+        {
+          "photo_uid": "ps12345",
+          "slot_index": 0,
+          "effective_dpi": 312.5,
+          "low_res": false
+        }
+      ]
+    }
+  ],
+  "warnings": [
+    "Page 5, slot 0 (ps67890): effective DPI 142 is below 200"
+  ]
+}
+```
+
+**Error Responses:**
+| Status | Description |
+|--------|-------------|
+| 404 | Book not found |
+| 500 | PDF generation failed (LaTeX error, photo download error) |
+| 503 | `lualatex` not installed on server |
+
+---
+
 ### ProcessJobResult
 
 ```typescript

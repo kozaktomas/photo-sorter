@@ -38,7 +38,7 @@ function SortablePageItem({ page, globalIndex, isSelected, onSelect, onDelete, i
   const { over } = useDndContext();
   const isOver = over?.id === page.id;
   const style = { transform: CSS.Transform.toString(transform), transition };
-  const filledSlots = page.slots.filter(s => s.photo_uid).length;
+  const filledSlots = page.slots.filter(s => s.photo_uid || s.text_content).length;
   const totalSlots = pageFormatSlotCount(page.format);
   const isComplete = filledSlots === totalSlots && totalSlots > 0;
   const hasEmptySlots = filledSlots < totalSlots;

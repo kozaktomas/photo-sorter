@@ -264,7 +264,7 @@ internal/database/
     └── migrations/     # SQL migrations 001-011 (embedded)
 ```
 
-**Tables:** `embeddings` (768-dim CLIP), `faces` (512-dim ResNet100 with cached PhotoPrism marker data), `era_embeddings` (768-dim CLIP text centroids), `faces_processed` (tracking), `sessions`, `photo_books`, `book_sections`, `section_photos`, `book_pages`, `page_slots`.
+**Tables:** `embeddings` (768-dim CLIP), `faces` (512-dim ResNet100 with cached PhotoPrism marker data), `era_embeddings` (768-dim CLIP text centroids), `faces_processed` (tracking), `sessions`, `photo_books`, `book_sections`, `section_photos`, `book_pages` (with `split_position` for adjustable column splits in mixed formats), `page_slots` (with `text_content` for text-only slots, `crop_x`/`crop_y`/`crop_scale` for per-photo crop control, mutually exclusive with `photo_uid`).
 
 **Face name normalization:** `GetFacesBySubjectName` normalizes names via `facematch.NormalizePersonName` (remove diacritics, lowercase, dashes→spaces) using the `unaccent` PostgreSQL extension.
 
@@ -401,11 +401,13 @@ Sessions are persisted to PostgreSQL (`sessions` table) for survival across serv
 - `PUT /api/v1/sections/{id}/photos/{photoUid}/description` - Update section photo (description, note)
 - `POST /api/v1/books/{id}/pages` - Create page in a book
 - `PUT /api/v1/books/{id}/pages/reorder` - Reorder pages
-- `PUT /api/v1/pages/{id}` - Update page (format, section, description)
+- `PUT /api/v1/pages/{id}` - Update page (format, section, description, split_position)
 - `DELETE /api/v1/pages/{id}` - Delete page
-- `PUT /api/v1/pages/{id}/slots/{index}` - Assign photo to page slot
+- `PUT /api/v1/pages/{id}/slots/{index}` - Assign photo or text to page slot (`{ photo_uid }` or `{ text_content }`)
+- `PUT /api/v1/pages/{id}/slots/{index}/crop` - Update crop for a slot (`{ crop_x, crop_y, crop_scale? }`, position 0.0-1.0, scale 0.1-1.0)
 - `POST /api/v1/pages/{id}/slots/swap` - Swap two slots atomically (`{ slot_a, slot_b }`)
 - `DELETE /api/v1/pages/{id}/slots/{index}` - Clear page slot
+- `GET /api/v1/books/{id}/export-pdf` - Export book as PDF (requires lualatex)
 
 **Frontend Structure:**
 ```
@@ -507,9 +509,9 @@ internal/web/handlers/
 
 **Photo Book Database:**
 
-Tables: `photo_books`, `book_sections`, `section_photos`, `book_pages`, `page_slots` (migration 008, extended by 009-011).
+Tables: `photo_books`, `book_sections`, `section_photos`, `book_pages`, `page_slots` (migration 008, extended by 009-013, 015, plus crop/split features). Slots hold either `photo_uid` or `text_content` (mutually exclusive via CHECK constraint) with `crop_x`/`crop_y` for crop positioning (0.0-1.0, default 0.5) and `crop_scale` for zoom level (0.1-1.0, default 1.0). Pages have a `style` field (`modern`/`archival`, migration 013) and `split_position` for adjustable column splits in `2l_1p`/`1p_2l` formats (0.2-0.8, default 0.5).
 
-Page formats: `4_landscape` (4 slots), `2l_1p` (3 slots), `1p_2l` (3 slots), `2_portrait` (2 slots), `1_fullscreen` (1 slot).
+Page formats: `4_landscape` (4 slots), `2l_1p` (3 slots), `1p_2l` (3 slots), `2_portrait` (2 slots), `1_fullscreen` (1 slot). Layout uses a 12-column grid with 3 fixed zones (header 4mm / canvas 172mm / footer 8mm) and asymmetric margins (inside 20mm / outside 12mm). Mixed formats support adjustable split position via `split_position`.
 
 **PhotoPrism Client Middleware:**
 

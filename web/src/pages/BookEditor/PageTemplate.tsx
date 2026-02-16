@@ -1,8 +1,8 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PageSlotComponent } from './PageSlot';
-import type { BookPage, SectionPhoto, PageFormat } from '../../types';
-import { pageFormatSlotCount, getGridClasses, getSlotClasses, getSlotPhotoUid } from '../../utils/pageFormats';
+import type { BookPage, SectionPhoto, PageFormat, PageStyle } from '../../types';
+import { pageFormatSlotCount, getGridClasses, getGridColumnStyle, getSlotClasses, getSlotPhotoUid, getSlotTextContent, getSlotCrop, isMultiColumn, defaultSplitPosition } from '../../utils/pageFormats';
 
 const ALL_PAGE_FORMATS: PageFormat[] = ['4_landscape', '2l_1p', '1p_2l', '2_portrait', '1_fullscreen'];
 
@@ -21,9 +21,14 @@ interface Props {
   onEditDescription?: (photoUid: string) => void;
   onUpdatePageDescription?: (desc: string) => void;
   onChangeFormat?: (format: PageFormat) => void;
+  onChangeStyle?: (style: PageStyle) => void;
+  onEditText?: (slotIndex: number) => void;
+  onAddText?: (slotIndex: number) => void;
+  onEditCrop?: (slotIndex: number) => void;
+  onChangeSplitPosition?: (split: number | null) => void;
 }
 
-export function PageTemplate({ page, onClearSlot, sectionPhotos, onEditDescription, onUpdatePageDescription, onChangeFormat }: Props) {
+export function PageTemplate({ page, onClearSlot, sectionPhotos, onEditDescription, onUpdatePageDescription, onChangeFormat, onChangeStyle, onEditText, onAddText, onEditCrop, onChangeSplitPosition }: Props) {
   const { t } = useTranslation('pages');
   const slotCount = pageFormatSlotCount(page.format);
   const gridClasses = getGridClasses(page.format);
@@ -79,28 +84,71 @@ export function PageTemplate({ page, onClearSlot, sectionPhotos, onEditDescripti
         </div>
       )}
 
-      {/* Format selector */}
-      {onChangeFormat && (
-        <div className="mb-2 flex items-center gap-2">
-          <label className="text-xs text-slate-400">{t('books.editor.pageFormat')}</label>
-          <select
-            value={page.format}
-            onChange={(e) => onChangeFormat(e.target.value as PageFormat)}
-            className="px-2 py-1 bg-slate-900 border border-slate-600 rounded text-sm text-white focus:outline-none focus:ring-1 focus:ring-rose-500"
-          >
-            {ALL_PAGE_FORMATS.map(f => (
-              <option key={f} value={f}>{t(`books.editor.format${formatKeyMap[f]}`)}</option>
-            ))}
-          </select>
+      {/* Format, style, and split selectors */}
+      {(onChangeFormat || onChangeStyle) && (
+        <div className="mb-2 flex items-center gap-4 flex-wrap">
+          {onChangeFormat && (
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-slate-400">{t('books.editor.pageFormat')}</label>
+              <select
+                value={page.format}
+                onChange={(e) => onChangeFormat(e.target.value as PageFormat)}
+                className="px-2 py-1 bg-slate-900 border border-slate-600 rounded text-sm text-white focus:outline-none focus:ring-1 focus:ring-rose-500"
+              >
+                {ALL_PAGE_FORMATS.map(f => (
+                  <option key={f} value={f}>{t(`books.editor.format${formatKeyMap[f]}`)}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          {onChangeStyle && (
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-slate-400">{t('books.editor.pageStyle')}</label>
+              <select
+                value={page.style || 'modern'}
+                onChange={(e) => onChangeStyle(e.target.value as PageStyle)}
+                className="px-2 py-1 bg-slate-900 border border-slate-600 rounded text-sm text-white focus:outline-none focus:ring-1 focus:ring-rose-500"
+              >
+                <option value="modern">{t('books.editor.styleModern')}</option>
+                <option value="archival">{t('books.editor.styleArchival')}</option>
+              </select>
+            </div>
+          )}
+          {onChangeSplitPosition && isMultiColumn(page.format) && (
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-slate-400">{t('books.editor.splitPosition')}</label>
+              <input
+                type="range"
+                min={20}
+                max={80}
+                value={Math.round((page.split_position ?? defaultSplitPosition(page.format)) * 100)}
+                onChange={(e) => onChangeSplitPosition(parseInt(e.target.value) / 100)}
+                className="w-24 h-1 accent-rose-500"
+              />
+              <span className="text-xs text-slate-500 w-8">
+                {Math.round((page.split_position ?? defaultSplitPosition(page.format)) * 100)}%
+              </span>
+              {page.split_position !== null && (
+                <button
+                  onClick={() => onChangeSplitPosition(null)}
+                  className="text-xs text-slate-500 hover:text-white transition-colors"
+                >
+                  {t('books.editor.resetSplit')}
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
 
       <div
         className={`${gridClasses} gap-2 bg-slate-950 border border-slate-700 rounded-lg p-3`}
-        style={{ aspectRatio: '4/3' }}
+        style={{ aspectRatio: '297/210', ...getGridColumnStyle(page.format, page.split_position) }}
       >
         {Array.from({ length: slotCount }, (_, i) => {
           const uid = getSlotPhotoUid(page, i);
+          const textContent = getSlotTextContent(page, i);
+          const { cropX, cropY, cropScale } = getSlotCrop(page, i);
           const sp = uid ? photoLookup.get(uid) : undefined;
           return (
             <PageSlotComponent
@@ -108,10 +156,17 @@ export function PageTemplate({ page, onClearSlot, sectionPhotos, onEditDescripti
               pageId={page.id}
               slotIndex={i}
               photoUid={uid}
+              textContent={textContent}
+              cropX={cropX}
+              cropY={cropY}
+              cropScale={cropScale}
               onClear={() => onClearSlot(i)}
+              onEditCrop={uid && onEditCrop ? () => onEditCrop(i) : undefined}
               description={sp?.description ?? ''}
               note={sp?.note ?? ''}
               onEditDescription={uid && onEditDescription ? () => onEditDescription(uid) : undefined}
+              onEditText={textContent && onEditText ? () => onEditText(i) : undefined}
+              onAddText={!uid && !textContent && onAddText ? () => onAddText(i) : undefined}
               className={getSlotClasses(page.format, i)}
             />
           );

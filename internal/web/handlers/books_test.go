@@ -1091,7 +1091,7 @@ func TestBooksHandler_AssignSlot_MissingPhotoUID(t *testing.T) {
 	handler.AssignSlot(recorder, req)
 
 	assertStatusCode(t, recorder, http.StatusBadRequest)
-	assertJSONError(t, recorder, "photo_uid is required")
+	assertJSONError(t, recorder, "photo_uid or text_content is required")
 }
 
 func TestBooksHandler_AssignSlot_InvalidJSON(t *testing.T) {
@@ -1305,4 +1305,350 @@ func TestBooksHandler_WriterNotAvailable(t *testing.T) {
 
 	assertStatusCode(t, recorder, http.StatusInternalServerError)
 	assertJSONError(t, recorder, "book storage not available")
+}
+
+// --- Page Style Tests ---
+
+func TestBooksHandler_CreatePage_WithStyle(t *testing.T) {
+	_, handler := setupBookTest(t)
+
+	body := bytes.NewBufferString(`{"format":"4_landscape","section_id":"s1","style":"archival"}`)
+	req := httptest.NewRequest("POST", "/api/v1/books/b1/pages", body)
+	req.Header.Set("Content-Type", "application/json")
+	req = requestWithChiParams(req, map[string]string{"id": "b1"})
+	recorder := httptest.NewRecorder()
+	handler.CreatePage(recorder, req)
+
+	assertStatusCode(t, recorder, http.StatusCreated)
+
+	var resp pageResponse
+	parseJSONResponse(t, recorder, &resp)
+	if resp.Style != "archival" {
+		t.Errorf("expected style 'archival', got '%s'", resp.Style)
+	}
+}
+
+func TestBooksHandler_CreatePage_InvalidStyle(t *testing.T) {
+	_, handler := setupBookTest(t)
+
+	body := bytes.NewBufferString(`{"format":"4_landscape","section_id":"s1","style":"vintage"}`)
+	req := httptest.NewRequest("POST", "/api/v1/books/b1/pages", body)
+	req.Header.Set("Content-Type", "application/json")
+	req = requestWithChiParams(req, map[string]string{"id": "b1"})
+	recorder := httptest.NewRecorder()
+	handler.CreatePage(recorder, req)
+
+	assertStatusCode(t, recorder, http.StatusBadRequest)
+	assertJSONError(t, recorder, "style must be 'modern' or 'archival'")
+}
+
+func TestBooksHandler_UpdatePage_Style(t *testing.T) {
+	mockBW, handler := setupBookTest(t)
+	mockBW.AddPage(database.BookPage{ID: "p1", BookID: "b1", SectionID: "s1", Format: "4_landscape", Style: "modern"})
+
+	body := bytes.NewBufferString(`{"style":"archival"}`)
+	req := httptest.NewRequest("PUT", "/api/v1/pages/p1", body)
+	req.Header.Set("Content-Type", "application/json")
+	req = requestWithChiParams(req, map[string]string{"id": "p1"})
+	recorder := httptest.NewRecorder()
+	handler.UpdatePage(recorder, req)
+
+	assertStatusCode(t, recorder, http.StatusOK)
+
+	page, _ := mockBW.GetPage(context.TODO(), "p1")
+	if page.Style != "archival" {
+		t.Errorf("expected style 'archival', got '%s'", page.Style)
+	}
+}
+
+func TestBooksHandler_UpdatePage_InvalidStyle(t *testing.T) {
+	mockBW, handler := setupBookTest(t)
+	mockBW.AddPage(database.BookPage{ID: "p1", BookID: "b1", SectionID: "s1", Format: "4_landscape", Style: "modern"})
+
+	body := bytes.NewBufferString(`{"style":"vintage"}`)
+	req := httptest.NewRequest("PUT", "/api/v1/pages/p1", body)
+	req.Header.Set("Content-Type", "application/json")
+	req = requestWithChiParams(req, map[string]string{"id": "p1"})
+	recorder := httptest.NewRecorder()
+	handler.UpdatePage(recorder, req)
+
+	assertStatusCode(t, recorder, http.StatusBadRequest)
+	assertJSONError(t, recorder, "style must be 'modern' or 'archival'")
+}
+
+func TestBooksHandler_GetBook_PageStyleInResponse(t *testing.T) {
+	mockBW, handler := setupBookTest(t)
+	now := time.Date(2025, 1, 15, 10, 0, 0, 0, time.UTC)
+	mockBW.AddBook(database.PhotoBook{ID: "b1", Title: "Test Book", CreatedAt: now, UpdatedAt: now})
+	mockBW.AddSection(database.BookSection{ID: "s1", BookID: "b1", Title: "Sec 1"})
+	mockBW.AddPage(database.BookPage{ID: "p1", BookID: "b1", SectionID: "s1", Format: "4_landscape", Style: "archival"})
+
+	req := httptest.NewRequest("GET", "/api/v1/books/b1", nil)
+	req = requestWithChiParams(req, map[string]string{"id": "b1"})
+	recorder := httptest.NewRecorder()
+	handler.GetBook(recorder, req)
+
+	assertStatusCode(t, recorder, http.StatusOK)
+
+	var resp bookDetailResponse
+	parseJSONResponse(t, recorder, &resp)
+	if len(resp.Pages) != 1 {
+		t.Fatalf("expected 1 page, got %d", len(resp.Pages))
+	}
+	if resp.Pages[0].Style != "archival" {
+		t.Errorf("expected style 'archival' in response, got '%s'", resp.Pages[0].Style)
+	}
+}
+
+// --- UpdateSlotCrop ---
+
+func TestBooksHandler_UpdateSlotCrop_Success(t *testing.T) {
+	mockBW, handler := setupBookTest(t)
+	mockBW.AddPage(database.BookPage{ID: "p1", BookID: "b1", Format: "4_landscape"})
+	mockBW.SetPageSlots("p1", []database.PageSlot{{SlotIndex: 0, PhotoUID: "photo1", CropX: 0.5, CropY: 0.5, CropScale: 1.0}})
+
+	body := bytes.NewBufferString(`{"crop_x":0.3,"crop_y":0.7,"crop_scale":0.8}`)
+	req := httptest.NewRequest("PUT", "/api/v1/pages/p1/slots/0/crop", body)
+	req.Header.Set("Content-Type", "application/json")
+	req = requestWithChiParams(req, map[string]string{"id": "p1", "index": "0"})
+	recorder := httptest.NewRecorder()
+	handler.UpdateSlotCrop(recorder, req)
+
+	assertStatusCode(t, recorder, http.StatusOK)
+
+	var resp map[string]bool
+	parseJSONResponse(t, recorder, &resp)
+	if !resp["updated"] {
+		t.Error("expected updated=true")
+	}
+}
+
+func TestBooksHandler_UpdateSlotCrop_InvalidValues(t *testing.T) {
+	_, handler := setupBookTest(t)
+
+	tests := []struct {
+		name string
+		body string
+		msg  string
+	}{
+		{"crop_x too low", `{"crop_x":-0.1,"crop_y":0.5}`, "crop_x and crop_y must be between 0.0 and 1.0"},
+		{"crop_x too high", `{"crop_x":1.1,"crop_y":0.5}`, "crop_x and crop_y must be between 0.0 and 1.0"},
+		{"crop_y too low", `{"crop_x":0.5,"crop_y":-0.1}`, "crop_x and crop_y must be between 0.0 and 1.0"},
+		{"crop_y too high", `{"crop_x":0.5,"crop_y":1.1}`, "crop_x and crop_y must be between 0.0 and 1.0"},
+		{"crop_scale too low", `{"crop_x":0.5,"crop_y":0.5,"crop_scale":0.05}`, "crop_scale must be between 0.1 and 1.0"},
+		{"crop_scale too high", `{"crop_x":0.5,"crop_y":0.5,"crop_scale":1.5}`, "crop_scale must be between 0.1 and 1.0"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := bytes.NewBufferString(tt.body)
+			req := httptest.NewRequest("PUT", "/api/v1/pages/p1/slots/0/crop", body)
+			req.Header.Set("Content-Type", "application/json")
+			req = requestWithChiParams(req, map[string]string{"id": "p1", "index": "0"})
+			recorder := httptest.NewRecorder()
+			handler.UpdateSlotCrop(recorder, req)
+
+			assertStatusCode(t, recorder, http.StatusBadRequest)
+			assertJSONError(t, recorder, tt.msg)
+		})
+	}
+}
+
+func TestBooksHandler_UpdateSlotCrop_InvalidSlotIndex(t *testing.T) {
+	_, handler := setupBookTest(t)
+
+	body := bytes.NewBufferString(`{"crop_x":0.5,"crop_y":0.5}`)
+	req := httptest.NewRequest("PUT", "/api/v1/pages/p1/slots/abc/crop", body)
+	req.Header.Set("Content-Type", "application/json")
+	req = requestWithChiParams(req, map[string]string{"id": "p1", "index": "abc"})
+	recorder := httptest.NewRecorder()
+	handler.UpdateSlotCrop(recorder, req)
+
+	assertStatusCode(t, recorder, http.StatusBadRequest)
+	assertJSONError(t, recorder, "invalid slot index")
+}
+
+func TestBooksHandler_UpdateSlotCrop_InvalidJSON(t *testing.T) {
+	_, handler := setupBookTest(t)
+
+	body := bytes.NewBufferString(`{invalid}`)
+	req := httptest.NewRequest("PUT", "/api/v1/pages/p1/slots/0/crop", body)
+	req.Header.Set("Content-Type", "application/json")
+	req = requestWithChiParams(req, map[string]string{"id": "p1", "index": "0"})
+	recorder := httptest.NewRecorder()
+	handler.UpdateSlotCrop(recorder, req)
+
+	assertStatusCode(t, recorder, http.StatusBadRequest)
+	assertJSONError(t, recorder, "invalid request body")
+}
+
+func TestBooksHandler_UpdateSlotCrop_BackendError(t *testing.T) {
+	mockBW, handler := setupBookTest(t)
+	mockBW.UpdateSlotCropError = errMock
+
+	body := bytes.NewBufferString(`{"crop_x":0.5,"crop_y":0.5}`)
+	req := httptest.NewRequest("PUT", "/api/v1/pages/p1/slots/0/crop", body)
+	req.Header.Set("Content-Type", "application/json")
+	req = requestWithChiParams(req, map[string]string{"id": "p1", "index": "0"})
+	recorder := httptest.NewRecorder()
+	handler.UpdateSlotCrop(recorder, req)
+
+	assertStatusCode(t, recorder, http.StatusInternalServerError)
+	assertJSONError(t, recorder, "failed to update slot crop")
+}
+
+func TestBooksHandler_UpdateSlotCrop_BoundaryValues(t *testing.T) {
+	_, handler := setupBookTest(t)
+
+	// All boundary values should pass validation
+	tests := []struct {
+		name string
+		body string
+	}{
+		{"min crop", `{"crop_x":0.0,"crop_y":0.0,"crop_scale":0.1}`},
+		{"max crop", `{"crop_x":1.0,"crop_y":1.0,"crop_scale":1.0}`},
+		{"center", `{"crop_x":0.5,"crop_y":0.5}`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := bytes.NewBufferString(tt.body)
+			req := httptest.NewRequest("PUT", "/api/v1/pages/p1/slots/0/crop", body)
+			req.Header.Set("Content-Type", "application/json")
+			req = requestWithChiParams(req, map[string]string{"id": "p1", "index": "0"})
+			recorder := httptest.NewRecorder()
+			handler.UpdateSlotCrop(recorder, req)
+
+			assertStatusCode(t, recorder, http.StatusOK)
+		})
+	}
+}
+
+// --- AssignSlot text_content ---
+
+func TestBooksHandler_AssignSlot_TextContent(t *testing.T) {
+	_, handler := setupBookTest(t)
+
+	body := bytes.NewBufferString(`{"text_content":"Hello, this is some text for the page."}`)
+	req := httptest.NewRequest("PUT", "/api/v1/pages/p1/slots/0", body)
+	req.Header.Set("Content-Type", "application/json")
+	req = requestWithChiParams(req, map[string]string{"id": "p1", "index": "0"})
+	recorder := httptest.NewRecorder()
+	handler.AssignSlot(recorder, req)
+
+	assertStatusCode(t, recorder, http.StatusOK)
+
+	var resp map[string]bool
+	parseJSONResponse(t, recorder, &resp)
+	if !resp["assigned"] {
+		t.Error("expected assigned=true")
+	}
+}
+
+func TestBooksHandler_AssignSlot_BothPhotoAndText(t *testing.T) {
+	_, handler := setupBookTest(t)
+
+	body := bytes.NewBufferString(`{"photo_uid":"photo1","text_content":"some text"}`)
+	req := httptest.NewRequest("PUT", "/api/v1/pages/p1/slots/0", body)
+	req.Header.Set("Content-Type", "application/json")
+	req = requestWithChiParams(req, map[string]string{"id": "p1", "index": "0"})
+	recorder := httptest.NewRecorder()
+	handler.AssignSlot(recorder, req)
+
+	assertStatusCode(t, recorder, http.StatusBadRequest)
+	assertJSONError(t, recorder, "slot must have either photo_uid or text_content, not both")
+}
+
+// --- UpdatePage split_position ---
+
+func TestBooksHandler_UpdatePage_SplitPosition(t *testing.T) {
+	t.Run("set split_position", func(t *testing.T) {
+		mockBW, handler := setupBookTest(t)
+		mockBW.AddPage(database.BookPage{ID: "p1", BookID: "b1", SectionID: "s1", Format: "2l_1p"})
+
+		body := bytes.NewBufferString(`{"split_position":0.6}`)
+		req := httptest.NewRequest("PUT", "/api/v1/pages/p1", body)
+		req.Header.Set("Content-Type", "application/json")
+		req = requestWithChiParams(req, map[string]string{"id": "p1"})
+		recorder := httptest.NewRecorder()
+		handler.UpdatePage(recorder, req)
+
+		assertStatusCode(t, recorder, http.StatusOK)
+
+		page, _ := mockBW.GetPage(context.Background(), "p1")
+		if page.SplitPosition == nil || *page.SplitPosition != 0.6 {
+			t.Errorf("expected split_position 0.6, got %v", page.SplitPosition)
+		}
+	})
+
+	t.Run("clear split_position with null", func(t *testing.T) {
+		mockBW, handler := setupBookTest(t)
+		sp := 0.6
+		mockBW.AddPage(database.BookPage{ID: "p1", BookID: "b1", SectionID: "s1", Format: "2l_1p", SplitPosition: &sp})
+
+		body := bytes.NewBufferString(`{"split_position":null}`)
+		req := httptest.NewRequest("PUT", "/api/v1/pages/p1", body)
+		req.Header.Set("Content-Type", "application/json")
+		req = requestWithChiParams(req, map[string]string{"id": "p1"})
+		recorder := httptest.NewRecorder()
+		handler.UpdatePage(recorder, req)
+
+		assertStatusCode(t, recorder, http.StatusOK)
+
+		page, _ := mockBW.GetPage(context.Background(), "p1")
+		if page.SplitPosition != nil {
+			t.Errorf("expected nil split_position, got %v", *page.SplitPosition)
+		}
+	})
+
+	t.Run("invalid split_position below 0.2", func(t *testing.T) {
+		mockBW, handler := setupBookTest(t)
+		mockBW.AddPage(database.BookPage{ID: "p1", BookID: "b1", SectionID: "s1", Format: "2l_1p"})
+
+		body := bytes.NewBufferString(`{"split_position":0.1}`)
+		req := httptest.NewRequest("PUT", "/api/v1/pages/p1", body)
+		req.Header.Set("Content-Type", "application/json")
+		req = requestWithChiParams(req, map[string]string{"id": "p1"})
+		recorder := httptest.NewRecorder()
+		handler.UpdatePage(recorder, req)
+
+		assertStatusCode(t, recorder, http.StatusBadRequest)
+		assertJSONError(t, recorder, "split_position must be between 0.2 and 0.8")
+	})
+
+	t.Run("invalid split_position above 0.8", func(t *testing.T) {
+		mockBW, handler := setupBookTest(t)
+		mockBW.AddPage(database.BookPage{ID: "p1", BookID: "b1", SectionID: "s1", Format: "2l_1p"})
+
+		body := bytes.NewBufferString(`{"split_position":0.9}`)
+		req := httptest.NewRequest("PUT", "/api/v1/pages/p1", body)
+		req.Header.Set("Content-Type", "application/json")
+		req = requestWithChiParams(req, map[string]string{"id": "p1"})
+		recorder := httptest.NewRecorder()
+		handler.UpdatePage(recorder, req)
+
+		assertStatusCode(t, recorder, http.StatusBadRequest)
+		assertJSONError(t, recorder, "split_position must be between 0.2 and 0.8")
+	})
+
+	t.Run("boundary values pass", func(t *testing.T) {
+		mockBW, handler := setupBookTest(t)
+		mockBW.AddPage(database.BookPage{ID: "p1", BookID: "b1", SectionID: "s1", Format: "2l_1p"})
+
+		// 0.2 is valid
+		body := bytes.NewBufferString(`{"split_position":0.2}`)
+		req := httptest.NewRequest("PUT", "/api/v1/pages/p1", body)
+		req.Header.Set("Content-Type", "application/json")
+		req = requestWithChiParams(req, map[string]string{"id": "p1"})
+		recorder := httptest.NewRecorder()
+		handler.UpdatePage(recorder, req)
+		assertStatusCode(t, recorder, http.StatusOK)
+
+		// 0.8 is valid
+		body = bytes.NewBufferString(`{"split_position":0.8}`)
+		req = httptest.NewRequest("PUT", "/api/v1/pages/p1", body)
+		req.Header.Set("Content-Type", "application/json")
+		req = requestWithChiParams(req, map[string]string{"id": "p1"})
+		recorder = httptest.NewRecorder()
+		handler.UpdatePage(recorder, req)
+		assertStatusCode(t, recorder, http.StatusOK)
+	})
 }
