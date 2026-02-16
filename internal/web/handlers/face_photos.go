@@ -90,6 +90,14 @@ func (h *FacesHandler) buildDBFaces(ctx context.Context, dbFaces []database.Stor
 	faces := make([]PhotoFace, 0, len(dbFaces))
 	matchedMarkerUIDs := make(map[string]bool)
 
+	// Collect names already assigned on this photo to exclude from suggestions
+	assignedNames := make(map[string]bool)
+	for _, m := range markers {
+		if m.Name != "" && m.SubjUID != "" {
+			assignedNames[m.Name] = true
+		}
+	}
+
 	for _, dbFace := range dbFaces {
 		if len(dbFace.BBox) != 4 {
 			continue
@@ -113,7 +121,7 @@ func (h *FacesHandler) buildDBFaces(ctx context.Context, dbFaces []database.Stor
 			}
 		}
 
-		face.Suggestions = h.findFaceSuggestions(ctx, faceRepo, pp, dbFace.Embedding, threshold, limit, subjectMap)
+		face.Suggestions = h.findFaceSuggestions(ctx, faceRepo, pp, dbFace.Embedding, threshold, limit, subjectMap, assignedNames)
 		faces = append(faces, face)
 	}
 	return faces, matchedMarkerUIDs
@@ -242,8 +250,9 @@ type personMatch struct {
 	photoCount int
 }
 
-// aggregatePersonMatches groups similar faces by person using cached subject data
-func aggregatePersonMatches(similarFaces []database.StoredFace, distances []float64, subjectMap map[string]photoprism.Subject) map[string]*personMatch {
+// aggregatePersonMatches groups similar faces by person using cached subject data.
+// excludeNames, if non-nil, skips faces whose resolved person name is in the set.
+func aggregatePersonMatches(similarFaces []database.StoredFace, distances []float64, subjectMap map[string]photoprism.Subject, excludeNames map[string]bool) map[string]*personMatch {
 	personMatches := make(map[string]*personMatch)
 
 	for i, face := range similarFaces {
@@ -256,6 +265,9 @@ func aggregatePersonMatches(similarFaces []database.StoredFace, distances []floa
 			}
 		}
 		if personName == "" {
+			continue
+		}
+		if excludeNames[personName] {
 			continue
 		}
 
@@ -307,6 +319,7 @@ func personMatchesToSuggestions(personMatches map[string]*personMatch, limit int
 
 // findFaceSuggestions finds people who have similar faces and returns them as suggestions.
 // This version uses cached SubjectName/SubjectUID from StoredFace, making zero API calls.
+// excludeNames, if non-nil, filters out people already assigned on the same photo.
 func (h *FacesHandler) findFaceSuggestions(
 	ctx context.Context,
 	faceRepo database.FaceReader,
@@ -315,6 +328,7 @@ func (h *FacesHandler) findFaceSuggestions(
 	threshold float64,
 	limit int,
 	subjectMap map[string]photoprism.Subject,
+	excludeNames map[string]bool,
 ) []FaceSuggestion {
 	if len(embedding) == 0 {
 		return []FaceSuggestion{}
@@ -325,6 +339,6 @@ func (h *FacesHandler) findFaceSuggestions(
 		return []FaceSuggestion{}
 	}
 
-	personMatches := aggregatePersonMatches(similarFaces, distances, subjectMap)
+	personMatches := aggregatePersonMatches(similarFaces, distances, subjectMap, excludeNames)
 	return personMatchesToSuggestions(personMatches, limit)
 }

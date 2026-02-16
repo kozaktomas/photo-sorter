@@ -3,11 +3,13 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"sync"
 
 	"github.com/kozaktomas/photo-sorter/internal/constants"
 	"github.com/kozaktomas/photo-sorter/internal/database"
+	"github.com/kozaktomas/photo-sorter/internal/photoprism"
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
 
@@ -360,6 +362,34 @@ func extractSourceEmbeddings(sourceFaces []matchSourceData) [][]float32 {
 	return embeddings
 }
 
+// augmentSourcePhotoSet queries PhotoPrism for photos already tagged with the person
+// and adds their UIDs to sourcePhotoSet. This guards against stale local cache where
+// the faces table doesn't have subject_name set, so the photo would be missed.
+func augmentSourcePhotoSet(pp *photoprism.PhotoPrism, subjectUID string, sourcePhotoSet map[string]bool) {
+	if subjectUID == "" {
+		return
+	}
+	subj, err := pp.GetSubject(subjectUID)
+	if err != nil || subj.Slug == "" {
+		return
+	}
+	query := "person:" + subj.Slug
+	const pageSize = 500
+	for offset := 0; ; offset += pageSize {
+		photos, err := pp.GetPhotosWithQuery(pageSize, offset, query, 0)
+		if err != nil || len(photos) == 0 {
+			break
+		}
+		for i := range photos {
+			sourcePhotoSet[photos[i].UID] = true
+		}
+		if len(photos) < pageSize {
+			break
+		}
+	}
+	log.Printf("[face_match] augmented sourcePhotoSet to %d photos for subject %s (%s)", len(sourcePhotoSet), subj.Name, subj.Slug)
+}
+
 // Match finds photos containing a specific person using face embeddings.
 // This version uses cached marker/dimension data from StoredFace, eliminating most API calls.
 func (h *FacesHandler) Match(w http.ResponseWriter, r *http.Request) {
@@ -392,6 +422,7 @@ func (h *FacesHandler) Match(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sourceFaces, sourcePhotoSet := buildMatchSourceData(allPersonFaces)
+	augmentSourcePhotoSet(pp, allPersonFaces[0].SubjectUID, sourcePhotoSet)
 	sourceEmbeddings := extractSourceEmbeddings(sourceFaces)
 
 	if len(sourceEmbeddings) == 0 {
