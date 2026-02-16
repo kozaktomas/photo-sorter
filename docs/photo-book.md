@@ -11,7 +11,7 @@ A tool for organizing photos into a printed landscape photo book with PDF export
 5. **Create pages** — Choose a page format and assign to a section
 6. **Add page descriptions** — Optional text displayed at the top of each page
 7. **Assign photos to slots** — Drag photos from the unassigned pool into page slots
-8. **Adjust crops** — Fine-tune crop position and zoom for each photo slot (drag to reposition, scroll to zoom)
+8. **Adjust crops** — Fine-tune crop position and zoom for each photo slot (drag to reposition, scroll to zoom, drag bottom-right corner handle to resize). Displays live pixel dimensions of the cropped region.
 9. **Adjust split position** — For mixed landscape/portrait formats, adjust the column split ratio
 10. **Add text to slots** — Click "Add text" on empty slots to place text content instead of photos
 11. **Preview** — Review the full book layout with page descriptions and photo captions

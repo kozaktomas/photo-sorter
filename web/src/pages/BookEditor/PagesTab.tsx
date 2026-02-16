@@ -154,7 +154,13 @@ function CropDialog({ photoUid, cropX, cropY, cropScale: initialScale, format, s
   const [naturalSize, setNaturalSize] = useState<{ w: number; h: number } | null>(null);
   const [containerSize, setContainerSize] = useState<{ w: number; h: number }>({ w: 0, h: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
-  const draggingRef = useRef<{ startX: number; startY: number; startCropX: number; startCropY: number } | null>(null);
+  const draggingRef = useRef<{
+    mode: 'move' | 'resize';
+    startX: number; startY: number;
+    startCropX: number; startCropY: number;
+    startScale: number;
+    anchorTopLeftX: number; anchorTopY: number;
+  } | null>(null);
 
   const slotAR = getSlotAspectRatio(format, slotIndex, splitPosition);
 
@@ -218,21 +224,62 @@ function CropDialog({ photoUid, cropX, cropY, cropScale: initialScale, format, s
   const handlePointerDown = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
     e.preventDefault();
     (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    draggingRef.current = { startX: e.clientX, startY: e.clientY, startCropX: x, startCropY: y };
-  }, [x, y]);
+    draggingRef.current = { mode: 'move', startX: e.clientX, startY: e.clientY, startCropX: x, startCropY: y, startScale: scale, anchorTopLeftX: 0, anchorTopY: 0 };
+  }, [x, y, scale]);
+
+  const handleResizePointerDown = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    if (!cropBoxStyle) return;
+    const { left, top } = cropBoxStyle;
+    draggingRef.current = {
+      mode: 'resize',
+      startX: e.clientX, startY: e.clientY,
+      startCropX: x, startCropY: y, startScale: scale,
+      anchorTopLeftX: left, anchorTopY: top,
+    };
+  }, [x, y, scale, cropBoxStyle]);
 
   const handlePointerMove = useCallback((e: ReactPointerEvent<HTMLDivElement>) => {
-    if (!draggingRef.current || !cropBoxStyle) return;
-    const { startX, startY, startCropX, startCropY } = draggingRef.current;
-    const { overflowX, overflowY } = cropBoxStyle;
-    // Use overflow for sensitivity, fall back to a reasonable default
-    const sensX = overflowX > 1 ? overflowX : (layout?.displayW ?? 300);
-    const sensY = overflowY > 1 ? overflowY : (layout?.displayH ?? 200);
+    if (!draggingRef.current || !cropBoxStyle || !layout) return;
+    const drag = draggingRef.current;
+    const dx = e.clientX - drag.startX;
+    const dy = e.clientY - drag.startY;
 
-    const dx = e.clientX - startX;
-    setX(Math.max(0, Math.min(1, startCropX + dx / sensX)));
-    const dy = e.clientY - startY;
-    setY(Math.max(0, Math.min(1, startCropY + dy / sensY)));
+    if (drag.mode === 'move') {
+      const { overflowX, overflowY } = cropBoxStyle;
+      const sensX = overflowX > 1 ? overflowX : layout.displayW;
+      const sensY = overflowY > 1 ? overflowY : layout.displayH;
+      setX(Math.max(0, Math.min(1, drag.startCropX + dx / sensX)));
+      setY(Math.max(0, Math.min(1, drag.startCropY + dy / sensY)));
+    } else {
+      // Resize mode: project mouse delta onto bottom-right diagonal (right+down = bigger)
+      const delta = (dx + dy) / 2;
+      const sensitivity = Math.max(layout.maxBoxW, layout.maxBoxH);
+      const newScale = Math.max(0.1, Math.min(1, drag.startScale + delta / sensitivity));
+
+      const newBoxW = layout.maxBoxW * newScale;
+      const newBoxH = layout.maxBoxH * newScale;
+      const newOverflowX = layout.displayW - newBoxW;
+      const newOverflowY = layout.displayH - newBoxH;
+
+      // Keep top-left corner pinned
+      let newX = drag.startCropX;
+      let newY = drag.startCropY;
+      if (newOverflowX > 1) {
+        newX = (drag.anchorTopLeftX - layout.offsetX) / newOverflowX;
+        newX = Math.max(0, Math.min(1, newX));
+      }
+      if (newOverflowY > 1) {
+        newY = (drag.anchorTopY - layout.offsetY) / newOverflowY;
+        newY = Math.max(0, Math.min(1, newY));
+      }
+
+      setScale(newScale);
+      setX(newX);
+      setY(newY);
+    }
   }, [cropBoxStyle, layout]);
 
   const handlePointerUp = useCallback(() => {
@@ -294,7 +341,15 @@ function CropDialog({ photoUid, cropX, cropY, cropScale: initialScale, format, s
                 height: cropBoxStyle.height,
               }}
               onPointerDown={handlePointerDown}
-            />
+            >
+              <div
+                className="absolute bottom-0 right-0 w-4 h-4 cursor-nwse-resize z-10"
+                style={{ transform: 'translate(50%, 50%)' }}
+                onPointerDown={handleResizePointerDown}
+              >
+                <div className="w-2.5 h-2.5 bg-white/90 border border-white rounded-sm" />
+              </div>
+            </div>
           )}
         </div>
         <div className="space-y-3">
@@ -335,7 +390,14 @@ function CropDialog({ photoUid, cropX, cropY, cropScale: initialScale, format, s
             <span className="text-xs text-slate-500 w-8">{Math.round(scale * 100)}%</span>
           </div>
         </div>
-        <p className="text-xs text-slate-500 mt-2">{t('books.editor.cropDragHint')}</p>
+        <div className="flex items-center justify-between mt-2">
+          <p className="text-xs text-slate-500">{t('books.editor.cropDragHint')}</p>
+          {layout && naturalSize && (
+            <span className="text-xs text-slate-500 tabular-nums whitespace-nowrap ml-3">
+              {Math.round(naturalSize.w * cropBoxStyle!.width / layout.displayW)} x {Math.round(naturalSize.h * cropBoxStyle!.height / layout.displayH)} px
+            </span>
+          )}
+        </div>
         <div className="flex justify-between mt-4">
           <button
             onClick={() => { setX(0.5); setY(0.5); setScale(1); }}

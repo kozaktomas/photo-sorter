@@ -443,7 +443,7 @@
       "cropVertical": "Vertical",
       "resetCrop": "Reset",
       "cropZoom": "Zoom",
-      "cropDragHint": "Drag the box to position, scroll to zoom. Only the area inside the box will be visible.",
+      "cropDragHint": "Drag the box to position, scroll to zoom, drag the corner handle to resize. Only the area inside the box will be visible.",
       "splitPosition": "Split",
       "resetSplit": "Reset"
     }
