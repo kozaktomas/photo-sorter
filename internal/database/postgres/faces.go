@@ -1023,6 +1023,41 @@ func scanFaceIDs(tx *sql.Tx, ctx context.Context, photoUID string) ([]int64, err
 	return ids, nil
 }
 
+// GetPhotoUIDsWithSubjectName returns photo UIDs (from the given list) that have at least one
+// face assigned to the given subject name. Names are normalized for comparison.
+func (r *FaceRepository) GetPhotoUIDsWithSubjectName(ctx context.Context, photoUIDs []string, subjectName string) (map[string]bool, error) {
+	if len(photoUIDs) == 0 {
+		return make(map[string]bool), nil
+	}
+
+	normalizedInput := facematch.NormalizePersonName(subjectName)
+
+	query := `
+		SELECT DISTINCT photo_uid FROM faces
+		WHERE photo_uid = ANY($1)
+		AND LOWER(REPLACE(unaccent(subject_name), '-', ' ')) = $2
+	`
+
+	rows, err := r.pool.Query(ctx, query, pq.Array(photoUIDs), normalizedInput)
+	if err != nil {
+		return nil, fmt.Errorf("query photo UIDs with subject: %w", err)
+	}
+	defer rows.Close()
+
+	result := make(map[string]bool)
+	for rows.Next() {
+		var uid string
+		if err := rows.Scan(&uid); err != nil {
+			return nil, fmt.Errorf("scan photo UID: %w", err)
+		}
+		result[uid] = true
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate photo UIDs: %w", err)
+	}
+	return result, nil
+}
+
 // Verify interface compliance
 var _ database.FaceReader = (*FaceRepository)(nil)
 var _ database.FaceWriter = (*FaceRepository)(nil)

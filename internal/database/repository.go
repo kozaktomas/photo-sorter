@@ -52,6 +52,10 @@ type FaceReader interface {
 	GetUniquePhotoUIDs(ctx context.Context) ([]string, error)
 	// GetFacesWithMarkerUID returns all faces that have a non-empty marker_uid
 	GetFacesWithMarkerUID(ctx context.Context) ([]StoredFace, error)
+	// GetPhotoUIDsWithSubjectName returns a set of photo UIDs (from the given list) that
+	// have at least one face assigned to the given subject name. Used to detect photos
+	// where a person is already assigned, even if the HNSW cache is stale.
+	GetPhotoUIDsWithSubjectName(ctx context.Context, photoUIDs []string, subjectName string) (map[string]bool, error)
 }
 
 // FaceWriter provides write access to face data

@@ -4,9 +4,11 @@ package mock
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/kozaktomas/photo-sorter/internal/database"
+	"github.com/kozaktomas/photo-sorter/internal/facematch"
 )
 
 // MockEmbeddingReader is a mock implementation of database.EmbeddingReader
@@ -343,6 +345,32 @@ func (m *MockFaceReader) GetUniquePhotoUIDs(ctx context.Context) ([]string, erro
 		uids = append(uids, uid)
 	}
 	return uids, nil
+}
+
+// GetPhotoUIDsWithSubjectName returns photo UIDs from the given list that have a face assigned to the subject
+func (m *MockFaceReader) GetPhotoUIDsWithSubjectName(ctx context.Context, photoUIDs []string, subjectName string) (map[string]bool, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	uidSet := make(map[string]struct{}, len(photoUIDs))
+	for _, uid := range photoUIDs {
+		uidSet[uid] = struct{}{}
+	}
+
+	normalizedInput := strings.ToLower(facematch.NormalizePersonName(subjectName))
+	result := make(map[string]bool)
+	for photoUID, faces := range m.faces {
+		if _, ok := uidSet[photoUID]; !ok {
+			continue
+		}
+		for _, face := range faces {
+			if strings.ToLower(facematch.NormalizePersonName(face.SubjectName)) == normalizedInput {
+				result[photoUID] = true
+				break
+			}
+		}
+	}
+	return result, nil
 }
 
 // GetFacesWithMarkerUID returns all faces that have a non-empty marker_uid

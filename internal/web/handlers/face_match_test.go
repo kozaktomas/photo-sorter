@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -312,5 +313,116 @@ func TestMatchRequest_Validation(t *testing.T) {
 				assertJSONError(t, recorder, tc.expectError)
 			}
 		})
+	}
+}
+
+func TestBuildMatchSourceData_FacesWithoutEmbedding(t *testing.T) {
+	// Photo1 has an embedding, photo2 does NOT — both should be in sourcePhotoSet
+	allFaces := []database.StoredFace{
+		{
+			PhotoUID:    "photo1",
+			FaceIndex:   0,
+			Embedding:   make([]float32, 512),
+			SubjectName: "John",
+		},
+		{
+			PhotoUID:    "photo2",
+			FaceIndex:   0,
+			Embedding:   nil, // no embedding
+			SubjectName: "John",
+		},
+	}
+
+	sourceFaces, sourcePhotoSet := buildMatchSourceData(allFaces)
+
+	// Both photos must be in sourcePhotoSet
+	if !sourcePhotoSet["photo1"] {
+		t.Error("photo1 should be in sourcePhotoSet")
+	}
+	if !sourcePhotoSet["photo2"] {
+		t.Error("photo2 should be in sourcePhotoSet (even without embedding)")
+	}
+
+	// Only photo1 should have a source face (it has an embedding)
+	if len(sourceFaces) != 1 {
+		t.Fatalf("expected 1 source face, got %d", len(sourceFaces))
+	}
+	if sourceFaces[0].PhotoUID != "photo1" {
+		t.Errorf("expected source face from photo1, got %s", sourceFaces[0].PhotoUID)
+	}
+}
+
+func TestMarkAlreadyAssignedPhotos(t *testing.T) {
+	mockReader := mock.NewMockFaceReader()
+	// Add a face on "candidate-photo" that is assigned to "John"
+	mockReader.AddFaces("candidate-photo", []database.StoredFace{
+		{
+			PhotoUID:    "candidate-photo",
+			FaceIndex:   0,
+			Embedding:   make([]float32, 512),
+			BBox:        []float64{10, 10, 50, 50},
+			SubjectName: "John",
+			SubjectUID:  "subj-john",
+			MarkerUID:   "marker-1",
+		},
+	})
+	// Add a face on "new-photo" with no assignment
+	mockReader.AddFaces("new-photo", []database.StoredFace{
+		{
+			PhotoUID:  "new-photo",
+			FaceIndex: 0,
+			Embedding: make([]float32, 512),
+			BBox:      []float64{10, 10, 50, 50},
+		},
+	})
+
+	matchMap := map[string]*matchCandidate{
+		"candidate-photo": {
+			PhotoUID:   "candidate-photo",
+			Distance:   0.2,
+			FaceIndex:  0,
+			BBox:       []float64{10, 10, 50, 50},
+			MatchCount: 1,
+			// Stale HNSW data: no SubjectName/SubjectUID set
+		},
+		"new-photo": {
+			PhotoUID:   "new-photo",
+			Distance:   0.3,
+			FaceIndex:  0,
+			BBox:       []float64{10, 10, 50, 50},
+			MatchCount: 1,
+		},
+	}
+
+	markAlreadyAssignedPhotos(context.Background(), mockReader, matchMap, "John")
+
+	// candidate-photo should now have subject data set (already assigned)
+	cp := matchMap["candidate-photo"]
+	if cp.SubjectName == "" {
+		t.Error("candidate-photo SubjectName should be set after markAlreadyAssignedPhotos")
+	}
+	if cp.SubjectUID == "" {
+		t.Error("candidate-photo SubjectUID should be set after markAlreadyAssignedPhotos")
+	}
+	if cp.MarkerUID == "" {
+		t.Error("candidate-photo MarkerUID should be set after markAlreadyAssignedPhotos")
+	}
+
+	// determineMatchAction should return AlreadyDone for candidate-photo
+	action, _, _ := determineMatchAction(cp)
+	if action != ActionAlreadyDone {
+		t.Errorf("expected ActionAlreadyDone for candidate-photo, got %s", action)
+	}
+
+	// new-photo should be unchanged (no assignment in DB)
+	np := matchMap["new-photo"]
+	if np.SubjectName != "" {
+		t.Errorf("new-photo SubjectName should be empty, got %q", np.SubjectName)
+	}
+
+	// determineMatchAction should return CreateMarker for new-photo
+	action2, _, _ := determineMatchAction(np)
+	if action2 != ActionCreateMarker {
+		t.Errorf("expected ActionCreateMarker for new-photo, got %s", action2)
 	}
 }

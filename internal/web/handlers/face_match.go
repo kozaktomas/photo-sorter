@@ -70,16 +70,23 @@ type matchSourceData struct {
 	Embedding []float32
 }
 
-// buildMatchSourceData extracts unique per-photo source faces from the person's face list
+// buildMatchSourceData extracts unique per-photo source faces from the person's face list.
+// First pass: add ALL person face photo UIDs to sourcePhotoSet (regardless of embedding).
+// Second pass: extract one embedding per unique photo (skip faces without embeddings).
 func buildMatchSourceData(allPersonFaces []database.StoredFace) ([]matchSourceData, map[string]bool) {
 	sourcePhotoSet := make(map[string]bool)
+	for i := range allPersonFaces {
+		sourcePhotoSet[allPersonFaces[i].PhotoUID] = true
+	}
+
+	embeddingPhotoSet := make(map[string]bool)
 	var sourceFaces []matchSourceData
 	for i := range allPersonFaces {
 		face := &allPersonFaces[i]
-		if len(face.Embedding) == 0 || sourcePhotoSet[face.PhotoUID] {
+		if len(face.Embedding) == 0 || embeddingPhotoSet[face.PhotoUID] {
 			continue
 		}
-		sourcePhotoSet[face.PhotoUID] = true
+		embeddingPhotoSet[face.PhotoUID] = true
 		sourceFaces = append(sourceFaces, matchSourceData{
 			PhotoUID:  face.PhotoUID,
 			Embedding: face.Embedding,
@@ -285,6 +292,39 @@ func buildMatchResults(candidates []matchCandidate, pp interface {
 	return matches, summary
 }
 
+// markAlreadyAssignedPhotos checks the DB for candidate photos where the person is already
+// assigned, and updates those candidates so determineMatchAction returns AlreadyDone.
+// This guards against stale HNSW cache data where SubjectName/SubjectUID aren't up to date.
+func markAlreadyAssignedPhotos(ctx context.Context, faceReader database.FaceReader, matchMap map[string]*matchCandidate, personName string) {
+	if len(matchMap) == 0 {
+		return
+	}
+
+	photoUIDs := make([]string, 0, len(matchMap))
+	for uid := range matchMap {
+		photoUIDs = append(photoUIDs, uid)
+	}
+
+	assigned, err := faceReader.GetPhotoUIDsWithSubjectName(ctx, photoUIDs, personName)
+	if err != nil {
+		return // best-effort; stale data is the fallback
+	}
+
+	for uid := range assigned {
+		if c, ok := matchMap[uid]; ok {
+			if c.SubjectName == "" {
+				c.SubjectName = personName
+			}
+			if c.SubjectUID == "" {
+				c.SubjectUID = "assigned"
+			}
+			if c.MarkerUID == "" {
+				c.MarkerUID = "assigned"
+			}
+		}
+	}
+}
+
 // emptyMatchResponse builds an empty MatchResponse for the given person
 func emptyMatchResponse(personName string, sourcePhotos, sourceFaces int) MatchResponse {
 	return MatchResponse{
@@ -365,6 +405,7 @@ func (h *FacesHandler) Match(w http.ResponseWriter, r *http.Request) {
 	}
 
 	matchMap := searchSimilarFaces(ctx, h.faceReader, sourceEmbeddings, sourcePhotoSet, searchLimit, req.Threshold)
+	markAlreadyAssignedPhotos(ctx, h.faceReader, matchMap, req.PersonName)
 	candidates := filterAndSortCandidates(matchMap, computeMinMatchCount(len(sourceEmbeddings), req.Threshold), req.Limit)
 	matches, summary := buildMatchResults(candidates, pp)
 
