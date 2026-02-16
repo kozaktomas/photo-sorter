@@ -15,7 +15,11 @@ type ValidationWarning struct {
 
 // ValidatePages checks all pages for layout integrity issues.
 func ValidatePages(sections []TemplateSection, config LayoutConfig) []ValidationWarning {
-	var warnings []ValidationWarning
+	totalPages := 0
+	for _, sec := range sections {
+		totalPages += len(sec.Pages)
+	}
+	warnings := make([]ValidationWarning, 0, totalPages)
 	for _, sec := range sections {
 		for _, page := range sec.Pages {
 			warnings = append(warnings, validatePage(page, config)...)
@@ -26,87 +30,109 @@ func ValidatePages(sections []TemplateSection, config LayoutConfig) []Validation
 
 func validatePage(page TemplatePage, config LayoutConfig) []ValidationWarning {
 	var warnings []ValidationWarning
-	const eps = 0.01
 
 	for i, slot := range page.Slots {
 		if !slot.HasPhoto && !slot.HasText {
 			continue
 		}
-
-		// Zone integrity: slot clip rect within canvas bounds
-		if slot.ClipX < page.ContentLeftX-eps {
-			warnings = append(warnings, ValidationWarning{
-				PageNumber: page.PageNumber,
-				SlotIndex:  i,
-				Message:    fmt.Sprintf("clip X (%.2f) extends past content left edge (%.2f)", slot.ClipX, page.ContentLeftX),
-				Severity:   "error",
-			})
-		}
-		if slot.ClipX+slot.ClipW > page.ContentRightX+eps {
-			warnings = append(warnings, ValidationWarning{
-				PageNumber: page.PageNumber,
-				SlotIndex:  i,
-				Message:    fmt.Sprintf("clip right edge (%.2f) extends past content right edge (%.2f)", slot.ClipX+slot.ClipW, page.ContentRightX),
-				Severity:   "error",
-			})
-		}
-		if slot.ClipY < page.CanvasBottomY-eps {
-			warnings = append(warnings, ValidationWarning{
-				PageNumber: page.PageNumber,
-				SlotIndex:  i,
-				Message:    fmt.Sprintf("clip bottom (%.2f) extends below canvas bottom (%.2f)", slot.ClipY, page.CanvasBottomY),
-				Severity:   "error",
-			})
-		}
-		if slot.ClipY+slot.ClipH > page.CanvasTopY+eps {
-			warnings = append(warnings, ValidationWarning{
-				PageNumber: page.PageNumber,
-				SlotIndex:  i,
-				Message:    fmt.Sprintf("clip top (%.2f) extends above canvas top (%.2f)", slot.ClipY+slot.ClipH, page.CanvasTopY),
-				Severity:   "error",
-			})
-		}
-
-		// Gutter-safe markers: marker should not be in gutter zone
-		if slot.CaptionMarker > 0 {
-			var insideEdgeX float64
-			if page.IsRecto {
-				insideEdgeX = page.ContentLeftX // binding on left for recto
-			} else {
-				insideEdgeX = page.ContentRightX // binding on right for verso
-			}
-			markerSize := config.BaselineUnitMM
-			if page.IsRecto {
-				// Marker is on right side; check left edge isn't in gutter
-				markerLeftEdge := slot.CaptionMarkerX
-				if markerLeftEdge < insideEdgeX+config.GutterSafeMM+eps && markerLeftEdge+markerSize > insideEdgeX-eps {
-					warnings = append(warnings, ValidationWarning{
-						PageNumber: page.PageNumber,
-						SlotIndex:  i,
-						Message:    fmt.Sprintf("caption marker at X=%.2f falls within gutter-safe zone (%.2fmm from binding edge)", slot.CaptionMarkerX, config.GutterSafeMM),
-						Severity:   "warning",
-					})
-				}
-			} else {
-				// Verso: binding on right; marker is on left (outside edge)
-				markerRightEdge := slot.CaptionMarkerX + markerSize
-				if markerRightEdge > insideEdgeX-config.GutterSafeMM-eps && slot.CaptionMarkerX < insideEdgeX+eps {
-					warnings = append(warnings, ValidationWarning{
-						PageNumber: page.PageNumber,
-						SlotIndex:  i,
-						Message:    fmt.Sprintf("caption marker at X=%.2f falls within gutter-safe zone (%.2fmm from binding edge)", slot.CaptionMarkerX, config.GutterSafeMM),
-						Severity:   "warning",
-					})
-				}
-			}
-		}
+		warnings = append(warnings, validateSlotBounds(page, i, slot)...)
+		warnings = append(warnings, validateGutterMarker(page, config, i, slot)...)
 	}
 
-	// Grid alignment: slot X offsets should match column edges
 	warnings = append(warnings, validateGridAlignment(page, config)...)
+	warnings = append(warnings, validateNoOverlaps(page)...)
 
-	// No overlaps: check all pairs of slots
-	for i := 0; i < len(page.Slots); i++ {
+	const eps = 0.01
+	if page.HasCaptions && page.CaptionBlockY < config.BottomMarginMM-eps {
+		warnings = append(warnings, ValidationWarning{
+			PageNumber: page.PageNumber,
+			SlotIndex:  -1,
+			Message:    fmt.Sprintf("caption block Y (%.2f) extends below bottom margin (%.2f)", page.CaptionBlockY, config.BottomMarginMM),
+			Severity:   "warning",
+		})
+	}
+
+	return warnings
+}
+
+// validateSlotBounds checks that a slot's clip rect is within the canvas bounds.
+func validateSlotBounds(page TemplatePage, slotIdx int, slot TemplateSlot) []ValidationWarning {
+	var warnings []ValidationWarning
+	const eps = 0.01
+
+	if slot.ClipX < page.ContentLeftX-eps {
+		warnings = append(warnings, ValidationWarning{
+			PageNumber: page.PageNumber,
+			SlotIndex:  slotIdx,
+			Message:    fmt.Sprintf("clip X (%.2f) extends past content left edge (%.2f)", slot.ClipX, page.ContentLeftX),
+			Severity:   "error",
+		})
+	}
+	if slot.ClipX+slot.ClipW > page.ContentRightX+eps {
+		warnings = append(warnings, ValidationWarning{
+			PageNumber: page.PageNumber,
+			SlotIndex:  slotIdx,
+			Message:    fmt.Sprintf("clip right edge (%.2f) extends past content right edge (%.2f)", slot.ClipX+slot.ClipW, page.ContentRightX),
+			Severity:   "error",
+		})
+	}
+	if slot.ClipY < page.CanvasBottomY-eps {
+		warnings = append(warnings, ValidationWarning{
+			PageNumber: page.PageNumber,
+			SlotIndex:  slotIdx,
+			Message:    fmt.Sprintf("clip bottom (%.2f) extends below canvas bottom (%.2f)", slot.ClipY, page.CanvasBottomY),
+			Severity:   "error",
+		})
+	}
+	if slot.ClipY+slot.ClipH > page.CanvasTopY+eps {
+		warnings = append(warnings, ValidationWarning{
+			PageNumber: page.PageNumber,
+			SlotIndex:  slotIdx,
+			Message:    fmt.Sprintf("clip top (%.2f) extends above canvas top (%.2f)", slot.ClipY+slot.ClipH, page.CanvasTopY),
+			Severity:   "error",
+		})
+	}
+	return warnings
+}
+
+// validateGutterMarker checks that caption markers don't fall in the gutter-safe zone.
+func validateGutterMarker(page TemplatePage, config LayoutConfig, slotIdx int, slot TemplateSlot) []ValidationWarning {
+	if slot.CaptionMarker <= 0 {
+		return nil
+	}
+	const eps = 0.01
+	var insideEdgeX float64
+	if page.IsRecto {
+		insideEdgeX = page.ContentLeftX
+	} else {
+		insideEdgeX = page.ContentRightX
+	}
+	markerSize := config.BaselineUnitMM
+	var inGutter bool
+	if page.IsRecto {
+		markerLeftEdge := slot.CaptionMarkerX
+		inGutter = markerLeftEdge < insideEdgeX+config.GutterSafeMM+eps && markerLeftEdge+markerSize > insideEdgeX-eps
+	} else {
+		markerRightEdge := slot.CaptionMarkerX + markerSize
+		inGutter = markerRightEdge > insideEdgeX-config.GutterSafeMM-eps && slot.CaptionMarkerX < insideEdgeX+eps
+	}
+	if inGutter {
+		return []ValidationWarning{{
+			PageNumber: page.PageNumber,
+			SlotIndex:  slotIdx,
+			Message:    fmt.Sprintf("caption marker at X=%.2f falls within gutter-safe zone (%.2fmm from binding edge)", slot.CaptionMarkerX, config.GutterSafeMM),
+			Severity:   "warning",
+		}}
+	}
+	return nil
+}
+
+// validateNoOverlaps checks all pairs of filled slots for overlapping clip rects.
+func validateNoOverlaps(page TemplatePage) []ValidationWarning {
+	var warnings []ValidationWarning
+	const eps = 0.01
+
+	for i := range len(page.Slots) {
 		si := page.Slots[i]
 		if !si.HasPhoto && !si.HasText {
 			continue
@@ -126,17 +152,6 @@ func validatePage(page TemplatePage, config LayoutConfig) []ValidationWarning {
 			}
 		}
 	}
-
-	// Footer bounds: captionBlockY and folioY should be within footer zone
-	if page.HasCaptions && page.CaptionBlockY < config.BottomMarginMM-eps {
-		warnings = append(warnings, ValidationWarning{
-			PageNumber: page.PageNumber,
-			SlotIndex:  -1,
-			Message:    fmt.Sprintf("caption block Y (%.2f) extends below bottom margin (%.2f)", page.CaptionBlockY, config.BottomMarginMM),
-			Severity:   "warning",
-		})
-	}
-
 	return warnings
 }
 

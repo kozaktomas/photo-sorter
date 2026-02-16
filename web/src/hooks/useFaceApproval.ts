@@ -56,7 +56,7 @@ export function useFaceApproval(options: UseFaceApprovalOptions = {}): UseFaceAp
         options.onApprovalSuccess?.(match);
         return true;
       } else {
-        const errorMsg = response.error || 'Failed to apply face assignment';
+        const errorMsg = response.error ?? 'Failed to apply face assignment';
         setApprovalError(errorMsg);
         options.onApprovalError?.(match, errorMsg);
         return false;
@@ -96,7 +96,7 @@ export function useFaceApproval(options: UseFaceApprovalOptions = {}): UseFaceAp
         if (response.success) {
           options.onApprovalSuccess?.(match);
         } else {
-          options.onApprovalError?.(match, response.error || 'Failed to apply');
+          options.onApprovalError?.(match, response.error ?? 'Failed to apply');
         }
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : 'Failed to apply';

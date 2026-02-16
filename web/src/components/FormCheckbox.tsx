@@ -7,7 +7,7 @@ interface FormCheckboxProps extends Omit<InputHTMLAttributes<HTMLInputElement>, 
 
 export const FormCheckbox = forwardRef<HTMLInputElement, FormCheckboxProps>(
   ({ className = '', label, id, ...props }, ref) => {
-    const inputId = id || label.toLowerCase().replace(/\s+/g, '-');
+    const inputId = id ?? label.toLowerCase().replace(/\s+/g, '-');
 
     return (
       <label className="flex items-center space-x-2 cursor-pointer">

@@ -30,8 +30,7 @@ func MarkdownToLatex(md string) string {
 	i := 0
 
 	for i < len(lines) {
-		line := lines[i]
-		trimmed := strings.TrimSpace(line)
+		trimmed := strings.TrimSpace(lines[i])
 
 		// Blank line → paragraph break
 		if trimmed == "" {
@@ -40,83 +39,47 @@ func MarkdownToLatex(md string) string {
 			continue
 		}
 
-		// Heading ##
-		if strings.HasPrefix(trimmed, "## ") {
-			text := strings.TrimPrefix(trimmed, "## ")
-			text = inlineFormat(latexEscapeRaw(text))
-			text = czechTypography(text)
-			out = append(out, `{\large\bfseries `+text+`}\par\vspace{4mm}`)
+		// Heading ## (must check before #)
+		if text, ok := strings.CutPrefix(trimmed, "## "); ok {
+			out = append(out, formatHeading(text, `\large`))
 			i++
 			continue
 		}
 
 		// Heading #
-		if strings.HasPrefix(trimmed, "# ") {
-			text := strings.TrimPrefix(trimmed, "# ")
-			text = inlineFormat(latexEscapeRaw(text))
-			text = czechTypography(text)
-			out = append(out, `{\Large\bfseries `+text+`}\par\vspace{4mm}`)
+		if text, ok := strings.CutPrefix(trimmed, "# "); ok {
+			out = append(out, formatHeading(text, `\Large`))
 			i++
 			continue
 		}
 
 		// Unordered list (- or *)
 		if isUnorderedListItem(trimmed) {
-			var items []string
-			for i < len(lines) {
-				t := strings.TrimSpace(lines[i])
-				if !isUnorderedListItem(t) {
-					break
-				}
-				item := stripListMarker(t)
-				item = inlineFormat(latexEscapeRaw(item))
-				item = czechTypography(item)
-				items = append(items, `\item `+item)
-				i++
-			}
+			items, newI := collectListItems(lines, i, isUnorderedListItem, stripListMarker)
 			out = append(out, `\begin{itemize}[nosep,leftmargin=1.5em]`)
 			out = append(out, items...)
 			out = append(out, `\end{itemize}`)
+			i = newI
 			continue
 		}
 
 		// Ordered list
 		if isOrderedListItem(trimmed) {
-			var items []string
-			for i < len(lines) {
-				t := strings.TrimSpace(lines[i])
-				if !isOrderedListItem(t) {
-					break
-				}
-				item := stripOrderedListMarker(t)
-				item = inlineFormat(latexEscapeRaw(item))
-				item = czechTypography(item)
-				items = append(items, `\item `+item)
-				i++
-			}
+			items, newI := collectListItems(lines, i, isOrderedListItem, stripOrderedListMarker)
 			out = append(out, `\begin{enumerate}[nosep,leftmargin=1.5em]`)
 			out = append(out, items...)
 			out = append(out, `\end{enumerate}`)
+			i = newI
 			continue
 		}
 
 		// Blockquote
 		if isBlockquoteLine(trimmed) {
-			var quoteLines []string
-			for i < len(lines) {
-				t := strings.TrimSpace(lines[i])
-				if !isBlockquoteLine(t) {
-					break
-				}
-				text := stripBlockquoteMarker(t)
-				text = inlineFormat(latexEscapeRaw(text))
-				text = czechTypography(text)
-				quoteLines = append(quoteLines, text)
-				i++
-			}
+			quoteLines, newI := collectBlockquote(lines, i)
 			out = append(out, `\begin{quote}\itshape`)
 			out = append(out, quoteLines...)
 			out = append(out, `\end{quote}`)
+			i = newI
 			continue
 		}
 
@@ -128,6 +91,49 @@ func MarkdownToLatex(md string) string {
 	}
 
 	return strings.Join(out, "\n")
+}
+
+// formatHeading formats a heading line with the given LaTeX size command.
+func formatHeading(text, sizeCmd string) string {
+	text = inlineFormat(latexEscapeRaw(text))
+	text = czechTypography(text)
+	return `{` + sizeCmd + `\bfseries ` + text + `}\par\vspace{4mm}`
+}
+
+// collectListItems consumes consecutive list items and returns formatted LaTeX items.
+func collectListItems(lines []string, start int, isItem func(string) bool, stripMarker func(string) string) ([]string, int) {
+	var items []string
+	i := start
+	for i < len(lines) {
+		t := strings.TrimSpace(lines[i])
+		if !isItem(t) {
+			break
+		}
+		item := stripMarker(t)
+		item = inlineFormat(latexEscapeRaw(item))
+		item = czechTypography(item)
+		items = append(items, `\item `+item)
+		i++
+	}
+	return items, i
+}
+
+// collectBlockquote consumes consecutive blockquote lines and returns formatted text.
+func collectBlockquote(lines []string, start int) ([]string, int) {
+	var quoteLines []string
+	i := start
+	for i < len(lines) {
+		t := strings.TrimSpace(lines[i])
+		if !isBlockquoteLine(t) {
+			break
+		}
+		text := stripBlockquoteMarker(t)
+		text = inlineFormat(latexEscapeRaw(text))
+		text = czechTypography(text)
+		quoteLines = append(quoteLines, text)
+		i++
+	}
+	return quoteLines, i
 }
 
 // inlineFormat applies bold and italic formatting.

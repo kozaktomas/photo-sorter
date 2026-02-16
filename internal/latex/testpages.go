@@ -155,10 +155,10 @@ func buildTestData(config LayoutConfig) testPageData {
 
 	// Build format samples
 	formatNames := []string{"1_fullscreen", "2_portrait", "4_landscape", "2l_1p", "1p_2l"}
-	var formats []testFormat
+	formats := make([]testFormat, 0, len(formatNames))
 	for _, name := range formatNames {
 		slots := FormatSlotsGrid(name, config)
-		var testSlots []testFormatSlot
+		testSlots := make([]testFormatSlot, 0, len(slots))
 		for i, s := range slots {
 			// Convert canvas-relative to page coords
 			x := contentLeftX + s.X

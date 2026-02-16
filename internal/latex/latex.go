@@ -179,6 +179,8 @@ type pageBuilder struct {
 const (
 	downloadConcurrency = 5
 	lowResDPIThreshold  = 200.0
+	sizeDimHeight       = "height"
+	sizeDimWidth        = "width"
 )
 
 // GeneratePDF renders a photo book to PDF using lualatex.
@@ -223,12 +225,7 @@ func GeneratePDFWithOptions(ctx context.Context, pp *photoprism.PhotoPrism, br d
 	data, report := buildTemplateData(groups, photos, captions, config, book.Title)
 
 	if debug {
-		data.DebugOverlay = true
-		offsets := make([]float64, config.GridColumns)
-		for c := range config.GridColumns {
-			offsets[c] = config.ColOffset(c)
-		}
-		data.DebugColOffsets = offsets
+		applyDebugOverlay(&data, config)
 	}
 
 	// Layout validation
@@ -271,6 +268,16 @@ func addDPIWarnings(report *ExportReport) {
 			}
 		}
 	}
+}
+
+// applyDebugOverlay enables the debug overlay and computes column offsets.
+func applyDebugOverlay(data *TemplateData, config LayoutConfig) {
+	data.DebugOverlay = true
+	offsets := make([]float64, config.GridColumns)
+	for c := range config.GridColumns {
+		offsets[c] = config.ColOffset(c)
+	}
+	data.DebugColOffsets = offsets
 }
 
 // buildCaptionMap loads section photos and builds a nested caption lookup.
@@ -427,7 +434,7 @@ func (pb *pageBuilder) computeZones(isRecto bool) (contentLeftX, contentRightX, 
 		folioX = contentLeftX
 		folioAnchor = "south west"
 	}
-	return
+	return contentLeftX, contentRightX, headerY, canvasTopY, canvasBottomY, footerRuleY, folioX, folioY, folioAnchor
 }
 
 // buildContentPage builds a single TemplatePage with slots and accumulates report data.
@@ -521,47 +528,85 @@ func (pb *pageBuilder) buildContentPage(p database.BookPage, sectionTitle string
 	}
 }
 
-// buildSlots builds template slots, report photos, and footer captions for a page.
-func (pb *pageBuilder) buildSlots(p database.BookPage, slots []SlotRect, contentLeftX, canvasTopY float64, style string, isRecto bool) ([]TemplateSlot, []ReportPhoto, []FooterCaption) {
-	isArchival := style == "archival"
-	cfg := pb.config
+// slotCaption pairs a slot index with its caption text.
+type slotCaption struct {
+	slotIdx int
+	caption string
+}
 
-	tmplSlots := make([]TemplateSlot, len(slots))
-	reportPhotos := make([]ReportPhoto, 0)
+// captionTracking holds precomputed caption and marker data for slot building.
+type captionTracking struct {
+	markerMap map[int]int     // slotIdx -> marker number (1-based)
+	captions  []slotCaption
+}
 
-	// Count photos with captions to decide if markers are needed
+// buildCaptionTracking collects captions and assigns marker numbers for a page.
+func buildCaptionTracking(p database.BookPage, slots []SlotRect, captions captionMap) captionTracking {
 	photoCount := 0
 	for i := range slots {
-		ps := getPageSlot(p, i)
-		if ps.PhotoUID != "" {
+		if getPageSlot(p, i).PhotoUID != "" {
 			photoCount++
 		}
 	}
 
-	// Collect captions
-	type slotCaption struct {
-		slotIdx int
-		caption string
-	}
 	var captionList []slotCaption
 	for i := range slots {
 		ps := getPageSlot(p, i)
 		if ps.PhotoUID != "" {
-			caption := lookupCaption(pb.captions, p.SectionID, ps.PhotoUID)
-			if caption != "" {
+			if caption := lookupCaption(captions, p.SectionID, ps.PhotoUID); caption != "" {
 				captionList = append(captionList, slotCaption{slotIdx: i, caption: caption})
 			}
 		}
 	}
 
-	// Assign markers: only for multi-photo pages
-	needMarkers := photoCount > 1 && len(captionList) > 0
-	markerMap := make(map[int]int) // slotIdx -> marker number
-	if needMarkers {
+	markerMap := make(map[int]int)
+	if photoCount > 1 && len(captionList) > 0 {
 		for idx, sc := range captionList {
 			markerMap[sc.slotIdx] = idx + 1
 		}
 	}
+
+	return captionTracking{markerMap: markerMap, captions: captionList}
+}
+
+// placeCaptionMarker positions a numbered caption marker on a photo slot.
+func placeCaptionMarker(ts *TemplateSlot, markerNum int, cfg LayoutConfig, isRecto bool) {
+	ts.CaptionMarker = markerNum
+	if markerNum <= 0 {
+		return
+	}
+	markerSize := cfg.BaselineUnitMM
+	markerInset := markerSize / 2.0
+	if isRecto {
+		ts.CaptionMarkerX = ts.ClipX + ts.ClipW - markerInset - markerSize
+	} else {
+		ts.CaptionMarkerX = ts.ClipX + markerInset
+	}
+	ts.CaptionMarkerY = ts.ClipY + ts.ClipH - markerInset - markerSize
+	ts.CaptionMarkerCenterX = ts.CaptionMarkerX + markerSize/2
+	ts.CaptionMarkerCenterY = ts.CaptionMarkerY + markerSize/2
+}
+
+// buildFooterCaptions creates footer caption entries from caption tracking data.
+func buildFooterCaptions(ct captionTracking) []FooterCaption {
+	footerCaptions := make([]FooterCaption, 0, len(ct.captions))
+	for _, sc := range ct.captions {
+		footerCaptions = append(footerCaptions, FooterCaption{
+			Marker:  ct.markerMap[sc.slotIdx],
+			Caption: sc.caption,
+		})
+	}
+	return footerCaptions
+}
+
+// buildSlots builds template slots, report photos, and footer captions for a page.
+func (pb *pageBuilder) buildSlots(p database.BookPage, slots []SlotRect, contentLeftX, canvasTopY float64, style string, isRecto bool) ([]TemplateSlot, []ReportPhoto, []FooterCaption) {
+	isArchival := style == "archival"
+	cfg := pb.config
+	ct := buildCaptionTracking(p, slots, pb.captions)
+
+	tmplSlots := make([]TemplateSlot, len(slots))
+	var reportPhotos []ReportPhoto
 
 	for i, slot := range slots {
 		ps := getPageSlot(p, i)
@@ -573,13 +618,11 @@ func (pb *pageBuilder) buildSlots(p database.BookPage, slots []SlotRect, content
 
 		uid := ps.PhotoUID
 		if uid == "" {
-			tmplSlots[i] = TemplateSlot{HasPhoto: false}
 			continue
 		}
 
 		img, ok := pb.photos[uid]
 		if !ok {
-			tmplSlots[i] = TemplateSlot{HasPhoto: false}
 			continue
 		}
 
@@ -588,21 +631,7 @@ func (pb *pageBuilder) buildSlots(p database.BookPage, slots []SlotRect, content
 			cropScale = 1.0
 		}
 		ts := buildPhotoSlotNew(slot, img, contentLeftX, canvasTopY, isArchival, cfg.ArchivalInsetMM, ps.CropX, ps.CropY, cropScale)
-		ts.CaptionMarker = markerMap[i]
-		if ts.CaptionMarker > 0 {
-			markerSize := cfg.BaselineUnitMM  // 4mm
-			markerInset := markerSize / 2.0   // 2mm (half baseline unit)
-			if isRecto {
-				// Binding on left → place marker top-right (outside edge)
-				ts.CaptionMarkerX = ts.ClipX + ts.ClipW - markerInset - markerSize
-			} else {
-				// Binding on right → place marker top-left (outside edge)
-				ts.CaptionMarkerX = ts.ClipX + markerInset
-			}
-			ts.CaptionMarkerY = ts.ClipY + ts.ClipH - markerInset - markerSize
-			ts.CaptionMarkerCenterX = ts.CaptionMarkerX + markerSize/2
-			ts.CaptionMarkerCenterY = ts.CaptionMarkerY + markerSize/2
-		}
+		placeCaptionMarker(&ts, ct.markerMap[i], cfg, isRecto)
 		tmplSlots[i] = ts
 
 		pb.photoSet[uid] = true
@@ -614,21 +643,7 @@ func (pb *pageBuilder) buildSlots(p database.BookPage, slots []SlotRect, content
 		})
 	}
 
-	// Build footer captions
-	var footerCaptions []FooterCaption
-	for _, sc := range captionList {
-		marker := markerMap[sc.slotIdx]
-		if marker == 0 && !needMarkers {
-			// Single-photo page: no marker, just caption
-			marker = 0
-		}
-		footerCaptions = append(footerCaptions, FooterCaption{
-			Marker:  marker,
-			Caption: sc.caption,
-		})
-	}
-
-	return tmplSlots, reportPhotos, footerCaptions
+	return tmplSlots, reportPhotos, buildFooterCaptions(ct)
 }
 
 // latexEscapeRaw escapes special LaTeX characters in user text.
@@ -842,12 +857,12 @@ func buildPhotoSlotNew(slot SlotRect, img photoImage, contentLeftX, canvasTopY f
 	var sizeVal, renderW, renderH float64
 
 	if imgAspect > slotAspect {
-		sizeDim = "height"
+		sizeDim = sizeDimHeight
 		sizeVal = clipH
 		renderH = clipH
 		renderW = clipH * imgAspect
 	} else {
-		sizeDim = "width"
+		sizeDim = sizeDimWidth
 		sizeVal = clipW
 		renderW = clipW
 		renderH = clipW / imgAspect
@@ -864,7 +879,7 @@ func buildPhotoSlotNew(slot SlotRect, img photoImage, contentLeftX, canvasTopY f
 	imgY := clipY - overflowY*(1-cropY) // TikZ Y is inverted
 
 	var effectiveDPI float64
-	if sizeDim == "height" {
+	if sizeDim == sizeDimHeight {
 		effectiveDPI = float64(img.height) / sizeVal * 25.4
 	} else {
 		effectiveDPI = float64(img.width) / sizeVal * 25.4

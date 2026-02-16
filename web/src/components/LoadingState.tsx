@@ -53,7 +53,7 @@ export function LoadingState({
     return (
       <div className="text-center py-12 text-slate-400">
         <div className="flex justify-center mb-4">
-          {emptyIcon || <Inbox className="h-12 w-12 opacity-50" />}
+          {emptyIcon ?? <Inbox className="h-12 w-12 opacity-50" />}
         </div>
         <p className="text-lg text-white mb-1">{displayEmptyTitle}</p>
         {emptyDescription && (

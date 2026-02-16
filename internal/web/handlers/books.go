@@ -525,16 +525,11 @@ type updatePageRequest struct {
 	SplitPosition json.RawMessage `json:"split_position"`
 }
 
-// applyPageUpdates applies the request fields to the page, returning an error message if validation fails
+// applyPageUpdates applies the request fields to the page, returning an error message if validation fails.
 func applyPageUpdates(page *database.BookPage, req updatePageRequest) string {
 	if req.Format != nil {
-		if database.PageFormatSlotCount(*req.Format) == 0 {
-			return "invalid format"
-		}
-		page.Format = *req.Format
-		// Clear split_position when switching to 1_fullscreen
-		if *req.Format == "1_fullscreen" {
-			page.SplitPosition = nil
+		if errMsg := applyFormatUpdate(page, *req.Format); errMsg != "" {
+			return errMsg
 		}
 	}
 	if req.SectionID != nil {
@@ -547,26 +542,50 @@ func applyPageUpdates(page *database.BookPage, req updatePageRequest) string {
 		page.Description = *req.Description
 	}
 	if req.Style != nil {
-		if *req.Style != "modern" && *req.Style != "archival" {
-			return "style must be 'modern' or 'archival'"
+		if errMsg := applyStyleUpdate(page, *req.Style); errMsg != "" {
+			return errMsg
 		}
-		page.Style = *req.Style
 	}
 	if req.SplitPosition != nil {
-		raw := req.SplitPosition
-		if string(raw) == "null" {
-			page.SplitPosition = nil
-		} else {
-			var sp float64
-			if err := json.Unmarshal(raw, &sp); err != nil {
-				return "split_position must be a number or null"
-			}
-			if sp < 0.2 || sp > 0.8 {
-				return "split_position must be between 0.2 and 0.8"
-			}
-			page.SplitPosition = &sp
+		if errMsg := applySplitPosition(page, req.SplitPosition); errMsg != "" {
+			return errMsg
 		}
 	}
+	return ""
+}
+
+func applyFormatUpdate(page *database.BookPage, format string) string {
+	if database.PageFormatSlotCount(format) == 0 {
+		return "invalid format"
+	}
+	page.Format = format
+	if format == "1_fullscreen" {
+		page.SplitPosition = nil
+	}
+	return ""
+}
+
+func applyStyleUpdate(page *database.BookPage, style string) string {
+	if style != "modern" && style != "archival" {
+		return "style must be 'modern' or 'archival'"
+	}
+	page.Style = style
+	return ""
+}
+
+func applySplitPosition(page *database.BookPage, raw json.RawMessage) string {
+	if string(raw) == "null" {
+		page.SplitPosition = nil
+		return ""
+	}
+	var sp float64
+	if err := json.Unmarshal(raw, &sp); err != nil {
+		return "split_position must be a number or null"
+	}
+	if sp < 0.2 || sp > 0.8 {
+		return "split_position must be between 0.2 and 0.8"
+	}
+	page.SplitPosition = &sp
 	return ""
 }
 
@@ -722,6 +741,20 @@ func (h *BooksHandler) SwapSlots(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]bool{"swapped": true})
 }
 
+func validateCropParams(cropX, cropY float64, cropScalePtr *float64) (float64, string) {
+	if cropX < 0 || cropX > 1 || cropY < 0 || cropY > 1 {
+		return 0, "crop_x and crop_y must be between 0.0 and 1.0"
+	}
+	cropScale := 1.0
+	if cropScalePtr != nil {
+		cropScale = *cropScalePtr
+	}
+	if cropScale < 0.1 || cropScale > 1.0 {
+		return 0, "crop_scale must be between 0.1 and 1.0"
+	}
+	return cropScale, ""
+}
+
 func (h *BooksHandler) UpdateSlotCrop(w http.ResponseWriter, r *http.Request) {
 	bw := getBookWriter(r, w)
 	if bw == nil {
@@ -742,16 +775,9 @@ func (h *BooksHandler) UpdateSlotCrop(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return
 	}
-	if req.CropX < 0 || req.CropX > 1 || req.CropY < 0 || req.CropY > 1 {
-		respondError(w, http.StatusBadRequest, "crop_x and crop_y must be between 0.0 and 1.0")
-		return
-	}
-	cropScale := 1.0
-	if req.CropScale != nil {
-		cropScale = *req.CropScale
-	}
-	if cropScale < 0.1 || cropScale > 1.0 {
-		respondError(w, http.StatusBadRequest, "crop_scale must be between 0.1 and 1.0")
+	cropScale, errMsg := validateCropParams(req.CropX, req.CropY, req.CropScale)
+	if errMsg != "" {
+		respondError(w, http.StatusBadRequest, errMsg)
 		return
 	}
 	if err := bw.UpdateSlotCrop(r.Context(), pageID, slotIndex, req.CropX, req.CropY, cropScale); err != nil {
@@ -781,6 +807,25 @@ func (h *BooksHandler) ClearSlot(w http.ResponseWriter, r *http.Request) {
 
 // --- PDF Export ---
 
+func writePDFResponse(w http.ResponseWriter, pdfData []byte, filename string, report *latex.ExportReport) {
+	if report != nil && len(report.Warnings) > 0 {
+		w.Header().Set("X-Export-Warnings", strconv.Itoa(len(report.Warnings)))
+	}
+	w.Header().Set("Content-Type", "application/pdf")
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.pdf"`, filename))
+	w.Header().Set("Content-Length", strconv.Itoa(len(pdfData)))
+	w.Write(pdfData)
+}
+
+func handleTestExport(w http.ResponseWriter, r *http.Request, bookTitle string) {
+	testPDF, err := latex.GenerateTestPDF(r.Context())
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("test PDF generation failed: %v", err))
+		return
+	}
+	writePDFResponse(w, testPDF, bookTitle+"-test", nil)
+}
+
 func (h *BooksHandler) ExportPDF(w http.ResponseWriter, r *http.Request) {
 	pp := middleware.MustGetPhotoPrism(r.Context(), w)
 	if pp == nil {
@@ -798,60 +843,32 @@ func (h *BooksHandler) ExportPDF(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check lualatex availability
 	if _, err := exec.LookPath("lualatex"); err != nil {
 		respondError(w, http.StatusServiceUnavailable, "lualatex is not installed on the server")
 		return
 	}
 
-	// Diagnostic test PDF
-	if r.URL.Query().Get("format") == "test" {
-		testPDF, err := latex.GenerateTestPDF(r.Context())
-		if err != nil {
-			respondError(w, http.StatusInternalServerError, fmt.Sprintf("test PDF generation failed: %v", err))
-			return
-		}
-		w.Header().Set("Content-Type", "application/pdf")
-		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s-test.pdf"`, book.Title))
-		w.Header().Set("Content-Length", strconv.Itoa(len(testPDF)))
-		w.Write(testPDF)
+	format := r.URL.Query().Get("format")
+	if format == "test" {
+		handleTestExport(w, r, book.Title)
 		return
 	}
 
-	// Debug overlay PDF
-	if r.URL.Query().Get("format") == "debug" {
-		pdfData, report, err := latex.GeneratePDFWithOptions(r.Context(), pp, bw, id, true)
-		if err != nil {
-			respondError(w, http.StatusInternalServerError, fmt.Sprintf("PDF generation failed: %v", err))
-			return
-		}
-		if report != nil && len(report.Warnings) > 0 {
-			w.Header().Set("X-Export-Warnings", strconv.Itoa(len(report.Warnings)))
-		}
-		w.Header().Set("Content-Type", "application/pdf")
-		w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s-debug.pdf"`, book.Title))
-		w.Header().Set("Content-Length", strconv.Itoa(len(pdfData)))
-		w.Write(pdfData)
-		return
-	}
-
-	pdfData, report, err := latex.GeneratePDF(r.Context(), pp, bw, id)
+	// Debug and normal exports both use GeneratePDFWithOptions
+	pdfData, report, err := latex.GeneratePDFWithOptions(r.Context(), pp, bw, id, format == "debug")
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Sprintf("PDF generation failed: %v", err))
 		return
 	}
 
-	// Return JSON report instead of PDF if requested
-	if r.URL.Query().Get("format") == "report" {
+	if format == "report" {
 		respondJSON(w, http.StatusOK, report)
 		return
 	}
 
-	if report != nil && len(report.Warnings) > 0 {
-		w.Header().Set("X-Export-Warnings", strconv.Itoa(len(report.Warnings)))
+	suffix := ""
+	if format == "debug" {
+		suffix = "-debug"
 	}
-	w.Header().Set("Content-Type", "application/pdf")
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.pdf"`, book.Title))
-	w.Header().Set("Content-Length", strconv.Itoa(len(pdfData)))
-	w.Write(pdfData)
+	writePDFResponse(w, pdfData, book.Title+suffix, report)
 }

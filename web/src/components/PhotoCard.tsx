@@ -109,7 +109,7 @@ export function PhotoCard({
     }
   };
 
-  const showFaceActions = action && action !== 'already_done' && (onApprove || onReject);
+  const showFaceActions = action && action !== 'already_done' && (onApprove ?? onReject);
 
   return (
     <div

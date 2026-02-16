@@ -10,7 +10,7 @@ interface FormInputProps extends InputHTMLAttributes<HTMLInputElement> {
 
 export const FormInput = forwardRef<HTMLInputElement, FormInputProps>(
   ({ className = '', label, error, fullWidth = true, inputSize = 'md', id, ...props }, ref) => {
-    const inputId = id || (label ? label.toLowerCase().replace(/\s+/g, '-') : undefined);
+    const inputId = id ?? (label ? label.toLowerCase().replace(/\s+/g, '-') : undefined);
 
     const sizeStyles = {
       sm: 'px-3 py-1.5 text-sm rounded',

@@ -10,7 +10,7 @@ interface FormSelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
 
 export const FormSelect = forwardRef<HTMLSelectElement, FormSelectProps>(
   ({ className = '', label, error, fullWidth = true, selectSize = 'md', id, children, ...props }, ref) => {
-    const selectId = id || (label ? label.toLowerCase().replace(/\s+/g, '-') : undefined);
+    const selectId = id ?? (label ? label.toLowerCase().replace(/\s+/g, '-') : undefined);
 
     const sizeStyles = {
       sm: 'px-3 py-1.5 text-sm rounded',

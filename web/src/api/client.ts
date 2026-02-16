@@ -662,7 +662,7 @@ export async function swapSlots(pageId: string, slotA: number, slotB: number): P
   });
 }
 
-export async function updateSlotCrop(pageId: string, slotIndex: number, cropX: number, cropY: number, cropScale: number = 1.0): Promise<void> {
+export async function updateSlotCrop(pageId: string, slotIndex: number, cropX: number, cropY: number, cropScale = 1.0): Promise<void> {
   await request(`/pages/${pageId}/slots/${slotIndex}/crop`, {
     method: 'PUT',
     body: JSON.stringify({ crop_x: cropX, crop_y: cropY, crop_scale: cropScale }),
