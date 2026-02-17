@@ -72,7 +72,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Set session cookie
-	h.sessionManager.SetSessionCookie(w, session)
+	h.sessionManager.SetSessionCookie(w, r, session)
 
 	respondJSON(w, http.StatusOK, LoginResponse{
 		Success:   true,

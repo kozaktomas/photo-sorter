@@ -1,3 +1,4 @@
+import DOMPurify from 'dompurify';
 import { Marked } from 'marked';
 import React from 'react';
 
@@ -7,7 +8,7 @@ const marked = new Marked({
 });
 
 export function renderMarkdown(md: string): string {
-  return marked.parse(md) as string;
+  return DOMPurify.sanitize(marked.parse(md) as string);
 }
 
 interface MarkdownContentProps {

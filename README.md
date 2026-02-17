@@ -111,6 +111,7 @@ HNSW_EMBEDDING_INDEX_PATH=/data/embeddings.pg.hnsw
 WEB_PORT=8080
 WEB_HOST=0.0.0.0
 WEB_SESSION_SECRET=change-me-in-production
+WEB_ALLOWED_ORIGINS=https://photos.example.com
 ```
 
 ## Usage

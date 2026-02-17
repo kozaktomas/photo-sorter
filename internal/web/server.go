@@ -47,6 +47,7 @@ func NewServer(cfg *config.Config, port int, host string, sessionSecret string, 
 	r.Use(chiMiddleware.Recoverer)
 	r.Use(chiMiddleware.Timeout(5 * time.Minute))
 	r.Use(middleware.CORS())
+	r.Use(middleware.SecurityHeaders())
 
 	// Set up routes
 	s.setupRoutes(sessionManager)

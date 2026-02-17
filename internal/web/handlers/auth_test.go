@@ -281,7 +281,8 @@ func signSessionID(sm *middleware.SessionManager, sessionID string) string {
 	// For testing, we'll create a response recorder and extract the cookie
 	w := httptest.NewRecorder()
 	session := &middleware.Session{ID: sessionID}
-	sm.SetSessionCookie(w, session)
+	r := httptest.NewRequest("GET", "/", nil)
+	sm.SetSessionCookie(w, r, session)
 	cookies := w.Result().Cookies()
 	for _, c := range cookies {
 		if c.Name == "photo_sorter_session" {

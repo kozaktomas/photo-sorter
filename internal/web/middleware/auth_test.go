@@ -84,7 +84,8 @@ func TestSessionManager_SetAndGetSessionCookie(t *testing.T) {
 
 	// Create a test response to capture the cookie
 	w := httptest.NewRecorder()
-	sm.SetSessionCookie(w, session)
+	r := httptest.NewRequest("GET", "/", nil)
+	sm.SetSessionCookie(w, r, session)
 
 	// Get the cookie from the response
 	cookies := w.Result().Cookies()

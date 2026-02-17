@@ -39,8 +39,9 @@ func saveUploadedFiles(files []*multipart.FileHeader, tempDir string) ([]string,
 			}
 			defer file.Close()
 
-			tempPath := filepath.Join(tempDir, fileHeader.Filename)
-			out, err := os.Create(tempPath) //nolint:gosec // filename from multipart upload to temp dir
+			safeName := filepath.Base(fileHeader.Filename)
+			tempPath := filepath.Join(tempDir, safeName)
+			out, err := os.Create(tempPath) //nolint:gosec // filename sanitized via filepath.Base
 			if err != nil {
 				return errors.New("failed to create temp file")
 			}

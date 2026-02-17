@@ -60,6 +60,7 @@ type SessionManager struct {
 func NewSessionManager(secret string, repo SessionRepository) *SessionManager {
 	// Use a default secret if none provided (for development)
 	if secret == "" {
+		log.Println("WARNING: WEB_SESSION_SECRET is not set — using insecure default. Set WEB_SESSION_SECRET for production use.")
 		secret = "photo-sorter-dev-secret-change-in-production" //nolint:gosec // dev fallback, not a real credential
 	}
 	sm := &SessionManager{
@@ -208,19 +209,22 @@ func (sm *SessionManager) DeleteSession(sessionID string) {
 	}
 }
 
-// SetSessionCookie sets the session cookie on the response
-func (sm *SessionManager) SetSessionCookie(w http.ResponseWriter, session *Session) {
+// SetSessionCookie sets the session cookie on the response.
+// Secure flag is auto-detected from X-Forwarded-Proto or TLS state.
+func (sm *SessionManager) SetSessionCookie(w http.ResponseWriter, r *http.Request, session *Session) {
 	// Sign the session ID
 	signature := sm.signData(session.ID)
 	cookieValue := session.ID + "." + signature
+
+	secure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
 
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
 		Value:    cookieValue,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   false, // Set to true in production with HTTPS
-		SameSite: http.SameSiteLaxMode,
+		Secure:   secure,
+		SameSite: http.SameSiteStrictMode,
 		MaxAge:   int(sessionDuration.Seconds()),
 	})
 }

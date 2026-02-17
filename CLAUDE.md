@@ -332,9 +332,12 @@ make dev-go    # Start Go server
 **Environment Variables:**
 - `WEB_PORT` - Server port (default: 8080)
 - `WEB_HOST` - Server host (default: 0.0.0.0)
-- `WEB_SESSION_SECRET` - Secret for signing session cookies
+- `WEB_SESSION_SECRET` - Secret for signing session cookies (warns at startup if unset)
+- `WEB_ALLOWED_ORIGINS` - Comma-separated CORS allowed origins (localhost always allowed)
 
 Sessions are persisted to PostgreSQL (`sessions` table) for survival across server restarts.
+
+Session cookies use `HttpOnly`, `SameSite=Strict`, and auto-detect `Secure` flag when behind HTTPS (`X-Forwarded-Proto` or direct TLS). Security headers (CSP, X-Content-Type-Options, X-Frame-Options) are set on all responses.
 
 **API Endpoints:**
 - `GET /api/v1/health` - Health check (no auth)

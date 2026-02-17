@@ -954,6 +954,17 @@ Environment variables for the web server:
 |----------|---------|-------------|
 | `WEB_PORT` | 8080 | Server port |
 | `WEB_HOST` | 0.0.0.0 | Server host |
-| `WEB_SESSION_SECRET` | (random) | Secret for signing session cookies |
+| `WEB_SESSION_SECRET` | (insecure default) | Secret for signing session cookies. **Must be set in production** — a warning is logged at startup if unset |
+| `WEB_ALLOWED_ORIGINS` | (none) | Comma-separated list of allowed CORS origins (e.g., `https://photos.example.com`). Localhost origins are always allowed for development |
 | `HNSW_INDEX_PATH` | (none) | Path to persist face HNSW index for PostgreSQL backend (enables fast startup) |
 | `HNSW_EMBEDDING_INDEX_PATH` | (none) | Path to persist embedding HNSW index for PostgreSQL backend (enables fast startup for Expand/Similar) |
+
+### Security Headers
+
+The server automatically sets the following security headers on all responses:
+
+- **Content-Security-Policy** — Restricts resource loading to same-origin (`default-src 'self'`), with exceptions for inline styles and data/blob URIs for images
+- **X-Content-Type-Options: nosniff** — Prevents MIME type sniffing
+- **X-Frame-Options: DENY** — Prevents clickjacking via iframes
+- **CORS** — Only reflects `Access-Control-Allow-Origin` for whitelisted origins (from `WEB_ALLOWED_ORIGINS`) and localhost. Credentials are allowed only for whitelisted origins
+- **Session cookies** — `HttpOnly`, `SameSite=Strict`, and `Secure` is auto-detected when behind HTTPS (via `X-Forwarded-Proto` header or direct TLS)
