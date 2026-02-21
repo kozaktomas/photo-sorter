@@ -37,19 +37,18 @@ export function PhotoGrid({ photos, photoprismDomain, onPhotoClick, selectable, 
     );
   }
 
-  // If onPhotoClick is provided, we need to intercept the click
-  // Otherwise, PhotoCardLink handles navigation
+  // If onPhotoClick is provided, use PhotoCard (div-based, no Link)
+  // to avoid double navigation from both Link and onClick handler
   if (onPhotoClick) {
     return (
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2">
         {photos.map((photo) => (
-          <div key={photo.uid} onClick={() => onPhotoClick(photo)}>
-            <PhotoCardLink
-              photoUid={photo.uid}
-              photoprismDomain={photoprismDomain}
-              favorite={photo.favorite}
-            />
-          </div>
+          <PhotoCard
+            key={photo.uid}
+            photoUid={photo.uid}
+            photoprismDomain={photoprismDomain}
+            onClick={() => onPhotoClick(photo)}
+          />
         ))}
       </div>
     );

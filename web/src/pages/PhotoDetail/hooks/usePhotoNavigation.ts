@@ -146,13 +146,13 @@ export function usePhotoNavigation(photoUid: string | undefined): PhotoNavigatio
   const goToPrev = useCallback(() => {
     if (!hasPrev || currentIndex <= 0) return;
     const prevUid = photoUids[currentIndex - 1];
-    void navigate(`/photos/${prevUid}?${getQueryParam()}`);
+    void navigate(`/photos/${prevUid}?${getQueryParam()}`, { replace: true });
   }, [hasPrev, currentIndex, photoUids, getQueryParam, navigate]);
 
   const goToNext = useCallback(() => {
     if (!hasNext || currentIndex < 0) return;
     const nextUid = photoUids[currentIndex + 1];
-    void navigate(`/photos/${nextUid}?${getQueryParam()}`);
+    void navigate(`/photos/${nextUid}?${getQueryParam()}`, { replace: true });
   }, [hasNext, currentIndex, photoUids, getQueryParam, navigate]);
 
   return {
