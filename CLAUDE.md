@@ -578,6 +578,7 @@ docs/
 ├── API.md                  # REST API documentation
 ├── cli-reference.md        # Complete CLI command reference
 ├── era-estimation.md       # Era estimation: centroids, API, and UI
+├── hnsw-architecture.md    # In-memory HNSW vs pgvector design rationale
 ├── markers.md              # Marker system and face-to-marker matching
 ├── photo-book.md           # Photo book planning tool
 ├── testing-environment.md  # Dev/test environment setup
