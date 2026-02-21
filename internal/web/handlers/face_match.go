@@ -9,6 +9,7 @@ import (
 
 	"github.com/kozaktomas/photo-sorter/internal/constants"
 	"github.com/kozaktomas/photo-sorter/internal/database"
+	"github.com/kozaktomas/photo-sorter/internal/facematch"
 	"github.com/kozaktomas/photo-sorter/internal/photoprism"
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
@@ -111,7 +112,8 @@ func computeMinMatchCount(sourceCount int, threshold float64) int {
 }
 
 // searchSimilarFaces runs parallel similarity searches and collects candidates into a map
-func searchSimilarFaces(ctx context.Context, faceRepo database.FaceReader, sourceEmbeddings [][]float32, sourcePhotoSet map[string]bool, searchLimit int, threshold float64) map[string]*matchCandidate {
+func searchSimilarFaces(ctx context.Context, faceRepo database.FaceReader, sourceEmbeddings [][]float32, sourcePhotoSet map[string]bool, searchLimit int, threshold float64, personName string) map[string]*matchCandidate {
+	normalizedPersonName := facematch.NormalizePersonName(personName)
 	type searchResult struct {
 		faces     []database.StoredFace
 		distances []float64
@@ -145,6 +147,12 @@ func searchSimilarFaces(ctx context.Context, faceRepo database.FaceReader, sourc
 			face := &result.faces[i]
 			if sourcePhotoSet[face.PhotoUID] {
 				continue
+			}
+			// Skip faces assigned to a different person
+			if face.SubjectName != "" && face.SubjectUID != "" {
+				if facematch.NormalizePersonName(face.SubjectName) != normalizedPersonName {
+					continue
+				}
 			}
 			mergeMatchCandidate(matchMap, face, result.distances[i])
 		}
@@ -435,7 +443,7 @@ func (h *FacesHandler) Match(w http.ResponseWriter, r *http.Request) {
 		searchLimit = req.Limit * 10
 	}
 
-	matchMap := searchSimilarFaces(ctx, h.faceReader, sourceEmbeddings, sourcePhotoSet, searchLimit, req.Threshold)
+	matchMap := searchSimilarFaces(ctx, h.faceReader, sourceEmbeddings, sourcePhotoSet, searchLimit, req.Threshold, req.PersonName)
 	markAlreadyAssignedPhotos(ctx, h.faceReader, matchMap, req.PersonName)
 	candidates := filterAndSortCandidates(matchMap, computeMinMatchCount(len(sourceEmbeddings), req.Threshold), req.Limit)
 	matches, summary := buildMatchResults(candidates, pp)

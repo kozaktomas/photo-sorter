@@ -116,8 +116,10 @@ Based on the match result, the system determines what action is needed:
 |--------|-----------|---------------|
 | `create_marker` | No marker matches by IoU | file_uid, bbox_rel, person_name |
 | `assign_person` | Marker exists, no person assigned | marker_uid, person_name |
-| `already_done` | Marker exists with person assigned | (none - skip) |
+| `already_done` | Marker exists with searched person assigned | (none - skip) |
 | `unassign_person` | User wants to remove assignment | marker_uid |
+
+**Filtering:** Faces already assigned to a *different* person are excluded from match results entirely (filtered during similarity search using normalized name comparison). Only faces assigned to the searched person appear as `already_done`.
 
 ## API Operations
 
