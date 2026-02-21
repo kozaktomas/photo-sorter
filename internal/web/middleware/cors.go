@@ -11,7 +11,7 @@ import (
 func parseAllowedOrigins() map[string]struct{} {
 	origins := make(map[string]struct{})
 	if env := os.Getenv("WEB_ALLOWED_ORIGINS"); env != "" {
-		for _, o := range strings.Split(env, ",") {
+		for o := range strings.SplitSeq(env, ",") {
 			o = strings.TrimSpace(o)
 			if o != "" {
 				origins[o] = struct{}{}
