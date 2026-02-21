@@ -117,7 +117,7 @@ export function BooksPage() {
               </Link>
               <div className="px-4 pb-3 flex justify-end">
                 <button
-                  onClick={(e) => { e.preventDefault(); void handleDelete(book.id); }}
+                  onClick={(e) => { e.preventDefault(); handleDelete(book.id); }}
                   className="text-slate-500 hover:text-red-400 transition-colors p-1"
                 >
                   <Trash2 className="h-4 w-4" />

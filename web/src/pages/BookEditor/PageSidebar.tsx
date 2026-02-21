@@ -132,7 +132,7 @@ export function PageSidebar({ bookId, pages, sections, selectedId, onSelect, onR
     }
 
     return { sectionGroups: groups, pageNumberMap: numberMap };
-  }, [pages, sections, bookId, t]);
+  }, [pages, sections, t]);
 
   // Auto-expand section when a page is selected but its section is collapsed
   useEffect(() => {

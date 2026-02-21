@@ -22,7 +22,7 @@ export function AnalyzePage() {
   const [isLoading, setIsLoading] = useState(true);
 
   // Form state
-  const [selectedAlbum, setSelectedAlbum] = useState(preselectedAlbum || '');
+  const [selectedAlbum, setSelectedAlbum] = useState(preselectedAlbum ?? '');
   const [provider, setProvider] = useState('openai');
   const [dryRun, setDryRun] = useState(true);
   const [individualDates, setIndividualDates] = useState(false);
@@ -84,7 +84,7 @@ export function AnalyzePage() {
     }
   };
 
-  const availableProviders = config?.providers.filter(p => p.available) || [];
+  const availableProviders = config?.providers.filter(p => p.available) ?? [];
 
   if (isLoading) {
     return <PageLoading text="Loading..." />;

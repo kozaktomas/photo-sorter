@@ -55,7 +55,7 @@ export function PageSlotComponent({ pageId, slotIndex, photoUid, textContent, cr
         isOver ? 'ring-2 ring-rose-400' : ''
       } ${hasContent ? 'cursor-grab active:cursor-grabbing' : ''} ${
         isDragging ? 'opacity-30' : ''
-      } ${className || ''}`}
+      } ${className ?? ''}`}
     >
       {photoUid ? (
         <div className="group relative w-full h-full">

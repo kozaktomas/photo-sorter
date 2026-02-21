@@ -45,7 +45,7 @@ export function useSubjectsAndConfig(
       setConfig(configData);
     } catch (err) {
       console.error('Failed to load data:', err);
-      setError(options.errorMessage || 'Failed to load data. Make sure you are logged in.');
+      setError(options.errorMessage ?? 'Failed to load data. Make sure you are logged in.');
     } finally {
       setIsLoading(false);
     }
@@ -53,7 +53,7 @@ export function useSubjectsAndConfig(
 
   useEffect(() => {
     void loadData();
-  }, []);
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
     subjects,

@@ -52,7 +52,7 @@ export function AnalyzeResults({ suggestions }: AnalyzeResultsProps) {
                 </p>
 
                 {/* Labels */}
-                {suggestion.Labels && suggestion.Labels.length > 0 && (
+                {suggestion.Labels.length > 0 && (
                   <div className="flex flex-wrap gap-1">
                     {suggestion.Labels.map((label, idx) => (
                       <span

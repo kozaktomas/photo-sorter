@@ -67,7 +67,7 @@ export function useSortJob(): UseSortJobReturn {
       const response = await startSort({
         album_uid: albumUid,
         dry_run: options.dry_run,
-        limit: options.limit || undefined,
+        limit: options.limit ?? undefined,
         individual_dates: options.individual_dates,
         batch_mode: options.batch_mode,
         provider: options.provider,

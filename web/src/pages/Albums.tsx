@@ -44,7 +44,7 @@ function AlbumListPage() {
   const filteredAlbums = albums.filter(
     (album) =>
       album.title.toLowerCase().includes(search.toLowerCase()) ||
-      album.description?.toLowerCase().includes(search.toLowerCase())
+      album.description.toLowerCase().includes(search.toLowerCase())
   );
 
   return (
