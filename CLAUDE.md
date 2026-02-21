@@ -7,6 +7,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Do NOT read or access the following files:
 - `.envrc` - Contains sensitive environment variables
 
+## Pre-commit Requirements
+
+A pre-commit hook runs automatically on `git commit`. Before committing, ensure:
+
+- **Go changes:** `make lint` must pass
+- **Frontend changes:** `npx tsc --noEmit` and `npm run lint` (in `web/`) must pass
+
+The hook only runs checks relevant to the files being committed.
+
 ## Build and Test Commands
 
 ```bash
