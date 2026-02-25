@@ -1,8 +1,7 @@
 import { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus, Trash2, CheckSquare, Square } from 'lucide-react';
-import { removeSectionPhotos, updateSectionPhoto } from '../../api/client';
-import { getThumbnailUrl } from '../../api/client';
+import { removeSectionPhotos, updateSectionPhoto, getPhoto, addSectionPhotos, getThumbnailUrl } from '../../api/client';
 import { PhotoActionOverlay } from './PhotoActionOverlay';
 import { PhotoBrowserModal } from './PhotoBrowserModal';
 import type { SectionPhoto } from '../../types';
@@ -22,6 +21,9 @@ export function SectionPhotoPool({ sectionId, photos, onRefresh, onReloadPhotos 
   const [descText, setDescText] = useState('');
   const [editingNote, setEditingNote] = useState<string | null>(null);
   const [noteText, setNoteText] = useState('');
+  const [addByIdValue, setAddByIdValue] = useState('');
+  const [addByIdError, setAddByIdError] = useState('');
+  const [addByIdLoading, setAddByIdLoading] = useState(false);
 
   const toggleSelect = useCallback((uid: string) => {
     setSelected(prev => {
@@ -60,6 +62,28 @@ export function SectionPhotoPool({ sectionId, photos, onRefresh, onReloadPhotos 
     setEditingNote(null);
   };
 
+  const handleAddById = async () => {
+    const uid = addByIdValue.trim();
+    if (!uid) return;
+    if (photos.some(p => p.photo_uid === uid)) {
+      setAddByIdError(t('books.editor.photoAlreadyInSection'));
+      return;
+    }
+    setAddByIdLoading(true);
+    setAddByIdError('');
+    try {
+      await getPhoto(uid);
+      await addSectionPhotos(sectionId, [uid]);
+      setAddByIdValue('');
+      onReloadPhotos();
+      onRefresh();
+    } catch {
+      setAddByIdError(t('books.editor.photoNotFound'));
+    } finally {
+      setAddByIdLoading(false);
+    }
+  };
+
   const handlePhotosAdded = () => {
     setShowBrowser(false);
     onReloadPhotos();
@@ -69,7 +93,26 @@ export function SectionPhotoPool({ sectionId, photos, onRefresh, onReloadPhotos 
   if (photos.length === 0) {
     return (
       <div className="flex-1">
-        <div className="flex justify-end mb-3">
+        <div className="flex justify-end items-center gap-2 mb-3">
+          <div className="flex items-center gap-1.5">
+            <input
+              type="text"
+              value={addByIdValue}
+              onChange={(e) => { setAddByIdValue(e.target.value); setAddByIdError(''); }}
+              onKeyDown={(e) => { if (e.key === 'Enter') void handleAddById(); }}
+              placeholder={t('books.editor.addByIdPlaceholder')}
+              className="w-32 px-2 py-1.5 bg-slate-800 border border-slate-600 rounded text-sm text-white placeholder-slate-500 focus:outline-none focus:border-rose-500"
+              disabled={addByIdLoading}
+            />
+            <button
+              onClick={() => void handleAddById()}
+              disabled={addByIdLoading || !addByIdValue.trim()}
+              className="px-2.5 py-1.5 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white text-sm rounded transition-colors"
+            >
+              {t('books.editor.addById')}
+            </button>
+            {addByIdError && <span className="text-xs text-red-400">{addByIdError}</span>}
+          </div>
           <button
             onClick={() => setShowBrowser(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-sm rounded transition-colors"
@@ -98,7 +141,26 @@ export function SectionPhotoPool({ sectionId, photos, onRefresh, onReloadPhotos 
           {photos.length} {t('books.photos')}
           {selected.size > 0 && ` (${selected.size} selected)`}
         </span>
-        <div className="flex gap-2">
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
+            <input
+              type="text"
+              value={addByIdValue}
+              onChange={(e) => { setAddByIdValue(e.target.value); setAddByIdError(''); }}
+              onKeyDown={(e) => { if (e.key === 'Enter') void handleAddById(); }}
+              placeholder={t('books.editor.addByIdPlaceholder')}
+              className="w-32 px-2 py-1.5 bg-slate-800 border border-slate-600 rounded text-sm text-white placeholder-slate-500 focus:outline-none focus:border-rose-500"
+              disabled={addByIdLoading}
+            />
+            <button
+              onClick={() => void handleAddById()}
+              disabled={addByIdLoading || !addByIdValue.trim()}
+              className="px-2.5 py-1.5 bg-slate-700 hover:bg-slate-600 disabled:opacity-50 text-white text-sm rounded transition-colors"
+            >
+              {t('books.editor.addById')}
+            </button>
+            {addByIdError && <span className="text-xs text-red-400">{addByIdError}</span>}
+          </div>
           {selected.size > 0 && (
             <button
               onClick={handleRemoveSelected}

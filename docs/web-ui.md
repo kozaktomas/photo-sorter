@@ -504,6 +504,7 @@ Three-tab editor for organizing a photo book.
   - **Chapters** (optional) - Add chapters to group sections. Chapters are collapsible with a chevron toggle. Drag-and-drop reordering for both chapters and sections. Inline chapter title editing. Delete chapter confirmation dialog. Uncategorized sections appear at the top when chapters exist
   - **Move to Chapter** - Use the dropdown selector on a section to assign it to a chapter
 - **Photo Pool** - Grid of photos in the selected section with thumbnails
+- **Add by Photo ID** - Inline text input to quickly add a photo by pasting its UID (validates existence, checks for duplicates)
 - **Description Editing** - Click a photo description to edit it inline (textarea)
 - **Bulk Selection** - Select multiple photos for batch removal
 - **Photo Browser Modal** - Full-screen modal to browse the entire library, search, and add photos to a section. Already-added photos are grayed out

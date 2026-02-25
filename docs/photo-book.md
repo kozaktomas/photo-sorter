@@ -487,7 +487,7 @@ Returns `application/pdf` with `Content-Disposition: attachment`.
 | `web/src/pages/BookEditor/hooks/useBookData.ts` | Book data fetching and section photo loading |
 | `web/src/pages/BookEditor/SectionsTab.tsx` | Sections tab — sidebar + photo pool layout |
 | `web/src/pages/BookEditor/SectionSidebar.tsx` | Sortable chapter and section list (drag to reorder), chapter grouping |
-| `web/src/pages/BookEditor/SectionPhotoPool.tsx` | Photo grid with selection, inline description + note editing |
+| `web/src/pages/BookEditor/SectionPhotoPool.tsx` | Photo grid with selection, add by ID, inline description + note editing |
 | `web/src/pages/BookEditor/PhotoBrowserModal.tsx` | Full-screen modal to browse library and add photos |
 | `web/src/pages/BookEditor/PagesTab.tsx` | Pages tab — DndContext for drag-to-slot |
 | `web/src/pages/BookEditor/PageSidebar.tsx` | Pages grouped by section with collapsible headers, sortable within section |
