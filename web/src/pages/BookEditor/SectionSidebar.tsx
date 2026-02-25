@@ -9,6 +9,7 @@ import {
   useSensor,
   useSensors,
   type DragEndEvent,
+  type CollisionDetection,
 } from '@dnd-kit/core';
 import {
   arrayMove,
@@ -42,7 +43,7 @@ function SortableItem({ section, isSelected, onSelect, onDelete, onRename, onMov
   onMoveToChapter: (chapterId: string) => void;
   chapters: BookChapter[];
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: section.id });
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: `section-${section.id}` });
   const style = { transform: CSS.Transform.toString(transform), transition };
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(section.title);
@@ -286,18 +287,6 @@ export function SectionSidebar({ bookId, chapters, sections, selectedId, onSelec
     } catch { /* silent */ }
   };
 
-  const handleSectionDragEnd = async (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (!over || active.id === over.id) return;
-    const oldIndex = sections.findIndex(s => s.id === active.id);
-    const newIndex = sections.findIndex(s => s.id === over.id);
-    const reordered = arrayMove(sections, oldIndex, newIndex);
-    try {
-      await reorderSections(bookId, reordered.map(s => s.id));
-      onRefresh();
-    } catch { /* silent */ }
-  };
-
   const handleAddChapter = async (title: string) => {
     try {
       await createChapter(bookId, title);
@@ -320,18 +309,73 @@ export function SectionSidebar({ bookId, chapters, sections, selectedId, onSelec
     } catch { /* silent */ }
   };
 
-  const handleChapterDragEnd = async (event: DragEndEvent) => {
+  // Custom collision detection: only match items of the same type (chapter↔chapter, section↔section)
+  const sameTypeCollision: CollisionDetection = (args) => {
+    const collisions = closestCenter(args);
+    const activeId = String(args.active.id);
+    const prefix = activeId.startsWith('chapter-') ? 'chapter-' : 'section-';
+    return collisions.filter(c => String(c.id).startsWith(prefix));
+  };
+
+  const handleDragEnd = async (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
-    const activeId = String(active.id).replace('chapter-', '');
-    const overId = String(over.id).replace('chapter-', '');
-    const oldIndex = chapters.findIndex(c => c.id === activeId);
-    const newIndex = chapters.findIndex(c => c.id === overId);
-    const reordered = arrayMove(chapters, oldIndex, newIndex);
-    try {
-      await reorderChapters(bookId, reordered.map(c => c.id));
-      onRefresh();
-    } catch { /* silent */ }
+
+    const activeId = String(active.id);
+    const overId = String(over.id);
+
+    // Chapter reorder: both IDs start with "chapter-"
+    if (activeId.startsWith('chapter-') && overId.startsWith('chapter-')) {
+      const activeChId = activeId.replace('chapter-', '');
+      const overChId = overId.replace('chapter-', '');
+      const oldIndex = chapters.findIndex(c => c.id === activeChId);
+      const newIndex = chapters.findIndex(c => c.id === overChId);
+      if (oldIndex === -1 || newIndex === -1) return;
+      const reordered = arrayMove(chapters, oldIndex, newIndex);
+      try {
+        await reorderChapters(bookId, reordered.map(c => c.id));
+        onRefresh();
+      } catch { /* silent */ }
+      return;
+    }
+
+    // Section reorder: both IDs start with "section-"
+    if (activeId.startsWith('section-') && overId.startsWith('section-')) {
+      const activeSectionId = activeId.replace('section-', '');
+      const overSectionId = overId.replace('section-', '');
+
+      // Find which chapter the dragged section belongs to
+      const activeSection = sections.find(s => s.id === activeSectionId);
+      if (!activeSection) return;
+      const chapterId = activeSection.chapter_id || null;
+
+      // Only reorder within the same chapter group
+      const groupSections = sections.filter(s => (s.chapter_id || null) === chapterId);
+      const oldIndex = groupSections.findIndex(s => s.id === activeSectionId);
+      const newIndex = groupSections.findIndex(s => s.id === overSectionId);
+      if (oldIndex === -1 || newIndex === -1) return;
+
+      const reorderedGroup = arrayMove(groupSections, oldIndex, newIndex);
+
+      // Rebuild the full sections list, replacing only the affected group
+      const reordered: BookSection[] = [];
+      let groupInserted = false;
+      for (const s of sections) {
+        if ((s.chapter_id || null) === chapterId) {
+          if (!groupInserted) {
+            reordered.push(...reorderedGroup);
+            groupInserted = true;
+          }
+        } else {
+          reordered.push(s);
+        }
+      }
+
+      try {
+        await reorderSections(bookId, reordered.map(s => s.id));
+        onRefresh();
+      } catch { /* silent */ }
+    }
   };
 
   // Group sections by chapter
@@ -349,8 +393,14 @@ export function SectionSidebar({ bookId, chapters, sections, selectedId, onSelec
 
   const hasChapters = chapters.length > 0;
 
+  // All sortable IDs for one unified DndContext
+  const allSortableIds = [
+    ...chapters.map(c => `chapter-${c.id}`),
+    ...sections.map(s => `section-${s.id}`),
+  ];
+
   const renderSectionList = (sectionList: BookSection[]) => (
-    <SortableContext items={sectionList.map(s => s.id)} strategy={verticalListSortingStrategy}>
+    <SortableContext items={sectionList.map(s => `section-${s.id}`)} strategy={verticalListSortingStrategy}>
       {sectionList.map((section) => (
         <SortableItem
           key={section.id}
@@ -374,30 +424,26 @@ export function SectionSidebar({ bookId, chapters, sections, selectedId, onSelec
         onAdd={handleAddChapter}
       />
 
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleSectionDragEnd}>
-        {hasChapters && (
-          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleChapterDragEnd}>
-            <SortableContext items={chapters.map(c => `chapter-${c.id}`)} strategy={verticalListSortingStrategy}>
-              {chapters.map((chapter) => {
-                const chapterSections = sectionsByChapter.get(chapter.id) || [];
-                return (
-                  <SortableChapter
-                    key={chapter.id}
-                    chapter={chapter}
-                    onDelete={() => handleDeleteChapter(chapter.id)}
-                    onRename={(title) => handleRenameChapter(chapter.id, title)}
-                  >
-                    {renderSectionList(chapterSections)}
-                    <AddInput
-                      placeholder={t('books.editor.sectionTitle')}
-                      onAdd={(title) => handleAddSection(title, chapter.id)}
-                    />
-                  </SortableChapter>
-                );
-              })}
-            </SortableContext>
-          </DndContext>
-        )}
+      <DndContext sensors={sensors} collisionDetection={sameTypeCollision} onDragEnd={handleDragEnd}>
+        <SortableContext items={allSortableIds} strategy={verticalListSortingStrategy}>
+          {hasChapters && chapters.map((chapter) => {
+            const chapterSections = sectionsByChapter.get(chapter.id) || [];
+            return (
+              <SortableChapter
+                key={chapter.id}
+                chapter={chapter}
+                onDelete={() => handleDeleteChapter(chapter.id)}
+                onRename={(title) => handleRenameChapter(chapter.id, title)}
+              >
+                {renderSectionList(chapterSections)}
+                <AddInput
+                  placeholder={t('books.editor.sectionTitle')}
+                  onAdd={(title) => handleAddSection(title, chapter.id)}
+                />
+              </SortableChapter>
+            );
+          })}
+        </SortableContext>
 
         {/* Orphan sections (no chapter) */}
         {(orphanSections.length > 0 || !hasChapters) && (
