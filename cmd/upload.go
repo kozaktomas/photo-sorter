@@ -11,6 +11,7 @@ import (
 	"github.com/schollz/progressbar/v3"
 	"github.com/spf13/cobra"
 	"github.com/kozaktomas/photo-sorter/internal/config"
+	"github.com/kozaktomas/photo-sorter/internal/constants"
 	"github.com/kozaktomas/photo-sorter/internal/photoprism"
 )
 
@@ -21,12 +22,14 @@ var uploadCmd = &cobra.Command{
 
 By default, only files in the specified folders are uploaded (non-recursive).
 Use -r to search recursively in subdirectories.
+Use -l to apply labels to uploaded photos (can be repeated for multiple labels).
 Supported formats: jpg, jpeg, png, gif, heic, heif, webp, tiff, bmp, raw, cr2, nef, arw, dng
 
 Example:
   photo-sorter upload aq8i4k2l3m9n0o1p /path/to/photos
   photo-sorter upload aq8i4k2l3m9n0o1p /path/to/folder1 /path/to/folder2 /path/to/folder3
-  photo-sorter upload -r aq8i4k2l3m9n0o1p /path/to/photos  # recursive search`,
+  photo-sorter upload -r aq8i4k2l3m9n0o1p /path/to/photos  # recursive search
+  photo-sorter upload -l "Vacation" -l "Summer" aq8i4k2l3m9n0o1p /path/to/photos`,
 	Args: cobra.MinimumNArgs(2),
 	RunE: runUpload,
 }
@@ -34,6 +37,7 @@ Example:
 func init() {
 	rootCmd.AddCommand(uploadCmd)
 	uploadCmd.Flags().BoolP("recursive", "r", false, "Search for photos recursively in subdirectories")
+	uploadCmd.Flags().StringSliceP("label", "l", nil, "Labels to apply to uploaded photos (can be specified multiple times)")
 }
 
 // isImageFile checks if a file has a supported image extension
@@ -193,10 +197,66 @@ func processUploads(pp *photoprism.PhotoPrism, uploadTokens []string, albumUID s
 	return processErrors
 }
 
+// getAlbumPhotoUIDs fetches all photo UIDs in an album as a set.
+func getAlbumPhotoUIDs(pp *photoprism.PhotoPrism, albumUID string) (map[string]struct{}, error) {
+	photos, err := fetchAllAlbumPhotos(pp, albumUID, constants.DefaultPageSize)
+	if err != nil {
+		return nil, err
+	}
+	uids := make(map[string]struct{}, len(photos))
+	for _, p := range photos {
+		uids[p.UID] = struct{}{}
+	}
+	return uids, nil
+}
+
+// applyLabelsToPhotos applies the given labels to all specified photos with parallel concurrency.
+func applyLabelsToPhotos(pp *photoprism.PhotoPrism, photoUIDs []string, labels []string) {
+	totalOps := len(photoUIDs) * len(labels)
+	bar := newUploadProgressBar(totalOps, "Applying labels")
+
+	var (
+		labelErrors []string
+		errorsMu    sync.Mutex
+		wg          sync.WaitGroup
+		sem         = make(chan struct{}, 8)
+	)
+
+	for _, uid := range photoUIDs {
+		for _, label := range labels {
+			wg.Add(1)
+			go func(photoUID, labelName string) {
+				defer wg.Done()
+				sem <- struct{}{}
+				defer func() { <-sem }()
+
+				_, err := pp.AddPhotoLabel(photoUID, photoprism.PhotoLabel{
+					Name:        labelName,
+					LabelSrc:    "manual",
+					Uncertainty: 0,
+				})
+				if err != nil {
+					errorsMu.Lock()
+					labelErrors = append(labelErrors, fmt.Sprintf("%s/%s: %v", photoUID, labelName, err))
+					errorsMu.Unlock()
+				}
+				bar.Add(1)
+			}(uid, label)
+		}
+	}
+	wg.Wait()
+	fmt.Println()
+
+	for _, errMsg := range labelErrors {
+		fmt.Printf("Warning: failed to apply label %s\n", errMsg)
+	}
+}
+
 func runUpload(cmd *cobra.Command, args []string) error {
 	albumUID := args[0]
 	folderPaths := args[1:]
 	recursive := mustGetBool(cmd, "recursive")
+	labels := mustGetStringSlice(cmd, "label")
 
 	cfg := config.Load()
 
@@ -224,6 +284,15 @@ func runUpload(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Printf("Uploading to album: %s\n\n", album.Title)
 
+	// Snapshot album photo UIDs before upload (for label diffing)
+	var beforeUIDs map[string]struct{}
+	if len(labels) > 0 {
+		beforeUIDs, err = getAlbumPhotoUIDs(pp, albumUID)
+		if err != nil {
+			return fmt.Errorf("failed to snapshot album photos: %w", err)
+		}
+	}
+
 	uploadTokens, uploadErrors := uploadFiles(pp, filePaths)
 	for _, errMsg := range uploadErrors {
 		fmt.Printf("Failed: %s\n", errMsg)
@@ -237,6 +306,28 @@ func runUpload(cmd *cobra.Command, args []string) error {
 	processErrors := processUploads(pp, uploadTokens, albumUID)
 	for _, errMsg := range processErrors {
 		fmt.Printf("Warning: failed to process %s\n", errMsg)
+	}
+
+	// Apply labels to newly uploaded photos
+	if len(labels) > 0 {
+		afterUIDs, err := getAlbumPhotoUIDs(pp, albumUID)
+		if err != nil {
+			return fmt.Errorf("failed to snapshot album photos after upload: %w", err)
+		}
+
+		var newUIDs []string
+		for uid := range afterUIDs {
+			if _, existed := beforeUIDs[uid]; !existed {
+				newUIDs = append(newUIDs, uid)
+			}
+		}
+
+		if len(newUIDs) > 0 {
+			fmt.Printf("\nApplying %d label(s) to %d new photo(s)...\n", len(labels), len(newUIDs))
+			applyLabelsToPhotos(pp, newUIDs, labels)
+		} else {
+			fmt.Println("\nNo new photos detected in album; skipping label application.")
+		}
 	}
 
 	fmt.Printf("\nDone! Uploaded %d file(s) to album '%s'\n", len(uploadTokens), album.Title)

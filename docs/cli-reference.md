@@ -183,6 +183,7 @@ photo-sorter upload <album-uid> <folder-path> [folder-path...] [flags]
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
 | `-r, --recursive` | bool | false | Search for photos recursively in subdirectories |
+| `-l, --label` | string[] | none | Labels to apply to uploaded photos (can be specified multiple times) |
 
 **Examples:**
 ```bash
@@ -194,6 +195,9 @@ photo-sorter upload aq8abc123def /path/folder1 /path/folder2
 
 # Recursive search
 photo-sorter upload -r aq8abc123def /path/to/photos
+
+# Upload and apply labels
+photo-sorter upload -l "Vacation" -l "Summer" aq8abc123def /path/to/photos
 ```
 
 ---

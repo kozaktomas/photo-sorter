@@ -2,6 +2,14 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Browser
+
+Chromium is available for headless browsing (e.g. checking web UI output):
+```bash
+chromium --headless --no-sandbox --dump-dom http://localhost:8085
+chromium --headless --no-sandbox --screenshot=/tmp/screenshot.png --window-size=1280,800 http://localhost:8085
+```
+
 ## Denied Files
 
 Do NOT read or access the following files:
@@ -205,6 +213,7 @@ go run . labels delete --yes <uid>       # Delete without confirmation
 ```bash
 go run . upload <album-uid> <folder-path> [folder-path...] [flags]
   -r, --recursive      Search for photos recursively (default: flat search)
+  -l, --label          Labels to apply to uploaded photos (can be repeated)
 ```
 
 ### Move Command
