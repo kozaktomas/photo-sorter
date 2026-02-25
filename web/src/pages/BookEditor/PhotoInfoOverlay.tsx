@@ -10,7 +10,7 @@ interface Props {
 
 export function PhotoInfoOverlay({ description, note, orientation, compact }: Props) {
   const { t } = useTranslation('pages');
-  const hasContent = description ?? note ?? orientation;
+  const hasContent = description || note || orientation;
   if (!hasContent) return null;
 
   return (
