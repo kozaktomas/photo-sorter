@@ -27,6 +27,7 @@ func setupSSEConnection(w http.ResponseWriter, r *http.Request, lookupJob func(s
 	}
 
 	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 

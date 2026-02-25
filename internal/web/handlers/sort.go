@@ -1,10 +1,12 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"time"
 
@@ -294,39 +296,57 @@ func (h *SortHandler) failJob(job *SortJob, message string) {
 func (h *SortHandler) createAIProvider(providerName string) (ai.Provider, error) {
 	switch providerName {
 	case constants.ProviderOpenAI:
-		if h.config.OpenAI.Token == "" {
-			return nil, errors.New("OPENAI_TOKEN environment variable is required")
-		}
-		pricing := h.config.GetModelPricing("gpt-4.1-mini")
-		return ai.NewOpenAIProvider(h.config.OpenAI.Token,
-			ai.RequestPricing{Input: pricing.Standard.Input, Output: pricing.Standard.Output},
-			ai.RequestPricing{Input: pricing.Batch.Input, Output: pricing.Batch.Output},
-		), nil
+		return h.createOpenAIProvider()
 	case constants.ProviderGemini:
-		if h.config.Gemini.APIKey == "" {
-			return nil, errors.New("GEMINI_API_KEY environment variable is required")
-		}
-		pricing := h.config.GetModelPricing("gemini-2.5-flash")
-		provider, err := ai.NewGeminiProvider(context.Background(), h.config.Gemini.APIKey,
-			ai.RequestPricing{Input: pricing.Standard.Input, Output: pricing.Standard.Output},
-			ai.RequestPricing{Input: pricing.Batch.Input, Output: pricing.Batch.Output},
-		)
-		if err != nil {
-			return nil, fmt.Errorf("creating Gemini provider: %w", err)
-		}
-		return provider, nil
+		return h.createGeminiProvider()
 	case constants.ProviderOllama:
-		return ai.NewOllamaProvider(h.config.Ollama.URL, h.config.Ollama.Model), nil
+		p, err := ai.NewOllamaProvider(h.config.Ollama.URL, h.config.Ollama.Model)
+		if err != nil {
+			return nil, fmt.Errorf("creating Ollama provider: %w", err)
+		}
+		return p, nil
 	case constants.ProviderLlamaCpp:
-		return ai.NewLlamaCppProvider(h.config.LlamaCpp.URL, h.config.LlamaCpp.Model), nil
+		p, err := ai.NewLlamaCppProvider(h.config.LlamaCpp.URL, h.config.LlamaCpp.Model)
+		if err != nil {
+			return nil, fmt.Errorf("creating llama.cpp provider: %w", err)
+		}
+		return p, nil
 	default:
 		return nil, fmt.Errorf("unknown provider: %s", providerName)
 	}
 }
 
+func (h *SortHandler) createOpenAIProvider() (ai.Provider, error) {
+	if h.config.OpenAI.Token == "" {
+		return nil, errors.New("OPENAI_TOKEN environment variable is required")
+	}
+	pricing := h.config.GetModelPricing("gpt-4.1-mini")
+	return ai.NewOpenAIProvider(h.config.OpenAI.Token,
+		ai.RequestPricing{Input: pricing.Standard.Input, Output: pricing.Standard.Output},
+		ai.RequestPricing{Input: pricing.Batch.Input, Output: pricing.Batch.Output},
+	), nil
+}
+
+func (h *SortHandler) createGeminiProvider() (ai.Provider, error) {
+	if h.config.Gemini.GetAPIKey() == "" {
+		return nil, errors.New("GEMINI_API_KEY environment variable is required")
+	}
+	pricing := h.config.GetModelPricing("gemini-2.5-flash")
+	provider, err := ai.NewGeminiProvider(context.Background(), h.config.Gemini.GetAPIKey(),
+		ai.RequestPricing{Input: pricing.Standard.Input, Output: pricing.Standard.Output},
+		ai.RequestPricing{Input: pricing.Batch.Input, Output: pricing.Batch.Output},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating Gemini provider: %w", err)
+	}
+	return provider, nil
+}
+
 func sendSSEEvent(w http.ResponseWriter, flusher http.Flusher, eventType string, data any) {
 	jsonData, _ := json.Marshal(data)
-	fmt.Fprintf(w, "event: %s\n", eventType)
-	fmt.Fprintf(w, "data: %s\n\n", jsonData)
+	_, _ = io.WriteString(w, "event: "+eventType+"\n")
+	_, _ = io.WriteString(w, "data: ")
+	_, _ = io.Copy(w, bytes.NewReader(jsonData))
+	_, _ = io.WriteString(w, "\n\n")
 	flusher.Flush()
 }

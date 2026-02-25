@@ -150,7 +150,7 @@ func initSimilarLabelDeps(ctx context.Context, jsonOutput bool) (*similarLabelDe
 	if !jsonOutput {
 		fmt.Println("Connecting to PhotoPrism...")
 	}
-	pp, err := photoprism.NewPhotoPrism(cfg.PhotoPrism.URL, cfg.PhotoPrism.Username, cfg.PhotoPrism.Password)
+	pp, err := photoprism.NewPhotoPrism(cfg.PhotoPrism.URL, cfg.PhotoPrism.Username, cfg.PhotoPrism.GetPassword())
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to PhotoPrism: %w", err)
 	}

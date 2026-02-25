@@ -240,8 +240,8 @@ func TestLoad_PhotoPrismConfig(t *testing.T) {
 		t.Errorf("expected username 'testuser', got '%s'", cfg.PhotoPrism.Username)
 	}
 
-	if cfg.PhotoPrism.Password != "testpass" {
-		t.Errorf("expected password 'testpass', got '%s'", cfg.PhotoPrism.Password)
+	if cfg.PhotoPrism.GetPassword() != "testpass" {
+		t.Errorf("expected password 'testpass', got '%s'", cfg.PhotoPrism.GetPassword())
 	}
 
 	if cfg.PhotoPrism.Domain != "https://public.photos.com" {
@@ -264,8 +264,8 @@ func TestLoad_GeminiConfig(t *testing.T) {
 
 	cfg := Load()
 
-	if cfg.Gemini.APIKey != "gemini-api-key-456" {
-		t.Errorf("expected Gemini API key 'gemini-api-key-456', got '%s'", cfg.Gemini.APIKey)
+	if cfg.Gemini.GetAPIKey() != "gemini-api-key-456" {
+		t.Errorf("expected Gemini API key 'gemini-api-key-456', got '%s'", cfg.Gemini.GetAPIKey())
 	}
 }
 

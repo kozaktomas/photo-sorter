@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
@@ -18,24 +19,34 @@ const (
 )
 
 type LlamaCppProvider struct {
-	baseURL string
-	model   string
-	client  *http.Client
-	usage   Usage
+	parsedURL *url.URL
+	model     string
+	client    *http.Client
+	usage     Usage
 }
 
-func NewLlamaCppProvider(baseURL, model string) *LlamaCppProvider {
+func NewLlamaCppProvider(baseURL, model string) (*LlamaCppProvider, error) {
 	if baseURL == "" {
 		baseURL = defaultLlamaCppURL
 	}
 	if model == "" {
 		model = defaultLlamaCppModel
 	}
-	return &LlamaCppProvider{
-		baseURL: strings.TrimSuffix(baseURL, "/"),
-		model:   model,
-		client:  &http.Client{},
+	parsed, err := url.Parse(strings.TrimSuffix(baseURL, "/"))
+	if err != nil {
+		return nil, fmt.Errorf("invalid llama.cpp URL: %w", err)
 	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return nil, fmt.Errorf("invalid llama.cpp URL scheme %q: must be http or https", parsed.Scheme)
+	}
+	if parsed.Host == "" {
+		return nil, errors.New("invalid llama.cpp URL: missing host")
+	}
+	return &LlamaCppProvider{
+		parsedURL: parsed,
+		model:     model,
+		client:    &http.Client{},
+	}, nil
 }
 
 func (p *LlamaCppProvider) Name() string {
@@ -230,13 +241,14 @@ func (p *LlamaCppProvider) sendRequest(ctx context.Context, messages []llamaCppM
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+"/v1/chat/completions", bytes.NewReader(jsonBody))
+	reqURL := p.parsedURL.JoinPath("/v1/chat/completions")
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL.String(), bytes.NewReader(jsonBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := p.client.Do(req)
+	resp, err := p.client.Do(req) //nolint:gosec // URL validated in NewLlamaCppProvider (scheme + host check)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}

@@ -67,7 +67,7 @@ func runPhotoInfo(cmd *cobra.Command, args []string) error {
 	pp, err := photoprism.NewPhotoPrismWithCapture(
 		cfg.PhotoPrism.URL,
 		cfg.PhotoPrism.Username,
-		cfg.PhotoPrism.Password,
+		cfg.PhotoPrism.GetPassword(),
 		captureDir,
 	)
 	if err != nil {

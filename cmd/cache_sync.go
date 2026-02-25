@@ -86,7 +86,7 @@ func initSyncDeps(ctx context.Context, cfg *config.Config, jsonOutput bool) (*sy
 		fmt.Println("Connecting to PhotoPrism...")
 	}
 	pp, err := photoprism.NewPhotoPrismWithCapture(
-		cfg.PhotoPrism.URL, cfg.PhotoPrism.Username, cfg.PhotoPrism.Password, captureDir,
+		cfg.PhotoPrism.URL, cfg.PhotoPrism.Username, cfg.PhotoPrism.GetPassword(), captureDir,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to PhotoPrism: %w", err)

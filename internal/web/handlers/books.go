@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os/exec"
@@ -221,6 +223,10 @@ func (h *BooksHandler) GetBook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	respondJSON(w, http.StatusOK, buildBookDetailResponse(book, chapters, sections, pages))
+}
+
+func buildBookDetailResponse(book *database.PhotoBook, chapters []database.BookChapter, sections []database.BookSection, pages []database.BookPage) bookDetailResponse {
 	chapterResps := make([]chapterResponse, len(chapters))
 	for i, c := range chapters {
 		chapterResps[i] = chapterResponse{
@@ -260,7 +266,7 @@ func (h *BooksHandler) GetBook(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	respondJSON(w, http.StatusOK, bookDetailResponse{
+	return bookDetailResponse{
 		ID:          book.ID,
 		Title:       book.Title,
 		Description: book.Description,
@@ -269,7 +275,7 @@ func (h *BooksHandler) GetBook(w http.ResponseWriter, r *http.Request) {
 		Pages:       pageResps,
 		CreatedAt:   book.CreatedAt.Format("2006-01-02T15:04:05Z"),
 		UpdatedAt:   book.UpdatedAt.Format("2006-01-02T15:04:05Z"),
-	})
+	}
 }
 
 func (h *BooksHandler) UpdateBook(w http.ResponseWriter, r *http.Request) {
@@ -747,7 +753,7 @@ func (h *BooksHandler) UpdatePage(w http.ResponseWriter, r *http.Request) {
 		newSlotCount := database.PageFormatSlotCount(*req.Format)
 		for i := newSlotCount; i < oldSlotCount; i++ {
 			if err := bw.ClearSlot(r.Context(), id, i); err != nil {
-				log.Printf("warning: failed to clear excess slot %d on page %s: %v", i, id, err)
+				log.Printf("warning: failed to clear excess slot %d on page %s: %v", i, sanitizeForLog(id), err) //nolint:gosec // id sanitized via sanitizeForLog
 			}
 		}
 	}
@@ -937,7 +943,8 @@ func writePDFResponse(w http.ResponseWriter, pdfData []byte, filename string, re
 	w.Header().Set("Content-Type", "application/pdf")
 	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s.pdf"`, filename))
 	w.Header().Set("Content-Length", strconv.Itoa(len(pdfData)))
-	w.Write(pdfData)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	io.Copy(w, bytes.NewReader(pdfData))
 }
 
 func handleTestExport(w http.ResponseWriter, r *http.Request, bookTitle string) {

@@ -51,7 +51,7 @@ func (pp *PhotoPrism) UploadFile(filePath string) (string, error) {
 	}
 
 	// Send request
-	url := fmt.Sprintf("%s/users/%s/upload/%s", pp.Url, pp.userUID, uploadToken)
+	url := pp.resolveURL("users", pp.userUID, "upload", uploadToken)
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url, &body)
 	if err != nil {
 		return "", fmt.Errorf("could not create request: %w", err)
@@ -60,7 +60,7 @@ func (pp *PhotoPrism) UploadFile(filePath string) (string, error) {
 	req.Header.Set("Authorization", "Bearer "+pp.token)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := http.DefaultClient.Do(req) //nolint:gosec // URL constructed from validated parsedURL via resolveURL
 	if err != nil {
 		return "", fmt.Errorf("could not send request: %w", err)
 	}
@@ -124,7 +124,7 @@ func (pp *PhotoPrism) UploadFiles(filePaths []string) (string, error) {
 	}
 
 	// Send request
-	url := fmt.Sprintf("%s/users/%s/upload/%s", pp.Url, pp.userUID, uploadToken)
+	url := pp.resolveURL("users", pp.userUID, "upload", uploadToken)
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url, &body)
 	if err != nil {
 		return "", fmt.Errorf("could not create request: %w", err)
@@ -133,7 +133,7 @@ func (pp *PhotoPrism) UploadFiles(filePaths []string) (string, error) {
 	req.Header.Set("Authorization", "Bearer "+pp.token)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := http.DefaultClient.Do(req) //nolint:gosec // URL constructed from validated parsedURL via resolveURL
 	if err != nil {
 		return "", fmt.Errorf("could not send request: %w", err)
 	}

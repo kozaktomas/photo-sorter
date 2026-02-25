@@ -362,7 +362,7 @@ func initMatchDeps(ctx context.Context, flags *matchCmdFlags) (*matchDeps, error
 	if !flags.jsonOutput {
 		fmt.Println("Connecting to PhotoPrism...")
 	}
-	pp, err := photoprism.NewPhotoPrismWithCapture(cfg.PhotoPrism.URL, cfg.PhotoPrism.Username, cfg.PhotoPrism.Password, captureDir)
+	pp, err := photoprism.NewPhotoPrismWithCapture(cfg.PhotoPrism.URL, cfg.PhotoPrism.Username, cfg.PhotoPrism.GetPassword(), captureDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to PhotoPrism: %w", err)
 	}

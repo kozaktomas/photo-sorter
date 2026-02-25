@@ -801,7 +801,8 @@ func downloadPhoto(pp *photoprism.PhotoPrism, uid string, tmpDir string) (*photo
 		return nil, fmt.Errorf("failed to decode image config: %w", err)
 	}
 
-	log.Printf("PDF export: photo %s dimensions %dx%d", uid, cfg.Width, cfg.Height)
+	sanitizedUID := strings.NewReplacer("\n", "", "\r", "").Replace(uid)
+	log.Printf("PDF export: photo %s dimensions %dx%d", sanitizedUID, cfg.Width, cfg.Height) //nolint:gosec // uid sanitized above
 
 	return &photoImage{
 		path:   path,

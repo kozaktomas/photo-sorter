@@ -528,7 +528,10 @@ func runCacheComputeEras(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	embClient := fingerprint.NewEmbeddingClient(cfg.Embedding.URL, "")
+	embClient, err := fingerprint.NewEmbeddingClient(cfg.Embedding.URL, "")
+	if err != nil {
+		return fmt.Errorf("invalid embedding config: %w", err)
+	}
 	if !jsonOutput {
 		fmt.Printf("Embedding service: %s\n", cfg.Embedding.URL)
 		if dryRun {

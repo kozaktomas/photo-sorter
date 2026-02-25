@@ -151,13 +151,13 @@ func (pp *PhotoPrism) GetPhotoDownload(photoUID string) ([]byte, string, error) 
 //	// Save thumbnail to file
 //	err = os.WriteFile("thumbnail.jpg", data, 0644)
 func (pp *PhotoPrism) GetPhotoThumbnail(thumbHash string, size string) ([]byte, string, error) {
-	url := fmt.Sprintf("%s/t/%s/%s/%s", pp.Url, thumbHash, pp.downloadToken, size)
+	url := pp.resolveURL("t", thumbHash, pp.downloadToken, size)
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
 	if err != nil {
 		return nil, "", fmt.Errorf("could not create request: %w", err)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := http.DefaultClient.Do(req) //nolint:gosec // URL constructed from validated parsedURL via resolveURL
 	if err != nil {
 		return nil, "", fmt.Errorf("could not send request: %w", err)
 	}
@@ -179,14 +179,18 @@ func (pp *PhotoPrism) GetPhotoThumbnail(thumbHash string, size string) ([]byte, 
 // GetFileDownload downloads a file using its hash via the /api/v1/dl/{hash} endpoint
 // This endpoint may work differently than the photo download endpoint
 func (pp *PhotoPrism) GetFileDownload(fileHash string) ([]byte, string, error) {
-	url := fmt.Sprintf("%s/dl/%s?t=%s", pp.Url, fileHash, pp.downloadToken)
+	dlURL := pp.parsedURL.JoinPath("dl", fileHash)
+	q := dlURL.Query()
+	q.Set("t", pp.downloadToken)
+	dlURL.RawQuery = q.Encode()
+	url := dlURL.String()
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
 	if err != nil {
 		return nil, "", fmt.Errorf("could not create request: %w", err)
 	}
 
 	// Try without Authorization header first, as this endpoint might use token in URL
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := http.DefaultClient.Do(req) //nolint:gosec // URL constructed from validated parsedURL via JoinPath
 	if err != nil {
 		return nil, "", fmt.Errorf("could not send request: %w", err)
 	}

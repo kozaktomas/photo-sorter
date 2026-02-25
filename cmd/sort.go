@@ -42,34 +42,50 @@ func init() {
 func createAIProvider(providerName string, cfg *config.Config) (ai.Provider, error) {
 	switch providerName {
 	case "openai":
-		if cfg.OpenAI.Token == "" {
-			return nil, errors.New("OPENAI_TOKEN environment variable is required")
-		}
-		pricing := cfg.GetModelPricing("gpt-4.1-mini")
-		return ai.NewOpenAIProvider(cfg.OpenAI.Token,
-			ai.RequestPricing{Input: pricing.Standard.Input, Output: pricing.Standard.Output},
-			ai.RequestPricing{Input: pricing.Batch.Input, Output: pricing.Batch.Output},
-		), nil
+		return createOpenAIProvider(cfg)
 	case "gemini":
-		if cfg.Gemini.APIKey == "" {
-			return nil, errors.New("GEMINI_API_KEY environment variable is required")
-		}
-		pricing := cfg.GetModelPricing("gemini-2.5-flash")
-		provider, err := ai.NewGeminiProvider(context.Background(), cfg.Gemini.APIKey,
-			ai.RequestPricing{Input: pricing.Standard.Input, Output: pricing.Standard.Output},
-			ai.RequestPricing{Input: pricing.Batch.Input, Output: pricing.Batch.Output},
-		)
-		if err != nil {
-			return nil, fmt.Errorf("creating Gemini provider: %w", err)
-		}
-		return provider, nil
+		return createGeminiProvider(cfg)
 	case "ollama":
-		return ai.NewOllamaProvider(cfg.Ollama.URL, cfg.Ollama.Model), nil
+		p, err := ai.NewOllamaProvider(cfg.Ollama.URL, cfg.Ollama.Model)
+		if err != nil {
+			return nil, fmt.Errorf("creating Ollama provider: %w", err)
+		}
+		return p, nil
 	case "llamacpp":
-		return ai.NewLlamaCppProvider(cfg.LlamaCpp.URL, cfg.LlamaCpp.Model), nil
+		p, err := ai.NewLlamaCppProvider(cfg.LlamaCpp.URL, cfg.LlamaCpp.Model)
+		if err != nil {
+			return nil, fmt.Errorf("creating llama.cpp provider: %w", err)
+		}
+		return p, nil
 	default:
 		return nil, fmt.Errorf("unknown provider: %s (supported: openai, gemini, ollama, llamacpp)", providerName)
 	}
+}
+
+func createOpenAIProvider(cfg *config.Config) (ai.Provider, error) {
+	if cfg.OpenAI.Token == "" {
+		return nil, errors.New("OPENAI_TOKEN environment variable is required")
+	}
+	pricing := cfg.GetModelPricing("gpt-4.1-mini")
+	return ai.NewOpenAIProvider(cfg.OpenAI.Token,
+		ai.RequestPricing{Input: pricing.Standard.Input, Output: pricing.Standard.Output},
+		ai.RequestPricing{Input: pricing.Batch.Input, Output: pricing.Batch.Output},
+	), nil
+}
+
+func createGeminiProvider(cfg *config.Config) (ai.Provider, error) {
+	if cfg.Gemini.GetAPIKey() == "" {
+		return nil, errors.New("GEMINI_API_KEY environment variable is required")
+	}
+	pricing := cfg.GetModelPricing("gemini-2.5-flash")
+	provider, err := ai.NewGeminiProvider(context.Background(), cfg.Gemini.GetAPIKey(),
+		ai.RequestPricing{Input: pricing.Standard.Input, Output: pricing.Standard.Output},
+		ai.RequestPricing{Input: pricing.Batch.Input, Output: pricing.Batch.Output},
+	)
+	if err != nil {
+		return nil, fmt.Errorf("creating Gemini provider: %w", err)
+	}
+	return provider, nil
 }
 
 // printSortResults prints the results of a sort operation.
@@ -160,7 +176,7 @@ func runSort(cmd *cobra.Command, args []string) error {
 		cancel()
 	}()
 
-	pp, err := photoprism.NewPhotoPrismWithCapture(cfg.PhotoPrism.URL, cfg.PhotoPrism.Username, cfg.PhotoPrism.Password, captureDir)
+	pp, err := photoprism.NewPhotoPrismWithCapture(cfg.PhotoPrism.URL, cfg.PhotoPrism.Username, cfg.PhotoPrism.GetPassword(), captureDir)
 	if err != nil {
 		return fmt.Errorf("failed to connect to PhotoPrism: %w", err)
 	}

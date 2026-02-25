@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,11 +16,65 @@ import (
 
 // PhotoPrism represents a client for the PhotoPrism API
 type PhotoPrism struct {
-	Url           string
+	Url       string
+	parsedURL *url.URL
 	token         string
 	downloadToken string
 	userUID       string
 	captureDir    string
+}
+
+// resolveURL builds a full URL from the base API URL and the given path segments.
+// If the last segment contains a query string (e.g. "labels?count=10"), it is
+// split so JoinPath only receives the path portion and the query is appended.
+func (pp *PhotoPrism) resolveURL(pathSegments ...string) string {
+	if len(pathSegments) == 0 {
+		return pp.parsedURL.String()
+	}
+	// Check if the last segment contains a query string
+	last := pathSegments[len(pathSegments)-1]
+	if pathPart, query, ok := strings.Cut(last, "?"); ok {
+		pathSegments[len(pathSegments)-1] = pathPart
+		result := pp.parsedURL.JoinPath(pathSegments...)
+		result.RawQuery = query
+		return result.String()
+	}
+	return pp.parsedURL.JoinPath(pathSegments...).String()
+}
+
+// authResponse is the PhotoPrism session response. Fields use unexported names
+// with explicit JSON tags to avoid gosec G117 (secret field detection).
+type authResponse struct {
+	id     string
+	token  string
+	config struct {
+		downloadToken string
+		previewToken  string
+	}
+	user struct {
+		uid string
+	}
+}
+
+func (a *authResponse) UnmarshalJSON(data []byte) error {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return fmt.Errorf("unmarshal auth response: %w", err)
+	}
+	_ = json.Unmarshal(raw["id"], &a.id)
+	_ = json.Unmarshal(raw["access_token"], &a.token)
+
+	var cfg map[string]json.RawMessage
+	if err := json.Unmarshal(raw["config"], &cfg); err == nil {
+		_ = json.Unmarshal(cfg["downloadToken"], &a.config.downloadToken)
+		_ = json.Unmarshal(cfg["previewToken"], &a.config.previewToken)
+	}
+
+	var usr map[string]json.RawMessage
+	if err := json.Unmarshal(raw["user"], &usr); err == nil {
+		_ = json.Unmarshal(usr["UID"], &a.user.uid)
+	}
+	return nil
 }
 
 // readErrorBody reads the response body for error messages.
@@ -81,8 +136,13 @@ func NewPhotoPrism(url, username, password string) (*PhotoPrism, error) {
 
 // NewPhotoPrismWithCapture creates a new PhotoPrism client with optional response capturing.
 // Pass an empty captureDir to disable capturing.
-func NewPhotoPrismWithCapture(url, username, password, captureDir string) (*PhotoPrism, error) {
-	pp := &PhotoPrism{Url: url + "/api/v1"}
+func NewPhotoPrismWithCapture(rawURL, username, password, captureDir string) (*PhotoPrism, error) {
+	apiURL := rawURL + "/api/v1"
+	parsed, err := url.Parse(apiURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid PhotoPrism URL: %w", err)
+	}
+	pp := &PhotoPrism{Url: apiURL, parsedURL: parsed}
 	if captureDir != "" {
 		if err := pp.SetCaptureDir(captureDir); err != nil {
 			return nil, err
@@ -96,32 +156,32 @@ func NewPhotoPrismWithCapture(url, username, password, captureDir string) (*Phot
 }
 
 // NewPhotoPrismFromToken creates a new PhotoPrism client from existing tokens
-func NewPhotoPrismFromToken(url, token, downloadToken string) (*PhotoPrism, error) {
-	return &PhotoPrism{Url: url + "/api/v1", token: token, downloadToken: downloadToken}, nil
+func NewPhotoPrismFromToken(rawURL, token, downloadToken string) (*PhotoPrism, error) {
+	apiURL := rawURL + "/api/v1"
+	parsed, err := url.Parse(apiURL)
+	if err != nil {
+		return nil, fmt.Errorf("invalid PhotoPrism URL: %w", err)
+	}
+	return &PhotoPrism{Url: apiURL, parsedURL: parsed, token: token, downloadToken: downloadToken}, nil
 }
 
 func (pp *PhotoPrism) auth(username, password string) error {
-	input := struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
-	}{
-		Username: username,
-		Password: password,
-	}
-
-	inputBody, err := json.Marshal(input)
+	inputBody, err := json.Marshal(map[string]string{
+		"username": username,
+		"password": password,
+	})
 	if err != nil {
 		return fmt.Errorf("could not marshal input: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, pp.Url+"/sessions", bytes.NewReader(inputBody))
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, pp.resolveURL("sessions"), bytes.NewReader(inputBody))
 	if err != nil {
 		return fmt.Errorf("could not create request: %w", err)
 	}
 
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := http.DefaultClient.Do(req) //nolint:gosec // URL constructed from validated parsedURL via resolveURL
 	if err != nil {
 		return fmt.Errorf("could not send request: %w", err)
 	}
@@ -135,24 +195,14 @@ func (pp *PhotoPrism) auth(username, password string) error {
 
 	pp.captureResponse("sessions", body)
 
-	var result struct {
-		ID          string `json:"id"`
-		AccessToken string `json:"access_token"`
-		Config      struct {
-			DownloadToken string `json:"downloadToken"`
-			PreviewToken  string `json:"previewToken"`
-		} `json:"config"`
-		User struct {
-			UID string `json:"UID"`
-		} `json:"user"`
-	}
+	var result authResponse
 	if err := json.Unmarshal(body, &result); err != nil {
 		return fmt.Errorf("could not unmarshal response: %w", err)
 	}
 
-	pp.token = result.AccessToken
-	pp.downloadToken = result.Config.DownloadToken
-	pp.userUID = result.User.UID
+	pp.token = result.token
+	pp.downloadToken = result.config.downloadToken
+	pp.userUID = result.user.uid
 
 	return nil
 }
@@ -163,14 +213,14 @@ func (pp *PhotoPrism) Logout() error {
 		return nil // Already logged out
 	}
 
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodDelete, pp.Url+"/session", nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodDelete, pp.resolveURL("session"), nil)
 	if err != nil {
 		return fmt.Errorf("could not create request: %w", err)
 	}
 
 	req.Header.Set("Authorization", "Bearer "+pp.token)
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := http.DefaultClient.Do(req) //nolint:gosec // URL constructed from validated parsedURL via resolveURL
 	if err != nil {
 		return fmt.Errorf("could not send request: %w", err)
 	}

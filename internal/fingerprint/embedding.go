@@ -10,6 +10,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/textproto"
+	"net/url"
 	"strings"
 )
 
@@ -20,24 +21,35 @@ const (
 
 // EmbeddingClient computes image embeddings using the embedding server
 type EmbeddingClient struct {
-	baseURL string
-	model   string
-	client  *http.Client
+	parsedURL *url.URL
+	model     string
+	client    *http.Client
 }
 
-// NewEmbeddingClient creates a new embedding client
-func NewEmbeddingClient(baseURL, model string) *EmbeddingClient {
+// NewEmbeddingClient creates a new embedding client.
+// Returns an error if baseURL is not a valid HTTP(S) URL.
+func NewEmbeddingClient(baseURL, model string) (*EmbeddingClient, error) {
 	if baseURL == "" {
 		baseURL = defaultEmbeddingURL
 	}
 	if model == "" {
 		model = defaultEmbeddingModel
 	}
-	return &EmbeddingClient{
-		baseURL: strings.TrimSuffix(baseURL, "/"),
-		model:   model,
-		client:  &http.Client{},
+	parsed, err := url.Parse(strings.TrimSuffix(baseURL, "/"))
+	if err != nil {
+		return nil, fmt.Errorf("invalid embedding URL: %w", err)
 	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return nil, fmt.Errorf("invalid embedding URL scheme %q: must be http or https", parsed.Scheme)
+	}
+	if parsed.Host == "" {
+		return nil, errors.New("invalid embedding URL: missing host")
+	}
+	return &EmbeddingClient{
+		parsedURL: parsed,
+		model:     model,
+		client:    &http.Client{},
+	}, nil
 }
 
 // embeddingResponse represents the response from the embedding server
@@ -85,13 +97,14 @@ func (c *EmbeddingClient) postMultipartImage(ctx context.Context, endpoint strin
 		return nil, fmt.Errorf("failed to close multipart writer: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+endpoint, &buf)
+	reqURL := c.parsedURL.JoinPath(endpoint)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL.String(), &buf)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 
-	resp, err := c.client.Do(req)
+	resp, err := c.client.Do(req) //nolint:gosec // URL validated in NewEmbeddingClient (scheme + host check)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
@@ -221,13 +234,14 @@ func (c *EmbeddingClient) ComputeTextEmbedding(ctx context.Context, text string)
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/embed/text", bytes.NewReader(reqBody))
+	reqURL := c.parsedURL.JoinPath("/embed/text")
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL.String(), bytes.NewReader(reqBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.client.Do(req)
+	resp, err := c.client.Do(req) //nolint:gosec // URL validated in NewEmbeddingClient (scheme + host check)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
@@ -261,13 +275,14 @@ func (c *EmbeddingClient) ComputeTextEmbeddingWithMetadata(ctx context.Context, 
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/embed/text", bytes.NewReader(reqBody))
+	reqURL := c.parsedURL.JoinPath("/embed/text")
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL.String(), bytes.NewReader(reqBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.client.Do(req)
+	resp, err := c.client.Do(req) //nolint:gosec // URL validated in NewEmbeddingClient (scheme + host check)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}

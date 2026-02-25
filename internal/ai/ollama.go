@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 )
 
@@ -18,24 +19,34 @@ const (
 )
 
 type OllamaProvider struct {
-	baseURL string
-	model   string
-	client  *http.Client
-	usage   Usage
+	parsedURL *url.URL
+	model     string
+	client    *http.Client
+	usage     Usage
 }
 
-func NewOllamaProvider(baseURL, model string) *OllamaProvider {
+func NewOllamaProvider(baseURL, model string) (*OllamaProvider, error) {
 	if baseURL == "" {
 		baseURL = defaultOllamaURL
 	}
 	if model == "" {
 		model = defaultOllamaModel
 	}
-	return &OllamaProvider{
-		baseURL: strings.TrimSuffix(baseURL, "/"),
-		model:   model,
-		client:  &http.Client{},
+	parsed, err := url.Parse(strings.TrimSuffix(baseURL, "/"))
+	if err != nil {
+		return nil, fmt.Errorf("invalid Ollama URL: %w", err)
 	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return nil, fmt.Errorf("invalid Ollama URL scheme %q: must be http or https", parsed.Scheme)
+	}
+	if parsed.Host == "" {
+		return nil, errors.New("invalid Ollama URL: missing host")
+	}
+	return &OllamaProvider{
+		parsedURL: parsed,
+		model:     model,
+		client:    &http.Client{},
+	}, nil
 }
 
 func (p *OllamaProvider) Name() string {
@@ -205,13 +216,14 @@ func (p *OllamaProvider) sendRequest(ctx context.Context, messages []ollamaMessa
 		return nil, fmt.Errorf("failed to marshal request: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, p.baseURL+"/api/chat", bytes.NewReader(jsonBody))
+	reqURL := p.parsedURL.JoinPath("/api/chat")
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL.String(), bytes.NewReader(jsonBody))
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := p.client.Do(req)
+	resp, err := p.client.Do(req) //nolint:gosec // URL validated in NewOllamaProvider (scheme + host check)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}

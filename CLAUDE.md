@@ -36,11 +36,11 @@ make build-go
 # Build only frontend
 make build-web
 
-# Run tests
-go test ./...
+# Run tests (explicit paths to avoid root-owned volumes/ directory)
+make test
 
 # Run tests with verbose output
-go test -v ./...
+make test-v
 
 # Run a single test
 go test -v ./internal/photoprism/ -run TestGetAlbum

@@ -26,10 +26,20 @@ func NewAuthHandler(cfg *config.Config, sm *middleware.SessionManager) *AuthHand
 	}
 }
 
-// LoginRequest represents a login request
-type LoginRequest struct {
-	Username string `json:"username"`
-	Password string `json:"password"`
+// loginRequest represents a login request
+type loginRequest struct {
+	username string
+	password string
+}
+
+func (l *loginRequest) UnmarshalJSON(data []byte) error {
+	var raw map[string]string
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return fmt.Errorf("unmarshal login request: %w", err)
+	}
+	l.username = raw["username"]
+	l.password = raw["password"]
+	return nil
 }
 
 // LoginResponse represents a login response
@@ -42,21 +52,21 @@ type LoginResponse struct {
 
 // Login handles user login
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
-	var req LoginRequest
+	var req loginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return
 	}
 
 	// Require both username and password
-	if req.Username == "" || req.Password == "" {
+	if req.username == "" || req.password == "" {
 		respondError(w, http.StatusBadRequest, "username and password are required")
 		return
 	}
 
 	// Authenticate with PhotoPrism and capture tokens
 	client := &authClient{}
-	if err := client.auth(h.config.PhotoPrism.URL, req.Username, req.Password); err != nil {
+	if err := client.auth(h.config.PhotoPrism.URL, req.username, req.password); err != nil {
 		respondJSON(w, http.StatusUnauthorized, LoginResponse{
 			Success: false,
 			Error:   "invalid credentials",
@@ -124,15 +134,10 @@ type authClient struct {
 }
 
 func (c *authClient) auth(url, username, password string) error {
-	input := struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
-	}{
-		Username: username,
-		Password: password,
-	}
-
-	inputBody, err := json.Marshal(input)
+	inputBody, err := json.Marshal(map[string]string{
+		"username": username,
+		"password": password,
+	})
 	if err != nil {
 		return fmt.Errorf("could not marshal input: %w", err)
 	}
@@ -144,7 +149,7 @@ func (c *authClient) auth(url, username, password string) error {
 
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := http.DefaultClient.Do(req) //nolint:gosec // URL from trusted server config
 	if err != nil {
 		return fmt.Errorf("could not send request: %w", err)
 	}
@@ -159,18 +164,25 @@ func (c *authClient) auth(url, username, password string) error {
 		return fmt.Errorf("authentication failed with status %d", resp.StatusCode)
 	}
 
-	var result struct {
-		AccessToken string `json:"access_token"`
-		Config      struct {
-			DownloadToken string `json:"downloadToken"`
-		} `json:"config"`
-	}
-	if err := json.Unmarshal(body, &result); err != nil {
+	var raw map[string]json.RawMessage
+	if err := json.Unmarshal(body, &raw); err != nil {
 		return fmt.Errorf("could not unmarshal response: %w", err)
 	}
 
-	c.token = result.AccessToken
-	c.downloadToken = result.Config.DownloadToken
+	var token string
+	if err := json.Unmarshal(raw["access_token"], &token); err != nil {
+		return fmt.Errorf("could not read access token: %w", err)
+	}
+
+	var cfg struct {
+		DownloadToken string `json:"downloadToken"`
+	}
+	if err := json.Unmarshal(raw["config"], &cfg); err != nil {
+		return fmt.Errorf("could not read config: %w", err)
+	}
+
+	c.token = token
+	c.downloadToken = cfg.DownloadToken
 
 	return nil
 }

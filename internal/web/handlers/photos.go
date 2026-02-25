@@ -1,9 +1,11 @@
 package handlers
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"net/http"
 	"sort"
@@ -234,10 +236,15 @@ func (h *PhotosHandler) Thumbnail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if !strings.HasPrefix(contentType, "image/") {
+		contentType = "application/octet-stream"
+	}
 	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Cache-Control", "public, max-age=86400")
+	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
 	w.WriteHeader(http.StatusOK)
-	w.Write(data)
+	io.Copy(w, bytes.NewReader(data))
 }
 
 // BatchAddLabelsRequest represents a request to add labels to multiple photos
@@ -686,7 +693,11 @@ func (h *PhotosHandler) SearchByText(w http.ResponseWriter, r *http.Request) {
 
 	tr := translateQueryForCLIP(ctx, h.config.OpenAI.Token, req.Text)
 
-	embClient := fingerprint.NewEmbeddingClient(h.config.Embedding.URL, "")
+	embClient, err := fingerprint.NewEmbeddingClient(h.config.Embedding.URL, "")
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "invalid embedding config: "+err.Error())
+		return
+	}
 	textEmbedding, err := embClient.ComputeTextEmbedding(ctx, tr.queryText)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to compute text embedding: "+err.Error())

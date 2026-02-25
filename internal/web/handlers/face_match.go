@@ -395,7 +395,8 @@ func augmentSourcePhotoSet(pp *photoprism.PhotoPrism, subjectUID string, sourceP
 			break
 		}
 	}
-	log.Printf("[face_match] augmented sourcePhotoSet to %d photos for subject %s (%s)", len(sourcePhotoSet), subj.Name, subj.Slug)
+	log.Printf("[face_match] augmented sourcePhotoSet to %d photos for subject %s (%s)", //nolint:gosec // values sanitized via sanitizeForLog
+		len(sourcePhotoSet), sanitizeForLog(subj.Name), sanitizeForLog(subj.Slug))
 }
 
 // Match finds photos containing a specific person using face embeddings.

@@ -150,9 +150,7 @@ func TestConfigHandler_Get_OpenAINotAvailable(t *testing.T) {
 
 func TestConfigHandler_Get_GeminiAvailable(t *testing.T) {
 	cfg := &config.Config{
-		Gemini: config.GeminiConfig{
-			APIKey: "gemini-api-key",
-		},
+		Gemini: config.NewGeminiConfig("gemini-api-key"),
 	}
 	handler := NewConfigHandler(cfg)
 
@@ -187,9 +185,7 @@ func TestConfigHandler_Get_GeminiAvailable(t *testing.T) {
 
 func TestConfigHandler_Get_GeminiNotAvailable(t *testing.T) {
 	cfg := &config.Config{
-		Gemini: config.GeminiConfig{
-			APIKey: "",
-		},
+		Gemini: config.NewGeminiConfig(""),
 	}
 	handler := NewConfigHandler(cfg)
 
@@ -311,9 +307,7 @@ func TestConfigHandler_Get_AllProvidersConfigured(t *testing.T) {
 		OpenAI: config.OpenAIConfig{
 			Token: "openai-token",
 		},
-		Gemini: config.GeminiConfig{
-			APIKey: "gemini-key",
-		},
+		Gemini: config.NewGeminiConfig("gemini-key"),
 	}
 	handler := NewConfigHandler(cfg)
 

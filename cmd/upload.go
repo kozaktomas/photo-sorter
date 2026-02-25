@@ -272,7 +272,7 @@ func runUpload(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("Found %d image(s) to upload from %d folder(s)\n", len(filePaths), len(folderPaths))
 
-	pp, err := photoprism.NewPhotoPrismWithCapture(cfg.PhotoPrism.URL, cfg.PhotoPrism.Username, cfg.PhotoPrism.Password, captureDir)
+	pp, err := photoprism.NewPhotoPrismWithCapture(cfg.PhotoPrism.URL, cfg.PhotoPrism.Username, cfg.PhotoPrism.GetPassword(), captureDir)
 	if err != nil {
 		return fmt.Errorf("failed to connect to PhotoPrism: %w", err)
 	}
@@ -293,13 +293,28 @@ func runUpload(cmd *cobra.Command, args []string) error {
 		}
 	}
 
+	uploadTokens, err := uploadAndProcess(pp, filePaths, albumUID)
+	if err != nil {
+		return err
+	}
+
+	if err := applyLabelsToNewPhotos(pp, labels, beforeUIDs, albumUID); err != nil {
+		return err
+	}
+
+	fmt.Printf("\nDone! Uploaded %d file(s) to album '%s'\n", len(uploadTokens), album.Title)
+	return nil
+}
+
+// uploadAndProcess uploads files and processes them into the target album.
+func uploadAndProcess(pp *photoprism.PhotoPrism, filePaths []string, albumUID string) ([]string, error) {
 	uploadTokens, uploadErrors := uploadFiles(pp, filePaths)
 	for _, errMsg := range uploadErrors {
 		fmt.Printf("Failed: %s\n", errMsg)
 	}
 
 	if len(uploadTokens) == 0 {
-		return errors.New("no files were uploaded successfully")
+		return nil, errors.New("no files were uploaded successfully")
 	}
 
 	fmt.Printf("\nProcessing %d upload(s)...\n", len(uploadTokens))
@@ -307,29 +322,32 @@ func runUpload(cmd *cobra.Command, args []string) error {
 	for _, errMsg := range processErrors {
 		fmt.Printf("Warning: failed to process %s\n", errMsg)
 	}
+	return uploadTokens, nil
+}
 
-	// Apply labels to newly uploaded photos
-	if len(labels) > 0 {
-		afterUIDs, err := getAlbumPhotoUIDs(pp, albumUID)
-		if err != nil {
-			return fmt.Errorf("failed to snapshot album photos after upload: %w", err)
-		}
+// applyLabelsToNewPhotos detects newly uploaded photos and applies labels to them.
+func applyLabelsToNewPhotos(pp *photoprism.PhotoPrism, labels []string, beforeUIDs map[string]struct{}, albumUID string) error {
+	if len(labels) == 0 {
+		return nil
+	}
 
-		var newUIDs []string
-		for uid := range afterUIDs {
-			if _, existed := beforeUIDs[uid]; !existed {
-				newUIDs = append(newUIDs, uid)
-			}
-		}
+	afterUIDs, err := getAlbumPhotoUIDs(pp, albumUID)
+	if err != nil {
+		return fmt.Errorf("failed to snapshot album photos after upload: %w", err)
+	}
 
-		if len(newUIDs) > 0 {
-			fmt.Printf("\nApplying %d label(s) to %d new photo(s)...\n", len(labels), len(newUIDs))
-			applyLabelsToPhotos(pp, newUIDs, labels)
-		} else {
-			fmt.Println("\nNo new photos detected in album; skipping label application.")
+	var newUIDs []string
+	for uid := range afterUIDs {
+		if _, existed := beforeUIDs[uid]; !existed {
+			newUIDs = append(newUIDs, uid)
 		}
 	}
 
-	fmt.Printf("\nDone! Uploaded %d file(s) to album '%s'\n", len(uploadTokens), album.Title)
+	if len(newUIDs) > 0 {
+		fmt.Printf("\nApplying %d label(s) to %d new photo(s)...\n", len(labels), len(newUIDs))
+		applyLabelsToPhotos(pp, newUIDs, labels)
+	} else {
+		fmt.Println("\nNo new photos detected in album; skipping label application.")
+	}
 	return nil
 }

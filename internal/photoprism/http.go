@@ -14,7 +14,7 @@ import (
 // doGetJSON performs a GET request and unmarshals the JSON response into the result type.
 // The endpoint should be the path after the base API URL (e.g., "albums/123").
 func doGetJSON[T any](pp *PhotoPrism, endpoint string) (*T, error) {
-	url := pp.Url + "/" + endpoint
+	url := pp.resolveURL(endpoint)
 
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
 	if err != nil {
@@ -23,7 +23,7 @@ func doGetJSON[T any](pp *PhotoPrism, endpoint string) (*T, error) {
 
 	req.Header.Set("Authorization", "Bearer "+pp.token)
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := http.DefaultClient.Do(req) //nolint:gosec // URL constructed from validated parsedURL via resolveURL
 	if err != nil {
 		return nil, fmt.Errorf("could not send request: %w", err)
 	}
@@ -72,7 +72,7 @@ func doDeleteJSON[T any](pp *PhotoPrism, endpoint string, requestBody any) (*T, 
 // doRequestJSON is the internal helper that performs HTTP requests with JSON body and response.
 // It accepts one or more valid status codes. If the response status doesn't match any, an error is returned.
 func doRequestJSON[T any](pp *PhotoPrism, method, endpoint string, requestBody any, expectedStatuses ...int) (*T, error) {
-	url := pp.Url + "/" + endpoint
+	url := pp.resolveURL(endpoint)
 
 	var bodyReader io.Reader
 	if requestBody != nil {
@@ -93,7 +93,7 @@ func doRequestJSON[T any](pp *PhotoPrism, method, endpoint string, requestBody a
 		req.Header.Set("Content-Type", "application/json")
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := http.DefaultClient.Do(req) //nolint:gosec // URL constructed from validated parsedURL via resolveURL
 	if err != nil {
 		return nil, fmt.Errorf("could not send request: %w", err)
 	}
@@ -120,7 +120,7 @@ func doRequestJSON[T any](pp *PhotoPrism, method, endpoint string, requestBody a
 
 // doRequestRaw performs an HTTP request without JSON unmarshaling the response.
 func doRequestRaw(pp *PhotoPrism, method, endpoint string, requestBody any) error {
-	url := pp.Url + "/" + endpoint
+	url := pp.resolveURL(endpoint)
 
 	var bodyReader io.Reader
 	if requestBody != nil {
@@ -141,7 +141,7 @@ func doRequestRaw(pp *PhotoPrism, method, endpoint string, requestBody any) erro
 		req.Header.Set("Content-Type", "application/json")
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := http.DefaultClient.Do(req) //nolint:gosec // URL constructed from validated parsedURL via resolveURL
 	if err != nil {
 		return fmt.Errorf("could not send request: %w", err)
 	}

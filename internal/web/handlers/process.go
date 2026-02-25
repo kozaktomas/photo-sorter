@@ -460,8 +460,16 @@ func (h *ProcessHandler) runProcessJob(job *ProcessJob, session *middleware.Sess
 	}
 
 	embURL := getEmbeddingURL(h.config)
-	embClient := fingerprint.NewEmbeddingClient(embURL, "clip")
-	faceClient := fingerprint.NewEmbeddingClient(embURL, "faces")
+	embClient, err := fingerprint.NewEmbeddingClient(embURL, "clip")
+	if err != nil {
+		h.failJob(job, fmt.Sprintf("invalid embedding config: %v", err))
+		return
+	}
+	faceClient, err := fingerprint.NewEmbeddingClient(embURL, "faces")
+	if err != nil {
+		h.failJob(job, fmt.Sprintf("invalid embedding config: %v", err))
+		return
+	}
 
 	allPhotos, err := fetchAllPhotos(ctx, pp)
 	if err != nil {

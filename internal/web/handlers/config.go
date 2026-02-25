@@ -41,7 +41,7 @@ func (h *ConfigHandler) Get(w http.ResponseWriter, r *http.Request) {
 		},
 		{
 			Name:      "gemini",
-			Available: h.config.Gemini.APIKey != "",
+			Available: h.config.Gemini.GetAPIKey() != "",
 		},
 		{
 			Name:      "ollama",

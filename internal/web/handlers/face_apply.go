@@ -156,7 +156,10 @@ type ComputeFacesResponse struct {
 
 // computeAndSaveImageEmbedding computes and saves the CLIP image embedding for a photo (best-effort)
 func computeAndSaveImageEmbedding(ctx context.Context, embURL string, imageData []byte, photoUID string) {
-	embClient := fingerprint.NewEmbeddingClient(embURL, "clip")
+	embClient, err := fingerprint.NewEmbeddingClient(embURL, "clip")
+	if err != nil {
+		return
+	}
 	resizedData, err := fingerprint.ResizeImage(imageData, 1920)
 	if err != nil {
 		return
@@ -178,7 +181,10 @@ func computeAndSaveImageEmbedding(ctx context.Context, embURL string, imageData 
 
 // computeFaceEmbeddings computes face embeddings and converts them to StoredFace structs
 func computeFaceEmbeddings(ctx context.Context, embURL string, imageData []byte, photoUID string) ([]database.StoredFace, error) {
-	faceClient := fingerprint.NewEmbeddingClient(embURL, "faces")
+	faceClient, err := fingerprint.NewEmbeddingClient(embURL, "faces")
+	if err != nil {
+		return nil, fmt.Errorf("invalid embedding config: %w", err)
+	}
 	faceResult, err := faceClient.ComputeFaceEmbeddings(ctx, imageData)
 	if err != nil {
 		return nil, fmt.Errorf("computing face embeddings: %w", err)

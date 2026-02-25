@@ -25,10 +25,13 @@ type Config struct {
 type PhotoPrismConfig struct {
 	URL         string
 	Username    string
-	Password    string
+	password    string
 	Domain      string // public domain for generating photo links (e.g., https://photos.example.com)
 	DatabaseURL string // MariaDB DSN for direct database access (e.g., photoprism:photoprism@tcp(mariadb:3306)/photoprism)
 }
+
+// GetPassword returns the PhotoPrism password.
+func (c *PhotoPrismConfig) GetPassword() string { return c.password }
 
 // PhotoURL returns an OSC 8 hyperlink for terminal emulators (iTerm2, etc.)
 // Displays the UID but makes it clickable to open the photo in PhotoPrism
@@ -47,8 +50,14 @@ type OpenAIConfig struct {
 }
 
 type GeminiConfig struct {
-	APIKey string
+	apiKey string
 }
+
+// NewGeminiConfig creates a GeminiConfig with the given API key.
+func NewGeminiConfig(apiKey string) GeminiConfig { return GeminiConfig{apiKey: apiKey} }
+
+// GetAPIKey returns the Gemini API key.
+func (c *GeminiConfig) GetAPIKey() string { return c.apiKey }
 
 type OllamaConfig struct {
 	URL   string // defaults to http://localhost:11434
@@ -112,7 +121,7 @@ func Load() *Config {
 		PhotoPrism: PhotoPrismConfig{
 			URL:         os.Getenv("PHOTOPRISM_URL"),
 			Username:    os.Getenv("PHOTOPRISM_USERNAME"),
-			Password:    os.Getenv("PHOTOPRISM_PASSWORD"),
+			password:    os.Getenv("PHOTOPRISM_PASSWORD"),
 			Domain:      os.Getenv("PHOTOPRISM_DOMAIN"),
 			DatabaseURL: os.Getenv("PHOTOPRISM_DATABASE_URL"),
 		},
@@ -120,7 +129,7 @@ func Load() *Config {
 			Token: os.Getenv("OPENAI_TOKEN"),
 		},
 		Gemini: GeminiConfig{
-			APIKey: os.Getenv("GEMINI_API_KEY"),
+			apiKey: os.Getenv("GEMINI_API_KEY"),
 		},
 		Ollama: OllamaConfig{
 			URL:   os.Getenv("OLLAMA_URL"),

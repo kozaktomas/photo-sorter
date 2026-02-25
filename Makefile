@@ -50,11 +50,11 @@ db-export:
 
 # Run tests
 test:
-	go test ./...
+	go test . ./cmd/... ./internal/...
 
 # Run tests with verbose output
 test-v:
-	go test -v ./...
+	go test -v . ./cmd/... ./internal/...
 
 # Install frontend dependencies
 web-install:
@@ -68,10 +68,10 @@ web-lint:
 web-typecheck:
 	cd web && npx tsc --noEmit
 
-# Lint Go code
+# Lint Go code (use explicit paths to avoid traversing root-owned volumes/ directory)
 lint:
-	golangci-lint run ./...
+	golangci-lint run . ./cmd/... ./internal/...
 
 # Lint and auto-fix Go code
 lint-fix:
-	golangci-lint run --fix ./...
+	golangci-lint run --fix . ./cmd/... ./internal/...
