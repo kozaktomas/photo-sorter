@@ -445,7 +445,12 @@
       "cropZoom": "Zoom",
       "cropDragHint": "Drag the box to position, scroll to zoom, drag the corner handle to resize. Only the area inside the box will be visible.",
       "splitPosition": "Split",
-      "resetSplit": "Reset"
+      "resetSplit": "Reset",
+      "addChapter": "Add Chapter",
+      "chapterTitle": "Chapter title...",
+      "noChapter": "Uncategorized",
+      "deleteChapter": "Delete Chapter",
+      "deleteChapterConfirm": "Delete this chapter? Sections will be unassigned."
     }
   },
   "suggestAlbums": {

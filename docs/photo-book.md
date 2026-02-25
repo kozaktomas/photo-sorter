@@ -2,20 +2,27 @@
 
 A tool for organizing photos into a printed landscape photo book with PDF export via LaTeX.
 
+## Hierarchy
+
+Book > Chapters (optional) > Sections > Pages > Slots
+
+Chapters provide an optional grouping level between books and sections. Sections can exist without a chapter.
+
 ## Workflow
 
 1. **Create a book** — Give it a title
-2. **Define sections** — Named groups (e.g., "Childhood", "Wedding", "Vacation")
-3. **Prepick photos** — Browse the library and add photos to sections
-4. **Write descriptions** — Add a description (caption for print) and optional note (internal) to each photo
-5. **Create pages** — Choose a page format and assign to a section
-6. **Add page descriptions** — Optional text displayed at the top of each page
-7. **Assign photos to slots** — Drag photos from the unassigned pool into page slots
-8. **Adjust crops** — Fine-tune crop position and zoom for each photo slot (drag to reposition, scroll to zoom, drag bottom-right corner handle to resize). Displays live pixel dimensions of the cropped region.
-9. **Adjust split position** — For mixed landscape/portrait formats, adjust the column split ratio
-10. **Add text to slots** — Click "Add text" on empty slots to place text content instead of photos
-11. **Preview** — Review the full book layout with page descriptions and photo captions
-12. **Export PDF** — Generate a print-ready A4 landscape PDF via LaTeX
+2. **Define chapters** (optional) — Top-level groupings (e.g., "Part One", "Part Two")
+3. **Define sections** — Named groups (e.g., "Childhood", "Wedding", "Vacation"), optionally assigned to a chapter
+4. **Prepick photos** — Browse the library and add photos to sections
+5. **Write descriptions** — Add a description (caption for print) and optional note (internal) to each photo
+6. **Create pages** — Choose a page format and assign to a section
+7. **Add page descriptions** — Optional text displayed at the top of each page
+8. **Assign photos to slots** — Drag photos from the unassigned pool into page slots
+9. **Adjust crops** — Fine-tune crop position and zoom for each photo slot (drag to reposition, scroll to zoom, drag bottom-right corner handle to resize). Displays live pixel dimensions of the cropped region.
+10. **Adjust split position** — For mixed landscape/portrait formats, adjust the column split ratio
+11. **Add text to slots** — Click "Add text" on empty slots to place text content instead of photos
+12. **Preview** — Review the full book layout with page descriptions and photo captions
+13. **Export PDF** — Generate a print-ready A4 landscape PDF via LaTeX
 
 ## Page Formats
 
@@ -67,9 +74,18 @@ photo_books
 ├── created_at
 └── updated_at
 
+book_chapters
+├── id (PK)
+├── book_id (FK → photo_books, CASCADE)
+├── title
+├── sort_order
+├── created_at
+└── updated_at
+
 book_sections
 ├── id (PK)
 ├── book_id (FK → photo_books, CASCADE)
+├── chapter_id (FK → book_chapters, SET NULL, nullable)
 ├── title
 ├── sort_order
 ├── created_at
@@ -110,7 +126,7 @@ page_slots
 └── UNIQUE(page_id, photo_uid)
 ```
 
-Deleting a book cascades to all sections, pages, and slots.
+Deleting a book cascades to all chapters, sections, pages, and slots.
 
 ## API Endpoints
 
@@ -124,13 +140,22 @@ Deleting a book cascades to all sections, pages, and slots.
 | PUT | `/api/v1/books/:id` | Update book (`{ title, description }`) |
 | DELETE | `/api/v1/books/:id` | Delete book (cascades) |
 
+### Chapters
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/v1/books/:id/chapters` | Create chapter (`{ title }`) |
+| PUT | `/api/v1/books/:id/chapters/reorder` | Reorder chapters (`{ chapter_ids: [...] }`) |
+| PUT | `/api/v1/chapters/:id` | Update chapter (`{ title }`) |
+| DELETE | `/api/v1/chapters/:id` | Delete chapter |
+
 ### Sections
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/v1/books/:id/sections` | Create section (`{ title }`) |
+| POST | `/api/v1/books/:id/sections` | Create section (`{ title, chapter_id? }`) |
 | PUT | `/api/v1/books/:id/sections/reorder` | Reorder sections (`{ ids: [...] }`) |
-| PUT | `/api/v1/sections/:id` | Update section (`{ title }`) |
+| PUT | `/api/v1/sections/:id` | Update section (`{ title?, chapter_id? }`) |
 | DELETE | `/api/v1/sections/:id` | Delete section |
 
 ### Section Photos
@@ -461,7 +486,7 @@ Returns `application/pdf` with `Content-Disposition: attachment`.
 | `web/src/pages/BookEditor/index.tsx` | Editor shell — tabs (Sections, Pages, Preview), title editing |
 | `web/src/pages/BookEditor/hooks/useBookData.ts` | Book data fetching and section photo loading |
 | `web/src/pages/BookEditor/SectionsTab.tsx` | Sections tab — sidebar + photo pool layout |
-| `web/src/pages/BookEditor/SectionSidebar.tsx` | Sortable section list (drag to reorder) |
+| `web/src/pages/BookEditor/SectionSidebar.tsx` | Sortable chapter and section list (drag to reorder), chapter grouping |
 | `web/src/pages/BookEditor/SectionPhotoPool.tsx` | Photo grid with selection, inline description + note editing |
 | `web/src/pages/BookEditor/PhotoBrowserModal.tsx` | Full-screen modal to browse library and add photos |
 | `web/src/pages/BookEditor/PagesTab.tsx` | Pages tab — DndContext for drag-to-slot |
@@ -483,7 +508,7 @@ Returns `application/pdf` with `Content-Disposition: attachment`.
 
 ### Drag-and-Drop Behavior
 
-**Sections Tab**: Sections are reorderable via `@dnd-kit/sortable`. On drag-end, calls `reorderSections()`.
+**Sections Tab**: Chapters and sections are reorderable via `@dnd-kit/sortable`. On drag-end, calls `reorderChapters()` or `reorderSections()`. Sections can be assigned to chapters via a dropdown selector.
 
 **Pages Tab**: Pages are grouped by section in the sidebar with collapsible headers showing section title and page count. Pages are reorderable via `@dnd-kit/sortable` within the same section; cross-section drag is blocked. Global page numbering (Page 1, 2, 3...) is maintained across all sections. Creating a new page auto-expands the target section if collapsed. Photo assignment uses `@dnd-kit/core`:
 - Drag from unassigned pool → drop on slot: assigns photo

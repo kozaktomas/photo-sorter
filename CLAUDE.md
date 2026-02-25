@@ -264,7 +264,7 @@ The `internal/database/` package provides storage for embeddings and faces data 
 **Key files:**
 ```
 internal/database/
-├── types.go            # StoredPhoto, StoredFace, ExportData, PhotoBook, BookSection, etc.
+├── types.go            # StoredPhoto, StoredFace, ExportData, PhotoBook, BookChapter, BookSection, etc.
 ├── repository.go       # FaceReader, FaceWriter, EmbeddingReader, BookReader, BookWriter interfaces
 ├── provider.go         # Provider functions for getting readers/writers
 ├── hnsw_index.go       # HNSW index for face embeddings (int64 keys)
@@ -282,7 +282,7 @@ internal/database/
     └── migrations/     # SQL migrations 001-011 (embedded)
 ```
 
-**Tables:** `embeddings` (768-dim CLIP), `faces` (512-dim ResNet100 with cached PhotoPrism marker data), `era_embeddings` (768-dim CLIP text centroids), `faces_processed` (tracking), `sessions`, `photo_books`, `book_sections`, `section_photos`, `book_pages` (with `split_position` for adjustable column splits in mixed formats), `page_slots` (with `text_content` for text-only slots, `crop_x`/`crop_y`/`crop_scale` for per-photo crop control, mutually exclusive with `photo_uid`).
+**Tables:** `embeddings` (768-dim CLIP), `faces` (512-dim ResNet100 with cached PhotoPrism marker data), `era_embeddings` (768-dim CLIP text centroids), `faces_processed` (tracking), `sessions`, `photo_books`, `book_chapters`, `book_sections` (with optional `chapter_id`), `section_photos`, `book_pages` (with `split_position` for adjustable column splits in mixed formats), `page_slots` (with `text_content` for text-only slots, `crop_x`/`crop_y`/`crop_scale` for per-photo crop control, mutually exclusive with `photo_uid`).
 
 **Face name normalization:** `GetFacesBySubjectName` normalizes names via `facematch.NormalizePersonName` (remove diacritics, lowercase, dashes→spaces) using the `unaccent` PostgreSQL extension.
 
@@ -409,12 +409,16 @@ Session cookies use `HttpOnly`, `SameSite=Strict`, and auto-detect `Secure` flag
 - `POST /api/v1/process/sync-cache` - Sync face marker data from PhotoPrism to local cache
 - `GET /api/v1/books` - List all photo books
 - `POST /api/v1/books` - Create a new book
-- `GET /api/v1/books/{id}` - Get book detail with sections and pages
+- `GET /api/v1/books/{id}` - Get book detail with chapters, sections, and pages
 - `PUT /api/v1/books/{id}` - Update book (title, description)
-- `DELETE /api/v1/books/{id}` - Delete book (cascades to sections, pages, slots)
-- `POST /api/v1/books/{id}/sections` - Create section in a book
+- `DELETE /api/v1/books/{id}` - Delete book (cascades to chapters, sections, pages, slots)
+- `POST /api/v1/books/{id}/chapters` - Create chapter in a book
+- `PUT /api/v1/books/{id}/chapters/reorder` - Reorder chapters
+- `PUT /api/v1/chapters/{id}` - Update chapter (title)
+- `DELETE /api/v1/chapters/{id}` - Delete chapter
+- `POST /api/v1/books/{id}/sections` - Create section in a book (optional chapter_id)
 - `PUT /api/v1/books/{id}/sections/reorder` - Reorder sections
-- `PUT /api/v1/sections/{id}` - Update section (title)
+- `PUT /api/v1/sections/{id}` - Update section (title, chapter_id)
 - `DELETE /api/v1/sections/{id}` - Delete section
 - `GET /api/v1/sections/{id}/photos` - Get photos in a section
 - `POST /api/v1/sections/{id}/photos` - Add photos to a section
@@ -524,13 +528,13 @@ internal/web/handlers/
 ├── face_match.go, face_apply.go                # Face matching and applying
 ├── face_outliers.go, face_photos.go            # Outlier detection, photo faces
 ├── face_helpers.go                             # Shared face helpers
-├── books.go                                    # BooksHandler: books, sections, pages, slots
+├── books.go                                    # BooksHandler: books, chapters, sections, pages, slots
 └── jobs.go                                     # Sort job status
 ```
 
 **Photo Book Database:**
 
-Tables: `photo_books`, `book_sections`, `section_photos`, `book_pages`, `page_slots` (migration 008, extended by 009-013, 015, plus crop/split features). Slots hold either `photo_uid` or `text_content` (mutually exclusive via CHECK constraint) with `crop_x`/`crop_y` for crop positioning (0.0-1.0, default 0.5) and `crop_scale` for zoom level (0.1-1.0, default 1.0). Pages have a `style` field (`modern`/`archival`, migration 013) and `split_position` for adjustable column splits in `2l_1p`/`1p_2l` formats (0.2-0.8, default 0.5).
+Tables: `photo_books`, `book_chapters`, `book_sections` (with optional `chapter_id`), `section_photos`, `book_pages`, `page_slots` (migration 008, extended by 009-013, 015, plus crop/split/chapter features). Hierarchy: Book > Chapters (optional) > Sections > Pages > Slots. Slots hold either `photo_uid` or `text_content` (mutually exclusive via CHECK constraint) with `crop_x`/`crop_y` for crop positioning (0.0-1.0, default 0.5) and `crop_scale` for zoom level (0.1-1.0, default 1.0). Pages have a `style` field (`modern`/`archival`, migration 013) and `split_position` for adjustable column splits in `2l_1p`/`1p_2l` formats (0.2-0.8, default 0.5).
 
 Page formats: `4_landscape` (4 slots), `2l_1p` (3 slots), `1p_2l` (3 slots), `2_portrait` (2 slots), `1_fullscreen` (1 slot). Layout uses a 12-column grid with 3 fixed zones (header 4mm / canvas 172mm / footer 8mm) and asymmetric margins (inside 20mm / outside 12mm). Mixed formats support adjustable split position via `split_position`.
 

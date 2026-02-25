@@ -82,10 +82,21 @@ type PhotoBookWithCounts struct {
 	PhotoCount   int
 }
 
+// BookChapter represents a chapter grouping within a book
+type BookChapter struct {
+	ID        string
+	BookID    string
+	Title     string
+	SortOrder int
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
 // BookSection represents an ordered group within a book
 type BookSection struct {
 	ID         string
 	BookID     string
+	ChapterID  string // empty string = no chapter
 	Title      string
 	SortOrder  int
 	PhotoCount int // computed, not stored

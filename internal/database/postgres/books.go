@@ -126,6 +126,98 @@ func (r *BookRepository) DeleteBook(ctx context.Context, id string) error {
 	return nil
 }
 
+// --- Chapters ---
+
+func (r *BookRepository) GetChapters(ctx context.Context, bookID string) ([]database.BookChapter, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT id, book_id, title, sort_order, created_at, updated_at
+		 FROM book_chapters WHERE book_id = $1 ORDER BY sort_order`, bookID)
+	if err != nil {
+		return nil, fmt.Errorf("get chapters: %w", err)
+	}
+	defer rows.Close()
+	var chapters []database.BookChapter
+	for rows.Next() {
+		var c database.BookChapter
+		if err := rows.Scan(&c.ID, &c.BookID, &c.Title, &c.SortOrder, &c.CreatedAt, &c.UpdatedAt); err != nil {
+			return nil, fmt.Errorf("scan chapter: %w", err)
+		}
+		chapters = append(chapters, c)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate chapters: %w", err)
+	}
+	return chapters, nil
+}
+
+func (r *BookRepository) CreateChapter(ctx context.Context, chapter *database.BookChapter) error {
+	if chapter.ID == "" {
+		chapter.ID = newID()
+	}
+	now := time.Now()
+	chapter.CreatedAt = now
+	chapter.UpdatedAt = now
+
+	// Auto-assign sort_order as max+1
+	var maxOrder sql.NullInt64
+	if err := r.pool.QueryRow(ctx,
+		`SELECT MAX(sort_order) FROM book_chapters WHERE book_id = $1`, chapter.BookID).
+		Scan(&maxOrder); err != nil {
+		return fmt.Errorf("get max chapter sort order: %w", err)
+	}
+	if maxOrder.Valid {
+		chapter.SortOrder = int(maxOrder.Int64) + 1
+	}
+
+	_, err := r.pool.Exec(ctx,
+		`INSERT INTO book_chapters (id, book_id, title, sort_order, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)`,
+		chapter.ID, chapter.BookID, chapter.Title, chapter.SortOrder, chapter.CreatedAt, chapter.UpdatedAt)
+	if err != nil {
+		return fmt.Errorf("create chapter: %w", err)
+	}
+	return nil
+}
+
+func (r *BookRepository) UpdateChapter(ctx context.Context, chapter *database.BookChapter) error {
+	chapter.UpdatedAt = time.Now()
+	_, err := r.pool.Exec(ctx,
+		`UPDATE book_chapters SET title = $1, updated_at = $2 WHERE id = $3`,
+		chapter.Title, chapter.UpdatedAt, chapter.ID)
+	if err != nil {
+		return fmt.Errorf("update chapter: %w", err)
+	}
+	return nil
+}
+
+func (r *BookRepository) DeleteChapter(ctx context.Context, id string) error {
+	_, err := r.pool.Exec(ctx, `DELETE FROM book_chapters WHERE id = $1`, id)
+	if err != nil {
+		return fmt.Errorf("delete chapter: %w", err)
+	}
+	return nil
+}
+
+func (r *BookRepository) ReorderChapters(ctx context.Context, bookID string, chapterIDs []string) error {
+	tx, err := r.pool.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	for i, id := range chapterIDs {
+		_, err := tx.ExecContext(ctx,
+			`UPDATE book_chapters SET sort_order = $1, updated_at = NOW() WHERE id = $2 AND book_id = $3`,
+			i, id, bookID)
+		if err != nil {
+			return fmt.Errorf("reorder chapter %s: %w", id, err)
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit reorder chapters: %w", err)
+	}
+	return nil
+}
+
 // --- Sections ---
 
 func (r *BookRepository) CreateSection(ctx context.Context, section *database.BookSection) error {
@@ -147,18 +239,38 @@ func (r *BookRepository) CreateSection(ctx context.Context, section *database.Bo
 		section.SortOrder = int(maxOrder.Int64) + 1
 	}
 
+	var chapterID *string
+	if section.ChapterID != "" {
+		chapterID = &section.ChapterID
+	}
+
 	_, err := r.pool.Exec(ctx,
-		`INSERT INTO book_sections (id, book_id, title, sort_order, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)`,
-		section.ID, section.BookID, section.Title, section.SortOrder, section.CreatedAt, section.UpdatedAt)
+		`INSERT INTO book_sections (id, book_id, chapter_id, title, sort_order, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		section.ID, section.BookID, chapterID, section.Title, section.SortOrder, section.CreatedAt, section.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("create section: %w", err)
 	}
 	return nil
 }
 
+func (r *BookRepository) GetSection(ctx context.Context, id string) (*database.BookSection, error) {
+	var s database.BookSection
+	err := r.pool.QueryRow(ctx,
+		`SELECT id, book_id, COALESCE(chapter_id, ''), title, sort_order, created_at, updated_at
+		 FROM book_sections WHERE id = $1`, id).
+		Scan(&s.ID, &s.BookID, &s.ChapterID, &s.Title, &s.SortOrder, &s.CreatedAt, &s.UpdatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("get section: %w", err)
+	}
+	return &s, nil
+}
+
 func (r *BookRepository) GetSections(ctx context.Context, bookID string) ([]database.BookSection, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT s.id, s.book_id, s.title, s.sort_order, s.created_at, s.updated_at,
+		`SELECT s.id, s.book_id, COALESCE(s.chapter_id, ''), s.title, s.sort_order, s.created_at, s.updated_at,
 		        COALESCE((SELECT COUNT(*) FROM section_photos WHERE section_id = s.id), 0) as photo_count
 		 FROM book_sections s
 		 WHERE s.book_id = $1
@@ -170,7 +282,7 @@ func (r *BookRepository) GetSections(ctx context.Context, bookID string) ([]data
 	var sections []database.BookSection
 	for rows.Next() {
 		var s database.BookSection
-		if err := rows.Scan(&s.ID, &s.BookID, &s.Title, &s.SortOrder, &s.CreatedAt, &s.UpdatedAt, &s.PhotoCount); err != nil {
+		if err := rows.Scan(&s.ID, &s.BookID, &s.ChapterID, &s.Title, &s.SortOrder, &s.CreatedAt, &s.UpdatedAt, &s.PhotoCount); err != nil {
 			return nil, fmt.Errorf("scan section: %w", err)
 		}
 		sections = append(sections, s)
@@ -183,9 +295,13 @@ func (r *BookRepository) GetSections(ctx context.Context, bookID string) ([]data
 
 func (r *BookRepository) UpdateSection(ctx context.Context, section *database.BookSection) error {
 	section.UpdatedAt = time.Now()
+	var chapterID *string
+	if section.ChapterID != "" {
+		chapterID = &section.ChapterID
+	}
 	_, err := r.pool.Exec(ctx,
-		`UPDATE book_sections SET title = $1, updated_at = $2 WHERE id = $3`,
-		section.Title, section.UpdatedAt, section.ID)
+		`UPDATE book_sections SET title = $1, chapter_id = $2, updated_at = $3 WHERE id = $4`,
+		section.Title, chapterID, section.UpdatedAt, section.ID)
 	if err != nil {
 		return fmt.Errorf("update section: %w", err)
 	}

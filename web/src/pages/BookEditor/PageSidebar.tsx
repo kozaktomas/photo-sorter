@@ -115,7 +115,7 @@ export function PageSidebar({ bookId, pages, sections, selectedId, onSelect, onR
     const unassigned = pages.filter(p => !assignedIds.has(p.section_id || ''));
     if (unassigned.length > 0) {
       groups.push({
-        section: { id: '__unassigned__', title: t('books.editor.noSection'), sort_order: 9999, photo_count: 0 },
+        section: { id: '__unassigned__', chapter_id: '', title: t('books.editor.noSection'), sort_order: 9999, photo_count: 0 },
         pages: unassigned,
         globalIndices: [],
       });

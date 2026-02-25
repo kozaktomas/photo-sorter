@@ -113,6 +113,8 @@ type BookReader interface {
 	GetBook(ctx context.Context, id string) (*PhotoBook, error)
 	ListBooks(ctx context.Context) ([]PhotoBook, error)
 	ListBooksWithCounts(ctx context.Context) ([]PhotoBookWithCounts, error)
+	GetChapters(ctx context.Context, bookID string) ([]BookChapter, error)
+	GetSection(ctx context.Context, id string) (*BookSection, error)
 	GetSections(ctx context.Context, bookID string) ([]BookSection, error)
 	GetSectionPhotos(ctx context.Context, sectionID string) ([]SectionPhoto, error)
 	CountSectionPhotos(ctx context.Context, sectionID string) (int, error)
@@ -128,6 +130,10 @@ type BookWriter interface {
 	CreateBook(ctx context.Context, book *PhotoBook) error
 	UpdateBook(ctx context.Context, book *PhotoBook) error
 	DeleteBook(ctx context.Context, id string) error
+	CreateChapter(ctx context.Context, chapter *BookChapter) error
+	UpdateChapter(ctx context.Context, chapter *BookChapter) error
+	DeleteChapter(ctx context.Context, id string) error
+	ReorderChapters(ctx context.Context, bookID string, chapterIDs []string) error
 	CreateSection(ctx context.Context, section *BookSection) error
 	UpdateSection(ctx context.Context, section *BookSection) error
 	DeleteSection(ctx context.Context, id string) error

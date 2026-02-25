@@ -24,6 +24,7 @@ import type {
   SuggestAlbumsResponse,
   PhotoBook,
   BookDetail,
+  BookChapter,
   BookSection,
   SectionPhoto,
   BookPage,
@@ -566,17 +567,42 @@ export async function deleteBook(id: string): Promise<void> {
   await request(`/books/${id}`, { method: 'DELETE' });
 }
 
-export async function createSection(bookId: string, title: string): Promise<BookSection> {
-  return request<BookSection>(`/books/${bookId}/sections`, {
+export async function createChapter(bookId: string, title: string): Promise<BookChapter> {
+  return request<BookChapter>(`/books/${bookId}/chapters`, {
     method: 'POST',
     body: JSON.stringify({ title }),
   });
 }
 
-export async function updateSection(sectionId: string, title: string): Promise<void> {
-  await request(`/sections/${sectionId}`, {
+export async function updateChapter(chapterId: string, title: string): Promise<void> {
+  await request(`/chapters/${chapterId}`, {
     method: 'PUT',
     body: JSON.stringify({ title }),
+  });
+}
+
+export async function deleteChapter(chapterId: string): Promise<void> {
+  await request(`/chapters/${chapterId}`, { method: 'DELETE' });
+}
+
+export async function reorderChapters(bookId: string, chapterIds: string[]): Promise<void> {
+  await request(`/books/${bookId}/chapters/reorder`, {
+    method: 'PUT',
+    body: JSON.stringify({ chapter_ids: chapterIds }),
+  });
+}
+
+export async function createSection(bookId: string, title: string, chapterId?: string): Promise<BookSection> {
+  return request<BookSection>(`/books/${bookId}/sections`, {
+    method: 'POST',
+    body: JSON.stringify({ title, ...(chapterId ? { chapter_id: chapterId } : {}) }),
+  });
+}
+
+export async function updateSection(sectionId: string, updates: { title?: string; chapter_id?: string }): Promise<void> {
+  await request(`/sections/${sectionId}`, {
+    method: 'PUT',
+    body: JSON.stringify(updates),
   });
 }
 

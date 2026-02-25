@@ -36,6 +36,7 @@ export function SectionsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh 
       <div className="flex gap-4">
         <SectionSidebar
           bookId={book.id}
+          chapters={book.chapters || []}
           sections={book.sections}
           selectedId={selectedId}
           onSelect={setSelectedId}
@@ -52,6 +53,7 @@ export function SectionsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh 
     <div className="flex gap-4">
       <SectionSidebar
         bookId={book.id}
+        chapters={book.chapters || []}
         sections={book.sections}
         selectedId={selectedId}
         onSelect={setSelectedId}

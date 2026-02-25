@@ -395,6 +395,7 @@ func TestBooksHandler_UpdateSection_InvalidJSON(t *testing.T) {
 
 func TestBooksHandler_UpdateSection_BackendError(t *testing.T) {
 	mockBW, handler := setupBookTest(t)
+	mockBW.AddSection(database.BookSection{ID: "s1", BookID: "b1", Title: "Original"})
 	mockBW.UpdateSectionError = errMock
 
 	body := bytes.NewBufferString(`{"title":"Updated"}`)

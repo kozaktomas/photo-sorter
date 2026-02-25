@@ -433,7 +433,12 @@
       "cropZoom": "Zoom",
       "cropDragHint": "Přetažením rámečku upravte pozici, kolečkem přiblížíte, tahem za rohový úchyt změníte velikost. V knize bude viditelná pouze oblast uvnitř rámečku.",
       "splitPosition": "Rozdělení",
-      "resetSplit": "Reset"
+      "resetSplit": "Reset",
+      "addChapter": "Přidat kapitolu",
+      "chapterTitle": "Název kapitoly...",
+      "noChapter": "Nezařazené",
+      "deleteChapter": "Smazat kapitolu",
+      "deleteChapterConfirm": "Smazat tuto kapitolu? Sekce budou odřazeny."
     }
   },
   "suggestAlbums": {

@@ -487,7 +487,7 @@ Press `K` or click the wand button to cycle through effects. The active effect n
 
 ### Photo Book (`/books`)
 
-Plan and organize photos into a printed landscape photo book. This is a planning-only tool (no PDF export).
+Plan and organize photos into a printed landscape photo book with PDF export.
 
 **Books List:**
 - Card grid of all books with title, stats (sections, pages, photos)
@@ -500,7 +500,9 @@ Plan and organize photos into a printed landscape photo book. This is a planning
 Three-tab editor for organizing a photo book.
 
 **Sections Tab:**
-- **Section Sidebar** - Sortable list of sections (drag to reorder). Create and delete sections
+- **Section Sidebar** - Sortable list of sections with optional chapter grouping (drag to reorder). Create and delete sections and chapters
+  - **Chapters** (optional) - Add chapters to group sections. Chapters are collapsible with a chevron toggle. Drag-and-drop reordering for both chapters and sections. Inline chapter title editing. Delete chapter confirmation dialog. Uncategorized sections appear at the top when chapters exist
+  - **Move to Chapter** - Use the dropdown selector on a section to assign it to a chapter
 - **Photo Pool** - Grid of photos in the selected section with thumbnails
 - **Description Editing** - Click a photo description to edit it inline (textarea)
 - **Bulk Selection** - Select multiple photos for batch removal
@@ -616,12 +618,16 @@ The Web UI communicates with these backend endpoints:
 | DELETE | `/api/v1/albums/:uid/photos/batch` | Remove specific photos from album |
 | GET | `/api/v1/books` | List all photo books |
 | POST | `/api/v1/books` | Create a new book |
-| GET | `/api/v1/books/:id` | Get book detail with sections and pages |
+| GET | `/api/v1/books/:id` | Get book detail with chapters, sections and pages |
 | PUT | `/api/v1/books/:id` | Update book (title, description) |
 | DELETE | `/api/v1/books/:id` | Delete book (cascades) |
+| POST | `/api/v1/books/:id/chapters` | Create a chapter in a book |
+| PUT | `/api/v1/books/:id/chapters/reorder` | Reorder chapters |
+| PUT | `/api/v1/chapters/:id` | Update chapter (title) |
+| DELETE | `/api/v1/chapters/:id` | Delete chapter |
 | POST | `/api/v1/books/:id/sections` | Create a section in a book |
 | PUT | `/api/v1/books/:id/sections/reorder` | Reorder sections |
-| PUT | `/api/v1/sections/:id` | Update section (title) |
+| PUT | `/api/v1/sections/:id` | Update section (title, chapter_id) |
 | DELETE | `/api/v1/sections/:id` | Delete section |
 | GET | `/api/v1/sections/:id/photos` | Get photos in a section |
 | POST | `/api/v1/sections/:id/photos` | Add photos to a section |

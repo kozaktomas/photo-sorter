@@ -52,14 +52,22 @@ type bookDetailResponse struct {
 	ID          string            `json:"id"`
 	Title       string            `json:"title"`
 	Description string            `json:"description"`
+	Chapters    []chapterResponse `json:"chapters"`
 	Sections    []sectionResponse `json:"sections"`
 	Pages       []pageResponse    `json:"pages"`
 	CreatedAt   string            `json:"created_at"`
 	UpdatedAt   string            `json:"updated_at"`
 }
 
+type chapterResponse struct {
+	ID        string `json:"id"`
+	Title     string `json:"title"`
+	SortOrder int    `json:"sort_order"`
+}
+
 type sectionResponse struct {
 	ID         string `json:"id"`
+	ChapterID  string `json:"chapter_id"`
 	Title      string `json:"title"`
 	SortOrder  int    `json:"sort_order"`
 	PhotoCount int    `json:"photo_count"`
@@ -197,6 +205,11 @@ func (h *BooksHandler) GetBook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	chapters, err2 := bw.GetChapters(r.Context(), id)
+	if err2 != nil {
+		respondError(w, http.StatusInternalServerError, "failed to get chapters")
+		return
+	}
 	sections, err2 := bw.GetSections(r.Context(), id)
 	if err2 != nil {
 		respondError(w, http.StatusInternalServerError, "failed to get sections")
@@ -208,10 +221,20 @@ func (h *BooksHandler) GetBook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	chapterResps := make([]chapterResponse, len(chapters))
+	for i, c := range chapters {
+		chapterResps[i] = chapterResponse{
+			ID:        c.ID,
+			Title:     c.Title,
+			SortOrder: c.SortOrder,
+		}
+	}
+
 	sectionResps := make([]sectionResponse, len(sections))
 	for i, s := range sections {
 		sectionResps[i] = sectionResponse{
 			ID:         s.ID,
+			ChapterID:  s.ChapterID,
 			Title:      s.Title,
 			SortOrder:  s.SortOrder,
 			PhotoCount: s.PhotoCount,
@@ -241,6 +264,7 @@ func (h *BooksHandler) GetBook(w http.ResponseWriter, r *http.Request) {
 		ID:          book.ID,
 		Title:       book.Title,
 		Description: book.Description,
+		Chapters:    chapterResps,
 		Sections:    sectionResps,
 		Pages:       pageResps,
 		CreatedAt:   book.CreatedAt.Format("2006-01-02T15:04:05Z"),
@@ -293,9 +317,9 @@ func (h *BooksHandler) DeleteBook(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]bool{"deleted": true})
 }
 
-// --- Sections ---
+// --- Chapters ---
 
-func (h *BooksHandler) CreateSection(w http.ResponseWriter, r *http.Request) {
+func (h *BooksHandler) CreateChapter(w http.ResponseWriter, r *http.Request) {
 	bw := getBookWriter(r, w)
 	if bw == nil {
 		return
@@ -312,19 +336,19 @@ func (h *BooksHandler) CreateSection(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "title is required")
 		return
 	}
-	section := &database.BookSection{BookID: bookID, Title: req.Title}
-	if err := bw.CreateSection(r.Context(), section); err != nil {
-		respondError(w, http.StatusInternalServerError, "failed to create section")
+	chapter := &database.BookChapter{BookID: bookID, Title: req.Title}
+	if err := bw.CreateChapter(r.Context(), chapter); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to create chapter")
 		return
 	}
-	respondJSON(w, http.StatusCreated, sectionResponse{
-		ID:        section.ID,
-		Title:     section.Title,
-		SortOrder: section.SortOrder,
+	respondJSON(w, http.StatusCreated, chapterResponse{
+		ID:        chapter.ID,
+		Title:     chapter.Title,
+		SortOrder: chapter.SortOrder,
 	})
 }
 
-func (h *BooksHandler) UpdateSection(w http.ResponseWriter, r *http.Request) {
+func (h *BooksHandler) UpdateChapter(w http.ResponseWriter, r *http.Request) {
 	bw := getBookWriter(r, w)
 	if bw == nil {
 		return
@@ -337,7 +361,106 @@ func (h *BooksHandler) UpdateSection(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return
 	}
-	section := &database.BookSection{ID: id, Title: req.Title}
+	chapter := &database.BookChapter{ID: id, Title: req.Title}
+	if err := bw.UpdateChapter(r.Context(), chapter); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to update chapter")
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]string{"id": id})
+}
+
+func (h *BooksHandler) DeleteChapter(w http.ResponseWriter, r *http.Request) {
+	bw := getBookWriter(r, w)
+	if bw == nil {
+		return
+	}
+	id := chi.URLParam(r, "id")
+	if err := bw.DeleteChapter(r.Context(), id); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to delete chapter")
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]bool{"deleted": true})
+}
+
+func (h *BooksHandler) ReorderChapters(w http.ResponseWriter, r *http.Request) {
+	bw := getBookWriter(r, w)
+	if bw == nil {
+		return
+	}
+	bookID := chi.URLParam(r, "id")
+	var req struct {
+		ChapterIDs []string `json:"chapter_ids"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
+		return
+	}
+	if err := bw.ReorderChapters(r.Context(), bookID, req.ChapterIDs); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to reorder chapters")
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]bool{"reordered": true})
+}
+
+// --- Sections ---
+
+func (h *BooksHandler) CreateSection(w http.ResponseWriter, r *http.Request) {
+	bw := getBookWriter(r, w)
+	if bw == nil {
+		return
+	}
+	bookID := chi.URLParam(r, "id")
+	var req struct {
+		Title     string `json:"title"`
+		ChapterID string `json:"chapter_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
+		return
+	}
+	if req.Title == "" {
+		respondError(w, http.StatusBadRequest, "title is required")
+		return
+	}
+	section := &database.BookSection{BookID: bookID, Title: req.Title, ChapterID: req.ChapterID}
+	if err := bw.CreateSection(r.Context(), section); err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to create section")
+		return
+	}
+	respondJSON(w, http.StatusCreated, sectionResponse{
+		ID:        section.ID,
+		ChapterID: section.ChapterID,
+		Title:     section.Title,
+		SortOrder: section.SortOrder,
+	})
+}
+
+func (h *BooksHandler) UpdateSection(w http.ResponseWriter, r *http.Request) {
+	bw := getBookWriter(r, w)
+	if bw == nil {
+		return
+	}
+	id := chi.URLParam(r, "id")
+	var req struct {
+		Title     *string `json:"title"`
+		ChapterID *string `json:"chapter_id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
+		return
+	}
+	// Read existing section to preserve fields not being updated
+	section, err := bw.GetSection(r.Context(), id)
+	if err != nil || section == nil {
+		respondError(w, http.StatusNotFound, "section not found")
+		return
+	}
+	if req.Title != nil {
+		section.Title = *req.Title
+	}
+	if req.ChapterID != nil {
+		section.ChapterID = *req.ChapterID // empty string = unassign from chapter
+	}
 	if err := bw.UpdateSection(r.Context(), section); err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to update section")
 		return

@@ -723,6 +723,38 @@ func (m *MockBookWriter) DeleteBook(ctx context.Context, id string) error {
 	return nil
 }
 
+func (m *MockBookWriter) GetChapters(_ context.Context, _ string) ([]database.BookChapter, error) {
+	return nil, nil
+}
+
+func (m *MockBookWriter) CreateChapter(_ context.Context, chapter *database.BookChapter) error {
+	if chapter.ID == "" {
+		chapter.ID = "mock-chapter-id"
+	}
+	return nil
+}
+
+func (m *MockBookWriter) UpdateChapter(_ context.Context, _ *database.BookChapter) error {
+	return nil
+}
+
+func (m *MockBookWriter) DeleteChapter(_ context.Context, _ string) error {
+	return nil
+}
+
+func (m *MockBookWriter) ReorderChapters(_ context.Context, _ string, _ []string) error {
+	return nil
+}
+
+func (m *MockBookWriter) GetSection(_ context.Context, id string) (*database.BookSection, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	if s, ok := m.sections[id]; ok {
+		return s, nil
+	}
+	return nil, nil
+}
+
 func (m *MockBookWriter) GetSections(ctx context.Context, bookID string) ([]database.BookSection, error) {
 	if m.GetSectionsError != nil {
 		return nil, m.GetSectionsError

@@ -413,8 +413,15 @@ export interface PhotoBook {
   updated_at: string;
 }
 
+export interface BookChapter {
+  id: string;
+  title: string;
+  sort_order: number;
+}
+
 export interface BookSection {
   id: string;
+  chapter_id: string;
   title: string;
   sort_order: number;
   photo_count: number;
@@ -453,6 +460,7 @@ export interface BookDetail {
   id: string;
   title: string;
   description: string;
+  chapters: BookChapter[];
   sections: BookSection[];
   pages: BookPage[];
   created_at: string;

@@ -1513,7 +1513,7 @@ POST /books
 GET /books/{id}
 ```
 
-Returns book details with sections and pages.
+Returns book details with chapters, sections, and pages. The response includes a `chapters` array; sections have a `chapter_id` field indicating which chapter they belong to (nullable).
 
 #### Update Book
 
@@ -1535,7 +1535,64 @@ PUT /books/{id}
 DELETE /books/{id}
 ```
 
-Deletes the book and all associated sections, pages, and slots (cascades).
+Deletes the book and all associated chapters, sections, pages, and slots (cascades).
+
+### Chapters
+
+Chapters are an optional grouping level between books and sections (Book > Chapters > Sections > Pages > Slots).
+
+#### Create Chapter
+
+```
+POST /books/{id}/chapters
+```
+
+**Request:**
+```json
+{
+  "title": "Part One"
+}
+```
+
+**Response (201):** Created chapter object with `id`, `title`, `sort_order`.
+
+#### Update Chapter
+
+```
+PUT /chapters/{id}
+```
+
+**Request:**
+```json
+{
+  "title": "Updated Chapter Title"
+}
+```
+
+**Response (200):** Updated chapter object.
+
+#### Reorder Chapters
+
+```
+PUT /books/{id}/chapters/reorder
+```
+
+**Request:**
+```json
+{
+  "chapter_ids": ["chapter-uuid-1", "chapter-uuid-2", "chapter-uuid-3"]
+}
+```
+
+**Response (200):** Success.
+
+#### Delete Chapter
+
+```
+DELETE /chapters/{id}
+```
+
+**Response (200):** Success. Sections belonging to this chapter have their `chapter_id` set to NULL.
 
 ### Sections
 
@@ -1548,7 +1605,8 @@ POST /books/{id}/sections
 **Request:**
 ```json
 {
-  "title": "Childhood"
+  "title": "Childhood",
+  "chapter_id": "chapter-uuid-1"
 }
 ```
 
@@ -1558,10 +1616,11 @@ POST /books/{id}/sections
 PUT /sections/{id}
 ```
 
-**Request:**
+**Request:** All fields optional.
 ```json
 {
-  "title": "Updated Section Title"
+  "title": "Updated Section Title",
+  "chapter_id": "chapter-uuid-1"
 }
 ```
 
