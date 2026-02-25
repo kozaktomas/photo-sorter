@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X, Plus, CheckSquare, Square } from 'lucide-react';
-import { getPhotos, addSectionPhotos, getThumbnailUrl } from '../../api/client';
-import type { Photo } from '../../types';
+import { getPhotos, getAlbums, getLabels, addSectionPhotos, getThumbnailUrl } from '../../api/client';
+import type { Photo, Album, Label } from '../../types';
+import { MAX_ALBUMS_FETCH, MAX_LABELS_FETCH } from '../../constants';
 
 interface Props {
   sectionId: string;
@@ -12,16 +13,26 @@ interface Props {
 }
 
 export function PhotoBrowserModal({ sectionId, existingUids, onClose, onAdded }: Props) {
-  const { t } = useTranslation('pages');
+  const { t } = useTranslation(['pages', 'common']);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState('');
+  const [selectedAlbum, setSelectedAlbum] = useState('');
+  const [selectedLabel, setSelectedLabel] = useState('');
+  const [albums, setAlbums] = useState<Album[]>([]);
+  const [labels, setLabels] = useState<Label[]>([]);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [offset, setOffset] = useState(0);
   const [hasMore, setHasMore] = useState(true);
   const pageSize = 60;
 
   const existingSet = new Set(existingUids);
+  const hasActiveFilters = !!selectedAlbum || !!selectedLabel;
+
+  useEffect(() => {
+    void getAlbums({ count: MAX_ALBUMS_FETCH, order: 'name' }).then(setAlbums);
+    void getLabels({ count: MAX_LABELS_FETCH }).then(setLabels);
+  }, []);
 
   const loadPhotos = useCallback(async (reset: boolean) => {
     setLoading(true);
@@ -31,6 +42,8 @@ export function PhotoBrowserModal({ sectionId, existingUids, onClose, onAdded }:
         count: pageSize,
         offset: newOffset,
         q: query || undefined,
+        album: selectedAlbum || undefined,
+        label: selectedLabel || undefined,
         order: 'newest',
       });
       if (reset) {
@@ -44,11 +57,19 @@ export function PhotoBrowserModal({ sectionId, existingUids, onClose, onAdded }:
     } catch { /* silent */ } finally {
       setLoading(false);
     }
-  }, [offset, query]);
+  }, [offset, query, selectedAlbum, selectedLabel]);
 
-  useEffect(() => { void loadPhotos(true); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  // Load on mount and when album/label filter changes
+  useEffect(() => {
+    void loadPhotos(true);
+  }, [selectedAlbum, selectedLabel]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSearch = () => { void loadPhotos(true); };
+
+  const clearFilters = () => {
+    setSelectedAlbum('');
+    setSelectedLabel('');
+  };
 
   const toggleSelect = (uid: string) => {
     setSelected(prev => {
@@ -88,14 +109,14 @@ export function PhotoBrowserModal({ sectionId, existingUids, onClose, onAdded }:
           </div>
         </div>
 
-        <div className="flex gap-2 px-4 py-3">
+        <div className="flex flex-wrap gap-2 px-4 py-3">
           <input
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
             placeholder="Search photos..."
-            className="flex-1 px-3 py-1.5 bg-slate-800 border border-slate-700 rounded text-sm text-white placeholder-slate-500 focus:outline-none focus-visible:ring-1 focus-visible:ring-rose-500"
+            className="flex-1 min-w-[150px] px-3 py-1.5 bg-slate-800 border border-slate-700 rounded text-sm text-white placeholder-slate-500 focus:outline-none focus-visible:ring-1 focus-visible:ring-rose-500"
           />
           <button
             onClick={handleSearch}
@@ -103,6 +124,38 @@ export function PhotoBrowserModal({ sectionId, existingUids, onClose, onAdded }:
           >
             Search
           </button>
+          <select
+            value={selectedAlbum}
+            onChange={(e) => setSelectedAlbum(e.target.value)}
+            className="px-2 py-1.5 bg-slate-800 border border-slate-700 rounded text-sm text-white focus:outline-none focus-visible:ring-1 focus-visible:ring-rose-500 appearance-none cursor-pointer max-w-[200px]"
+          >
+            <option value="">{t('photos.allAlbums')}</option>
+            {albums.map(album => (
+              <option key={album.uid} value={album.uid}>
+                {album.title} ({album.photo_count})
+              </option>
+            ))}
+          </select>
+          <select
+            value={selectedLabel}
+            onChange={(e) => setSelectedLabel(e.target.value)}
+            className="px-2 py-1.5 bg-slate-800 border border-slate-700 rounded text-sm text-white focus:outline-none focus-visible:ring-1 focus-visible:ring-rose-500 appearance-none cursor-pointer max-w-[200px]"
+          >
+            <option value="">{t('photos.allLabels')}</option>
+            {labels.map(label => (
+              <option key={label.uid} value={label.slug}>
+                {label.name} ({label.photo_count})
+              </option>
+            ))}
+          </select>
+          {hasActiveFilters && (
+            <button
+              onClick={clearFilters}
+              className="px-2 py-1.5 text-sm text-rose-400 hover:text-rose-300 transition-colors"
+            >
+              {t('common:buttons.clearFilters', 'Clear filters')}
+            </button>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto px-4 pb-4">
