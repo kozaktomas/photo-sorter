@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X, Plus, CheckSquare, Square } from 'lucide-react';
+import { X, Plus, CheckSquare, Square, CheckCheck } from 'lucide-react';
 import { getPhotos, getAlbums, getLabels, addSectionPhotos, getThumbnailUrl } from '../../api/client';
 import type { Photo, Album, Label } from '../../types';
 import { MAX_ALBUMS_FETCH, MAX_LABELS_FETCH } from '../../constants';
@@ -80,6 +80,21 @@ export function PhotoBrowserModal({ sectionId, existingUids, onClose, onAdded }:
     });
   };
 
+  const eligibleUids = photos.filter(p => !existingSet.has(p.uid)).map(p => p.uid);
+  const allEligibleSelected = eligibleUids.length > 0 && eligibleUids.every(uid => selected.has(uid));
+
+  const toggleSelectAll = () => {
+    if (allEligibleSelected) {
+      setSelected(new Set());
+    } else {
+      setSelected(prev => {
+        const next = new Set(prev);
+        for (const uid of eligibleUids) next.add(uid);
+        return next;
+      });
+    }
+  };
+
   const handleAdd = async () => {
     if (selected.size === 0) return;
     try {
@@ -94,6 +109,15 @@ export function PhotoBrowserModal({ sectionId, existingUids, onClose, onAdded }:
         <div className="flex items-center justify-between p-4 border-b border-slate-700">
           <h2 className="text-lg font-semibold text-white">{t('books.editor.photoBrowser')}</h2>
           <div className="flex items-center gap-3">
+            {eligibleUids.length > 0 && (
+              <button
+                onClick={toggleSelectAll}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white text-sm rounded transition-colors"
+              >
+                <CheckCheck className="h-4 w-4" />
+                {allEligibleSelected ? t('common:buttons.deselectAll', 'Deselect All') : t('common:buttons.selectAll', 'Select All')}
+              </button>
+            )}
             {selected.size > 0 && (
               <button
                 onClick={handleAdd}

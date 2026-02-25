@@ -30,6 +30,7 @@
     "delete": "Delete",
     "select": "Select",
     "selectAll": "Select All",
+    "deselectAll": "Deselect All",
     "deselect": "Deselect",
     "clearFilters": "Clear Filters",
     "loadMore": "Load More",

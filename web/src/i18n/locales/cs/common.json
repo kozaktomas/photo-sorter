@@ -29,6 +29,7 @@
     "analyze": "Analyzovat",
     "delete": "Smazat",
     "selectAll": "Vybrat vše",
+    "deselectAll": "Zrušit vše",
     "deselect": "Zrušit výběr",
     "clearFilters": "Vymazat filtry",
     "loadMore": "Načíst další",
