@@ -1,6 +1,6 @@
 module github.com/kozaktomas/photo-sorter
 
-go 1.25.5
+go 1.26
 
 require (
 	github.com/coder/hnsw v0.6.1
