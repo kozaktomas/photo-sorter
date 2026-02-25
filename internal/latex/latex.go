@@ -802,7 +802,7 @@ func downloadPhoto(pp *photoprism.PhotoPrism, uid string, tmpDir string) (*photo
 	}
 
 	sanitizedUID := strings.NewReplacer("\n", "", "\r", "").Replace(uid)
-	log.Printf("PDF export: photo %s dimensions %dx%d", sanitizedUID, cfg.Width, cfg.Height) //nolint:gosec // uid sanitized above
+	log.Printf("PDF export: photo %s dimensions %dx%d", sanitizedUID, cfg.Width, cfg.Height)
 
 	return &photoImage{
 		path:   path,

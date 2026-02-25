@@ -395,7 +395,7 @@ func augmentSourcePhotoSet(pp *photoprism.PhotoPrism, subjectUID string, sourceP
 			break
 		}
 	}
-	log.Printf("[face_match] augmented sourcePhotoSet to %d photos for subject %s (%s)", //nolint:gosec // values sanitized via sanitizeForLog
+	log.Printf("[face_match] augmented sourcePhotoSet to %d photos for subject %s (%s)",
 		len(sourcePhotoSet), sanitizeForLog(subj.Name), sanitizeForLog(subj.Slug))
 }
 

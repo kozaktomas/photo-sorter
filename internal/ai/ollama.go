@@ -223,7 +223,7 @@ func (p *OllamaProvider) sendRequest(ctx context.Context, messages []ollamaMessa
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := p.client.Do(req) //nolint:gosec // URL validated in NewOllamaProvider (scheme + host check)
+	resp, err := p.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}

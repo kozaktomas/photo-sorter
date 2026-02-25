@@ -149,7 +149,7 @@ func (c *authClient) auth(url, username, password string) error {
 
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(req) //nolint:gosec // URL from trusted server config
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("could not send request: %w", err)
 	}

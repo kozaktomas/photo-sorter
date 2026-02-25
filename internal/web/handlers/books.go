@@ -753,7 +753,7 @@ func (h *BooksHandler) UpdatePage(w http.ResponseWriter, r *http.Request) {
 		newSlotCount := database.PageFormatSlotCount(*req.Format)
 		for i := newSlotCount; i < oldSlotCount; i++ {
 			if err := bw.ClearSlot(r.Context(), id, i); err != nil {
-				log.Printf("warning: failed to clear excess slot %d on page %s: %v", i, sanitizeForLog(id), err) //nolint:gosec // id sanitized via sanitizeForLog
+				log.Printf("warning: failed to clear excess slot %d on page %s: %v", i, sanitizeForLog(id), err)
 			}
 		}
 	}

@@ -23,7 +23,7 @@ func doGetJSON[T any](pp *PhotoPrism, endpoint string) (*T, error) {
 
 	req.Header.Set("Authorization", "Bearer "+pp.token)
 
-	resp, err := http.DefaultClient.Do(req) //nolint:gosec // URL constructed from validated parsedURL via resolveURL
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("could not send request: %w", err)
 	}
@@ -93,7 +93,7 @@ func doRequestJSON[T any](pp *PhotoPrism, method, endpoint string, requestBody a
 		req.Header.Set("Content-Type", "application/json")
 	}
 
-	resp, err := http.DefaultClient.Do(req) //nolint:gosec // URL constructed from validated parsedURL via resolveURL
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("could not send request: %w", err)
 	}
@@ -141,7 +141,7 @@ func doRequestRaw(pp *PhotoPrism, method, endpoint string, requestBody any) erro
 		req.Header.Set("Content-Type", "application/json")
 	}
 
-	resp, err := http.DefaultClient.Do(req) //nolint:gosec // URL constructed from validated parsedURL via resolveURL
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("could not send request: %w", err)
 	}

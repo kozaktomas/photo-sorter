@@ -104,7 +104,7 @@ func (c *EmbeddingClient) postMultipartImage(ctx context.Context, endpoint strin
 	}
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 
-	resp, err := c.client.Do(req) //nolint:gosec // URL validated in NewEmbeddingClient (scheme + host check)
+	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
@@ -241,7 +241,7 @@ func (c *EmbeddingClient) ComputeTextEmbedding(ctx context.Context, text string)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.client.Do(req) //nolint:gosec // URL validated in NewEmbeddingClient (scheme + host check)
+	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}
@@ -282,7 +282,7 @@ func (c *EmbeddingClient) ComputeTextEmbeddingWithMetadata(ctx context.Context, 
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.client.Do(req) //nolint:gosec // URL validated in NewEmbeddingClient (scheme + host check)
+	resp, err := c.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("request failed: %w", err)
 	}

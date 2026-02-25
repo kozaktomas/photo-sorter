@@ -66,6 +66,8 @@ linters:
     gosec:
       excludes:
         - G104  # Unhandled errors - already covered by errcheck with granular exclusions
+        - G704  # SSRF via taint - false positives on validated URLs (scheme + host checked in constructors)
+        - G706  # Log injection via taint - false positives on sanitized values (sanitizeForLog / NewReplacer)
     revive:
       rules:
         - name: exported

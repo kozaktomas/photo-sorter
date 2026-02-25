@@ -60,7 +60,7 @@ func (pp *PhotoPrism) UploadFile(filePath string) (string, error) {
 	req.Header.Set("Authorization", "Bearer "+pp.token)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 
-	resp, err := http.DefaultClient.Do(req) //nolint:gosec // URL constructed from validated parsedURL via resolveURL
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("could not send request: %w", err)
 	}
@@ -133,7 +133,7 @@ func (pp *PhotoPrism) UploadFiles(filePaths []string) (string, error) {
 	req.Header.Set("Authorization", "Bearer "+pp.token)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 
-	resp, err := http.DefaultClient.Do(req) //nolint:gosec // URL constructed from validated parsedURL via resolveURL
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("could not send request: %w", err)
 	}
