@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Copy, ExternalLink, Search, Check, Loader2, X, Eye, Star } from 'lucide-react';
 import { getThumbnailUrl } from '../api/client';
+import { copyToClipboard } from '../utils/clipboard';
 import { LazyImage } from './LazyImage';
 import { ACTION_LABELS, ACTION_BORDER_COLORS, ACTION_BG_COLORS } from '../constants/actions';
 import type { MatchAction } from '../types';
@@ -54,7 +55,7 @@ export function PhotoCard({
 
   const handleCopyId = (e: React.MouseEvent) => {
     e.stopPropagation();
-    void navigator.clipboard.writeText(photoUid);
+    void copyToClipboard(photoUid);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
@@ -293,7 +294,7 @@ export function PhotoCardLink({
   const handleCopyId = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    void navigator.clipboard.writeText(photoUid);
+    void copyToClipboard(photoUid);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };

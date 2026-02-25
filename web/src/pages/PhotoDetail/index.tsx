@@ -5,6 +5,7 @@ import { ArrowLeft, Loader2, AlertCircle, Images, ScanFace, Copy, ExternalLink, 
 import { AddToBookDropdown } from './AddToBookDropdown';
 import { Button } from '../../components/Button';
 import { colorMap } from '../../constants/pageConfig';
+import { copyToClipboard } from '../../utils/clipboard';
 import { usePhotoData } from './hooks/usePhotoData';
 import { useFacesData } from './hooks/useFacesData';
 import { useFaceAssignment } from './hooks/useFaceAssignment';
@@ -115,7 +116,7 @@ export function PhotoDetailPage() {
   };
 
   const handleCopyUid = () => {
-    if (uid) void navigator.clipboard.writeText(uid);
+    if (uid) void copyToClipboard(uid);
   };
 
   const handleOpenInPhotoprism = () => {

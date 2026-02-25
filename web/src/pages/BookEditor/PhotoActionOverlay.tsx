@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Eye, Search, Copy, Check } from 'lucide-react';
+import { copyToClipboard } from '../../utils/clipboard';
 
 interface Props {
   photoUid: string;
@@ -33,7 +34,7 @@ export function PhotoActionOverlay({ photoUid }: Props) {
   const handleCopyId = (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
-    void navigator.clipboard.writeText(photoUid);
+    void copyToClipboard(photoUid);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };

@@ -12,6 +12,7 @@ import { BulkActionBar } from '../components/BulkActionBar';
 import { findSimilarPhotos, getThumbnailUrl, getConfig } from '../api/client';
 import { percentToDistance } from '../constants';
 import { usePhotoSelection } from '../hooks/usePhotoSelection';
+import { copyToClipboard } from '../utils/clipboard';
 import type { SimilarPhotosResponse, Config } from '../types';
 
 export function SimilarPhotosPage() {
@@ -102,7 +103,7 @@ export function SimilarPhotosPage() {
   };
 
   const handleCopyUID = (uid: string) => {
-    void navigator.clipboard.writeText(uid);
+    void copyToClipboard(uid);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
