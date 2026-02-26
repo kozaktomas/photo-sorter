@@ -100,7 +100,7 @@ func (h *PhotosHandler) List(w http.ResponseWriter, r *http.Request) {
 	order := r.URL.Query().Get("order")
 	finalQuery := buildPhotoQuery(r)
 
-	photos, err := pp.GetPhotosWithQueryAndOrder(count, offset, finalQuery, order, constants.DefaultPhotoQuality)
+	photos, err := pp.GetPhotosWithQueryAndOrder(count, offset, finalQuery, order)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to get photos")
 		return

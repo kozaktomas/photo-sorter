@@ -263,8 +263,6 @@ DELETE /albums/{uid}/photos
 GET /photos
 ```
 
-**Quality Filtering:** This endpoint applies a minimum quality score of 3, matching PhotoPrism's default browse behavior. Photos with lower quality (e.g., missing EXIF metadata) are hidden. Album photo endpoints (`GET /albums/{uid}/photos`) do not apply quality filtering.
-
 **Query Parameters:**
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|

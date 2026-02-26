@@ -84,8 +84,6 @@ Browse and manage your PhotoPrism albums.
 
 Browse all photos in your library with powerful filtering.
 
-**Quality Filtering:** The Photos page only shows photos with quality score >= 3, matching PhotoPrism's default behavior. Photos with lower quality (e.g., missing EXIF metadata) appear in PhotoPrism's Review section and are hidden here. Album views show all photos regardless of quality.
-
 **Deleted Photo Filtering:** Soft-deleted (archived) photos are automatically filtered out from the listing. PhotoPrism's API may return photos with a non-empty `DeletedAt` field; these are excluded before sending the response to the frontend.
 
 **Features:**

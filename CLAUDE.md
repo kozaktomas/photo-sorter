@@ -365,7 +365,7 @@ Session cookies use `HttpOnly`, `SameSite=Strict`, and auto-detect `Secure` flag
 - `GET /api/v1/albums` - List albums
 - `POST /api/v1/albums` - Create album
 - `GET /api/v1/albums/{uid}` - Get single album
-- `GET /api/v1/albums/{uid}/photos` - Get photos in album (no quality filter)
+- `GET /api/v1/albums/{uid}/photos` - Get photos in album
 - `POST /api/v1/albums/{uid}/photos` - Add photos to album
 - `DELETE /api/v1/albums/{uid}/photos` - Remove photos from album
 - `DELETE /api/v1/albums/{uid}/photos/batch` - Remove specific photos from album (batch)
