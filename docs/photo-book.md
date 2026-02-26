@@ -196,12 +196,16 @@ The book can be exported to a print-ready A4 landscape PDF via the "Export PDF" 
 3. Downloads high-resolution thumbnails (`fit_3840`) for all photos in slots
 4. Computes layout geometry with configurable margins (asymmetric for binding)
 5. Generates a LaTeX document using TikZ for precise photo placement with object-cover cropping
-6. Compiles with `lualatex` (Czech typography via `polyglossia` + Latin Modern Roman font)
+6. Compiles with `lualatex` (Czech typography via `polyglossia` + EB Garamond font)
 7. Returns the PDF and an export report with DPI warnings
 
 ### Requirements
 
-- `lualatex` must be installed on the server (packages: `texlive-luatex`, `texmf-dist-latexrecommended`, `texmf-dist-fontsrecommended`, `texmf-dist-langczechslovak`)
+- `lualatex` must be installed on the server
+- **TeX packages:** `texlive-luatex`, `texmf-dist-latexrecommended`, `texmf-dist-fontsrecommended`, `texmf-dist-langczechslovak`, `texmf-dist-pictures`
+- **Additional LaTeX packages:** `enumitem`, `microtype`, `crop` (from `texmf-dist-latexrecommended` or installed separately)
+- **Fonts:** EB Garamond OpenType (Regular, SemiBold, Italic, SemiBoldItalic) — available from CTAN (`fonts/ebgaramond/opentype/`)
+- **Font cache:** `luaotfload` requires a writable cache directory; set `TEXMFCACHE` env var if running as a non-root user
 - Returns HTTP 503 if `lualatex` is not available
 
 ### Layout Configuration — 12-Column Grid System
@@ -341,7 +345,7 @@ All text slots render on a light gray background (`black!5`), replacing the prev
 
 ### Czech Typography
 
-The template uses `polyglossia` with Czech as the default language and Latin Modern Roman as the main font. This provides proper Czech hyphenation, ligatures, and diacritics support.
+The template uses `polyglossia` with Czech as the default language and EB Garamond as the main font (with SemiBold for bold weight). This provides proper Czech hyphenation, ligatures, and diacritics support.
 
 ### Export Report
 
