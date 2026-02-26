@@ -25,7 +25,7 @@ A CLI tool and web interface for organizing photos in [PhotoPrism](https://photo
 
 ## Requirements
 
-- Go 1.25+
+- Go 1.26+
 - Node.js 18+ (for web UI)
 - A running PhotoPrism instance
 - PostgreSQL 15+ with pgvector extension (for vector storage)
