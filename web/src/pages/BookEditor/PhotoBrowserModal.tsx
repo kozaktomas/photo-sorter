@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X, Plus, CheckSquare, Square, CheckCheck } from 'lucide-react';
 import { getPhotos, getAlbums, getLabels, addSectionPhotos, getThumbnailUrl } from '../../api/client';
+import { Combobox } from '../../components/Combobox';
 import type { Photo, Album, Label } from '../../types';
 import { MAX_ALBUMS_FETCH, MAX_LABELS_FETCH } from '../../constants';
 
@@ -148,30 +149,24 @@ export function PhotoBrowserModal({ sectionId, existingUids, onClose, onAdded }:
           >
             Search
           </button>
-          <select
+          <Combobox
             value={selectedAlbum}
-            onChange={(e) => setSelectedAlbum(e.target.value)}
-            className="px-2 py-1.5 bg-slate-800 border border-slate-700 rounded text-sm text-white focus:outline-none focus-visible:ring-1 focus-visible:ring-rose-500 appearance-none cursor-pointer max-w-[200px]"
-          >
-            <option value="">{t('photos.allAlbums')}</option>
-            {albums.map(album => (
-              <option key={album.uid} value={album.uid}>
-                {album.title} ({album.photo_count})
-              </option>
-            ))}
-          </select>
-          <select
+            onChange={setSelectedAlbum}
+            options={albums.map(a => ({ value: a.uid, label: `${a.title} (${a.photo_count})` }))}
+            placeholder={t('photos.allAlbums')}
+            size="sm"
+            focusRingClass="focus-within:ring-1 focus-within:ring-rose-500"
+            className="max-w-[200px]"
+          />
+          <Combobox
             value={selectedLabel}
-            onChange={(e) => setSelectedLabel(e.target.value)}
-            className="px-2 py-1.5 bg-slate-800 border border-slate-700 rounded text-sm text-white focus:outline-none focus-visible:ring-1 focus-visible:ring-rose-500 appearance-none cursor-pointer max-w-[200px]"
-          >
-            <option value="">{t('photos.allLabels')}</option>
-            {labels.map(label => (
-              <option key={label.uid} value={label.slug}>
-                {label.name} ({label.photo_count})
-              </option>
-            ))}
-          </select>
+            onChange={setSelectedLabel}
+            options={labels.map(l => ({ value: l.slug, label: `${l.name} (${l.photo_count})` }))}
+            placeholder={t('photos.allLabels')}
+            size="sm"
+            focusRingClass="focus-within:ring-1 focus-within:ring-rose-500"
+            className="max-w-[200px]"
+          />
           {hasActiveFilters && (
             <button
               onClick={clearFilters}

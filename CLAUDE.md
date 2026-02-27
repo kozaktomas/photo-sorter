@@ -445,6 +445,7 @@ web/src/
 │   ├── BulkActionBar.tsx      # Bulk action panel for photo selection
 │   ├── Button.tsx
 │   ├── Card.tsx
+│   ├── Combobox.tsx           # Autocomplete combobox (label/album filters)
 │   ├── ErrorBoundary.tsx      # Error catching wrapper
 │   ├── FormCheckbox.tsx       # Styled checkbox with label
 │   ├── FormInput.tsx          # Styled text/number input with label

@@ -89,8 +89,8 @@ Browse all photos in your library with powerful filtering.
 **Features:**
 - **Search** - Full-text search across photo metadata
 - **Filter by Year** - Dropdown to filter by year
-- **Filter by Label** - Select a label to show only photos with that label
-- **Filter by Album** - Show photos from a specific album
+- **Filter by Label** - Autocomplete combobox to filter by label (type to search, keyboard navigation)
+- **Filter by Album** - Autocomplete combobox to filter by album (type to search, keyboard navigation)
 - **Sort Options** - Date (newest/oldest), recently added, recently edited, name, title
 - **Selection Mode** - Click "Select" to enter multi-select mode:
   - Click photos to select/deselect
@@ -505,7 +505,7 @@ Three-tab editor for organizing a photo book.
 - **Add by Photo ID** - Inline text input to quickly add a photo by pasting its UID (validates existence, checks for duplicates)
 - **Description Editing** - Click a photo description to edit it inline (textarea)
 - **Bulk Selection** - Select multiple photos for batch removal
-- **Photo Browser Modal** - Full-screen modal to browse the entire library, search, and add photos to a section. Already-added photos are grayed out
+- **Photo Browser Modal** - Full-screen modal to browse the entire library, search, and add photos to a section. Album and label filters use autocomplete comboboxes. Already-added photos are grayed out
 
 **Pages Tab:**
 - **Page Sidebar** - Pages grouped by section with collapsible headers. Each section header shows the section title and page count, with a chevron toggle to collapse/expand. Pages are sortable within a section (drag to reorder); cross-section drag is blocked. Global page numbering (Page 1, 2, 3...) is preserved across sections. Creating a new page auto-expands the target section if collapsed. Create pages with format selector and section assignment
@@ -654,6 +654,7 @@ web/src/
 ├── components/             # Shared UI components
 │   ├── Button.tsx
 │   ├── Card.tsx
+│   ├── Combobox.tsx        # Autocomplete combobox for filtering
 │   ├── ErrorBoundary.tsx   # Error catching wrapper
 │   ├── LanguageSwitcher.tsx # Language toggle button
 │   ├── LazyImage.tsx
