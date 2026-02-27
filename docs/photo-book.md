@@ -489,6 +489,7 @@ Returns `application/pdf` with `Content-Disposition: attachment`.
 | `web/src/pages/Books/index.tsx` | Books list page — card grid, create, delete |
 | `web/src/pages/BookEditor/index.tsx` | Editor shell — tabs (Sections, Pages, Preview), title editing |
 | `web/src/pages/BookEditor/hooks/useBookData.ts` | Book data fetching and section photo loading |
+| `web/src/hooks/useBookKeyboardNav.ts` | Shared keyboard navigation hook (W/S prev/next, E/D chapter jump) |
 | `web/src/pages/BookEditor/SectionsTab.tsx` | Sections tab — sidebar + photo pool layout |
 | `web/src/pages/BookEditor/SectionSidebar.tsx` | Sortable chapter and section list (drag to reorder), chapter grouping |
 | `web/src/pages/BookEditor/SectionPhotoPool.tsx` | Photo grid with selection, add by ID, inline description + note editing |

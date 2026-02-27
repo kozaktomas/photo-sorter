@@ -560,6 +560,15 @@ Find photos that belong in existing albums but aren't there yet by searching the
 - `←` / `→` - Navigate between photos
 - `Escape` - Close modal
 
+### Book Editor — Pages Tab
+- `W` / `S` - Navigate to previous / next page
+- `E` / `D` - Jump to first page of previous / next chapter
+- Disabled when a dialog is open (photo description, text slot, crop)
+
+### Book Editor — Sections Tab
+- `W` / `S` - Navigate to previous / next section
+- `E` / `D` - Jump to first section of previous / next chapter
+
 ### Slideshow
 - `←` / `→` - Previous / next photo
 - `Space` - Toggle play/pause

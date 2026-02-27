@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { useBookKeyboardNav } from '../../hooks/useBookKeyboardNav';
 import { SectionSidebar } from './SectionSidebar';
 import { SectionPhotoPool } from './SectionPhotoPool';
 import type { BookDetail, SectionPhoto } from '../../types';
@@ -30,6 +31,16 @@ export function SectionsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh 
       setSelectedId(book.sections.length > 0 ? book.sections[0].id : null);
     }
   }, [book.sections, selectedId]);
+
+  // Keyboard navigation: W/S = prev/next section, E/D = prev/next chapter
+  useBookKeyboardNav({
+    items: book.sections,
+    selectedId,
+    onSelect: setSelectedId,
+    getId: section => section.id,
+    getChapterId: section => section.chapter_id || '',
+    chapters: book.chapters || [],
+  });
 
   if (book.sections.length === 0 && !selectedId) {
     return (

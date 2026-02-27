@@ -5,6 +5,7 @@ import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { Type, Heading1, Heading2, Bold, Italic, List, ListOrdered } from 'lucide-react';
 import { assignSlot, assignTextSlot, clearSlot, swapSlots, updatePage, updateSlotCrop, reorderPages, getThumbnailUrl } from '../../api/client';
 import { MarkdownContent } from '../../utils/markdown';
+import { useBookKeyboardNav } from '../../hooks/useBookKeyboardNav';
 import { PageSidebar } from './PageSidebar';
 import { PageTemplate } from './PageTemplate';
 import { UnassignedPool } from './UnassignedPool';
@@ -443,6 +444,20 @@ export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRe
   );
 
   const selectedPage = book.pages.find(p => p.id === selectedId);
+
+  // Keyboard navigation: W/S = prev/next page, E/D = prev/next chapter
+  useBookKeyboardNav({
+    items: book.pages,
+    selectedId,
+    onSelect: setSelectedId,
+    getId: page => page.id,
+    getChapterId: page => {
+      const section = book.sections.find(s => s.id === page.section_id);
+      return section?.chapter_id || '';
+    },
+    chapters: book.chapters || [],
+    enabled: !editingPhoto && !editingTextSlot && !editingCrop,
+  });
 
   // Load section photos for the selected page's section
   useEffect(() => {

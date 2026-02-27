@@ -465,6 +465,7 @@ web/src/
 │   └── pageConfig.ts          # Book page format configuration
 ├── hooks/                     # Global hooks
 │   ├── useAuth.tsx
+│   ├── useBookKeyboardNav.ts  # Book editor keyboard nav (W/S/E/D)
 │   ├── useFaceApproval.ts     # Face approval logic (single + batch)
 │   ├── usePhotoSelection.ts   # Shared photo selection + bulk actions
 │   ├── useSSE.ts              # Server-Sent Events
