@@ -35,6 +35,14 @@ export function PhotoBrowserModal({ sectionId, existingUids, onClose, onAdded }:
     void getLabels({ count: MAX_LABELS_FETCH }).then(setLabels);
   }, []);
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
   const loadPhotos = useCallback(async (reset: boolean) => {
     setLoading(true);
     try {
