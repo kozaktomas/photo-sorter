@@ -335,6 +335,8 @@ func personMatchesToSuggestions(personMatches map[string]*personMatch, limit int
 // findFaceSuggestions finds people who have similar faces and returns them as suggestions.
 // This version uses cached SubjectName/SubjectUID from StoredFace, making zero API calls.
 // excludeNames, if non-nil, filters out people already assigned on the same photo.
+// If the primary threshold yields fewer than limit suggestions, a fallback search with
+// no distance filter is performed to ensure faces always get suggestions.
 func (h *FacesHandler) findFaceSuggestions(
 	ctx context.Context,
 	faceRepo database.FaceReader,
@@ -352,10 +354,38 @@ func (h *FacesHandler) findFaceSuggestions(
 	similarFaces, distances, err := faceRepo.FindSimilarWithDistance(
 		ctx, embedding, constants.DefaultFaceSimilarSearchLimit, threshold,
 	)
-	if err != nil || len(similarFaces) == 0 {
+	if err != nil {
 		return []FaceSuggestion{}
 	}
 
 	personMatches := aggregatePersonMatches(similarFaces, distances, subjectMap, excludeNames)
-	return personMatchesToSuggestions(personMatches, limit)
+	suggestions := personMatchesToSuggestions(personMatches, limit)
+
+	// Fallback: if we have fewer than limit suggestions, widen the search to fill up.
+	if len(suggestions) < limit {
+		fallbackFaces, fallbackDists, fbErr := faceRepo.FindSimilarWithDistance(
+			ctx, embedding, constants.DefaultFaceSimilarSearchLimit,
+			constants.FallbackFaceSuggestionThreshold,
+		)
+		if fbErr == nil && len(fallbackFaces) > 0 {
+			// Build set of names already suggested to avoid duplicates.
+			alreadySuggested := make(map[string]bool, len(suggestions))
+			for _, s := range suggestions {
+				alreadySuggested[s.PersonName] = true
+			}
+			combinedExclude := make(map[string]bool, len(excludeNames)+len(alreadySuggested))
+			for k := range excludeNames {
+				combinedExclude[k] = true
+			}
+			for k := range alreadySuggested {
+				combinedExclude[k] = true
+			}
+
+			fbMatches := aggregatePersonMatches(fallbackFaces, fallbackDists, subjectMap, combinedExclude)
+			fbSuggestions := personMatchesToSuggestions(fbMatches, limit-len(suggestions))
+			suggestions = append(suggestions, fbSuggestions...)
+		}
+	}
+
+	return suggestions
 }

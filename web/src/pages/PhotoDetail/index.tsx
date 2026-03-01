@@ -142,7 +142,7 @@ export function PhotoDetailPage() {
         <div className="text-center">
           <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
           <p className="text-red-400">{photoError || t('common:errors.photoNotFound')}</p>
-          <Button variant="ghost" onClick={() => navigate(-1)} className="mt-4">
+          <Button variant="ghost" onClick={() => navigate('/photos')} className="mt-4">
             <ArrowLeft className="h-4 w-4 mr-2" />
             {t('common:buttons.goBack')}
           </Button>
@@ -158,7 +158,7 @@ export function PhotoDetailPage() {
       {/* Header */}
       <div className="flex items-center justify-between px-6 py-4 border-b border-slate-700 shrink-0">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={() => navigate(-1)}>
+          <Button variant="ghost" size="sm" onClick={() => navigate('/photos')}>
             <ArrowLeft className="h-4 w-4 mr-1" />
             {t('pages:photoDetail.back')}
           </Button>

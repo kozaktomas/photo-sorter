@@ -929,8 +929,9 @@ GET /photos/{uid}/faces
 
 **Notes:**
 - `face_index >= 0`: Face from embeddings database
-- `face_index < 0`: Unmatched PhotoPrism marker (no embedding)
+- `face_index < 0`: Unmatched PhotoPrism marker (no embedding, always has empty suggestions)
 - `embeddings_count` vs `markers_count` surfaces discrepancies
+- Suggestions use a fallback mechanism: if the `threshold` yields fewer than `limit` results, a wider search (max cosine distance 2.0) fills remaining slots so faces with embeddings always get suggestions when named people exist in the database
 
 ### Compute Faces for Photo
 

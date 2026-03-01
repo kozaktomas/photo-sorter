@@ -39,6 +39,11 @@ const (
 
 	// DefaultFaceSimilarSearchLimit is the limit for finding similar faces.
 	DefaultFaceSimilarSearchLimit = 500
+
+	// FallbackFaceSuggestionThreshold is the maximum cosine distance used for
+	// fallback suggestions when the primary threshold yields fewer than limit results.
+	// Set to 2.0 (max cosine distance) to effectively disable filtering.
+	FallbackFaceSuggestionThreshold = 2.0
 )
 
 // File upload constants.

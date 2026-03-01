@@ -141,7 +141,8 @@ When accessing a photo from an album, label, or the Photos page, navigation cont
 
 **Face Assignment:**
 - Click "Faces" to load face data with bounding boxes overlaid on the photo
-- Select a face to see AI-powered person suggestions with confidence scores
+- Select a face to see AI-powered person suggestions with confidence scores (up to 3 shown in the UI)
+- Suggestions use a fallback mechanism: if the default distance threshold yields fewer results than requested, a wider search fills the remaining slots so that faces with embeddings always get suggestions
 - Accept a suggestion or manually type a person name (with autocomplete)
 - Color-coded bounding boxes indicate assignment status (red=unassigned, yellow=needs assignment, green=assigned, orange=outlier)
 - **Reassign** - For already-assigned faces, click "Reassign" to change the person. Shows suggestions (excluding the current person) and manual input. Cancel to return to the assigned view
