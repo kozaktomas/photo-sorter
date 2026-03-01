@@ -72,14 +72,18 @@ go run . serve
 **IMPORTANT:** After every code change, run the dev script to rebuild and restart the server:
 
 ```bash
-./dev.sh
+./dev.sh          # Smart rebuild (skips unchanged steps)
+./dev.sh --force  # Force full rebuild (bypass caching)
 ```
 
 This script:
 1. Stops any running photo-sorter process
-2. Builds the frontend (npm install + build)
-3. Builds the Go binary
-4. Starts the server on port 8085 using test services (PhotoPrism + pgvector)
+2. Runs `npm install` (skipped if `node_modules` is up-to-date with `package-lock.json`)
+3. Builds the frontend via `tsc -b && vite build` (skipped if `dist/` is newer than all source files)
+4. Builds the Go binary (skipped if binary is newer than all `.go` files and frontend wasn't rebuilt)
+5. Starts the server on port 8085 using test services (PhotoPrism + pgvector)
+
+Smart caching makes repeated runs fast (~5s when nothing changed vs ~10min for full rebuild on the Pi).
 
 To check server logs:
 ```bash
