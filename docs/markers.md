@@ -200,7 +200,7 @@ type StoredFace struct {
 **Cache synchronization:**
 - Updated during photo processing via `enrichFacesWithMarkerData()`
 - Updated when faces are assigned/unassigned via web UI
-- Uses `UpdateFaceMarker()` to sync individual face records
+- Uses `UpdateFaceMarker()` to sync individual face records in both PostgreSQL and the in-memory HNSW index
 
 ## Name Normalization
 

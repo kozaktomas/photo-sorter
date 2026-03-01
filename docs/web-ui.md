@@ -272,7 +272,7 @@ The rebuild operation works differently based on the storage backend:
 2. Rebuilds the in-memory HNSW index for O(log N) similarity search
 3. Index is immediately available (no file I/O required)
 
-Use this when you've modified face data directly in PostgreSQL outside of Photo Sorter.
+Use this when you've modified face data directly in PostgreSQL outside of Photo Sorter. Note: face assignments via the Photo Sorter UI automatically keep the HNSW index in sync, so a manual rebuild is typically only needed after direct database modifications.
 
 **Sync Cache:**
 

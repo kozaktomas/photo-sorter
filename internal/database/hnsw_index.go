@@ -136,6 +136,21 @@ func (h *HNSWIndex) Add(face *StoredFace) error {
 	return nil
 }
 
+// UpdateFaceMetadata updates metadata fields of a face in the idToFace map by database ID.
+// Returns true if the face was found and updated, false if not found.
+func (h *HNSWIndex) UpdateFaceMetadata(id int64, markerUID, subjectUID, subjectName string) bool {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	face, ok := h.idToFace[id]
+	if !ok {
+		return false
+	}
+	face.MarkerUID = markerUID
+	face.SubjectUID = subjectUID
+	face.SubjectName = subjectName
+	return true
+}
+
 // Delete removes a face from the index (marks as deleted).
 func (h *HNSWIndex) Delete(id int64) {
 	h.mu.Lock()

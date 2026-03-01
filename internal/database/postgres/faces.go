@@ -574,6 +574,7 @@ func (r *FaceRepository) UpdateFaceMarker(
 			subject_uid = $2,
 			subject_name = $3
 		WHERE photo_uid = $4 AND face_index = $5
+		RETURNING id
 	`
 
 	var mUID, sUID, sName sql.NullString
@@ -587,9 +588,22 @@ func (r *FaceRepository) UpdateFaceMarker(
 		sName = sql.NullString{String: subjectName, Valid: true}
 	}
 
-	if _, err := r.pool.Exec(ctx, query, mUID, sUID, sName, photoUID, faceIndex); err != nil {
+	var faceID int64
+	err := r.pool.QueryRow(ctx, query, mUID, sUID, sName, photoUID, faceIndex).Scan(&faceID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return nil // Face not found, no-op.
+	}
+	if err != nil {
 		return fmt.Errorf("update face marker: %w", err)
 	}
+
+	// Sync the in-memory HNSW index if enabled.
+	if r.isHNSWEnabled() {
+		r.hnswMu.RLock()
+		r.hnswIndex.UpdateFaceMetadata(faceID, markerUID, subjectUID, subjectName)
+		r.hnswMu.RUnlock()
+	}
+
 	return nil
 }
 

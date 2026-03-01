@@ -338,6 +338,52 @@ func TestFaceRepository(t *testing.T) {
 		}
 	})
 
+	// Test UpdateFaceMarker syncs HNSW index.
+	t.Run("UpdateFaceMarker_HNSW", func(t *testing.T) {
+		// Enable HNSW to test in-memory sync.
+		if err := repo.EnableHNSW(ctx, ""); err != nil {
+			t.Fatalf("Failed to enable HNSW: %v", err)
+		}
+		defer repo.DisableHNSW()
+
+		// Get the face ID for face_index=0 to verify HNSW state.
+		faces, err := repo.GetFaces(ctx, "photo456")
+		if err != nil {
+			t.Fatalf("Failed to get faces: %v", err)
+		}
+		var faceID int64
+		for _, f := range faces {
+			if f.FaceIndex == 0 {
+				faceID = f.ID
+				break
+			}
+		}
+		if faceID == 0 {
+			t.Fatal("Face with index 0 not found")
+		}
+
+		// Update marker via UpdateFaceMarker.
+		err = repo.UpdateFaceMarker(ctx, "photo456", 0, "hnswMarker", "hnswSubject", "HNSW Person")
+		if err != nil {
+			t.Fatalf("Failed to update marker: %v", err)
+		}
+
+		// Verify the HNSW index was updated.
+		hnswFace := repo.hnswIndex.GetFace(faceID)
+		if hnswFace == nil {
+			t.Fatal("Face not found in HNSW index")
+		}
+		if hnswFace.MarkerUID != "hnswMarker" {
+			t.Errorf("HNSW MarkerUID: got %q, want %q", hnswFace.MarkerUID, "hnswMarker")
+		}
+		if hnswFace.SubjectUID != "hnswSubject" {
+			t.Errorf("HNSW SubjectUID: got %q, want %q", hnswFace.SubjectUID, "hnswSubject")
+		}
+		if hnswFace.SubjectName != "HNSW Person" {
+			t.Errorf("HNSW SubjectName: got %q, want %q", hnswFace.SubjectName, "HNSW Person")
+		}
+	})
+
 	// Test FindSimilarWithDistance.
 	t.Run("FindSimilarWithDistance", func(t *testing.T) {
 		query := make([]float32, 512)
