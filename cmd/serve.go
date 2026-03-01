@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -128,6 +129,27 @@ func saveHNSWIndexes() {
 	}
 }
 
+// gracefulShutdown waits for a signal, then shuts down the HTTP server, saves HNSW indexes, and closes the DB pool.
+func gracefulShutdown(sigChan <-chan os.Signal, server *web.Server, pool *postgres.Pool) {
+	<-sigChan
+	fmt.Println("\nShutting down...")
+
+	// 1. Stop accepting new requests first.
+	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer shutdownCancel()
+	if err := server.Shutdown(shutdownCtx); err != nil {
+		fmt.Printf("Error during HTTP shutdown: %v\n", err)
+	}
+
+	// 2. Save HNSW indexes (no concurrent request modifications now).
+	saveHNSWIndexes()
+
+	// 3. Close the database pool last.
+	if err := pool.Close(); err != nil {
+		fmt.Printf("Error closing database pool: %v\n", err)
+	}
+}
+
 func runServe(cmd *cobra.Command, args []string) error {
 	cfg := config.Load()
 
@@ -157,24 +179,11 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	server := web.NewServer(cfg, port, host, sessionSecret, sessionRepo)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 
-	go func() {
-		<-sigChan
-		fmt.Println("\nShutting down...")
-		saveHNSWIndexes()
-
-		shutdownCtx, shutdownCancel := context.WithTimeout(ctx, 30*time.Second)
-		defer shutdownCancel()
-
-		if err := server.Shutdown(shutdownCtx); err != nil {
-			fmt.Printf("Error during shutdown: %v\n", err)
-		}
-	}()
+	var wg sync.WaitGroup
+	wg.Go(func() { gracefulShutdown(sigChan, server, pool) })
 
 	fmt.Printf("Starting Photo Sorter Web UI on http://%s:%d\n", host, port)
 	fmt.Println("Press Ctrl+C to stop")
@@ -182,5 +191,8 @@ func runServe(cmd *cobra.Command, args []string) error {
 	if err := server.Start(); err != nil {
 		return fmt.Errorf("starting server: %w", err)
 	}
+
+	// Wait for shutdown goroutine to finish saving indexes and closing DB.
+	wg.Wait()
 	return nil
 }

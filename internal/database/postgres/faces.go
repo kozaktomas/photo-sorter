@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"sync"
+	"time"
 
 	"github.com/kozaktomas/photo-sorter/internal/database"
 	"github.com/kozaktomas/photo-sorter/internal/facematch"
@@ -983,7 +984,8 @@ func (r *FaceRepository) SaveHNSWIndex() error {
 	fmt.Printf("Face index save: saving to %s\n", r.hnswIndexPath)
 
 	// Get current database stats for metadata.
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 	var faceCount int64
 	var maxFaceID int64
 	err := r.pool.QueryRow(ctx, "SELECT COUNT(*), COALESCE(MAX(id), 0) FROM faces").Scan(&faceCount, &maxFaceID)

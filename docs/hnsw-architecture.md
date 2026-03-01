@@ -43,7 +43,7 @@ The pgvector path sets `SET LOCAL hnsw.ef_search = 100` to match the in-memory i
 
 1. **Startup** (`cmd/serve.go`): Tries to load persisted index from disk (`HNSW_INDEX_PATH` / `HNSW_EMBEDDING_INDEX_PATH`). If stale or missing, rebuilds from full table scan.
 2. **Runtime**: Incremental updates on insert/delete (face index auto-updates when faces are saved) and on marker metadata changes (subject assignment via `UpdateFaceMarker`).
-3. **Shutdown**: Saves to disk for faster next startup.
+3. **Shutdown** (`cmd/serve.go: gracefulShutdown`): HTTP server stops first (no concurrent request modifications), then HNSW indexes are saved to disk, then the DB pool is closed. The main goroutine waits via `sync.WaitGroup` to ensure the process doesn't exit before persistence completes. DB stats queries during save use a 10-second timeout. Docker deployments should set `stop_grace_period: 60s` to avoid SIGKILL before save finishes on slow hardware.
 4. **Rebuild**: Admin endpoint `POST /api/v1/process/rebuild-index` rebuilds from PostgreSQL.
 
 ## Persistence files

@@ -272,7 +272,7 @@ go run . cache compute-eras [flags]           # Compute CLIP era embedding centr
 
 The `internal/database/` package provides storage for embeddings and faces data using PostgreSQL with pgvector.
 
-**In-Memory HNSW:** Loads face embeddings (512-dim) and image embeddings (768-dim) into separate in-memory HNSW indexes at startup for O(log N) similarity search. Face index auto-updates when faces are saved and when marker metadata is updated via `UpdateFaceMarker`. Persistence via `HNSW_INDEX_PATH` / `HNSW_EMBEDDING_INDEX_PATH` env vars; saved on shutdown and after "Rebuild Index".
+**In-Memory HNSW:** Loads face embeddings (512-dim) and image embeddings (768-dim) into separate in-memory HNSW indexes at startup for O(log N) similarity search. Face index auto-updates when faces are saved and when marker metadata is updated via `UpdateFaceMarker`. Persistence via `HNSW_INDEX_PATH` / `HNSW_EMBEDDING_INDEX_PATH` env vars; saved on graceful shutdown (after HTTP server stops, before DB pool closes) and after "Rebuild Index". Docker deployments should set `stop_grace_period: 60s` to allow time for index persistence on slow hardware.
 
 **Key files:**
 ```

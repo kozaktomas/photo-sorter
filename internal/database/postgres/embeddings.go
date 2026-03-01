@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/kozaktomas/photo-sorter/internal/database"
 	"github.com/lib/pq"
@@ -541,7 +542,8 @@ func (r *EmbeddingRepository) SaveHNSWIndex() error {
 	fmt.Printf("Embedding index save: saving to %s\n", r.hnswIndexPath)
 
 	// Get current database stats for metadata.
-	ctx := context.Background()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 	var embCount int64
 	err := r.pool.QueryRow(ctx, "SELECT COUNT(*) FROM embeddings").Scan(&embCount)
 	if err != nil {

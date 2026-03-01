@@ -52,5 +52,9 @@ USER nobody
 
 EXPOSE 8080
 
+# Ensure clean SIGTERM delivery for graceful shutdown (saves HNSW indexes).
+# In docker-compose.yml, set stop_grace_period: 60s to allow time for index persistence on slow hardware.
+STOPSIGNAL SIGTERM
+
 ENTRYPOINT ["/app/photo-sorter"]
 CMD ["serve"]
