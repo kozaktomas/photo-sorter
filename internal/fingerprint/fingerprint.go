@@ -14,15 +14,15 @@ import (
 	"golang.org/x/image/draw"
 )
 
-// HashResult contains computed perceptual hashes for an image
+// HashResult contains computed perceptual hashes for an image.
 type HashResult struct {
-	PHash     string `json:"phash"`      // 64-bit perceptual hash as hex string
-	DHash     string `json:"dhash"`      // 64-bit difference hash as hex string
-	PHashBits uint64 `json:"-"`          // Raw pHash for comparison
-	DHashBits uint64 `json:"-"`          // Raw dHash for comparison
+	PHash     string `json:"phash"` // 64-bit perceptual hash as hex string
+	DHash     string `json:"dhash"` // 64-bit difference hash as hex string
+	PHashBits uint64 `json:"-"`     // Raw pHash for comparison
+	DHashBits uint64 `json:"-"`     // Raw dHash for comparison
 }
 
-// ComputeHashes computes both pHash and dHash for an image
+// ComputeHashes computes both pHash and dHash for an image.
 func ComputeHashes(imageData []byte) (*HashResult, error) {
 	img, _, err := image.Decode(bytes.NewReader(imageData))
 	if err != nil {
@@ -40,7 +40,7 @@ func ComputeHashes(imageData []byte) (*HashResult, error) {
 	}, nil
 }
 
-// HammingDistance computes the Hamming distance between two 64-bit hashes
+// HammingDistance computes the Hamming distance between two 64-bit hashes.
 func HammingDistance(hash1, hash2 uint64) int {
 	xor := hash1 ^ hash2
 	distance := 0
@@ -51,13 +51,13 @@ func HammingDistance(hash1, hash2 uint64) int {
 	return distance
 }
 
-// Similar returns true if two hashes are within the given threshold
-// A threshold of 10 is typically used for near-duplicate detection
+// Similar returns true if two hashes are within the given threshold.
+// A threshold of 10 is typically used for near-duplicate detection.
 func Similar(hash1, hash2 uint64, threshold int) bool {
 	return HammingDistance(hash1, hash2) <= threshold
 }
 
-// computePHash computes a 64-bit perceptual hash using DCT
+// computePHash computes a 64-bit perceptual hash using DCT.
 func computePHash(img image.Image) uint64 {
 	// 1. Resize to 32x32 for DCT processing
 	resized := resizeImage(img, 32, 32)
@@ -83,7 +83,7 @@ func computePHash(img image.Image) uint64 {
 			}
 		}
 	}
-	// Fill remaining with the last few coefficients
+	// Fill remaining with the last few coefficients.
 	for ; idx < 64; idx++ {
 		lowFreq[idx] = dct[idx/8][idx%8]
 	}
@@ -102,7 +102,7 @@ func computePHash(img image.Image) uint64 {
 	return hash
 }
 
-// computeDHash computes a 64-bit difference hash
+// computeDHash computes a 64-bit difference hash.
 func computeDHash(img image.Image) uint64 {
 	// 1. Resize to 9x8 (we need 9 columns for 8 differences)
 	resized := resizeImage(img, 9, 8)
@@ -127,15 +127,15 @@ func computeDHash(img image.Image) uint64 {
 	return hash
 }
 
-// resizeImage scales an image to the specified dimensions
+// resizeImage scales an image to the specified dimensions.
 func resizeImage(img image.Image, width, height int) *image.RGBA {
 	dst := image.NewRGBA(image.Rect(0, 0, width, height))
 	draw.BiLinear.Scale(dst, dst.Bounds(), img, img.Bounds(), draw.Over, nil)
 	return dst
 }
 
-// ResizeImage resizes an image to fit within maxSize while keeping aspect ratio
-// Returns JPEG-encoded bytes
+// ResizeImage resizes an image to fit within maxSize while keeping aspect ratio.
+// Returns JPEG-encoded bytes.
 func ResizeImage(data []byte, maxSize int) ([]byte, error) {
 	img, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
@@ -146,12 +146,12 @@ func ResizeImage(data []byte, maxSize int) ([]byte, error) {
 	width := bounds.Dx()
 	height := bounds.Dy()
 
-	// Check if resizing is needed
+	// Check if resizing is needed.
 	if width <= maxSize && height <= maxSize {
 		return data, nil
 	}
 
-	// Calculate new dimensions
+	// Calculate new dimensions.
 	var newWidth, newHeight int
 	if width > height {
 		newWidth = maxSize
@@ -161,11 +161,11 @@ func ResizeImage(data []byte, maxSize int) ([]byte, error) {
 		newWidth = int(float64(width) * float64(maxSize) / float64(height))
 	}
 
-	// Create resized image
+	// Create resized image.
 	resized := image.NewRGBA(image.Rect(0, 0, newWidth, newHeight))
 	draw.BiLinear.Scale(resized, resized.Bounds(), img, bounds, draw.Over, nil)
 
-	// Encode as JPEG
+	// Encode as JPEG.
 	var buf bytes.Buffer
 	if err := jpeg.Encode(&buf, resized, &jpeg.Options{Quality: 85}); err != nil {
 		return nil, fmt.Errorf("failed to encode resized image: %w", err)
@@ -174,7 +174,7 @@ func ResizeImage(data []byte, maxSize int) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
-// toGrayscale converts an image to a 2D array of grayscale values (0-255)
+// toGrayscale converts an image to a 2D array of grayscale values (0-255).
 func toGrayscale(img *image.RGBA) [][]float64 {
 	bounds := img.Bounds()
 	width := bounds.Dx()
@@ -185,7 +185,7 @@ func toGrayscale(img *image.RGBA) [][]float64 {
 		gray[x] = make([]float64, height)
 		for y := range height {
 			r, g, b, _ := img.At(x, y).RGBA()
-			// ITU-R BT.601 luma formula
+			// ITU-R BT.601 luma formula.
 			luma := 0.299*float64(r>>8) + 0.587*float64(g>>8) + 0.114*float64(b>>8)
 			gray[x][y] = luma
 		}
@@ -194,7 +194,7 @@ func toGrayscale(img *image.RGBA) [][]float64 {
 	return gray
 }
 
-// computeDCT computes the Discrete Cosine Transform of a grayscale image
+// computeDCT computes the Discrete Cosine Transform of a grayscale image.
 func computeDCT(gray [][]float64) [][]float64 {
 	size := len(gray)
 	dct := make([][]float64, size)
@@ -202,7 +202,7 @@ func computeDCT(gray [][]float64) [][]float64 {
 		dct[i] = make([]float64, size)
 	}
 
-	// Precompute cosine values for efficiency
+	// Precompute cosine values for efficiency.
 	cosTable := make([][]float64, size)
 	for i := range cosTable {
 		cosTable[i] = make([]float64, size)
@@ -211,7 +211,7 @@ func computeDCT(gray [][]float64) [][]float64 {
 		}
 	}
 
-	// DCT-II formula
+	// DCT-II formula.
 	for u := range size {
 		for v := range size {
 			var sum float64
@@ -227,7 +227,7 @@ func computeDCT(gray [][]float64) [][]float64 {
 	return dct
 }
 
-// computeMedian returns the median value from a slice
+// computeMedian returns the median value from a slice.
 func computeMedian(values []float64) float64 {
 	sorted := make([]float64, len(values))
 	copy(sorted, values)

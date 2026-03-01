@@ -81,7 +81,7 @@ func TestRespondJSON_NilData(t *testing.T) {
 		t.Errorf("expected status %d, got %d", http.StatusOK, recorder.Code)
 	}
 
-	// Body should be empty for nil data
+	// Body should be empty for nil data.
 	if recorder.Body.Len() != 0 {
 		t.Errorf("expected empty body for nil data, got '%s'", recorder.Body.String())
 	}
@@ -212,7 +212,7 @@ func TestRespondError_EmptyMessage(t *testing.T) {
 		t.Fatalf("failed to unmarshal response: %v", err)
 	}
 
-	// Error key should exist but be empty
+	// Error key should exist but be empty.
 	if result["error"] != "" {
 		t.Errorf("expected empty error message, got '%s'", result["error"])
 	}

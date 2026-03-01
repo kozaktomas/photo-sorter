@@ -1,12 +1,12 @@
 package latex
 
-// Page dimensions in mm (A4 landscape)
+// Page dimensions in mm (A4 landscape).
 const (
 	PageW = 297.0
 	PageH = 210.0
 )
 
-// SectionHeadingHeightMM is the vertical space reserved for an inline section
+// SectionHeadingHeightMM is the vertical space reserved for an inline section.
 // heading on the first content page of a section (rule + title + gap).
 const SectionHeadingHeightMM = 14.0
 
@@ -41,25 +41,25 @@ func DefaultLayoutConfig() LayoutConfig {
 		CanvasHeightMM:  172.0,
 		FooterHeightMM:  8.0,
 		ArchivalInsetMM: 3.0,
-		GutterSafeMM:   8.0,
-		BaselineUnitMM: 4.0,
+		GutterSafeMM:    8.0,
+		BaselineUnitMM:  4.0,
 	}
 }
 
 // ContentWidth returns the usable horizontal space (same for all pages).
-// 297 - 20 - 12 = 265mm
+// 297 - 20 - 12 = 265mm.
 func (c LayoutConfig) ContentWidth() float64 {
 	return PageW - c.InsideMarginMM - c.OutsideMarginMM
 }
 
 // ColumnWidth returns the width of a single grid column.
-// (265 - 11*4) / 12 = (265 - 44) / 12 = 221 / 12 = 18.42mm
+// (265 - 11*4) / 12 = (265 - 44) / 12 = 221 / 12 = 18.42mm.
 func (c LayoutConfig) ColumnWidth() float64 {
 	return (c.ContentWidth() - float64(c.GridColumns-1)*c.ColumnGutterMM) / float64(c.GridColumns)
 }
 
 // ColSpanWidth returns the width of n adjacent columns including internal gutters.
-// n columns + (n-1) gutters
+// n columns + (n-1) gutters.
 func (c LayoutConfig) ColSpanWidth(n int) float64 {
 	return float64(n)*c.ColumnWidth() + float64(n-1)*c.ColumnGutterMM
 }
@@ -91,22 +91,22 @@ func FormatSlotsGrid(format string, config LayoutConfig) []SlotRect {
 
 	switch format {
 	case "1_fullscreen":
-		// Slot 0: cols 1-12, full canvas
+		// Slot 0: cols 1-12, full canvas.
 		return []SlotRect{
 			{0, 0, cw, ch},
 		}
 
 	case "2_portrait":
-		// Slot 0: cols 1-6, full canvas
-		// Slot 1: cols 7-12, full canvas
+		// Slot 0: cols 1-6, full canvas.
+		// Slot 1: cols 7-12, full canvas.
 		return []SlotRect{
 			{0, 0, halfW, ch},
 			{halfW + gap, 0, halfW, ch},
 		}
 
 	case "4_landscape":
-		// Slot 0: cols 1-6, top row  |  Slot 1: cols 7-12, top row
-		// Slot 2: cols 1-6, bottom   |  Slot 3: cols 7-12, bottom
+		// Slot 0: cols 1-6, top row  |  Slot 1: cols 7-12, top row.
+		// Slot 2: cols 1-6, bottom   |  Slot 3: cols 7-12, bottom.
 		return []SlotRect{
 			{0, 0, halfW, halfH},
 			{halfW + gap, 0, halfW, halfH},
@@ -115,8 +115,8 @@ func FormatSlotsGrid(format string, config LayoutConfig) []SlotRect {
 		}
 
 	case "2l_1p":
-		// Slots 0,1 (landscape): cols 1-8 stacked
-		// Slot 2 (portrait): cols 9-12
+		// Slots 0,1 (landscape): cols 1-8 stacked.
+		// Slot 2 (portrait): cols 9-12.
 		leftW := config.ColSpanWidth(8)
 		rightW := config.ColSpanWidth(4)
 		rightX := config.ColOffset(8)
@@ -127,8 +127,8 @@ func FormatSlotsGrid(format string, config LayoutConfig) []SlotRect {
 		}
 
 	case "1p_2l":
-		// Slot 0 (portrait): cols 1-4
-		// Slots 1,2 (landscape): cols 5-12 stacked
+		// Slot 0 (portrait): cols 1-4.
+		// Slots 1,2 (landscape): cols 5-12 stacked.
 		leftW := config.ColSpanWidth(4)
 		rightW := config.ColSpanWidth(8)
 		rightX := config.ColOffset(4)
@@ -157,7 +157,7 @@ func FormatSlotsGridWithSplit(format string, config LayoutConfig, splitPosition 
 	gap := config.ColumnGutterMM
 	rowGap := config.RowGapMM
 
-	// Available width minus the gutter between left and right columns
+	// Available width minus the gutter between left and right columns.
 	availW := cw - gap
 	leftW := availW * split
 	rightW := availW * (1 - split)

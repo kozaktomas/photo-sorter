@@ -72,7 +72,7 @@ func init() {
 	photoMatchCmd.Flags().Bool("save-matches", false, "Save matched photos with face boxes to test/ folder")
 }
 
-// MatchResult represents a photo that matches the person search
+// MatchResult represents a photo that matches the person search.
 type MatchResult struct {
 	PhotoUID   string                `json:"photo_uid"`
 	Distance   float64               `json:"distance"`
@@ -88,7 +88,7 @@ type MatchResult struct {
 	ApplyError string                `json:"apply_error,omitempty"` // Error message if apply failed
 }
 
-// MatchOutput represents the JSON output structure
+// MatchOutput represents the JSON output structure.
 type MatchOutput struct {
 	Person       string        `json:"person"`
 	SourcePhotos int           `json:"source_photos"`
@@ -97,20 +97,20 @@ type MatchOutput struct {
 	Summary      MatchSummary  `json:"summary"`
 }
 
-// MatchSummary provides counts by action type
+// MatchSummary provides counts by action type.
 type MatchSummary struct {
 	CreateMarker int `json:"create_marker"`
 	AssignPerson int `json:"assign_person"`
 	AlreadyDone  int `json:"already_done"`
 }
 
-// resizeImageForMatch resizes an image to fit within maxSize while maintaining aspect ratio
+// resizeImageForMatch resizes an image to fit within maxSize while maintaining aspect ratio.
 func resizeImageForMatch(img image.Image, maxSize int) image.Image {
 	bounds := img.Bounds()
 	width := bounds.Dx()
 	height := bounds.Dy()
 
-	// Calculate new dimensions
+	// Calculate new dimensions.
 	var newWidth, newHeight int
 	if width > height {
 		if width <= maxSize {
@@ -126,7 +126,7 @@ func resizeImageForMatch(img image.Image, maxSize int) image.Image {
 		newWidth = width * maxSize / height
 	}
 
-	// Create resized image
+	// Create resized image.
 	dst := image.NewRGBA(image.Rect(0, 0, newWidth, newHeight))
 	draw.CatmullRom.Scale(dst, dst.Bounds(), img, bounds, draw.Over, nil)
 	return dst
@@ -158,7 +158,7 @@ func drawVLine(dst *image.RGBA, y1, y2, x int, c color.RGBA) {
 	}
 }
 
-// drawBoundingBox draws a red rectangle on the image at the given pixel coordinates
+// drawBoundingBox draws a red rectangle on the image at the given pixel coordinates.
 func drawBoundingBox(img image.Image, bbox []float64, lineWidth int, padding int) image.Image {
 	if len(bbox) != 4 {
 		return img
@@ -187,6 +187,8 @@ func drawBoundingBox(img image.Image, bbox []float64, lineWidth int, padding int
 // findPersonMarker finds a marker belonging to the given person in a list of markers.
 // It matches by normalized name (exact match or all parts contained).
 // Returns nil if no matching marker is found.
+//
+//nolint:gocognit // Marker matching with multiple fallback strategies.
 func findPersonMarker(markers []photoprism.Marker, personName string) *photoprism.Marker {
 	personNameNorm := facematch.NormalizePersonName(personName)
 
@@ -196,11 +198,11 @@ func findPersonMarker(markers []photoprism.Marker, personName string) *photopris
 		}
 		markerNameNorm := facematch.NormalizePersonName(markers[i].Name)
 
-		// Exact match after normalization
+		// Exact match after normalization.
 		if markerNameNorm == personNameNorm {
 			return &markers[i]
 		}
-		// Contains match - all parts of person name must be in marker name
+		// Contains match - all parts of person name must be in marker name.
 		parts := strings.Split(personNameNorm, " ")
 		allMatch := true
 		for _, part := range parts {
@@ -221,7 +223,11 @@ func findPersonMarker(markers []photoprism.Marker, personName string) *photopris
 
 // findBestFaceForMarker finds the database face that best matches a marker by IoU.
 // Returns the face and IoU score, or nil/-1 if no match found.
-func findBestFaceForMarker(faces []database.StoredFace, marker *photoprism.Marker, width, height int) (*database.StoredFace, float64) {
+func findBestFaceForMarker(
+	faces []database.StoredFace,
+	marker *photoprism.Marker,
+	width, height int,
+) (*database.StoredFace, float64) {
 	if marker == nil || width == 0 || height == 0 {
 		return nil, -1
 	}
@@ -252,7 +258,7 @@ func findBestMarkerForBBox(markers []photoprism.Marker, bboxRel []float64) (*pho
 		return nil, 0
 	}
 
-	// Convert [x,y,w,h] format to corner format [x1,y1,x2,y2] for IoU
+	// Convert [x,y,w,h] format to corner format [x1,y1,x2,y2] for IoU.
 	bboxCorners := []float64{
 		bboxRel[0],
 		bboxRel[1],
@@ -281,32 +287,32 @@ func findBestMarkerForBBox(markers []photoprism.Marker, bboxRel []float64) (*pho
 	return nil, 0
 }
 
-// saveMatchedPhoto downloads a photo, draws bbox, resizes, and saves to test/ folder
+// saveMatchedPhoto downloads a photo, draws bbox, resizes, and saves to test/ folder.
 func saveMatchedPhoto(pp *photoprism.PhotoPrism, photoUID string, bbox []float64, outputDir string) error {
-	// Download photo
+	// Download photo.
 	imgData, _, err := pp.GetPhotoDownload(photoUID)
 	if err != nil {
 		return fmt.Errorf("download failed: %w", err)
 	}
 
-	// Decode image
+	// Decode image.
 	img, _, err := image.Decode(bytes.NewReader(imgData))
 	if err != nil {
 		return fmt.Errorf("decode failed: %w", err)
 	}
 
-	// Draw bounding box (6px line width, 10px padding)
+	// Draw bounding box (6px line width, 10px padding).
 	img = drawBoundingBox(img, bbox, 6, 10)
 
-	// Resize to max 1080px
+	// Resize to max 1080px.
 	img = resizeImageForMatch(img, 1080)
 
-	// Ensure output directory exists
+	// Ensure output directory exists.
 	if err := os.MkdirAll(outputDir, 0750); err != nil {
 		return fmt.Errorf("mkdir failed: %w", err)
 	}
 
-	// Save as JPEG
+	// Save as JPEG.
 	outPath := filepath.Join(outputDir, photoUID+".jpg")
 	f, err := os.Create(outPath) //nolint:gosec // path is constructed from sanitized photo UID
 	if err != nil {
@@ -362,7 +368,9 @@ func initMatchDeps(ctx context.Context, flags *matchCmdFlags) (*matchDeps, error
 	if !flags.jsonOutput {
 		fmt.Println("Connecting to PhotoPrism...")
 	}
-	pp, err := photoprism.NewPhotoPrismWithCapture(cfg.PhotoPrism.URL, cfg.PhotoPrism.Username, cfg.PhotoPrism.GetPassword(), captureDir)
+	pp, err := photoprism.NewPhotoPrismWithCapture(
+		cfg.PhotoPrism.URL, cfg.PhotoPrism.Username, cfg.PhotoPrism.GetPassword(), captureDir,
+	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to PhotoPrism: %w", err)
 	}
@@ -437,7 +445,14 @@ func collectFaceMarkerNames(markers []photoprism.Marker) []string {
 // Returns the source data if found, or nil if the photo should be skipped.
 // fetchFacesAndPersonMarker fetches face data and finds the person's marker for a photo.
 // Returns faces, personMarker, or nil values if not found.
-func fetchFacesAndPersonMarker(ctx context.Context, pp *photoprism.PhotoPrism, faceReader database.FaceReader, photoUID string, personName string, jsonOutput bool) ([]database.StoredFace, *photoprism.Marker) {
+func fetchFacesAndPersonMarker(
+	ctx context.Context,
+	pp *photoprism.PhotoPrism,
+	faceReader database.FaceReader,
+	photoUID string,
+	personName string,
+	jsonOutput bool,
+) ([]database.StoredFace, *photoprism.Marker) {
 	faces, err := faceReader.GetFaces(ctx, photoUID)
 	if err != nil || len(faces) == 0 {
 		if err != nil {
@@ -462,7 +477,14 @@ func fetchFacesAndPersonMarker(ctx context.Context, pp *photoprism.PhotoPrism, f
 	return faces, personMarker
 }
 
-func resolveSourceFaceForPhoto(ctx context.Context, pp *photoprism.PhotoPrism, faceReader database.FaceReader, photo photoprism.Photo, personName string, jsonOutput bool) *sourceData {
+func resolveSourceFaceForPhoto(
+	ctx context.Context,
+	pp *photoprism.PhotoPrism,
+	faceReader database.FaceReader,
+	photo photoprism.Photo,
+	personName string,
+	jsonOutput bool,
+) *sourceData {
 	faces, personMarker := fetchFacesAndPersonMarker(ctx, pp, faceReader, photo.UID, personName, jsonOutput)
 	if personMarker == nil {
 		return nil
@@ -491,7 +513,14 @@ func resolveSourceFaceForPhoto(ctx context.Context, pp *photoprism.PhotoPrism, f
 
 // collectSourceFaces gathers face embeddings for source photos that match the person.
 // Returns source face data, actual display name, and any errors (non-fatal).
-func collectSourceFaces(ctx context.Context, pp *photoprism.PhotoPrism, faceReader database.FaceReader, sourcePhotos []photoprism.Photo, personName string, jsonOutput bool) ([]sourceData, string) {
+func collectSourceFaces(
+	ctx context.Context,
+	pp *photoprism.PhotoPrism,
+	faceReader database.FaceReader,
+	sourcePhotos []photoprism.Photo,
+	personName string,
+	jsonOutput bool,
+) ([]sourceData, string) {
 	var sourceFaces []sourceData
 	var actualPersonName string
 
@@ -530,7 +559,13 @@ type matchSearchResult struct {
 }
 
 // runParallelFaceSearches runs parallel similarity searches and collects results.
-func runParallelFaceSearches(ctx context.Context, faceReader database.FaceReader, sourceEmbeddings [][]float32, searchLimit int, threshold float64) chan matchSearchResult {
+func runParallelFaceSearches(
+	ctx context.Context,
+	faceReader database.FaceReader,
+	sourceEmbeddings [][]float32,
+	searchLimit int,
+	threshold float64,
+) chan matchSearchResult {
 	resultsChan := make(chan matchSearchResult, len(sourceEmbeddings))
 	var wg sync.WaitGroup
 
@@ -555,7 +590,12 @@ func runParallelFaceSearches(ctx context.Context, faceReader database.FaceReader
 }
 
 // accumulateMatchCandidates processes search results into a match map, excluding source photos.
-func accumulateMatchCandidates(resultsChan chan matchSearchResult, sourcePhotoSet map[string]bool) (map[string]*matchCandidate, error) {
+//
+//nolint:gocognit // Candidate accumulation from parallel search results.
+func accumulateMatchCandidates(
+	resultsChan chan matchSearchResult,
+	sourcePhotoSet map[string]bool,
+) (map[string]*matchCandidate, error) {
 	matchMap := make(map[string]*matchCandidate)
 	var searchErr error
 
@@ -621,7 +661,15 @@ func filterAndSortMatchCandidates(matchMap map[string]*matchCandidate, minMatchC
 }
 
 // searchSimilarFaces runs parallel similarity searches and returns filtered candidates.
-func searchSimilarFaces(ctx context.Context, faceReader database.FaceReader, sourceEmbeddings [][]float32, sourcePhotoUIDs []string, threshold float64, limit int, minMatchCount int) ([]matchCandidate, error) {
+func searchSimilarFaces(
+	ctx context.Context,
+	faceReader database.FaceReader,
+	sourceEmbeddings [][]float32,
+	sourcePhotoUIDs []string,
+	threshold float64,
+	limit int,
+	minMatchCount int,
+) ([]matchCandidate, error) {
 	sourcePhotoSet := make(map[string]bool)
 	for _, uid := range sourcePhotoUIDs {
 		sourcePhotoSet[uid] = true
@@ -712,7 +760,11 @@ func determineCandidateAction(pp *photoprism.PhotoPrism, c matchCandidate, jsonO
 }
 
 // buildMatchResults builds MatchResult and MatchSummary from candidates.
-func buildMatchResults(pp *photoprism.PhotoPrism, candidates []matchCandidate, jsonOutput bool) ([]MatchResult, MatchSummary) {
+func buildMatchResults(
+	pp *photoprism.PhotoPrism,
+	candidates []matchCandidate,
+	jsonOutput bool,
+) ([]MatchResult, MatchSummary) {
 	matches := make([]MatchResult, 0, len(candidates))
 	summary := MatchSummary{}
 
@@ -730,7 +782,7 @@ func buildMatchResults(pp *photoprism.PhotoPrism, candidates []matchCandidate, j
 		case facematch.ActionAlreadyDone:
 			summary.AlreadyDone++
 		case facematch.ActionUnassignPerson:
-			// Not applicable
+			// Not applicable.
 		}
 		matches = append(matches, result)
 	}
@@ -815,7 +867,7 @@ func printMatchDryRun(m *MatchResult, nameToApply string, jsonOutput bool) {
 	case facematch.ActionAssignPerson:
 		fmt.Printf("  [DRY-RUN] Would assign %s to marker %s on %s\n", nameToApply, m.MarkerUID, m.PhotoUID)
 	case facematch.ActionAlreadyDone, facematch.ActionUnassignPerson:
-		// Not applicable
+		// Not applicable.
 	}
 }
 
@@ -832,10 +884,18 @@ func applyMatchSingle(pp *photoprism.PhotoPrism, m *MatchResult, nameToApply str
 }
 
 // applyMatchChanges applies create/assign changes to PhotoPrism.
-func applyMatchChanges(pp *photoprism.PhotoPrism, matches []MatchResult, nameToApply string, dryRun bool, jsonOutput bool, summary MatchSummary) {
+func applyMatchChanges(
+	pp *photoprism.PhotoPrism,
+	matches []MatchResult,
+	nameToApply string,
+	dryRun bool,
+	jsonOutput bool,
+	summary MatchSummary,
+) {
 	if !jsonOutput {
 		if dryRun {
-			fmt.Printf("\n[DRY-RUN] Would apply changes to %d photos (as %q):\n", summary.CreateMarker+summary.AssignPerson, nameToApply)
+			fmt.Printf("\n[DRY-RUN] Would apply changes to %d photos (as %q):\n",
+				summary.CreateMarker+summary.AssignPerson, nameToApply)
 		} else {
 			fmt.Printf("\nApplying changes to %d photos (as %q)...\n", summary.CreateMarker+summary.AssignPerson, nameToApply)
 		}
@@ -979,7 +1039,15 @@ func extractSourceEmbeddingsAndUIDs(sourceFaces []sourceData) ([][]float32, []st
 }
 
 // processMatchResults handles applying, saving, and outputting match results.
-func processMatchResults(deps *matchDeps, flags *matchCmdFlags, matches []MatchResult, summary MatchSummary, actualPersonName string, sourcePhotos int, sourceEmbeddingCount int) error {
+func processMatchResults(
+	deps *matchDeps,
+	flags *matchCmdFlags,
+	matches []MatchResult,
+	summary MatchSummary,
+	actualPersonName string,
+	sourcePhotos int,
+	sourceEmbeddingCount int,
+) error {
 	if flags.apply {
 		nameToApply := actualPersonName
 		if nameToApply == "" {
@@ -1003,6 +1071,38 @@ func processMatchResults(deps *matchDeps, flags *matchCmdFlags, matches []MatchR
 	return nil
 }
 
+type sourceResult struct {
+	photos           []photoprism.Photo
+	embeddings       [][]float32
+	photoUIDs        []string
+	actualPersonName string
+}
+
+func collectSourceData(
+	ctx context.Context, deps *matchDeps, flags *matchCmdFlags,
+) (*sourceResult, error) {
+	warnf(!flags.jsonOutput, "Searching for photos with query: person:%s\n", flags.personName)
+	sourcePhotos, err := fetchAllPersonPhotos(deps.pp, flags.personName)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(sourcePhotos) == 0 {
+		return &sourceResult{photos: sourcePhotos}, nil
+	}
+
+	warnf(!flags.jsonOutput, "Found %d source photos for %s\n", len(sourcePhotos), flags.personName)
+	sourceFaces, actualPersonName := collectSourceFaces(
+		ctx, deps.pp, deps.faceReader, sourcePhotos, flags.personName, flags.jsonOutput,
+	)
+	embeddings, photoUIDs := extractSourceEmbeddingsAndUIDs(sourceFaces)
+
+	return &sourceResult{
+		photos: sourcePhotos, embeddings: embeddings,
+		photoUIDs: photoUIDs, actualPersonName: actualPersonName,
+	}, nil
+}
+
 func runPhotoMatch(cmd *cobra.Command, args []string) error {
 	flags := &matchCmdFlags{
 		personName:  args[0],
@@ -1021,13 +1121,12 @@ func runPhotoMatch(cmd *cobra.Command, args []string) error {
 	}
 	defer deps.pp.Logout()
 
-	warnf(!flags.jsonOutput, "Searching for photos with query: person:%s\n", flags.personName)
-	sourcePhotos, err := fetchAllPersonPhotos(deps.pp, flags.personName)
+	src, err := collectSourceData(ctx, deps, flags)
 	if err != nil {
 		return err
 	}
 
-	if len(sourcePhotos) == 0 {
+	if len(src.photos) == 0 {
 		if flags.jsonOutput {
 			return outputJSON(emptyMatchOutput(flags.personName, 0, 0))
 		}
@@ -1035,23 +1134,23 @@ func runPhotoMatch(cmd *cobra.Command, args []string) error {
 		return nil
 	}
 
-	warnf(!flags.jsonOutput, "Found %d source photos for %s\n", len(sourcePhotos), flags.personName)
-	sourceFaces, actualPersonName := collectSourceFaces(ctx, deps.pp, deps.faceReader, sourcePhotos, flags.personName, flags.jsonOutput)
-	sourceEmbeddings, sourcePhotoUIDs := extractSourceEmbeddingsAndUIDs(sourceFaces)
-
-	if len(sourceEmbeddings) == 0 {
+	if len(src.embeddings) == 0 {
 		if flags.jsonOutput {
-			return outputJSON(emptyMatchOutput(flags.personName, len(sourcePhotos), 0))
+			return outputJSON(emptyMatchOutput(flags.personName, len(src.photos), 0))
 		}
 		fmt.Printf("No face embeddings found in database for %s's photos. Run 'photo faces' first.\n", flags.personName)
 		return nil
 	}
 
-	minMatchCount := max((len(sourceEmbeddings)+19)/20, 5)
-	warnf(!flags.jsonOutput, "Found %d face embeddings from source photos\nSearching for similar faces (threshold: %.2f, min matches: %d/%d)...\n",
-		len(sourceEmbeddings), flags.threshold, minMatchCount, len(sourceEmbeddings))
+	minMatchCount := max((len(src.embeddings)+19)/20, 5)
+	warnf(!flags.jsonOutput,
+		"Found %d face embeddings from source photos\nSearching for similar faces (threshold: %.2f, min matches: %d/%d)...\n",
+		len(src.embeddings), flags.threshold, minMatchCount, len(src.embeddings))
 
-	candidates, err := searchSimilarFaces(ctx, deps.faceReader, sourceEmbeddings, sourcePhotoUIDs, flags.threshold, flags.limit, minMatchCount)
+	candidates, err := searchSimilarFaces(
+		ctx, deps.faceReader, src.embeddings, src.photoUIDs,
+		flags.threshold, flags.limit, minMatchCount,
+	)
 	if err != nil {
 		return err
 	}
@@ -1059,5 +1158,5 @@ func runPhotoMatch(cmd *cobra.Command, args []string) error {
 	warnf(!flags.jsonOutput && len(candidates) > 0, "Fetching marker info for %d matches...\n\n", len(candidates))
 	matches, summary := buildMatchResults(deps.pp, candidates, flags.jsonOutput)
 
-	return processMatchResults(deps, flags, matches, summary, actualPersonName, len(sourcePhotos), len(sourceEmbeddings))
+	return processMatchResults(deps, flags, matches, summary, src.actualPersonName, len(src.photos), len(src.embeddings))
 }

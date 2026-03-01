@@ -11,7 +11,7 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
 
-// createFacesHandlerForTest creates a FacesHandler for testing (without database dependencies)
+// createFacesHandlerForTest creates a FacesHandler for testing (without database dependencies).
 func createFacesHandlerForTest(cfg *config.Config) *FacesHandler {
 	return &FacesHandler{
 		config:         cfg,
@@ -272,7 +272,7 @@ func TestFacesHandler_UpdateSubject_PartialUpdate(t *testing.T) {
 			var update map[string]any
 			json.NewDecoder(r.Body).Decode(&update)
 
-			// Should only have About field
+			// Should only have About field.
 			if _, ok := update["Name"]; ok {
 				t.Error("Name should not be in update")
 			}

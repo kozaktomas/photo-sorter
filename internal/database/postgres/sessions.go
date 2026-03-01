@@ -9,18 +9,21 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
 
-// SessionRepository provides PostgreSQL-backed session storage
+// SessionRepository provides PostgreSQL-backed session storage.
 type SessionRepository struct {
 	pool *Pool
 }
 
-// NewSessionRepository creates a new PostgreSQL session repository
+// NewSessionRepository creates a new PostgreSQL session repository.
 func NewSessionRepository(pool *Pool) *SessionRepository {
 	return &SessionRepository{pool: pool}
 }
 
-// Save stores a session in the database
-func (r *SessionRepository) Save(ctx context.Context, id, token, downloadToken string, createdAt, expiresAt time.Time) error {
+// Save stores a session in the database.
+func (r *SessionRepository) Save(
+	ctx context.Context, id, token, downloadToken string,
+	createdAt, expiresAt time.Time,
+) error {
 	query := `
 		INSERT INTO sessions (id, token, download_token, created_at, expires_at)
 		VALUES ($1, $2, $3, $4, $5)
@@ -38,7 +41,7 @@ func (r *SessionRepository) Save(ctx context.Context, id, token, downloadToken s
 	return nil
 }
 
-// Get retrieves a session by ID, returns nil if not found or expired
+// Get retrieves a session by ID, returns nil if not found or expired.
 func (r *SessionRepository) Get(ctx context.Context, sessionID string) (*middleware.StoredSession, error) {
 	query := `
 		SELECT id, token, download_token, created_at, expires_at
@@ -64,7 +67,7 @@ func (r *SessionRepository) Get(ctx context.Context, sessionID string) (*middlew
 	return &s, nil
 }
 
-// Delete removes a session from the database
+// Delete removes a session from the database.
 func (r *SessionRepository) Delete(ctx context.Context, sessionID string) error {
 	_, err := r.pool.Exec(ctx, "DELETE FROM sessions WHERE id = $1", sessionID)
 	if err != nil {
@@ -73,7 +76,7 @@ func (r *SessionRepository) Delete(ctx context.Context, sessionID string) error 
 	return nil
 }
 
-// DeleteExpired removes all expired sessions and returns the count deleted
+// DeleteExpired removes all expired sessions and returns the count deleted.
 func (r *SessionRepository) DeleteExpired(ctx context.Context) (int64, error) {
 	result, err := r.pool.Exec(ctx, "DELETE FROM sessions WHERE expires_at <= NOW()")
 	if err != nil {

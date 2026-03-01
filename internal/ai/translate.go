@@ -14,7 +14,7 @@ import (
 var clipTranslatePrompt string
 
 const (
-	// GPT-4.1-mini pricing per 1M tokens
+	// GPT-4.1-mini pricing per 1M tokens.
 	translateInputPrice  = 0.40
 	translateOutputPrice = 1.60
 )

@@ -2,12 +2,13 @@
 // This package extracts common face matching logic to eliminate code duplication.
 package facematch
 
-// MatchAction represents what action is needed for a matched face
+// MatchAction represents what action is needed for a matched face.
 type MatchAction string
 
+// MatchAction values define the possible face matching actions.
 const (
-	ActionCreateMarker   MatchAction = "create_marker"   // No marker exists, need to create one
-	ActionAssignPerson   MatchAction = "assign_person"   // Marker exists but no person assigned
-	ActionAlreadyDone    MatchAction = "already_done"    // Marker exists with person already assigned
-	ActionUnassignPerson MatchAction = "unassign_person" // Remove person from marker
+	ActionCreateMarker   MatchAction = "create_marker"   // No marker exists, need to create one.
+	ActionAssignPerson   MatchAction = "assign_person"   // Marker exists but no person assigned.
+	ActionAlreadyDone    MatchAction = "already_done"    // Marker exists with person already assigned.
+	ActionUnassignPerson MatchAction = "unassign_person" // Remove person from marker.
 )

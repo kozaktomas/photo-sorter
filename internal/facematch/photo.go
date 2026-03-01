@@ -1,6 +1,6 @@
 package facematch
 
-// PrimaryFileInfo holds extracted info from the primary file of a photo
+// PrimaryFileInfo holds extracted info from the primary file of a photo.
 type PrimaryFileInfo struct {
 	UID         string
 	Width       int
@@ -19,7 +19,7 @@ func findPrimaryFile(files []any) map[string]any {
 			return file
 		}
 	}
-	// Fall back to first file if no primary found
+	// Fall back to first file if no primary found.
 	if first, ok := files[0].(map[string]any); ok {
 		return first
 	}
@@ -56,16 +56,16 @@ func ExtractPrimaryFileInfo(details map[string]any) *PrimaryFileInfo {
 	return info
 }
 
-// MarkerInfo represents a PhotoPrism marker's relevant fields for matching
+// MarkerInfo represents a PhotoPrism marker's relevant fields for matching.
 type MarkerInfo struct {
-	UID      string
-	Type     string
-	Name     string
-	SubjUID  string
+	UID        string
+	Type       string
+	Name       string
+	SubjUID    string
 	X, Y, W, H float64
 }
 
-// MatchResult represents the result of matching a face to a marker
+// MatchResult represents the result of matching a face to a marker.
 type MatchResult struct {
 	MarkerUID   string
 	SubjectUID  string
@@ -76,15 +76,18 @@ type MatchResult struct {
 // MatchFaceToMarkers finds the best matching marker for a face bounding box.
 // faceBBox is in raw pixel coordinates [x1, y1, x2, y2].
 // Returns nil if no marker matches above the IoU threshold.
-func MatchFaceToMarkers(faceBBox []float64, markers []MarkerInfo, width, height, orientation int, iouThreshold float64) *MatchResult {
+func MatchFaceToMarkers(
+	faceBBox []float64, markers []MarkerInfo,
+	width, height, orientation int, iouThreshold float64,
+) *MatchResult {
 	if len(faceBBox) != 4 || width <= 0 || height <= 0 {
 		return nil
 	}
 
-	// Convert pixel bbox to display-relative [x, y, w, h] format
+	// Convert pixel bbox to display-relative [x, y, w, h] format.
 	displayBBox := ConvertPixelBBoxToDisplayRelative(faceBBox, width, height, orientation)
 
-	// Convert to corner format [x1, y1, x2, y2] for IoU comparison
+	// Convert to corner format [x1, y1, x2, y2] for IoU comparison.
 	displayCorners := []float64{
 		displayBBox[0],
 		displayBBox[1],
@@ -99,7 +102,7 @@ func MatchFaceToMarkers(faceBBox []float64, markers []MarkerInfo, width, height,
 		if markers[i].Type != "face" {
 			continue
 		}
-		// Marker coordinates are already in display-relative [x, y, w, h] format
+		// Marker coordinates are already in display-relative [x, y, w, h] format.
 		markerCorners := MarkerToCornerBBox(markers[i].X, markers[i].Y, markers[i].W, markers[i].H)
 		iou := ComputeIoU(displayCorners, markerCorners)
 		if iou > bestIoU {
@@ -122,6 +125,8 @@ func MatchFaceToMarkers(faceBBox []float64, markers []MarkerInfo, width, height,
 
 // ConvertMarkersToInfo converts PhotoPrism marker data to MarkerInfo slice.
 // This is a helper for callers that have raw marker data from API responses.
+//
+//nolint:gocognit // Marker data extraction with type assertions and validation.
 func ConvertMarkersToInfo(markers []map[string]any) []MarkerInfo {
 	result := make([]MarkerInfo, 0, len(markers))
 	for _, m := range markers {

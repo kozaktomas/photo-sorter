@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/wait"
 	"github.com/kozaktomas/photo-sorter/internal/config"
 	"github.com/kozaktomas/photo-sorter/internal/database"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/wait"
 )
 
 func setupTestContainer(t *testing.T) (*Pool, func()) {
@@ -67,7 +67,7 @@ func setupTestContainer(t *testing.T) (*Pool, func()) {
 		t.Fatalf("Failed to create pool: %v", err)
 	}
 
-	// Run migrations
+	// Run migrations.
 	if err := pool.Migrate(ctx); err != nil {
 		pool.Close()
 		container.Terminate(ctx)
@@ -92,7 +92,7 @@ func TestEmbeddingRepository(t *testing.T) {
 	ctx := context.Background()
 	repo := NewEmbeddingRepository(pool)
 
-	// Test Save and Get
+	// Test Save and Get.
 	t.Run("SaveAndGet", func(t *testing.T) {
 		embedding := make([]float32, 768)
 		for i := range embedding {
@@ -123,7 +123,7 @@ func TestEmbeddingRepository(t *testing.T) {
 		}
 	})
 
-	// Test Has
+	// Test Has.
 	t.Run("Has", func(t *testing.T) {
 		has, err := repo.Has(ctx, "photo123")
 		if err != nil {
@@ -142,7 +142,7 @@ func TestEmbeddingRepository(t *testing.T) {
 		}
 	})
 
-	// Test Count
+	// Test Count.
 	t.Run("Count", func(t *testing.T) {
 		count, err := repo.Count(ctx)
 		if err != nil {
@@ -153,9 +153,9 @@ func TestEmbeddingRepository(t *testing.T) {
 		}
 	})
 
-	// Test FindSimilar
+	// Test FindSimilar.
 	t.Run("FindSimilar", func(t *testing.T) {
-		// Add more embeddings
+		// Add more embeddings.
 		for i := 0; i < 5; i++ {
 			emb := make([]float32, 768)
 			for j := range emb {
@@ -178,7 +178,7 @@ func TestEmbeddingRepository(t *testing.T) {
 		}
 	})
 
-	// Test FindSimilarWithDistance
+	// Test FindSimilarWithDistance.
 	t.Run("FindSimilarWithDistance", func(t *testing.T) {
 		query := make([]float32, 768)
 		for i := range query {
@@ -195,7 +195,7 @@ func TestEmbeddingRepository(t *testing.T) {
 		if len(results) != len(distances) {
 			t.Errorf("Results and distances length mismatch: %d vs %d", len(results), len(distances))
 		}
-		// First result should be the most similar (smallest distance)
+		// First result should be the most similar (smallest distance).
 		for i := 1; i < len(distances); i++ {
 			if distances[i] < distances[i-1] {
 				t.Error("Distances not sorted")
@@ -214,7 +214,7 @@ func TestFaceRepository(t *testing.T) {
 	ctx := context.Background()
 	repo := NewFaceRepository(pool)
 
-	// Test SaveFaces and GetFaces
+	// Test SaveFaces and GetFaces.
 	t.Run("SaveAndGetFaces", func(t *testing.T) {
 		embedding := make([]float32, 512)
 		for i := range embedding {
@@ -239,13 +239,13 @@ func TestFaceRepository(t *testing.T) {
 				FileUID:     "file1",
 			},
 			{
-				PhotoUID:    "photo456",
-				FaceIndex:   1,
-				Embedding:   embedding,
-				BBox:        []float64{200, 50, 300, 200},
-				DetScore:    0.88,
-				Model:       "buffalo_l",
-				Dim:         512,
+				PhotoUID:  "photo456",
+				FaceIndex: 1,
+				Embedding: embedding,
+				BBox:      []float64{200, 50, 300, 200},
+				DetScore:  0.88,
+				Model:     "buffalo_l",
+				Dim:       512,
 			},
 		}
 
@@ -269,7 +269,7 @@ func TestFaceRepository(t *testing.T) {
 		}
 	})
 
-	// Test HasFaces
+	// Test HasFaces.
 	t.Run("HasFaces", func(t *testing.T) {
 		has, err := repo.HasFaces(ctx, "photo456")
 		if err != nil {
@@ -280,7 +280,7 @@ func TestFaceRepository(t *testing.T) {
 		}
 	})
 
-	// Test MarkFacesProcessed and IsFacesProcessed
+	// Test MarkFacesProcessed and IsFacesProcessed.
 	t.Run("MarkAndCheckProcessed", func(t *testing.T) {
 		err := repo.MarkFacesProcessed(ctx, "photo789", 3)
 		if err != nil {
@@ -296,7 +296,7 @@ func TestFaceRepository(t *testing.T) {
 		}
 	})
 
-	// Test Count
+	// Test Count.
 	t.Run("Count", func(t *testing.T) {
 		count, err := repo.Count(ctx)
 		if err != nil {
@@ -307,7 +307,7 @@ func TestFaceRepository(t *testing.T) {
 		}
 	})
 
-	// Test CountPhotos
+	// Test CountPhotos.
 	t.Run("CountPhotos", func(t *testing.T) {
 		count, err := repo.CountPhotos(ctx)
 		if err != nil {
@@ -318,7 +318,7 @@ func TestFaceRepository(t *testing.T) {
 		}
 	})
 
-	// Test UpdateFaceMarker
+	// Test UpdateFaceMarker.
 	t.Run("UpdateFaceMarker", func(t *testing.T) {
 		err := repo.UpdateFaceMarker(ctx, "photo456", 1, "newMarker", "newSubject", "Jane Doe")
 		if err != nil {
@@ -338,7 +338,7 @@ func TestFaceRepository(t *testing.T) {
 		}
 	})
 
-	// Test FindSimilarWithDistance
+	// Test FindSimilarWithDistance.
 	t.Run("FindSimilarWithDistance", func(t *testing.T) {
 		query := make([]float32, 512)
 		for i := range query {
@@ -367,7 +367,7 @@ func TestMigrations(t *testing.T) {
 
 	ctx := context.Background()
 
-	// Check migrations were applied
+	// Check migrations were applied.
 	applied, err := pool.MigrationsApplied(ctx)
 	if err != nil {
 		t.Fatalf("Failed to get applied migrations: %v", err)

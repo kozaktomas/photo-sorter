@@ -154,7 +154,7 @@ func TestMarkdownToLatex_LaTeXSpecialChars(t *testing.T) {
 func TestMarkdownToLatex_CzechTypography(t *testing.T) {
 	input := "Byl v lese s kamarady"
 	got := MarkdownToLatex(input)
-	// Single-letter Czech prepositions should get non-breaking spaces
+	// Single-letter Czech prepositions should get non-breaking spaces.
 	if !strings.Contains(got, "v~") {
 		t.Errorf("expected Czech typography for 'v', got %q", got)
 	}

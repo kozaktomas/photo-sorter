@@ -11,7 +11,7 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
 
-// SubjectResponse represents a subject (person) in API responses
+// SubjectResponse represents a subject (person) in API responses.
 type SubjectResponse struct {
 	UID        string `json:"uid"`
 	Name       string `json:"name"`
@@ -50,14 +50,14 @@ func subjectToResponse(s photoprism.Subject) SubjectResponse {
 	}
 }
 
-// ListSubjects returns all subjects (people)
+// ListSubjects returns all subjects (people).
 func (h *FacesHandler) ListSubjects(w http.ResponseWriter, r *http.Request) {
 	pp := middleware.MustGetPhotoPrism(r.Context(), w)
 	if pp == nil {
 		return
 	}
 
-	// Parse query parameters
+	// Parse query parameters.
 	count, _ := strconv.Atoi(r.URL.Query().Get("count"))
 	if count <= 0 {
 		count = constants.DefaultHandlerPageSize
@@ -78,7 +78,7 @@ func (h *FacesHandler) ListSubjects(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, response)
 }
 
-// GetSubject returns a single subject by UID
+// GetSubject returns a single subject by UID.
 func (h *FacesHandler) GetSubject(w http.ResponseWriter, r *http.Request) {
 	uid := chi.URLParam(r, "uid")
 	if uid == "" {
@@ -100,7 +100,7 @@ func (h *FacesHandler) GetSubject(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, subjectToResponse(*subject))
 }
 
-// SubjectUpdateRequest represents the request body for updating a subject
+// SubjectUpdateRequest represents the request body for updating a subject.
 type SubjectUpdateRequest struct {
 	Name     *string `json:"name,omitempty"`
 	About    *string `json:"about,omitempty"`
@@ -113,7 +113,7 @@ type SubjectUpdateRequest struct {
 	Excluded *bool   `json:"excluded,omitempty"`
 }
 
-// UpdateSubject updates a subject
+// UpdateSubject updates a subject.
 func (h *FacesHandler) UpdateSubject(w http.ResponseWriter, r *http.Request) {
 	uid := chi.URLParam(r, "uid")
 	if uid == "" {

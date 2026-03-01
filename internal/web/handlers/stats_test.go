@@ -74,7 +74,7 @@ func TestStatsHandler_Get_Caching(t *testing.T) {
 	pp := createPhotoPrismClient(t, server)
 	handler := NewStatsHandler(testConfig(), nil)
 
-	// First request - should fetch from PhotoPrism
+	// First request - should fetch from PhotoPrism.
 	req1 := requestWithPhotoPrism(t, "GET", "/api/v1/stats", pp)
 	recorder1 := httptest.NewRecorder()
 	handler.Get(recorder1, req1)
@@ -82,19 +82,19 @@ func TestStatsHandler_Get_Caching(t *testing.T) {
 	assertStatusCode(t, recorder1, http.StatusOK)
 	firstCallCount := callCount
 
-	// Second request - should use cache
+	// Second request - should use cache.
 	req2 := requestWithPhotoPrism(t, "GET", "/api/v1/stats", pp)
 	recorder2 := httptest.NewRecorder()
 	handler.Get(recorder2, req2)
 
 	assertStatusCode(t, recorder2, http.StatusOK)
 
-	// Should not have made additional API calls due to caching
+	// Should not have made additional API calls due to caching.
 	if callCount != firstCallCount {
 		t.Errorf("expected no additional API calls, but got %d (was %d)", callCount, firstCallCount)
 	}
 
-	// Both responses should be identical
+	// Both responses should be identical.
 	var stats1, stats2 StatsResponse
 	parseJSONResponse(t, recorder1, &stats1)
 	parseJSONResponse(t, recorder2, &stats2)
@@ -114,7 +114,7 @@ func TestStatsHandler_Get_EmptyLibrary(t *testing.T) {
 	defer server.Close()
 
 	pp := createPhotoPrismClient(t, server)
-	// Create a new handler to avoid cache from other tests
+	// Create a new handler to avoid cache from other tests.
 	handler := NewStatsHandler(testConfig(), nil)
 
 	req := requestWithPhotoPrism(t, "GET", "/api/v1/stats", pp)
@@ -146,7 +146,7 @@ func TestStatsHandler_Get_EmptyLibrary(t *testing.T) {
 }
 
 func TestStatsResponse_Fields(t *testing.T) {
-	// Test that all fields are present in the response
+	// Test that all fields are present in the response.
 	server := setupMockPhotoPrismServer(t, map[string]http.HandlerFunc{
 		"/api/v1/photos": func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")

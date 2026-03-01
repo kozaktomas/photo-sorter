@@ -11,24 +11,24 @@ import (
 	"github.com/coder/hnsw"
 )
 
-// HNSWEmbeddingIndex wraps the HNSW graph for image embedding search
-// Unlike HNSWIndex (faces), this uses PhotoUID (string) as keys
+// HNSWEmbeddingIndex wraps the HNSW graph for image embedding search.
+// Unlike HNSWIndex (faces), this uses PhotoUID (string) as keys.
 type HNSWEmbeddingIndex struct {
-	graph       *hnsw.Graph[string]
-	savedGraph  *hnsw.SavedGraph[string] // For persistence
-	idToEmb     map[string]*StoredEmbedding
-	mu          sync.RWMutex
-	path        string // Path to save/load index
+	graph      *hnsw.Graph[string]
+	savedGraph *hnsw.SavedGraph[string] // For persistence
+	idToEmb    map[string]*StoredEmbedding
+	mu         sync.RWMutex
+	path       string // Path to save/load index
 }
 
-// NewHNSWEmbeddingIndex creates a new empty HNSW embedding index
+// NewHNSWEmbeddingIndex creates a new empty HNSW embedding index.
 func NewHNSWEmbeddingIndex() *HNSWEmbeddingIndex {
 	return &HNSWEmbeddingIndex{
 		idToEmb: make(map[string]*StoredEmbedding),
 	}
 }
 
-// BuildFromEmbeddings builds the index from a slice of embeddings
+// BuildFromEmbeddings builds the index from a slice of embeddings.
 func (h *HNSWEmbeddingIndex) BuildFromEmbeddings(embeddings []StoredEmbedding) error { //nolint:dupl
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -40,7 +40,7 @@ func (h *HNSWEmbeddingIndex) BuildFromEmbeddings(embeddings []StoredEmbedding) e
 		return nil
 	}
 
-	// Create new graph with cosine distance
+	// Create new graph with cosine distance.
 	g := hnsw.NewGraph[string]()
 	g.M = HNSWMaxNeighbors
 	g.Ml = 1.0 / float64(HNSWMaxNeighbors) // Standard HNSW formula
@@ -48,7 +48,7 @@ func (h *HNSWEmbeddingIndex) BuildFromEmbeddings(embeddings []StoredEmbedding) e
 
 	h.idToEmb = make(map[string]*StoredEmbedding, len(embeddings))
 
-	// Add all embeddings to the graph
+	// Add all embeddings to the graph.
 	for i := range embeddings {
 		emb := &embeddings[i]
 		if len(emb.Embedding) == 0 {
@@ -63,8 +63,8 @@ func (h *HNSWEmbeddingIndex) BuildFromEmbeddings(embeddings []StoredEmbedding) e
 	return nil
 }
 
-// Search finds the k nearest neighbors to the query embedding
-// Returns photo UIDs and their distances
+// Search finds the k nearest neighbors to the query embedding.
+// Returns photo UIDs and their distances.
 func (h *HNSWEmbeddingIndex) Search(query []float32, k int) ([]string, []float64, error) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -85,7 +85,7 @@ func (h *HNSWEmbeddingIndex) Search(query []float32, k int) ([]string, []float64
 
 	for i, n := range neighbors {
 		ids[i] = n.Key
-		// Compute actual cosine distance for the result
+		// Compute actual cosine distance for the result.
 		if emb, ok := h.idToEmb[n.Key]; ok && len(emb.Embedding) > 0 {
 			distances[i] = float64(CosineDistance(query, emb.Embedding))
 		}
@@ -94,30 +94,30 @@ func (h *HNSWEmbeddingIndex) Search(query []float32, k int) ([]string, []float64
 	return ids, distances, nil
 }
 
-// GetEmbedding returns the embedding for a given photo UID
+// GetEmbedding returns the embedding for a given photo UID.
 func (h *HNSWEmbeddingIndex) GetEmbedding(photoUID string) *StoredEmbedding {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return h.idToEmb[photoUID]
 }
 
-// Delete removes an embedding from the index by photo UID
+// Delete removes an embedding from the index by photo UID.
 func (h *HNSWEmbeddingIndex) Delete(photoUID string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	delete(h.idToEmb, photoUID)
-	// Note: HNSW doesn't support true deletion, but removing from idToEmb
-	// means it won't appear in search results since we filter through idToEmb
+	// Note: HNSW doesn't support true deletion, but removing from idToEmb.
+	// means it won't appear in search results since we filter through idToEmb.
 }
 
-// SetPath sets the path for saving/loading the index
+// SetPath sets the path for saving/loading the index.
 func (h *HNSWEmbeddingIndex) SetPath(path string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.path = path
 }
 
-// Save persists the index to disk
+// Save persists the index to disk.
 func (h *HNSWEmbeddingIndex) Save() error {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -127,12 +127,12 @@ func (h *HNSWEmbeddingIndex) Save() error {
 	}
 
 	if h.graph == nil {
-		// Remove existing file if index is empty (best-effort cleanup)
+		// Remove existing file if index is empty (best-effort cleanup).
 		_ = os.Remove(h.path)
 		return nil
 	}
 
-	// Write to file
+	// Write to file.
 	f, err := os.Create(h.path)
 	if err != nil {
 		return fmt.Errorf("failed to create HNSW embedding index file: %w", err)
@@ -145,14 +145,14 @@ func (h *HNSWEmbeddingIndex) Save() error {
 	return nil
 }
 
-// Load loads the index from disk
+// Load loads the index from disk.
 func (h *HNSWEmbeddingIndex) Load(path string) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
 	h.path = path
 
-	// Check if file exists
+	// Check if file exists.
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return fmt.Errorf("index file not found: %s", path)
 	}
@@ -166,7 +166,7 @@ func (h *HNSWEmbeddingIndex) Load(path string) error {
 	return nil
 }
 
-// Count returns the number of indexed embeddings
+// Count returns the number of indexed embeddings.
 func (h *HNSWEmbeddingIndex) Count() int {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -181,8 +181,8 @@ func (h *HNSWEmbeddingIndex) IsEmpty() bool {
 	return h.graph == nil && h.savedGraph == nil
 }
 
-// RebuildFromEmbeddings rebuilds the idToEmb map from embeddings
-// Called after loading index from disk
+// RebuildFromEmbeddings rebuilds the idToEmb map from embeddings.
+// Called after loading index from disk.
 func (h *HNSWEmbeddingIndex) RebuildFromEmbeddings(embeddings []StoredEmbedding) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -193,9 +193,11 @@ func (h *HNSWEmbeddingIndex) RebuildFromEmbeddings(embeddings []StoredEmbedding)
 	}
 }
 
-// SearchWithDistance finds the k nearest neighbors with distance filtering
-// Returns photo UIDs and their distances, filtered by maxDistance
-func (h *HNSWEmbeddingIndex) SearchWithDistance(query []float32, k int, maxDistance float64) ([]string, []float64, error) {
+// SearchWithDistance finds the k nearest neighbors with distance filtering.
+// Returns photo UIDs and their distances, filtered by maxDistance.
+func (h *HNSWEmbeddingIndex) SearchWithDistance(
+	query []float32, k int, maxDistance float64,
+) ([]string, []float64, error) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
@@ -203,7 +205,7 @@ func (h *HNSWEmbeddingIndex) SearchWithDistance(query []float32, k int, maxDista
 		return nil, nil, errors.New("index not initialized")
 	}
 
-	// Search with more candidates for better recall after filtering
+	// Search with more candidates for better recall after filtering.
 	searchK := max(k*HNSWSearchMultiplier, 100)
 
 	var neighbors []hnsw.Node[string]
@@ -217,7 +219,7 @@ func (h *HNSWEmbeddingIndex) SearchWithDistance(query []float32, k int, maxDista
 	distances := make([]float64, 0, k)
 
 	for _, n := range neighbors {
-		// Compute actual cosine distance for the result
+		// Compute actual cosine distance for the result.
 		emb, ok := h.idToEmb[n.Key]
 		if !ok || len(emb.Embedding) == 0 {
 			continue
@@ -236,12 +238,12 @@ func (h *HNSWEmbeddingIndex) SearchWithDistance(query []float32, k int, maxDista
 	return ids, distances, nil
 }
 
-// HNSWEmbeddingIndexMetadata stores metadata for freshness checking
+// HNSWEmbeddingIndexMetadata stores metadata for freshness checking.
 type HNSWEmbeddingIndexMetadata struct {
 	EmbeddingCount int64 `json:"embedding_count"`
 }
 
-// LoadHNSWEmbeddingMetadata loads just the metadata file for staleness checking
+// LoadHNSWEmbeddingMetadata loads just the metadata file for staleness checking.
 func LoadHNSWEmbeddingMetadata(basePath string) (*HNSWEmbeddingIndexMetadata, error) {
 	metaPath := basePath + ".meta"
 	data, err := os.ReadFile(metaPath) //nolint:gosec // path is from trusted config
@@ -296,7 +298,7 @@ func (h *HNSWEmbeddingIndex) saveEmbeddingData(basePath string) error {
 	return nil
 }
 
-// SaveWithEmbeddingMetadata saves the index and embedding metadata to disk
+// SaveWithEmbeddingMetadata saves the index and embedding metadata to disk.
 func (h *HNSWEmbeddingIndex) SaveWithEmbeddingMetadata(basePath string, metadata HNSWEmbeddingIndexMetadata) error {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -324,21 +326,21 @@ func (h *HNSWEmbeddingIndex) SaveWithEmbeddingMetadata(basePath string, metadata
 	return h.saveEmbeddingData(basePath)
 }
 
-// LoadWithEmbeddingMetadata loads the index and embedding metadata from disk
+// LoadWithEmbeddingMetadata loads the index and embedding metadata from disk.
 func (h *HNSWEmbeddingIndex) LoadWithEmbeddingMetadata(basePath string) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
 	h.path = basePath
 
-	// Load HNSW graph
+	// Load HNSW graph.
 	saved, err := hnsw.LoadSavedGraph[string](basePath)
 	if err != nil {
 		return fmt.Errorf("failed to load HNSW embedding index: %w", err)
 	}
 	h.savedGraph = saved
 
-	// Try to load embedding metadata
+	// Try to load embedding metadata.
 	embPath := basePath + ".embeddings"
 	embFile, err := os.Open(embPath) //nolint:gosec // path is from trusted config
 	if err != nil {
@@ -352,7 +354,7 @@ func (h *HNSWEmbeddingIndex) LoadWithEmbeddingMetadata(basePath string) error {
 		return fmt.Errorf("failed to decode embeddings: %w", err)
 	}
 
-	// Rebuild idToEmb map
+	// Rebuild idToEmb map.
 	h.idToEmb = make(map[string]*StoredEmbedding, len(embeddings))
 	for i := range embeddings {
 		h.idToEmb[embeddings[i].PhotoUID] = &embeddings[i]

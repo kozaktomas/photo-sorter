@@ -5,10 +5,10 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/photoprism"
 )
 
-// MatchAction is an alias for facematch.MatchAction used in API responses
+// MatchAction is an alias for facematch.MatchAction used in API responses.
 type MatchAction = facematch.MatchAction
 
-// Action constants - re-exported from facematch package
+// Action constants - re-exported from facematch package.
 const (
 	ActionCreateMarker   = facematch.ActionCreateMarker
 	ActionAssignPerson   = facematch.ActionAssignPerson
@@ -16,7 +16,7 @@ const (
 	ActionUnassignPerson = facematch.ActionUnassignPerson
 )
 
-// Helper functions - delegating to facematch package
+// Helper functions - delegating to facematch package.
 
 func computeIoU(bbox1, bbox2 []float64) float64 {
 	return facematch.ComputeIoU(bbox1, bbox2)
@@ -32,7 +32,7 @@ func markerToRelativeBBox(m photoprism.Marker) []float64 {
 	return facematch.MarkerToCornerBBox(m.X, m.Y, m.W, m.H)
 }
 
-// primaryFileInfo holds extracted info from the primary file
+// primaryFileInfo holds extracted info from the primary file.
 type primaryFileInfo struct {
 	UID         string
 	Width       int
@@ -55,7 +55,7 @@ func findPrimaryFile(details map[string]any) map[string]any {
 			}
 		}
 	}
-	// Fall back to first file if no primary found
+	// Fall back to first file if no primary found.
 	primaryFile, _ := files[0].(map[string]any)
 	return primaryFile
 }

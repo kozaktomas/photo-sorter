@@ -36,7 +36,7 @@ func isOriginAllowed(origin string, allowed map[string]struct{}) bool {
 	if origin == "" {
 		return false
 	}
-	// Always allow localhost for development
+	// Always allow localhost for development.
 	if isLocalhostOrigin(origin) {
 		return true
 	}
@@ -62,7 +62,7 @@ func CORS() func(http.Handler) http.Handler {
 			w.Header().Set("Access-Control-Allow-Headers", "Accept, Authorization, Content-Type, X-Requested-With")
 			w.Header().Set("Access-Control-Max-Age", "86400")
 
-			// Handle preflight requests
+			// Handle preflight requests.
 			if r.Method == http.MethodOptions {
 				w.WriteHeader(http.StatusOK)
 				return
@@ -77,7 +77,9 @@ func CORS() func(http.Handler) http.Handler {
 func SecurityHeaders() func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Security-Policy", "default-src 'self'; img-src 'self' data: blob:; style-src 'self' 'unsafe-inline'; font-src 'self' data:")
+			w.Header().Set("Content-Security-Policy",
+				"default-src 'self'; img-src 'self' data: blob:; "+
+					"style-src 'self' 'unsafe-inline'; font-src 'self' data:")
 			w.Header().Set("X-Content-Type-Options", "nosniff")
 			w.Header().Set("X-Frame-Options", "DENY")
 			next.ServeHTTP(w, r)

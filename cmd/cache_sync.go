@@ -46,7 +46,7 @@ func init() {
 	cacheSyncCmd.Flags().Bool("json", false, "Output as JSON instead of progress bar")
 }
 
-// SyncCacheResult represents the result of a cache sync operation
+// SyncCacheResult represents the result of a cache sync operation.
 type SyncCacheResult struct {
 	Success       bool   `json:"success"`
 	PhotosScanned int    `json:"photos_scanned"`
@@ -108,7 +108,11 @@ func initSyncDeps(ctx context.Context, cfg *config.Config, jsonOutput bool) (*sy
 }
 
 // collectSyncPhotoUIDs returns the union of photo UIDs from faces and embeddings tables.
-func collectSyncPhotoUIDs(ctx context.Context, faceWriter database.FaceWriter, embWriter database.EmbeddingWriter) ([]string, error) {
+func collectSyncPhotoUIDs(
+	ctx context.Context,
+	faceWriter database.FaceWriter,
+	embWriter database.EmbeddingWriter,
+) ([]string, error) {
 	faceUIDs, err := faceWriter.GetUniquePhotoUIDs(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get face photo UIDs: %w", err)
@@ -135,7 +139,15 @@ func collectSyncPhotoUIDs(ctx context.Context, faceWriter database.FaceWriter, e
 }
 
 // processSyncPhotos runs the sync for all photos concurrently with progress tracking.
-func processSyncPhotos(ctx context.Context, pp *photoprism.PhotoPrism, faceWriter database.FaceWriter, embWriter database.EmbeddingWriter, photoUIDs []string, concurrency int, bar *progressbar.ProgressBar) (int64, int64, int64) {
+func processSyncPhotos(
+	ctx context.Context,
+	pp *photoprism.PhotoPrism,
+	faceWriter database.FaceWriter,
+	embWriter database.EmbeddingWriter,
+	photoUIDs []string,
+	concurrency int,
+	bar *progressbar.ProgressBar,
+) (int64, int64, int64) {
 	var facesUpdated int64
 	var photosDeleted int64
 	var errorCount int64
@@ -238,7 +250,9 @@ func runCacheSync(cmd *cobra.Command, args []string) error {
 	}
 
 	bar := newSyncProgressBar(len(photoUIDs), jsonOutput)
-	facesUpdated, photosDeleted, errorCount := processSyncPhotos(ctx, deps.pp, deps.faceW, deps.embW, photoUIDs, concurrency, bar)
+	facesUpdated, photosDeleted, errorCount := processSyncPhotos(
+		ctx, deps.pp, deps.faceW, deps.embW, photoUIDs, concurrency, bar,
+	)
 	if bar != nil {
 		fmt.Println()
 	}
@@ -255,7 +269,12 @@ func runCacheSync(cmd *cobra.Command, args []string) error {
 }
 
 // cleanupDeletedPhoto removes all cached data for a deleted/archived photo.
-func cleanupDeletedPhoto(ctx context.Context, faceWriter database.FaceWriter, embWriter database.EmbeddingWriter, photoUID string) {
+func cleanupDeletedPhoto(
+	ctx context.Context,
+	faceWriter database.FaceWriter,
+	embWriter database.EmbeddingWriter,
+	photoUID string,
+) {
 	faceWriter.DeleteFacesByPhoto(ctx, photoUID)
 	if embWriter != nil {
 		embWriter.DeleteEmbedding(ctx, photoUID)
@@ -283,15 +302,26 @@ func convertMarkersToInfos(markers []photoprism.Marker) []facematch.MarkerInfo {
 
 // matchFacesToMarkers matches each face to a marker and updates the cache.
 // Returns the number of faces updated.
-func matchFacesToMarkers(ctx context.Context, faceWriter database.FaceWriter, faces []database.StoredFace, markerInfos []facematch.MarkerInfo, fileInfo *facematch.PrimaryFileInfo, photoUID string) int {
+func matchFacesToMarkers(
+	ctx context.Context,
+	faceWriter database.FaceWriter,
+	faces []database.StoredFace,
+	markerInfos []facematch.MarkerInfo,
+	fileInfo *facematch.PrimaryFileInfo,
+	photoUID string,
+) int {
 	updated := 0
 	for _, face := range faces {
 		if len(face.BBox) != 4 {
 			continue
 		}
-		match := facematch.MatchFaceToMarkers(face.BBox, markerInfos, fileInfo.Width, fileInfo.Height, fileInfo.Orientation, constants.IoUThreshold)
+		match := facematch.MatchFaceToMarkers(
+			face.BBox, markerInfos, fileInfo.Width, fileInfo.Height,
+			fileInfo.Orientation, constants.IoUThreshold,
+		)
 		if match != nil {
-			if face.MarkerUID != match.MarkerUID || face.SubjectUID != match.SubjectUID || face.SubjectName != match.SubjectName {
+			if face.MarkerUID != match.MarkerUID || face.SubjectUID != match.SubjectUID ||
+				face.SubjectName != match.SubjectName {
 				faceWriter.UpdateFaceMarker(ctx, photoUID, face.FaceIndex, match.MarkerUID, match.SubjectUID, match.SubjectName)
 				updated++
 			}
@@ -303,10 +333,15 @@ func matchFacesToMarkers(ctx context.Context, faceWriter database.FaceWriter, fa
 	return updated
 }
 
-// syncPhotoCache syncs the cache for a single photo and returns the number of faces updated,
+// syncPhotoCache syncs the cache for a single photo and returns the number of faces updated,.
 // whether the photo was deleted/archived in PhotoPrism (404 or DeletedAt set), and any error.
 // clearFaceAssignments clears marker assignments for all faces that have one.
-func clearFaceAssignments(ctx context.Context, faceWriter database.FaceWriter, faces []database.StoredFace, photoUID string) int {
+func clearFaceAssignments(
+	ctx context.Context,
+	faceWriter database.FaceWriter,
+	faces []database.StoredFace,
+	photoUID string,
+) int {
 	updated := 0
 	for _, face := range faces {
 		if face.MarkerUID != "" {
@@ -319,7 +354,14 @@ func clearFaceAssignments(ctx context.Context, faceWriter database.FaceWriter, f
 
 // isPhotoDeletedOrMissing checks if a photo is deleted or missing, and cleans up if so.
 // Returns true if the photo was deleted/missing.
-func isPhotoDeletedOrMissing(ctx context.Context, details map[string]any, err error, faceWriter database.FaceWriter, embWriter database.EmbeddingWriter, photoUID string) (bool, error) {
+func isPhotoDeletedOrMissing(
+	ctx context.Context,
+	details map[string]any,
+	err error,
+	faceWriter database.FaceWriter,
+	embWriter database.EmbeddingWriter,
+	photoUID string,
+) (bool, error) {
 	if err != nil {
 		if photoprism.IsNotFoundError(err) {
 			cleanupDeletedPhoto(ctx, faceWriter, embWriter, photoUID)
@@ -334,7 +376,13 @@ func isPhotoDeletedOrMissing(ctx context.Context, details map[string]any, err er
 	return false, nil
 }
 
-func syncPhotoCache(ctx context.Context, pp *photoprism.PhotoPrism, faceWriter database.FaceWriter, embWriter database.EmbeddingWriter, photoUID string) (int, bool, error) {
+func syncPhotoCache(
+	ctx context.Context,
+	pp *photoprism.PhotoPrism,
+	faceWriter database.FaceWriter,
+	embWriter database.EmbeddingWriter,
+	photoUID string,
+) (int, bool, error) {
 	details, err := pp.GetPhotoDetails(photoUID)
 	deleted, detailErr := isPhotoDeletedOrMissing(ctx, details, err, faceWriter, embWriter, photoUID)
 	if detailErr != nil {
@@ -374,7 +422,7 @@ func syncPhotoCache(ctx context.Context, pp *photoprism.PhotoPrism, faceWriter d
 	return updated, false, nil
 }
 
-// formatDuration formats a duration as a human-readable string
+// formatDuration formats a duration as a human-readable string.
 func formatDuration(d time.Duration) string {
 	if d < time.Minute {
 		return fmt.Sprintf("%ds", int(d.Seconds()))

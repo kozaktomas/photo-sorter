@@ -18,6 +18,7 @@ const (
 	defaultLlamaCppModel = "llava"
 )
 
+// LlamaCppProvider implements Provider using a llama.cpp server.
 type LlamaCppProvider struct {
 	parsedURL *url.URL
 	model     string
@@ -25,6 +26,7 @@ type LlamaCppProvider struct {
 	usage     Usage
 }
 
+// NewLlamaCppProvider creates a new llama.cpp provider with the given config.
 func NewLlamaCppProvider(baseURL, model string) (*LlamaCppProvider, error) {
 	if baseURL == "" {
 		baseURL = defaultLlamaCppURL
@@ -49,29 +51,33 @@ func NewLlamaCppProvider(baseURL, model string) (*LlamaCppProvider, error) {
 	}, nil
 }
 
+// Name returns the provider name.
 func (p *LlamaCppProvider) Name() string {
 	return p.model
 }
 
+// SetBatchMode is a no-op; llama.cpp does not support batch mode.
 func (p *LlamaCppProvider) SetBatchMode(enabled bool) {
-	// llama.cpp doesn't support batch mode - no-op
+	// llama.cpp doesn't support batch mode - no-op.
 }
 
+// GetUsage returns the accumulated API token usage.
 func (p *LlamaCppProvider) GetUsage() *Usage {
 	return &p.usage
 }
 
+// ResetUsage zeroes out the accumulated token usage counters.
 func (p *LlamaCppProvider) ResetUsage() {
 	p.usage = Usage{}
 }
 
-// llamaCppRequest represents a request to the llama.cpp OpenAI-compatible API
+// llamaCppRequest represents a request to the llama.cpp OpenAI-compatible API.
 type llamaCppRequest struct {
-	Model       string             `json:"model"`
-	Messages    []llamaCppMessage  `json:"messages"`
-	MaxTokens   int                `json:"max_tokens,omitempty"`
-	Temperature float64            `json:"temperature,omitempty"`
-	Stream      bool               `json:"stream"`
+	Model       string            `json:"model"`
+	Messages    []llamaCppMessage `json:"messages"`
+	MaxTokens   int               `json:"max_tokens,omitempty"`
+	Temperature float64           `json:"temperature,omitempty"`
+	Stream      bool              `json:"stream"`
 }
 
 type llamaCppMessage struct {
@@ -79,20 +85,20 @@ type llamaCppMessage struct {
 	Content llamaCppMessageContent `json:"content"`
 }
 
-// llamaCppMessageContent can be a string or an array of content parts
+// llamaCppMessageContent can be a string or an array of content parts.
 type llamaCppMessageContent any
 
 type llamaCppContentPart struct {
-	Type     string               `json:"type"`
-	Text     string               `json:"text,omitempty"`
-	ImageURL *llamaCppImageURL    `json:"image_url,omitempty"`
+	Type     string            `json:"type"`
+	Text     string            `json:"text,omitempty"`
+	ImageURL *llamaCppImageURL `json:"image_url,omitempty"`
 }
 
 type llamaCppImageURL struct {
 	URL string `json:"url"`
 }
 
-// llamaCppResponse represents a response from the llama.cpp OpenAI-compatible API
+// llamaCppResponse represents a response from the llama.cpp OpenAI-compatible API.
 type llamaCppResponse struct {
 	ID      string `json:"id"`
 	Object  string `json:"object"`
@@ -112,34 +118,22 @@ type llamaCppResponse struct {
 	} `json:"usage"`
 }
 
-func (p *LlamaCppProvider) AnalyzePhoto(ctx context.Context, imageData []byte, metadata *PhotoMetadata, availableLabels []string, estimateDate bool) (*PhotoAnalysis, error) {
+// AnalyzePhoto sends a photo to llama.cpp for AI analysis and returns labels and description.
+func (p *LlamaCppProvider) AnalyzePhoto(
+	ctx context.Context,
+	imageData []byte,
+	metadata *PhotoMetadata,
+	availableLabels []string,
+	estimateDate bool,
+) (*PhotoAnalysis, error) {
 	const maxRetries = 5
 
-	// Resize image to max 800px to reduce processing time
 	resizedData, err := ResizeImage(imageData, 800)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resize image: %w", err)
 	}
 
-	systemPrompt := buildPhotoAnalysisPrompt(availableLabels, estimateDate)
-	base64Image := base64.StdEncoding.EncodeToString(resizedData)
-	imageURL := "data:image/jpeg;base64," + base64Image
-	userMessage := buildUserMessageWithMetadata(metadata)
-
-	// Build initial messages
-	messages := []llamaCppMessage{
-		{
-			Role:    "system",
-			Content: systemPrompt,
-		},
-		{
-			Role: "user",
-			Content: []llamaCppContentPart{
-				{Type: "text", Text: userMessage},
-				{Type: "image_url", ImageURL: &llamaCppImageURL{URL: imageURL}},
-			},
-		},
-	}
+	messages := buildLlamaCppPhotoMessages(resizedData, metadata, availableLabels, estimateDate)
 
 	var lastError error
 	var lastResponse string
@@ -150,7 +144,6 @@ func (p *LlamaCppProvider) AnalyzePhoto(ctx context.Context, imageData []byte, m
 			return nil, fmt.Errorf("llama.cpp API error: %w", err)
 		}
 
-		// Track usage (llama.cpp is local/free, but we track tokens for stats)
 		p.usage.InputTokens += resp.Usage.PromptTokens
 		p.usage.OutputTokens += resp.Usage.CompletionTokens
 
@@ -161,34 +154,66 @@ func (p *LlamaCppProvider) AnalyzePhoto(ctx context.Context, imageData []byte, m
 		content := resp.Choices[0].Message.Content
 		lastResponse = content
 
-		// Try to extract JSON from the response
-		jsonContent := extractJSON(content)
-
 		var analysis PhotoAnalysis
-		if err := json.Unmarshal([]byte(jsonContent), &analysis); err != nil {
+		if err := json.Unmarshal([]byte(extractJSON(content)), &analysis); err != nil {
 			lastError = err
-
-			// Add assistant response and error feedback for retry
-			messages = append(messages,
-				llamaCppMessage{
-					Role:    "assistant",
-					Content: content,
-				},
-				llamaCppMessage{
-					Role:    "user",
-					Content: fmt.Sprintf("JSON parse error: %v. Please fix the JSON and try again. Remember to escape quotes inside strings with backslash. Output ONLY valid JSON, no other text.", err),
-				},
-			)
+			messages = appendLlamaCppRetryMessages(messages, content, err)
 			continue
 		}
 
 		return &analysis, nil
 	}
 
-	return nil, fmt.Errorf("failed to parse analysis JSON after %d attempts: %w (last response: %s)", maxRetries, lastError, lastResponse)
+	return nil, fmt.Errorf(
+		"failed to parse analysis JSON after %d attempts: %w (last response: %s)",
+		maxRetries, lastError, lastResponse,
+	)
 }
 
-func (p *LlamaCppProvider) EstimateAlbumDate(ctx context.Context, albumTitle string, albumDescription string, photoDescriptions []string) (*AlbumDateEstimate, error) {
+func buildLlamaCppPhotoMessages(
+	imageData []byte,
+	metadata *PhotoMetadata,
+	availableLabels []string,
+	estimateDate bool,
+) []llamaCppMessage {
+	systemPrompt := buildPhotoAnalysisPrompt(availableLabels, estimateDate)
+	base64Image := base64.StdEncoding.EncodeToString(imageData)
+	imageURL := "data:image/jpeg;base64," + base64Image
+	userMessage := buildUserMessageWithMetadata(metadata)
+
+	return []llamaCppMessage{
+		{Role: "system", Content: systemPrompt},
+		{
+			Role: "user",
+			Content: []llamaCppContentPart{
+				{Type: "text", Text: userMessage},
+				{Type: "image_url", ImageURL: &llamaCppImageURL{URL: imageURL}},
+			},
+		},
+	}
+}
+
+func appendLlamaCppRetryMessages(messages []llamaCppMessage, content string, parseErr error) []llamaCppMessage {
+	return append(messages,
+		llamaCppMessage{Role: "assistant", Content: content},
+		llamaCppMessage{
+			Role: "user",
+			Content: fmt.Sprintf(
+				"JSON parse error: %v. Please fix the JSON and try again."+
+					" Remember to escape quotes inside strings with backslash."+
+					" Output ONLY valid JSON, no other text.", parseErr,
+			),
+		},
+	)
+}
+
+// EstimateAlbumDate estimates the date for a set of photos based on their descriptions.
+func (p *LlamaCppProvider) EstimateAlbumDate(
+	ctx context.Context,
+	albumTitle string,
+	albumDescription string,
+	photoDescriptions []string,
+) (*AlbumDateEstimate, error) {
 	systemPrompt := buildAlbumDatePrompt()
 	userContent := buildAlbumDateContent(albumTitle, albumDescription, photoDescriptions)
 
@@ -208,7 +233,7 @@ func (p *LlamaCppProvider) EstimateAlbumDate(ctx context.Context, albumTitle str
 		return nil, fmt.Errorf("llama.cpp API error: %w", err)
 	}
 
-	// Track usage
+	// Track usage.
 	p.usage.InputTokens += resp.Usage.PromptTokens
 	p.usage.OutputTokens += resp.Usage.CompletionTokens
 
@@ -271,19 +296,22 @@ func (p *LlamaCppProvider) sendRequest(ctx context.Context, messages []llamaCppM
 	return &llamaResp, nil
 }
 
-// Batch API methods - llama.cpp doesn't support batch operations
+// CreatePhotoBatch is not supported by llama.cpp and returns an error.
 func (p *LlamaCppProvider) CreatePhotoBatch(ctx context.Context, requests []BatchPhotoRequest) (string, error) {
 	return "", errors.New("llama.cpp does not support batch operations")
 }
 
+// GetBatchStatus is not supported by llama.cpp and returns an error.
 func (p *LlamaCppProvider) GetBatchStatus(ctx context.Context, batchID string) (*BatchStatus, error) {
 	return nil, errors.New("llama.cpp does not support batch operations")
 }
 
+// GetBatchResults is not supported by llama.cpp and returns an error.
 func (p *LlamaCppProvider) GetBatchResults(ctx context.Context, batchID string) ([]BatchPhotoResult, error) {
 	return nil, errors.New("llama.cpp does not support batch operations")
 }
 
+// CancelBatch is not supported by llama.cpp and returns an error.
 func (p *LlamaCppProvider) CancelBatch(ctx context.Context, batchID string) error {
 	return errors.New("llama.cpp does not support batch operations")
 }

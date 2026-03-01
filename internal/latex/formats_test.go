@@ -68,7 +68,7 @@ func TestColSpanWidth(t *testing.T) {
 
 func TestZonesHeight(t *testing.T) {
 	cfg := DefaultLayoutConfig()
-	// Top margin(10) + header(4) + canvas(172) + footer(8) + bottom margin(16) = 210
+	// Top margin(10) + header(4) + canvas(172) + footer(8) + bottom margin(16) = 210.
 	total := cfg.TopMarginMM + cfg.HeaderHeightMM + cfg.CanvasHeightMM + cfg.FooterHeightMM + cfg.BottomMarginMM
 	if math.Abs(total-PageH) > 0.01 {
 		t.Errorf("zones should sum to page height: %.2f + %.2f + %.2f + %.2f + %.2f = %.2f, expected %.2f",
@@ -264,13 +264,13 @@ func TestFormatSlotsGridWithSplit_CustomSplit(t *testing.T) {
 					t.Fatal("expected non-empty slots")
 				}
 
-				// Verify total width coverage: leftW + gap + rightW = cw
+				// Verify total width coverage: leftW + gap + rightW = cw.
 				availW := cw - gap
 				leftW := availW * split
 				rightW := availW * (1 - split)
 				rightX := leftW + gap
 
-				// Check first slot is at X=0 and has leftW width
+				// Check first slot is at X=0 and has leftW width.
 				if math.Abs(slots[0].X) > eps {
 					t.Errorf("first slot X: expected 0, got %.4f", slots[0].X)
 				}
@@ -278,7 +278,7 @@ func TestFormatSlotsGridWithSplit_CustomSplit(t *testing.T) {
 					t.Errorf("first slot W: expected %.4f, got %.4f", leftW, slots[0].W)
 				}
 
-				// Find right-side slots and verify position
+				// Find right-side slots and verify position.
 				for _, s := range slots {
 					if s.X > eps { // right-side slot
 						if math.Abs(s.X-rightX) > eps {

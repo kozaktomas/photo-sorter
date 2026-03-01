@@ -46,7 +46,7 @@ func TestSessionManager_GetSession(t *testing.T) {
 
 	session, _ := sm.CreateSession("token123", "download456")
 
-	// Get existing session
+	// Get existing session.
 	retrieved := sm.GetSession(session.ID)
 	if retrieved == nil {
 		t.Fatal("GetSession() returned nil for existing session")
@@ -56,7 +56,7 @@ func TestSessionManager_GetSession(t *testing.T) {
 		t.Errorf("Token = %s, want token123", retrieved.Token)
 	}
 
-	// Get non-existing session
+	// Get non-existing session.
 	notFound := sm.GetSession("nonexistent-id")
 	if notFound != nil {
 		t.Error("GetSession() should return nil for non-existing session")
@@ -68,10 +68,10 @@ func TestSessionManager_DeleteSession(t *testing.T) {
 
 	session, _ := sm.CreateSession("token123", "download456")
 
-	// Delete the session
+	// Delete the session.
 	sm.DeleteSession(session.ID)
 
-	// Verify it's gone
+	// Verify it's gone.
 	retrieved := sm.GetSession(session.ID)
 	if retrieved != nil {
 		t.Error("GetSession() should return nil after deletion")
@@ -82,12 +82,12 @@ func TestSessionManager_SetAndGetSessionCookie(t *testing.T) {
 	sm := NewSessionManager("test-secret", nil)
 	session, _ := sm.CreateSession("token123", "download456")
 
-	// Create a test response to capture the cookie
+	// Create a test response to capture the cookie.
 	w := httptest.NewRecorder()
 	r := httptest.NewRequest("GET", "/", nil)
 	sm.SetSessionCookie(w, r, session)
 
-	// Get the cookie from the response
+	// Get the cookie from the response.
 	cookies := w.Result().Cookies()
 	if len(cookies) == 0 {
 		t.Fatal("No cookies set")
@@ -105,11 +105,11 @@ func TestSessionManager_SetAndGetSessionCookie(t *testing.T) {
 		return
 	}
 
-	// Create a request with the cookie
+	// Create a request with the cookie.
 	req := httptest.NewRequest("GET", "/", nil)
 	req.AddCookie(sessionCookie)
 
-	// Verify the session can be retrieved from the request
+	// Verify the session can be retrieved from the request.
 	retrieved := sm.GetSessionFromRequest(req)
 	if retrieved == nil {
 		t.Fatal("GetSessionFromRequest() returned nil")
@@ -123,7 +123,7 @@ func TestSessionManager_SetAndGetSessionCookie(t *testing.T) {
 func TestSessionManager_InvalidCookie(t *testing.T) {
 	sm := NewSessionManager("test-secret", nil)
 
-	// Request with invalid cookie signature
+	// Request with invalid cookie signature.
 	req := httptest.NewRequest("GET", "/", nil)
 	req.AddCookie(&http.Cookie{
 		Name:  sessionCookieName,
@@ -140,7 +140,7 @@ func TestSessionManager_BearerAuth(t *testing.T) {
 	sm := NewSessionManager("test-secret", nil)
 	session, _ := sm.CreateSession("token123", "download456")
 
-	// Request with Bearer token
+	// Request with Bearer token.
 	req := httptest.NewRequest("GET", "/", nil)
 	req.Header.Set("Authorization", "Bearer "+session.ID)
 
@@ -161,7 +161,7 @@ func TestRequireAuth(t *testing.T) {
 	handlerCalled := false
 	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		handlerCalled = true
-		// Verify session is in context
+		// Verify session is in context.
 		s := GetSessionFromContext(r.Context())
 		if s == nil {
 			t.Error("Session not found in context")
@@ -172,7 +172,7 @@ func TestRequireAuth(t *testing.T) {
 	middleware := RequireAuth(sm)
 	protectedHandler := middleware(testHandler)
 
-	// Test with valid session
+	// Test with valid session.
 	t.Run("valid session", func(t *testing.T) {
 		handlerCalled = false
 		w := httptest.NewRecorder()
@@ -189,7 +189,7 @@ func TestRequireAuth(t *testing.T) {
 		}
 	})
 
-	// Test without session
+	// Test without session.
 	t.Run("no session", func(t *testing.T) {
 		handlerCalled = false
 		w := httptest.NewRecorder()
@@ -207,7 +207,7 @@ func TestRequireAuth(t *testing.T) {
 }
 
 func TestGetSessionFromContext(t *testing.T) {
-	// Test with session in context
+	// Test with session in context.
 	session := &Session{ID: "test123", Token: "token456"}
 	ctx := context.WithValue(context.Background(), sessionContextKey, session)
 
@@ -220,7 +220,7 @@ func TestGetSessionFromContext(t *testing.T) {
 		t.Errorf("Session ID = %s, want test123", retrieved.ID)
 	}
 
-	// Test without session in context
+	// Test without session in context.
 	emptyCtx := context.Background()
 	notFound := GetSessionFromContext(emptyCtx)
 	if notFound != nil {
@@ -270,7 +270,7 @@ func TestSession_MarshalJSON(t *testing.T) {
 		t.Fatalf("MarshalJSON() error = %v", err)
 	}
 
-	// Verify sensitive fields are not included
+	// Verify sensitive fields are not included.
 	jsonStr := string(data)
 	if contains(jsonStr, "secret-token") {
 		t.Error("JSON should not contain Token")

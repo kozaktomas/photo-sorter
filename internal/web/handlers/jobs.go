@@ -9,9 +9,10 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/constants"
 )
 
-// JobStatus represents the status of an async job
+// JobStatus represents the status of an async job.
 type JobStatus string
 
+// JobStatus constants define the lifecycle states of an async job.
 const (
 	JobStatusPending   JobStatus = "pending"
 	JobStatusRunning   JobStatus = "running"
@@ -20,7 +21,7 @@ const (
 	JobStatusCancelled JobStatus = "cancelled"
 )
 
-// SortJob represents an async sort job
+// SortJob represents an async sort job.
 type SortJob struct {
 	EventBroadcaster
 
@@ -40,14 +41,14 @@ type SortJob struct {
 	events chan JobEvent
 }
 
-// GetStatus returns the current job status (implements SSEJob)
+// GetStatus returns the current job status (implements SSEJob).
 func (j *SortJob) GetStatus() JobStatus {
 	j.mu.RLock()
 	defer j.mu.RUnlock()
 	return j.Status
 }
 
-// Cancel cancels the sort job
+// Cancel cancels the sort job.
 func (j *SortJob) Cancel() {
 	j.EventBroadcaster.Cancel()
 	j.mu.Lock()
@@ -55,7 +56,7 @@ func (j *SortJob) Cancel() {
 	j.mu.Unlock()
 }
 
-// SortJobOptions represents sort job options
+// SortJobOptions represents sort job options.
 type SortJobOptions struct {
 	DryRun          bool   `json:"dry_run"`
 	Limit           int    `json:"limit"`
@@ -66,7 +67,7 @@ type SortJobOptions struct {
 	Concurrency     int    `json:"concurrency"`
 }
 
-// SortJobResult represents the result of a sort job
+// SortJobResult represents the result of a sort job.
 type SortJobResult struct {
 	ProcessedCount int                 `json:"processed_count"`
 	SortedCount    int                 `json:"sorted_count"`
@@ -77,14 +78,14 @@ type SortJobResult struct {
 	Usage          *UsageInfo          `json:"usage,omitempty"`
 }
 
-// UsageInfo represents API usage information
+// UsageInfo represents API usage information.
 type UsageInfo struct {
 	InputTokens  int     `json:"input_tokens"`
 	OutputTokens int     `json:"output_tokens"`
 	TotalCost    float64 `json:"total_cost"`
 }
 
-// JobEvent represents an event from a job
+// JobEvent represents an event from a job.
 type JobEvent struct {
 	Type    string `json:"type"`
 	Message string `json:"message,omitempty"`
@@ -99,7 +100,7 @@ type EventBroadcaster struct {
 	mu        sync.RWMutex
 }
 
-// AddListener adds an event listener
+// AddListener adds an event listener.
 func (b *EventBroadcaster) AddListener() chan JobEvent {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -108,7 +109,7 @@ func (b *EventBroadcaster) AddListener() chan JobEvent {
 	return ch
 }
 
-// RemoveListener removes an event listener
+// RemoveListener removes an event listener.
 func (b *EventBroadcaster) RemoveListener(ch chan JobEvent) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -121,7 +122,7 @@ func (b *EventBroadcaster) RemoveListener(ch chan JobEvent) {
 	}
 }
 
-// SendEvent sends an event to all listeners
+// SendEvent sends an event to all listeners.
 func (b *EventBroadcaster) SendEvent(event JobEvent) {
 	b.mu.RLock()
 	defer b.mu.RUnlock()
@@ -129,12 +130,12 @@ func (b *EventBroadcaster) SendEvent(event JobEvent) {
 		select {
 		case listener <- event:
 		default:
-			// Listener buffer full, skip
+			// Listener buffer full, skip.
 		}
 	}
 }
 
-// Cancel cancels the job via context and sends a cancelled event
+// Cancel cancels the job via context and sends a cancelled event.
 func (b *EventBroadcaster) Cancel() {
 	if b.cancel != nil {
 		b.cancel()
@@ -149,20 +150,20 @@ type SSEJob interface {
 	GetStatus() JobStatus
 }
 
-// JobManager manages async jobs
+// JobManager manages async jobs.
 type JobManager struct {
 	jobs map[string]*SortJob
 	mu   sync.RWMutex
 }
 
-// NewJobManager creates a new job manager
+// NewJobManager creates a new job manager.
 func NewJobManager() *JobManager {
 	return &JobManager{
 		jobs: make(map[string]*SortJob),
 	}
 }
 
-// CreateJob creates a new sort job
+// CreateJob creates a new sort job.
 func (m *JobManager) CreateJob(id, albumUID, albumTitle string, options SortJobOptions) *SortJob {
 	job := &SortJob{
 		ID:         id,
@@ -181,21 +182,21 @@ func (m *JobManager) CreateJob(id, albumUID, albumTitle string, options SortJobO
 	return job
 }
 
-// GetJob retrieves a job by ID
+// GetJob retrieves a job by ID.
 func (m *JobManager) GetJob(id string) *SortJob {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.jobs[id]
 }
 
-// DeleteJob removes a job
+// DeleteJob removes a job.
 func (m *JobManager) DeleteJob(id string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	delete(m.jobs, id)
 }
 
-// ListJobs returns all jobs
+// ListJobs returns all jobs.
 func (m *JobManager) ListJobs() []*SortJob {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

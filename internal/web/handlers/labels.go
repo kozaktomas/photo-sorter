@@ -12,13 +12,13 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
 
-// LabelsHandler handles label-related endpoints
+// LabelsHandler handles label-related endpoints.
 type LabelsHandler struct {
 	config         *config.Config
 	sessionManager *middleware.SessionManager
 }
 
-// NewLabelsHandler creates a new labels handler
+// NewLabelsHandler creates a new labels handler.
 func NewLabelsHandler(cfg *config.Config, sm *middleware.SessionManager) *LabelsHandler {
 	return &LabelsHandler{
 		config:         cfg,
@@ -26,7 +26,7 @@ func NewLabelsHandler(cfg *config.Config, sm *middleware.SessionManager) *Labels
 	}
 }
 
-// LabelResponse represents a label in API responses
+// LabelResponse represents a label in API responses.
 type LabelResponse struct {
 	UID         string `json:"uid"`
 	Name        string `json:"name"`
@@ -53,14 +53,14 @@ func labelToResponse(l photoprism.Label) LabelResponse {
 	}
 }
 
-// List returns all labels
+// List returns all labels.
 func (h *LabelsHandler) List(w http.ResponseWriter, r *http.Request) {
 	pp := middleware.MustGetPhotoPrism(r.Context(), w)
 	if pp == nil {
 		return
 	}
 
-	// Parse query parameters
+	// Parse query parameters.
 	count, _ := strconv.Atoi(r.URL.Query().Get("count"))
 	if count <= 0 {
 		count = constants.DefaultLabelCount
@@ -82,12 +82,12 @@ func (h *LabelsHandler) List(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, response)
 }
 
-// BatchDeleteRequest represents a batch delete request
+// BatchDeleteRequest represents a batch delete request.
 type BatchDeleteRequest struct {
 	UIDs []string `json:"uids"`
 }
 
-// Get returns a single label by UID
+// Get returns a single label by UID.
 func (h *LabelsHandler) Get(w http.ResponseWriter, r *http.Request) {
 	uid := chi.URLParam(r, "uid")
 	if uid == "" {
@@ -100,7 +100,7 @@ func (h *LabelsHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// PhotoPrism has no single-label GET endpoint, so fetch all and find by UID
+	// PhotoPrism has no single-label GET endpoint, so fetch all and find by UID.
 	labels, err := pp.GetLabels(5000, 0, true)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to get labels")
@@ -117,7 +117,7 @@ func (h *LabelsHandler) Get(w http.ResponseWriter, r *http.Request) {
 	respondError(w, http.StatusNotFound, "label not found")
 }
 
-// LabelUpdateRequest represents the request body for updating a label
+// LabelUpdateRequest represents the request body for updating a label.
 type LabelUpdateRequest struct {
 	Name        *string `json:"name,omitempty"`
 	Description *string `json:"description,omitempty"`
@@ -126,7 +126,7 @@ type LabelUpdateRequest struct {
 	Favorite    *bool   `json:"favorite,omitempty"`
 }
 
-// Update updates a label
+// Update updates a label.
 func (h *LabelsHandler) Update(w http.ResponseWriter, r *http.Request) {
 	uid := chi.URLParam(r, "uid")
 	if uid == "" {
@@ -162,7 +162,7 @@ func (h *LabelsHandler) Update(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, labelToResponse(*label))
 }
 
-// BatchDelete deletes multiple labels
+// BatchDelete deletes multiple labels.
 func (h *LabelsHandler) BatchDelete(w http.ResponseWriter, r *http.Request) {
 	var req BatchDeleteRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {

@@ -18,6 +18,7 @@ and uses AI models (OpenAI, Anthropic, Gemini) to intelligently sort and
 organize your photos based on their content.`,
 }
 
+// Execute runs the root Cobra command and exits on error.
 func Execute() {
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)

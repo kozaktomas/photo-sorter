@@ -11,6 +11,7 @@ import (
 
 const geminiModel = "gemini-2.5-flash"
 
+// GeminiProvider implements Provider using the Google Gemini API.
 type GeminiProvider struct {
 	client        *genai.Client
 	batchPhotoIDs map[string][]string // maps batch ID to ordered photo UIDs
@@ -20,7 +21,12 @@ type GeminiProvider struct {
 	batchPricing  RequestPricing
 }
 
-func NewGeminiProvider(ctx context.Context, apiKey string, singlePricing, batchPricing RequestPricing) (*GeminiProvider, error) {
+// NewGeminiProvider creates a new Gemini provider with the given config.
+func NewGeminiProvider(
+	ctx context.Context,
+	apiKey string,
+	singlePricing, batchPricing RequestPricing,
+) (*GeminiProvider, error) {
 	client, err := genai.NewClient(ctx, &genai.ClientConfig{
 		APIKey:  apiKey,
 		Backend: genai.BackendGeminiAPI,
@@ -38,6 +44,7 @@ func NewGeminiProvider(ctx context.Context, apiKey string, singlePricing, batchP
 	}, nil
 }
 
+// SetBatchMode is a no-op; Gemini does not support batch mode.
 func (p *GeminiProvider) SetBatchMode(enabled bool) {
 	if enabled {
 		p.inputPrice = p.batchPricing.Input
@@ -45,10 +52,12 @@ func (p *GeminiProvider) SetBatchMode(enabled bool) {
 	}
 }
 
+// GetUsage returns the accumulated API token usage.
 func (p *GeminiProvider) GetUsage() *Usage {
 	return &p.usage
 }
 
+// ResetUsage zeroes out the accumulated token usage counters.
 func (p *GeminiProvider) ResetUsage() {
 	p.usage = Usage{}
 }
@@ -60,35 +69,28 @@ func (p *GeminiProvider) trackUsage(inputTokens, outputTokens int32) {
 	p.usage.TotalCost += float64(outputTokens) / 1_000_000 * p.outputPrice
 }
 
+// Name returns the provider name.
 func (p *GeminiProvider) Name() string {
 	return geminiModel
 }
 
-func (p *GeminiProvider) AnalyzePhoto(ctx context.Context, imageData []byte, metadata *PhotoMetadata, availableLabels []string, estimateDate bool) (*PhotoAnalysis, error) {
+// AnalyzePhoto sends a photo to Gemini for AI analysis and returns labels and description.
+func (p *GeminiProvider) AnalyzePhoto(
+	ctx context.Context,
+	imageData []byte,
+	metadata *PhotoMetadata,
+	availableLabels []string,
+	estimateDate bool,
+) (*PhotoAnalysis, error) {
 	const maxRetries = 5
 
-	// Resize image to max 800px to save costs
 	resizedData, err := ResizeImage(imageData, 800)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resize image: %w", err)
 	}
 
-	systemPrompt := buildPhotoAnalysisPrompt(availableLabels, estimateDate)
-	userMessage := buildUserMessageWithMetadata(metadata)
-
-	contents := []*genai.Content{
-		{
-			Role: "user",
-			Parts: []*genai.Part{
-				{Text: systemPrompt + "\n\n" + userMessage},
-				{InlineData: &genai.Blob{Data: resizedData, MIMEType: "image/jpeg"}},
-			},
-		},
-	}
-
-	config := &genai.GenerateContentConfig{
-		ResponseMIMEType: "application/json",
-	}
+	contents := buildGeminiPhotoContents(resizedData, metadata, availableLabels, estimateDate)
+	config := &genai.GenerateContentConfig{ResponseMIMEType: "application/json"}
 
 	var lastError error
 	var lastResponse string
@@ -99,7 +101,6 @@ func (p *GeminiProvider) AnalyzePhoto(ctx context.Context, imageData []byte, met
 			return nil, fmt.Errorf("gemini API error: %w", err)
 		}
 
-		// Track usage
 		if result.UsageMetadata != nil {
 			p.trackUsage(result.UsageMetadata.PromptTokenCount, result.UsageMetadata.CandidatesTokenCount)
 		}
@@ -113,28 +114,62 @@ func (p *GeminiProvider) AnalyzePhoto(ctx context.Context, imageData []byte, met
 		var analysis PhotoAnalysis
 		if err := json.Unmarshal([]byte(content), &analysis); err != nil {
 			lastError = err
-
-			// Add model response and error feedback to contents for retry
-			contents = append(contents,
-				&genai.Content{
-					Role:  "model",
-					Parts: []*genai.Part{{Text: content}},
-				},
-				&genai.Content{
-					Role:  "user",
-					Parts: []*genai.Part{{Text: fmt.Sprintf("JSON parse error: %v. Please fix the JSON and try again. Remember to escape quotes inside strings with backslash.", err)}},
-				},
-			)
+			contents = appendGeminiRetryContents(contents, content, err)
 			continue
 		}
 
 		return &analysis, nil
 	}
 
-	return nil, fmt.Errorf("failed to parse analysis JSON after %d attempts: %w (last response: %s)", maxRetries, lastError, lastResponse)
+	return nil, fmt.Errorf(
+		"failed to parse analysis JSON after %d attempts: %w (last response: %s)",
+		maxRetries, lastError, lastResponse,
+	)
 }
 
-func (p *GeminiProvider) EstimateAlbumDate(ctx context.Context, albumTitle string, albumDescription string, photoDescriptions []string) (*AlbumDateEstimate, error) {
+func buildGeminiPhotoContents(
+	imageData []byte,
+	metadata *PhotoMetadata,
+	availableLabels []string,
+	estimateDate bool,
+) []*genai.Content {
+	systemPrompt := buildPhotoAnalysisPrompt(availableLabels, estimateDate)
+	userMessage := buildUserMessageWithMetadata(metadata)
+
+	return []*genai.Content{
+		{
+			Role: "user",
+			Parts: []*genai.Part{
+				{Text: systemPrompt + "\n\n" + userMessage},
+				{InlineData: &genai.Blob{Data: imageData, MIMEType: "image/jpeg"}},
+			},
+		},
+	}
+}
+
+func appendGeminiRetryContents(contents []*genai.Content, content string, parseErr error) []*genai.Content {
+	return append(contents,
+		&genai.Content{
+			Role:  "model",
+			Parts: []*genai.Part{{Text: content}},
+		},
+		&genai.Content{
+			Role: "user",
+			Parts: []*genai.Part{{Text: fmt.Sprintf(
+				"JSON parse error: %v. Please fix the JSON and try again."+
+					" Remember to escape quotes inside strings with backslash.", parseErr,
+			)}},
+		},
+	)
+}
+
+// EstimateAlbumDate estimates the date for a set of photos based on their descriptions.
+func (p *GeminiProvider) EstimateAlbumDate(
+	ctx context.Context,
+	albumTitle string,
+	albumDescription string,
+	photoDescriptions []string,
+) (*AlbumDateEstimate, error) {
 	systemPrompt := buildAlbumDatePrompt()
 	userContent := buildAlbumDateContent(albumTitle, albumDescription, photoDescriptions)
 
@@ -156,7 +191,7 @@ func (p *GeminiProvider) EstimateAlbumDate(ctx context.Context, albumTitle strin
 		return nil, fmt.Errorf("gemini API error: %w", err)
 	}
 
-	// Track usage
+	// Track usage.
 	if result.UsageMetadata != nil {
 		p.trackUsage(result.UsageMetadata.PromptTokenCount, result.UsageMetadata.CandidatesTokenCount)
 	}
@@ -174,18 +209,19 @@ func (p *GeminiProvider) EstimateAlbumDate(ctx context.Context, albumTitle strin
 	return &estimate, nil
 }
 
-// Batch API implementation for Gemini
+// Batch API implementation for Gemini.
 
+// CreatePhotoBatch submits a batch of photos for asynchronous processing via the Gemini batch API.
 func (p *GeminiProvider) CreatePhotoBatch(ctx context.Context, requests []BatchPhotoRequest) (string, error) {
 	if len(requests) == 0 {
 		return "", errors.New("no requests provided")
 	}
 
-	// Build inlined requests and track photo UIDs in order
+	// Build inlined requests and track photo UIDs in order.
 	var inlinedRequests []*genai.InlinedRequest
 	var photoUIDs []string
 	for _, req := range requests {
-		// Resize image
+		// Resize image.
 		resizedData, err := ResizeImage(req.ImageData, 800)
 		if err != nil {
 			return "", fmt.Errorf("failed to resize image for %s: %w", req.PhotoUID, err)
@@ -212,7 +248,7 @@ func (p *GeminiProvider) CreatePhotoBatch(ctx context.Context, requests []BatchP
 		photoUIDs = append(photoUIDs, req.PhotoUID)
 	}
 
-	// Create the batch job
+	// Create the batch job.
 	batchJob, err := p.client.Batches.Create(ctx, geminiModel, &genai.BatchJobSource{
 		InlinedRequests: inlinedRequests,
 	}, &genai.CreateBatchJobConfig{
@@ -222,12 +258,13 @@ func (p *GeminiProvider) CreatePhotoBatch(ctx context.Context, requests []BatchP
 		return "", fmt.Errorf("failed to create batch: %w", err)
 	}
 
-	// Store photo UIDs for later retrieval
+	// Store photo UIDs for later retrieval.
 	p.batchPhotoIDs[batchJob.Name] = photoUIDs
 
 	return batchJob.Name, nil
 }
 
+// GetBatchStatus checks the status of an async batch job.
 func (p *GeminiProvider) GetBatchStatus(ctx context.Context, batchID string) (*BatchStatus, error) {
 	batch, err := p.client.Batches.Get(ctx, batchID, nil)
 	if err != nil {
@@ -239,7 +276,7 @@ func (p *GeminiProvider) GetBatchStatus(ctx context.Context, batchID string) (*B
 		Status: string(batch.State),
 	}
 
-	// Get counts from completion stats if available
+	// Get counts from completion stats if available.
 	if batch.CompletionStats != nil {
 		status.CompletedCount = int(batch.CompletionStats.SuccessfulCount)
 		status.FailedCount = int(batch.CompletionStats.FailedCount)
@@ -249,6 +286,7 @@ func (p *GeminiProvider) GetBatchStatus(ctx context.Context, batchID string) (*B
 	return status, nil
 }
 
+// GetBatchResults downloads and parses the results of a completed batch job.
 func (p *GeminiProvider) GetBatchResults(ctx context.Context, batchID string) ([]BatchPhotoResult, error) {
 	batch, err := p.client.Batches.Get(ctx, batchID, nil)
 	if err != nil {
@@ -263,7 +301,7 @@ func (p *GeminiProvider) GetBatchResults(ctx context.Context, batchID string) ([
 		return nil, errors.New("no results available")
 	}
 
-	// Get stored photo UIDs
+	// Get stored photo UIDs.
 	photoUIDs, ok := p.batchPhotoIDs[batchID]
 	if !ok {
 		return nil, fmt.Errorf("photo UIDs not found for batch %s", batchID)
@@ -278,7 +316,7 @@ func (p *GeminiProvider) GetBatchResults(ctx context.Context, batchID string) ([
 		results = append(results, parseGeminiBatchResponse(resp, photoUID))
 	}
 
-	// Clean up stored photo UIDs
+	// Clean up stored photo UIDs.
 	delete(p.batchPhotoIDs, batchID)
 
 	return results, nil
@@ -308,12 +346,13 @@ func parseGeminiBatchResponse(resp *genai.InlinedResponse, photoUID string) Batc
 	return result
 }
 
+// CancelBatch cancels a running batch job.
 func (p *GeminiProvider) CancelBatch(ctx context.Context, batchID string) error {
 	err := p.client.Batches.Cancel(ctx, batchID, nil)
 	if err != nil {
 		return fmt.Errorf("failed to cancel batch: %w", err)
 	}
-	// Clean up stored photo UIDs
+	// Clean up stored photo UIDs.
 	delete(p.batchPhotoIDs, batchID)
 	return nil
 }

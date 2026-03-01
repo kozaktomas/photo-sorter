@@ -4,7 +4,7 @@ import (
 	"time"
 )
 
-// StoredEmbedding represents an embedding stored in the database
+// StoredEmbedding represents an embedding stored in the database.
 type StoredEmbedding struct {
 	PhotoUID   string
 	Embedding  []float32
@@ -14,7 +14,7 @@ type StoredEmbedding struct {
 	CreatedAt  time.Time
 }
 
-// StoredFace represents a face embedding stored in the database
+// StoredFace represents a face embedding stored in the database.
 type StoredFace struct {
 	ID        int64
 	PhotoUID  string
@@ -26,7 +26,7 @@ type StoredFace struct {
 	Dim       int
 	CreatedAt time.Time
 
-	// Cached PhotoPrism data (populated during processing, v3+)
+	// Cached PhotoPrism data (populated during processing, v3+).
 	MarkerUID   string // Matching PhotoPrism marker UID (empty if no marker matched)
 	SubjectUID  string // Subject UID from marker (empty if unassigned)
 	SubjectName string // Person name from marker (empty if unassigned)
@@ -36,14 +36,14 @@ type StoredFace struct {
 	FileUID     string // Primary file UID
 }
 
-// FaceProcessedRecord represents a record of a photo that has been processed for face detection
+// FaceProcessedRecord represents a record of a photo that has been processed for face detection.
 type FaceProcessedRecord struct {
 	PhotoUID  string
 	FaceCount int
 	CreatedAt time.Time
 }
 
-// StoredEraEmbedding represents a CLIP text embedding centroid for a photo era
+// StoredEraEmbedding represents a CLIP text embedding centroid for a photo era.
 type StoredEraEmbedding struct {
 	EraSlug            string
 	EraName            string
@@ -56,7 +56,7 @@ type StoredEraEmbedding struct {
 	CreatedAt          time.Time
 }
 
-// ExportData contains all embeddings and faces data for export/storage
+// ExportData contains all embeddings and faces data for export/storage.
 type ExportData struct {
 	Version        int
 	ExportedAt     time.Time
@@ -65,7 +65,7 @@ type ExportData struct {
 	FacesProcessed []FaceProcessedRecord // Photos processed for face detection (v2+)
 }
 
-// PhotoBook represents a photo book project
+// PhotoBook represents a photo book project.
 type PhotoBook struct {
 	ID          string
 	Title       string
@@ -74,7 +74,7 @@ type PhotoBook struct {
 	UpdatedAt   time.Time
 }
 
-// PhotoBookWithCounts extends PhotoBook with precomputed counts for list views
+// PhotoBookWithCounts extends PhotoBook with precomputed counts for list views.
 type PhotoBookWithCounts struct {
 	PhotoBook
 	SectionCount int
@@ -82,7 +82,7 @@ type PhotoBookWithCounts struct {
 	PhotoCount   int
 }
 
-// BookChapter represents a chapter grouping within a book
+// BookChapter represents a chapter grouping within a book.
 type BookChapter struct {
 	ID        string
 	BookID    string
@@ -92,7 +92,7 @@ type BookChapter struct {
 	UpdatedAt time.Time
 }
 
-// BookSection represents an ordered group within a book
+// BookSection represents an ordered group within a book.
 type BookSection struct {
 	ID         string
 	BookID     string
@@ -104,7 +104,7 @@ type BookSection struct {
 	UpdatedAt  time.Time
 }
 
-// SectionPhoto represents a photo in a section's prepick pool
+// SectionPhoto represents a photo in a section's prepick pool.
 type SectionPhoto struct {
 	ID          int64
 	SectionID   string
@@ -114,13 +114,13 @@ type SectionPhoto struct {
 	AddedAt     time.Time
 }
 
-// BookPage represents a page with a specific format
+// BookPage represents a page with a specific format.
 type BookPage struct {
 	ID            string
 	BookID        string
-	SectionID     string   // optional, may be empty
+	SectionID     string // optional, may be empty
 	Format        string
-	Style         string   // "modern" or "archival"
+	Style         string // "modern" or "archival"
 	Description   string
 	SplitPosition *float64 // nullable; 0.2-0.8 column ratio; nil = format default
 	SortOrder     int
@@ -150,11 +150,11 @@ func (s PageSlot) IsEmpty() bool {
 	return s.PhotoUID == "" && s.TextContent == ""
 }
 
-// PhotoBookMembership represents a book+section that contains a photo
+// PhotoBookMembership represents a book+section that contains a photo.
 type PhotoBookMembership struct {
-	BookID      string
-	BookTitle   string
-	SectionID   string
+	BookID       string
+	BookTitle    string
+	SectionID    string
 	SectionTitle string
 }
 
@@ -170,7 +170,7 @@ func DefaultSplitPosition(format string) float64 {
 	}
 }
 
-// PageFormatSlotCount returns the number of slots for a given page format
+// PageFormatSlotCount returns the number of slots for a given page format.
 func PageFormatSlotCount(format string) int {
 	switch format {
 	case "4_landscape":

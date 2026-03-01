@@ -6,11 +6,11 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/spf13/cobra"
 	"github.com/kozaktomas/photo-sorter/internal/config"
 	"github.com/kozaktomas/photo-sorter/internal/database"
 	"github.com/kozaktomas/photo-sorter/internal/database/mariadb"
 	"github.com/kozaktomas/photo-sorter/internal/database/postgres"
+	"github.com/spf13/cobra"
 )
 
 var cachePushEmbeddingsCmd = &cobra.Command{
@@ -43,26 +43,29 @@ func init() {
 	cacheCmd.AddCommand(cachePushEmbeddingsCmd)
 
 	cachePushEmbeddingsCmd.Flags().Bool("dry-run", false, "Preview changes without writing to MariaDB")
-	cachePushEmbeddingsCmd.Flags().Bool("recompute-centroids", false, "Recompute face cluster centroids from new embeddings")
+	cachePushEmbeddingsCmd.Flags().Bool("recompute-centroids", false, "Recompute face cluster centroids")
 	cachePushEmbeddingsCmd.Flags().Bool("json", false, "Output as JSON")
 }
 
-// PushEmbeddingsResult represents the result of a push-embeddings operation
+// PushEmbeddingsResult represents the result of a push-embeddings operation.
 type PushEmbeddingsResult struct {
-	Success             bool   `json:"success"`
-	TotalFaces          int    `json:"total_faces"`
-	MarkersUpdated      int    `json:"markers_updated"`
-	MarkerErrors        int    `json:"marker_errors"`
-	ClustersUpdated     int    `json:"clusters_updated"`
-	ClusterErrors       int    `json:"cluster_errors"`
-	DryRun              bool   `json:"dry_run"`
-	DurationMs          int64  `json:"duration_ms"`
-	DurationHuman       string `json:"duration_human,omitempty"`
+	Success         bool   `json:"success"`
+	TotalFaces      int    `json:"total_faces"`
+	MarkersUpdated  int    `json:"markers_updated"`
+	MarkerErrors    int    `json:"marker_errors"`
+	ClustersUpdated int    `json:"clusters_updated"`
+	ClusterErrors   int    `json:"cluster_errors"`
+	DryRun          bool   `json:"dry_run"`
+	DurationMs      int64  `json:"duration_ms"`
+	DurationHuman   string `json:"duration_human,omitempty"`
 }
 
 // pushMarkerEmbeddings pushes face embeddings to MariaDB markers.
 // Returns (markersUpdated, markerErrors).
-func pushMarkerEmbeddings(ctx context.Context, mariaPool *mariadb.Pool, faces []database.StoredFace, dryRun bool, jsonOutput bool) (int, int) {
+func pushMarkerEmbeddings(
+	ctx context.Context, mariaPool *mariadb.Pool, faces []database.StoredFace,
+	dryRun bool, jsonOutput bool,
+) (int, int) {
 	markersUpdated := 0
 	markerErrors := 0
 
@@ -125,7 +128,10 @@ func collectClusterEmbeddings(cluster mariadb.FaceCluster, embeddingByMarker map
 
 // updateClusterCentroid updates or previews a single cluster centroid.
 // Returns (updated bool, error bool).
-func updateClusterCentroid(ctx context.Context, mariaPool *mariadb.Pool, cluster mariadb.FaceCluster, centroid []float32, dryRun bool, jsonOutput bool) (bool, bool) {
+func updateClusterCentroid(
+	ctx context.Context, mariaPool *mariadb.Pool, cluster mariadb.FaceCluster,
+	centroid []float32, dryRun bool, jsonOutput bool,
+) (bool, bool) {
 	if !jsonOutput {
 		fmt.Printf("  Cluster %s: embeddings available", cluster.ID)
 	}
@@ -161,7 +167,10 @@ func buildEmbeddingByMarkerMap(faces []database.StoredFace) map[string][]float32
 
 // recomputeFaceCentroids recomputes face cluster centroids from new embeddings.
 // Returns (clustersUpdated, clusterErrors, error).
-func recomputeFaceCentroids(ctx context.Context, mariaPool *mariadb.Pool, faces []database.StoredFace, dryRun bool, jsonOutput bool) (int, int, error) {
+func recomputeFaceCentroids(
+	ctx context.Context, mariaPool *mariadb.Pool, faces []database.StoredFace,
+	dryRun bool, jsonOutput bool,
+) (int, int, error) {
 	if !jsonOutput {
 		fmt.Printf("\nRecomputing face cluster centroids...\n")
 	}
@@ -179,7 +188,8 @@ func recomputeFaceCentroids(ctx context.Context, mariaPool *mariadb.Pool, faces 
 		clusterEmbeddings := collectClusterEmbeddings(cluster, embeddingByMarker)
 		if len(clusterEmbeddings) == 0 {
 			if !jsonOutput {
-				fmt.Printf("  Cluster %s: no InsightFace embeddings found (%d markers), skipping\n", cluster.ID, len(cluster.MarkerUIDs))
+				fmt.Printf("  Cluster %s: no InsightFace embeddings found (%d markers), skipping\n",
+					cluster.ID, len(cluster.MarkerUIDs))
 			}
 			continue
 		}
@@ -251,7 +261,9 @@ func initPushEmbeddingsDeps(cfg *config.Config, jsonOutput bool) (*pushEmbedding
 }
 
 // outputPushEmbeddingsResult outputs the result as JSON or human-readable.
-func outputPushEmbeddingsResult(result PushEmbeddingsResult, recomputeCentroids bool, dryRun bool, jsonOutput bool) error {
+func outputPushEmbeddingsResult(
+	result PushEmbeddingsResult, recomputeCentroids bool, dryRun bool, jsonOutput bool,
+) error {
 	if jsonOutput {
 		result.DurationHuman = ""
 		return outputJSON(result)

@@ -9,16 +9,18 @@ import (
 // UpdateMarkerEmbedding writes an InsightFace embedding to a PhotoPrism marker's embeddings_json field.
 // The format is [[e1, e2, ..., e512]] (JSON list-of-lists, stored as mediumblob).
 func (p *Pool) UpdateMarkerEmbedding(ctx context.Context, markerUID string, embedding []float32) error {
-	// PhotoPrism stores embeddings as [[float, float, ...]] (list-of-lists)
+	// PhotoPrism stores embeddings as [[float, float, ...]] (list-of-lists).
 	wrapped := [][]float32{embedding}
 	data, err := json.Marshal(wrapped)
 	if err != nil {
 		return fmt.Errorf("marshal embedding: %w", err)
 	}
 
-	// Verify marker exists first (MySQL RowsAffected returns 0 when data is unchanged)
+	// Verify marker exists first (MySQL RowsAffected returns 0 when data is unchanged).
 	var exists bool
-	err = p.db.QueryRowContext(ctx, `SELECT 1 FROM markers WHERE marker_uid = ? AND marker_type = 'face'`, markerUID).Scan(&exists)
+	err = p.db.QueryRowContext(
+		ctx, `SELECT 1 FROM markers WHERE marker_uid = ? AND marker_type = 'face'`, markerUID,
+	).Scan(&exists)
 	if err != nil {
 		return fmt.Errorf("marker %s not found", markerUID)
 	}
@@ -39,7 +41,7 @@ func (p *Pool) UpdateFaceClusterEmbedding(ctx context.Context, faceID string, em
 		return fmt.Errorf("marshal embedding: %w", err)
 	}
 
-	// Verify face cluster exists first (MySQL RowsAffected returns 0 when data is unchanged)
+	// Verify face cluster exists first (MySQL RowsAffected returns 0 when data is unchanged).
 	var exists bool
 	err = p.db.QueryRowContext(ctx, `SELECT 1 FROM faces WHERE id = ?`, faceID).Scan(&exists)
 	if err != nil {
@@ -54,13 +56,13 @@ func (p *Pool) UpdateFaceClusterEmbedding(ctx context.Context, faceID string, em
 	return nil
 }
 
-// FaceCluster represents a PhotoPrism face cluster with its linked markers
+// FaceCluster represents a PhotoPrism face cluster with its linked markers.
 type FaceCluster struct {
 	ID         string
 	MarkerUIDs []string
 }
 
-// GetFaceClusters returns all face clusters and their linked marker UIDs
+// GetFaceClusters returns all face clusters and their linked marker UIDs.
 func (p *Pool) GetFaceClusters(ctx context.Context) ([]FaceCluster, error) {
 	query := `
 		SELECT f.id, m.marker_uid

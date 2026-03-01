@@ -28,6 +28,7 @@ var albumDatePrompt string
 
 const chatModel = openai.ChatModelGPT4_1Mini
 
+// OpenAIProvider implements Provider using the OpenAI API.
 type OpenAIProvider struct {
 	client       *openai.Client
 	usage        Usage
@@ -36,12 +37,13 @@ type OpenAIProvider struct {
 	batchPricing RequestPricing
 }
 
-// RequestPricing holds input/output prices per 1M tokens
+// RequestPricing holds input/output prices per 1M tokens.
 type RequestPricing struct {
 	Input  float64
 	Output float64
 }
 
+// NewOpenAIProvider creates a new OpenAI provider with the given config.
 func NewOpenAIProvider(apiKey string, singlePricing, batchPricing RequestPricing) *OpenAIProvider {
 	client := openai.NewClient(option.WithAPIKey(apiKey))
 	return &OpenAIProvider{
@@ -52,6 +54,7 @@ func NewOpenAIProvider(apiKey string, singlePricing, batchPricing RequestPricing
 	}
 }
 
+// SetBatchMode enables or disables batch API mode for 50% cost savings.
 func (p *OpenAIProvider) SetBatchMode(enabled bool) {
 	if enabled {
 		p.inputPrice = p.batchPricing.Input
@@ -59,10 +62,12 @@ func (p *OpenAIProvider) SetBatchMode(enabled bool) {
 	}
 }
 
+// GetUsage returns the accumulated API token usage.
 func (p *OpenAIProvider) GetUsage() *Usage {
 	return &p.usage
 }
 
+// ResetUsage zeroes out the accumulated token usage counters.
 func (p *OpenAIProvider) ResetUsage() {
 	p.usage = Usage{}
 }
@@ -74,49 +79,27 @@ func (p *OpenAIProvider) trackUsage(inputTokens, outputTokens int64) {
 	p.usage.TotalCost += float64(outputTokens) / 1_000_000 * p.outputPrice
 }
 
+// Name returns the provider name.
 func (p *OpenAIProvider) Name() string {
 	return chatModel
 }
 
-func (p *OpenAIProvider) AnalyzePhoto(ctx context.Context, imageData []byte, metadata *PhotoMetadata, availableLabels []string, estimateDate bool) (*PhotoAnalysis, error) {
+// AnalyzePhoto sends a photo to OpenAI for AI analysis and returns labels and description.
+func (p *OpenAIProvider) AnalyzePhoto(
+	ctx context.Context,
+	imageData []byte,
+	metadata *PhotoMetadata,
+	availableLabels []string,
+	estimateDate bool,
+) (*PhotoAnalysis, error) {
 	const maxRetries = 5
 
-	// Resize image to max 800px to save costs
 	resizedData, err := ResizeImage(imageData, 800)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resize image: %w", err)
 	}
 
-	systemPrompt := buildPhotoAnalysisPrompt(availableLabels, estimateDate)
-	base64Image := base64.StdEncoding.EncodeToString(resizedData)
-	imageURL := "data:image/jpeg;base64," + base64Image
-
-	// Build user message with metadata context
-	userMessage := buildUserMessageWithMetadata(metadata)
-
-	// Build initial messages
-	messages := []openai.ChatCompletionMessageParamUnion{
-		{
-			OfSystem: &openai.ChatCompletionSystemMessageParam{
-				Content: openai.ChatCompletionSystemMessageParamContentUnion{
-					OfString: openai.String(systemPrompt),
-				},
-			},
-		},
-		{
-			OfUser: &openai.ChatCompletionUserMessageParam{
-				Content: openai.ChatCompletionUserMessageParamContentUnion{
-					OfArrayOfContentParts: []openai.ChatCompletionContentPartUnionParam{
-						openai.TextContentPart(userMessage),
-						openai.ImageContentPart(openai.ChatCompletionContentPartImageImageURLParam{
-							URL:    imageURL,
-							Detail: "low",
-						}),
-					},
-				},
-			},
-		},
-	}
+	messages := buildOpenAIPhotoMessages(resizedData, metadata, availableLabels, estimateDate)
 
 	var lastError error
 	var lastResponse string
@@ -138,7 +121,6 @@ func (p *OpenAIProvider) AnalyzePhoto(ctx context.Context, imageData []byte, met
 			return nil, errors.New("no response from OpenAI")
 		}
 
-		// Track usage
 		if resp.Usage.PromptTokens > 0 || resp.Usage.CompletionTokens > 0 {
 			p.trackUsage(resp.Usage.PromptTokens, resp.Usage.CompletionTokens)
 		}
@@ -149,34 +131,87 @@ func (p *OpenAIProvider) AnalyzePhoto(ctx context.Context, imageData []byte, met
 		var analysis PhotoAnalysis
 		if err := json.Unmarshal([]byte(content), &analysis); err != nil {
 			lastError = err
-
-			// Add assistant response and error feedback to messages for retry
-			messages = append(messages,
-				openai.ChatCompletionMessageParamUnion{
-					OfAssistant: &openai.ChatCompletionAssistantMessageParam{
-						Content: openai.ChatCompletionAssistantMessageParamContentUnion{
-							OfString: openai.String(content),
-						},
-					},
-				},
-				openai.ChatCompletionMessageParamUnion{
-					OfUser: &openai.ChatCompletionUserMessageParam{
-						Content: openai.ChatCompletionUserMessageParamContentUnion{
-							OfString: openai.String(fmt.Sprintf("JSON parse error: %v. Please fix the JSON and try again. Remember to escape quotes inside strings with backslash.", err)),
-						},
-					},
-				},
-			)
+			messages = appendOpenAIRetryMessages(messages, content, err)
 			continue
 		}
 
 		return &analysis, nil
 	}
 
-	return nil, fmt.Errorf("failed to parse analysis JSON after %d attempts: %w (last response: %s)", maxRetries, lastError, lastResponse)
+	return nil, fmt.Errorf(
+		"failed to parse analysis JSON after %d attempts: %w (last response: %s)",
+		maxRetries, lastError, lastResponse,
+	)
 }
 
-func (p *OpenAIProvider) EstimateAlbumDate(ctx context.Context, albumTitle string, albumDescription string, photoDescriptions []string) (*AlbumDateEstimate, error) {
+func buildOpenAIPhotoMessages(
+	imageData []byte,
+	metadata *PhotoMetadata,
+	availableLabels []string,
+	estimateDate bool,
+) []openai.ChatCompletionMessageParamUnion {
+	systemPrompt := buildPhotoAnalysisPrompt(availableLabels, estimateDate)
+	base64Image := base64.StdEncoding.EncodeToString(imageData)
+	imageURL := "data:image/jpeg;base64," + base64Image
+	userMessage := buildUserMessageWithMetadata(metadata)
+
+	return []openai.ChatCompletionMessageParamUnion{
+		{
+			OfSystem: &openai.ChatCompletionSystemMessageParam{
+				Content: openai.ChatCompletionSystemMessageParamContentUnion{
+					OfString: openai.String(systemPrompt),
+				},
+			},
+		},
+		{
+			OfUser: &openai.ChatCompletionUserMessageParam{
+				Content: openai.ChatCompletionUserMessageParamContentUnion{
+					OfArrayOfContentParts: []openai.ChatCompletionContentPartUnionParam{
+						openai.TextContentPart(userMessage),
+						openai.ImageContentPart(openai.ChatCompletionContentPartImageImageURLParam{
+							URL:    imageURL,
+							Detail: "low",
+						}),
+					},
+				},
+			},
+		},
+	}
+}
+
+func appendOpenAIRetryMessages(
+	messages []openai.ChatCompletionMessageParamUnion,
+	content string,
+	parseErr error,
+) []openai.ChatCompletionMessageParamUnion {
+	return append(messages,
+		openai.ChatCompletionMessageParamUnion{
+			OfAssistant: &openai.ChatCompletionAssistantMessageParam{
+				Content: openai.ChatCompletionAssistantMessageParamContentUnion{
+					OfString: openai.String(content),
+				},
+			},
+		},
+		openai.ChatCompletionMessageParamUnion{
+			OfUser: &openai.ChatCompletionUserMessageParam{
+				Content: openai.ChatCompletionUserMessageParamContentUnion{
+					OfString: openai.String(fmt.Sprintf(
+						"JSON parse error: %v. Please fix the JSON and try again."+
+							" Remember to escape quotes inside strings with backslash.", parseErr,
+					)),
+				},
+			},
+		},
+	)
+}
+
+// EstimateAlbumDate estimates the date for a set of photos based on their descriptions.
+func (p *OpenAIProvider) EstimateAlbumDate(
+	ctx context.Context,
+	albumTitle string,
+	albumDescription string,
+	photoDescriptions []string,
+) (*AlbumDateEstimate, error) {
 	systemPrompt := buildAlbumDatePrompt()
 	userContent := buildAlbumDateContent(albumTitle, albumDescription, photoDescriptions)
 
@@ -211,7 +246,7 @@ func (p *OpenAIProvider) EstimateAlbumDate(ctx context.Context, albumTitle strin
 		return nil, errors.New("no response from OpenAI")
 	}
 
-	// Track usage
+	// Track usage.
 	if resp.Usage.PromptTokens > 0 || resp.Usage.CompletionTokens > 0 {
 		p.trackUsage(resp.Usage.PromptTokens, resp.Usage.CompletionTokens)
 	}
@@ -288,7 +323,7 @@ func buildUserMessageWithMetadata(metadata *PhotoMetadata) string {
 	return strings.Join(parts, "\n")
 }
 
-// batchRequest represents a single request in the batch JSONL file
+// batchRequest represents a single request in the batch JSONL file.
 type batchRequest struct {
 	CustomID string           `json:"custom_id"`
 	Method   string           `json:"method"`
@@ -297,13 +332,13 @@ type batchRequest struct {
 }
 
 type batchRequestBody struct {
-	Model          string                   `json:"model"`
+	Model          string           `json:"model"`
 	Messages       []map[string]any `json:"messages"`
 	ResponseFormat map[string]any   `json:"response_format"`
-	MaxTokens      int                      `json:"max_tokens"`
+	MaxTokens      int              `json:"max_tokens"`
 }
 
-// batchResponse represents a single response in the batch output JSONL file
+// batchResponse represents a single response in the batch output JSONL file.
 type batchResponse struct {
 	ID       string `json:"id"`
 	CustomID string `json:"custom_id"`
@@ -326,61 +361,19 @@ type batchResponse struct {
 	} `json:"error"`
 }
 
+// CreatePhotoBatch submits a batch of photos for asynchronous processing via the OpenAI batch API.
 func (p *OpenAIProvider) CreatePhotoBatch(ctx context.Context, requests []BatchPhotoRequest) (string, error) {
 	if len(requests) == 0 {
 		return "", errors.New("no requests provided")
 	}
 
-	// Build JSONL content
 	var jsonlBuffer bytes.Buffer
 	for _, req := range requests {
-		// Resize image
-		resizedData, err := ResizeImage(req.ImageData, 800)
-		if err != nil {
-			return "", fmt.Errorf("failed to resize image for %s: %w", req.PhotoUID, err)
+		if err := writeBatchRequestLine(&jsonlBuffer, req); err != nil {
+			return "", err
 		}
-
-		systemPrompt := buildPhotoAnalysisPrompt(req.AvailableLabels, req.EstimateDate)
-		base64Image := base64.StdEncoding.EncodeToString(resizedData)
-		imageURL := "data:image/jpeg;base64," + base64Image
-		userMessage := buildUserMessageWithMetadata(req.Metadata)
-
-		batchReq := batchRequest{
-			CustomID: req.PhotoUID,
-			Method:   "POST",
-			URL:      "/v1/chat/completions",
-			Body: batchRequestBody{
-				Model: chatModel,
-				Messages: []map[string]any{
-					{
-						"role":    "system",
-						"content": systemPrompt,
-					},
-					{
-						"role": "user",
-						"content": []map[string]any{
-							{"type": "text", "text": userMessage},
-							{"type": "image_url", "image_url": map[string]any{
-								"url":    imageURL,
-								"detail": "low",
-							}},
-						},
-					},
-				},
-				ResponseFormat: map[string]any{"type": "json_object"},
-				MaxTokens:      500,
-			},
-		}
-
-		reqJSON, err := json.Marshal(batchReq)
-		if err != nil {
-			return "", fmt.Errorf("failed to marshal batch request: %w", err)
-		}
-		jsonlBuffer.Write(reqJSON)
-		jsonlBuffer.WriteByte('\n')
 	}
 
-	// Upload the JSONL file
 	uploadResp, err := p.client.Files.New(ctx, openai.FileNewParams{
 		File:    strings.NewReader(jsonlBuffer.String()),
 		Purpose: openai.FilePurposeBatch,
@@ -389,7 +382,6 @@ func (p *OpenAIProvider) CreatePhotoBatch(ctx context.Context, requests []BatchP
 		return "", fmt.Errorf("failed to upload batch file: %w", err)
 	}
 
-	// Create the batch
 	batchResp, err := p.client.Batches.New(ctx, openai.BatchNewParams{
 		InputFileID:      uploadResp.ID,
 		Endpoint:         "/v1/chat/completions",
@@ -402,6 +394,48 @@ func (p *OpenAIProvider) CreatePhotoBatch(ctx context.Context, requests []BatchP
 	return batchResp.ID, nil
 }
 
+func writeBatchRequestLine(buf *bytes.Buffer, req BatchPhotoRequest) error {
+	resizedData, err := ResizeImage(req.ImageData, 800)
+	if err != nil {
+		return fmt.Errorf("failed to resize image for %s: %w", req.PhotoUID, err)
+	}
+
+	systemPrompt := buildPhotoAnalysisPrompt(req.AvailableLabels, req.EstimateDate)
+	base64Image := base64.StdEncoding.EncodeToString(resizedData)
+	imageURL := "data:image/jpeg;base64," + base64Image
+	userMessage := buildUserMessageWithMetadata(req.Metadata)
+
+	batchReq := batchRequest{
+		CustomID: req.PhotoUID,
+		Method:   "POST",
+		URL:      "/v1/chat/completions",
+		Body: batchRequestBody{
+			Model: chatModel,
+			Messages: []map[string]any{
+				{"role": "system", "content": systemPrompt},
+				{
+					"role": "user",
+					"content": []map[string]any{
+						{"type": "text", "text": userMessage},
+						{"type": "image_url", "image_url": map[string]any{"url": imageURL, "detail": "low"}},
+					},
+				},
+			},
+			ResponseFormat: map[string]any{"type": "json_object"},
+			MaxTokens:      500,
+		},
+	}
+
+	reqJSON, err := json.Marshal(batchReq)
+	if err != nil {
+		return fmt.Errorf("failed to marshal batch request: %w", err)
+	}
+	buf.Write(reqJSON)
+	buf.WriteByte('\n')
+	return nil
+}
+
+// GetBatchStatus checks the status of an async batch job.
 func (p *OpenAIProvider) GetBatchStatus(ctx context.Context, batchID string) (*BatchStatus, error) {
 	batch, err := p.client.Batches.Get(ctx, batchID)
 	if err != nil {
@@ -417,8 +451,9 @@ func (p *OpenAIProvider) GetBatchStatus(ctx context.Context, batchID string) (*B
 	}, nil
 }
 
+// GetBatchResults downloads and parses the results of a completed batch job.
 func (p *OpenAIProvider) GetBatchResults(ctx context.Context, batchID string) ([]BatchPhotoResult, error) {
-	// Get batch to find output file ID
+	// Get batch to find output file ID.
 	batch, err := p.client.Batches.Get(ctx, batchID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get batch: %w", err)
@@ -432,14 +467,14 @@ func (p *OpenAIProvider) GetBatchResults(ctx context.Context, batchID string) ([
 		return nil, errors.New("no output file available")
 	}
 
-	// Download output file content
+	// Download output file content.
 	fileContent, err := p.client.Files.Content(ctx, batch.OutputFileID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to download batch results: %w", err)
 	}
 	defer fileContent.Body.Close()
 
-	// Read and parse JSONL results
+	// Read and parse JSONL results.
 	content, err := io.ReadAll(fileContent.Body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to read batch results: %w", err)
@@ -487,6 +522,7 @@ func parseBatchResultLine(line []byte) BatchPhotoResult {
 	return result
 }
 
+// CancelBatch cancels a running batch job.
 func (p *OpenAIProvider) CancelBatch(ctx context.Context, batchID string) error {
 	_, err := p.client.Batches.Cancel(ctx, batchID)
 	if err != nil {

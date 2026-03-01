@@ -12,11 +12,11 @@ import (
 )
 
 func TestFacesHandler_GetPhotoFaces_Success(t *testing.T) {
-	// Setup mock PhotoPrism server
+	// Setup mock PhotoPrism server.
 	server := setupMockPhotoPrismServer(t, map[string]http.HandlerFunc{
 		"/api/v1/photos/photo123": func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
-			// Include markers in Files - GetPhotoMarkers extracts from Files[].Markers
+			// Include markers in Files - GetPhotoMarkers extracts from Files[].Markers.
 			json.NewEncoder(w).Encode(map[string]any{
 				"UID":   "photo123",
 				"Title": "Test Photo",
@@ -58,7 +58,7 @@ func TestFacesHandler_GetPhotoFaces_Success(t *testing.T) {
 
 	pp := createPhotoPrismClient(t, server)
 
-	// Setup mock face reader
+	// Setup mock face reader.
 	mockReader := mock.NewMockFaceReader()
 	mockReader.AddFaces("photo123", []database.StoredFace{
 		{
@@ -160,7 +160,7 @@ func TestFacesHandler_GetPhotoFaces_NoPhotoPrismClient(t *testing.T) {
 		faceReader:     mockReader,
 	}
 
-	// Request without PhotoPrism client in context
+	// Request without PhotoPrism client in context.
 	req := httptest.NewRequest("GET", "/api/v1/photos/photo123/faces", nil)
 	req = requestWithChiParams(req, map[string]string{"uid": "photo123"})
 	recorder := httptest.NewRecorder()
@@ -269,7 +269,7 @@ func TestFacesHandler_GetPhotoFaces_NoFacesInPhoto(t *testing.T) {
 	pp := createPhotoPrismClient(t, server)
 
 	mockReader := mock.NewMockFaceReader()
-	// No faces added
+	// No faces added.
 
 	cfg := testConfig()
 	sm := middleware.NewSessionManager("test-secret", nil)
@@ -353,7 +353,7 @@ func TestFacesHandler_GetPhotoFaces_WithThresholdAndLimit(t *testing.T) {
 		faceReader:     mockReader,
 	}
 
-	// Test with custom threshold and limit parameters
+	// Test with custom threshold and limit parameters.
 	req := requestWithPhotoPrism(t, "GET", "/api/v1/photos/photo123/faces?threshold=0.3&limit=5", pp)
 	req = requestWithChiParams(req, map[string]string{"uid": "photo123"})
 	recorder := httptest.NewRecorder()
@@ -367,7 +367,7 @@ func TestFacesHandler_GetPhotoFaces_UnmatchedMarkers(t *testing.T) {
 	server := setupMockPhotoPrismServer(t, map[string]http.HandlerFunc{
 		"/api/v1/photos/photo123": func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
-			// Include markers in Files - GetPhotoMarkers extracts from Files[].Markers
+			// Include markers in Files - GetPhotoMarkers extracts from Files[].Markers.
 			json.NewEncoder(w).Encode(map[string]any{
 				"UID":   "photo123",
 				"Title": "Test Photo",
@@ -404,7 +404,7 @@ func TestFacesHandler_GetPhotoFaces_UnmatchedMarkers(t *testing.T) {
 	pp := createPhotoPrismClient(t, server)
 
 	mockReader := mock.NewMockFaceReader()
-	// No database faces, so marker should appear as unmatched
+	// No database faces, so marker should appear as unmatched.
 
 	cfg := testConfig()
 	sm := middleware.NewSessionManager("test-secret", nil)
@@ -425,12 +425,12 @@ func TestFacesHandler_GetPhotoFaces_UnmatchedMarkers(t *testing.T) {
 	var response PhotoFacesResponse
 	parseJSONResponse(t, recorder, &response)
 
-	// The markers count should show the PhotoPrism marker
+	// The markers count should show the PhotoPrism marker.
 	if response.MarkersCount != 1 {
 		t.Errorf("expected markers_count 1, got %d", response.MarkersCount)
 	}
 
-	// Should have the unmatched marker with negative face_index
+	// Should have the unmatched marker with negative face_index.
 	if len(response.Faces) != 1 {
 		t.Logf("Response: %+v", response)
 		t.Errorf("expected 1 face (unmatched marker), got %d", len(response.Faces))

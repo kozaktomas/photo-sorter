@@ -4,7 +4,7 @@ import "testing"
 
 func TestValidatePages_SlotsWithinBounds(t *testing.T) {
 	config := DefaultLayoutConfig()
-	// Create a page with a slot that extends beyond canvas right edge
+	// Create a page with a slot that extends beyond canvas right edge.
 	page := TemplatePage{
 		PageNumber:    1,
 		IsRecto:       true,
@@ -39,7 +39,7 @@ func TestValidatePages_SlotsWithinBounds(t *testing.T) {
 
 func TestValidatePages_NoOverlaps(t *testing.T) {
 	config := DefaultLayoutConfig()
-	// Two slots that overlap
+	// Two slots that overlap.
 	page := TemplatePage{
 		PageNumber:    1,
 		IsRecto:       true,
@@ -81,7 +81,7 @@ func TestValidatePages_NoOverlaps(t *testing.T) {
 
 func TestValidatePages_ValidPage(t *testing.T) {
 	config := DefaultLayoutConfig()
-	// Correctly placed non-overlapping slots within canvas
+	// Correctly placed non-overlapping slots within canvas.
 	page := TemplatePage{
 		PageNumber:    1,
 		IsRecto:       true,
@@ -181,7 +181,7 @@ func TestValidatePages_GridAlignment(t *testing.T) {
 
 		for _, w := range warnings {
 			if w.Message != "" && w.Severity == "warning" {
-				// Allow gutter-safe warnings but not grid alignment warnings
+				// Allow gutter-safe warnings but not grid alignment warnings.
 				if w.Message[:5] == "slot " {
 					t.Errorf("unexpected grid alignment warning: %s", w.Message)
 				}
@@ -192,7 +192,7 @@ func TestValidatePages_GridAlignment(t *testing.T) {
 
 func TestValidatePages_GutterSafeMarker(t *testing.T) {
 	config := DefaultLayoutConfig()
-	// Recto page with marker placed near the binding (left) edge — should warn
+	// Recto page with marker placed near the binding (left) edge — should warn.
 	page := TemplatePage{
 		PageNumber:    1,
 		IsRecto:       true,

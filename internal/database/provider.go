@@ -5,15 +5,15 @@ import (
 	"errors"
 )
 
-// HNSWRebuilder is an interface for repositories that support HNSW index rebuilding
+// HNSWRebuilder is an interface for repositories that support HNSW index rebuilding.
 type HNSWRebuilder interface {
-	// RebuildHNSW rebuilds the in-memory HNSW index
+	// RebuildHNSW rebuilds the in-memory HNSW index.
 	RebuildHNSW(ctx context.Context) error
-	// HNSWCount returns the number of items in the HNSW index
+	// HNSWCount returns the number of items in the HNSW index.
 	HNSWCount() int
-	// IsHNSWEnabled returns whether HNSW is enabled
+	// IsHNSWEnabled returns whether HNSW is enabled.
 	IsHNSWEnabled() bool
-	// SaveHNSWIndex saves the current index to disk (if path configured)
+	// SaveHNSWIndex saves the current index to disk (if path configured).
 	SaveHNSWIndex() error
 }
 
@@ -82,7 +82,7 @@ func IsInitialized() bool {
 	return postgresInitialized
 }
 
-// GetEmbeddingReader returns an EmbeddingReader from the PostgreSQL backend
+// GetEmbeddingReader returns an EmbeddingReader from the PostgreSQL backend.
 func GetEmbeddingReader(ctx context.Context) (EmbeddingReader, error) {
 	if !postgresInitialized {
 		return nil, errors.New("PostgreSQL backend not initialized: DATABASE_URL is required")
@@ -93,7 +93,7 @@ func GetEmbeddingReader(ctx context.Context) (EmbeddingReader, error) {
 	return postgresEmbeddingReader(), nil
 }
 
-// GetFaceReader returns a FaceReader from the PostgreSQL backend
+// GetFaceReader returns a FaceReader from the PostgreSQL backend.
 func GetFaceReader(ctx context.Context) (FaceReader, error) {
 	if !postgresInitialized {
 		return nil, errors.New("PostgreSQL backend not initialized: DATABASE_URL is required")
@@ -104,7 +104,7 @@ func GetFaceReader(ctx context.Context) (FaceReader, error) {
 	return postgresFaceReader(), nil
 }
 
-// GetFaceWriter returns a FaceWriter from the PostgreSQL backend
+// GetFaceWriter returns a FaceWriter from the PostgreSQL backend.
 func GetFaceWriter(ctx context.Context) (FaceWriter, error) {
 	if !postgresInitialized {
 		return nil, errors.New("PostgreSQL backend not initialized: DATABASE_URL is required")
@@ -121,7 +121,7 @@ func RegisterEmbeddingWriter(writer func() EmbeddingWriter) {
 	postgresEmbeddingWriter = writer
 }
 
-// GetEmbeddingWriter returns an EmbeddingWriter from the PostgreSQL backend
+// GetEmbeddingWriter returns an EmbeddingWriter from the PostgreSQL backend.
 func GetEmbeddingWriter(ctx context.Context) (EmbeddingWriter, error) {
 	if !postgresInitialized {
 		return nil, errors.New("PostgreSQL backend not initialized: DATABASE_URL is required")
@@ -137,7 +137,7 @@ func RegisterEraEmbeddingWriter(writer func() EraEmbeddingWriter) {
 	postgresEraEmbeddingWriter = writer
 }
 
-// GetEraEmbeddingWriter returns an EraEmbeddingWriter from the PostgreSQL backend
+// GetEraEmbeddingWriter returns an EraEmbeddingWriter from the PostgreSQL backend.
 func GetEraEmbeddingWriter(ctx context.Context) (EraEmbeddingWriter, error) {
 	if !postgresInitialized {
 		return nil, errors.New("PostgreSQL backend not initialized: DATABASE_URL is required")
@@ -148,7 +148,7 @@ func GetEraEmbeddingWriter(ctx context.Context) (EraEmbeddingWriter, error) {
 	return postgresEraEmbeddingWriter(), nil
 }
 
-// GetEraEmbeddingReader returns an EraEmbeddingReader from the PostgreSQL backend
+// GetEraEmbeddingReader returns an EraEmbeddingReader from the PostgreSQL backend.
 func GetEraEmbeddingReader(ctx context.Context) (EraEmbeddingReader, error) {
 	if !postgresInitialized {
 		return nil, errors.New("PostgreSQL backend not initialized: DATABASE_URL is required")
@@ -164,7 +164,7 @@ func RegisterBookWriter(writer func() BookWriter) {
 	postgresBookWriter = writer
 }
 
-// GetBookWriter returns a BookWriter from the PostgreSQL backend
+// GetBookWriter returns a BookWriter from the PostgreSQL backend.
 func GetBookWriter(ctx context.Context) (BookWriter, error) {
 	if !postgresInitialized {
 		return nil, errors.New("PostgreSQL backend not initialized: DATABASE_URL is required")
@@ -175,7 +175,7 @@ func GetBookWriter(ctx context.Context) (BookWriter, error) {
 	return postgresBookWriter(), nil
 }
 
-// GetBookReader returns a BookReader from the PostgreSQL backend
+// GetBookReader returns a BookReader from the PostgreSQL backend.
 func GetBookReader(ctx context.Context) (BookReader, error) {
 	if !postgresInitialized {
 		return nil, errors.New("PostgreSQL backend not initialized: DATABASE_URL is required")

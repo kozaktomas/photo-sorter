@@ -14,13 +14,13 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
 
-// UploadHandler handles file upload endpoints
+// UploadHandler handles file upload endpoints.
 type UploadHandler struct {
 	config         *config.Config
 	sessionManager *middleware.SessionManager
 }
 
-// NewUploadHandler creates a new upload handler
+// NewUploadHandler creates a new upload handler.
 func NewUploadHandler(cfg *config.Config, sm *middleware.SessionManager) *UploadHandler {
 	return &UploadHandler{
 		config:         cfg,
@@ -28,7 +28,7 @@ func NewUploadHandler(cfg *config.Config, sm *middleware.SessionManager) *Upload
 	}
 }
 
-// saveUploadedFiles saves multipart files to a temporary directory and returns their paths
+// saveUploadedFiles saves multipart files to a temporary directory and returns their paths.
 func saveUploadedFiles(files []*multipart.FileHeader, tempDir string) ([]string, error) {
 	var filePaths []string
 	for _, fileHeader := range files {
@@ -61,7 +61,7 @@ func saveUploadedFiles(files []*multipart.FileHeader, tempDir string) ([]string,
 	return filePaths, nil
 }
 
-// Upload handles multipart file uploads
+// Upload handles multipart file uploads.
 func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseMultipartForm(constants.MaxUploadSize); err != nil {
 		respondError(w, http.StatusBadRequest, "failed to parse multipart form")

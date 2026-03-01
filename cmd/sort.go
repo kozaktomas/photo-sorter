@@ -9,11 +9,11 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/spf13/cobra"
 	"github.com/kozaktomas/photo-sorter/internal/ai"
 	"github.com/kozaktomas/photo-sorter/internal/config"
 	"github.com/kozaktomas/photo-sorter/internal/photoprism"
 	"github.com/kozaktomas/photo-sorter/internal/sorter"
+	"github.com/spf13/cobra"
 )
 
 var sortCmd = &cobra.Command{
@@ -145,29 +145,8 @@ func printSortSuggestions(suggestions []ai.SortSuggestion, cfg *config.Config, i
 	}
 }
 
-func runSort(cmd *cobra.Command, args []string) error {
-	albumUID := args[0]
-	cfg := config.Load()
-
-	dryRun := mustGetBool(cmd, "dry-run")
-	limit := mustGetInt(cmd, "limit")
-	individualDates := mustGetBool(cmd, "individual-dates")
-	batchMode := mustGetBool(cmd, "batch")
-	providerName := mustGetString(cmd, "provider")
-	forceDate := mustGetBool(cmd, "force-date")
-	concurrency := mustGetInt(cmd, "concurrency")
-
-	aiProvider, err := createAIProvider(providerName, cfg)
-	if err != nil {
-		return err
-	}
-	if batchMode {
-		aiProvider.SetBatchMode(true)
-	}
-
+func setupCancellableContext() (context.Context, context.CancelFunc) {
 	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	go func() {
@@ -175,8 +154,51 @@ func runSort(cmd *cobra.Command, args []string) error {
 		fmt.Println("\nReceived interrupt signal...")
 		cancel()
 	}()
+	return ctx, cancel
+}
 
-	pp, err := photoprism.NewPhotoPrismWithCapture(cfg.PhotoPrism.URL, cfg.PhotoPrism.Username, cfg.PhotoPrism.GetPassword(), captureDir)
+type sortFlags struct {
+	dryRun          bool
+	limit           int
+	individualDates bool
+	batchMode       bool
+	providerName    string
+	forceDate       bool
+	concurrency     int
+}
+
+func parseSortFlags(cmd *cobra.Command) sortFlags {
+	return sortFlags{
+		dryRun:          mustGetBool(cmd, "dry-run"),
+		limit:           mustGetInt(cmd, "limit"),
+		individualDates: mustGetBool(cmd, "individual-dates"),
+		batchMode:       mustGetBool(cmd, "batch"),
+		providerName:    mustGetString(cmd, "provider"),
+		forceDate:       mustGetBool(cmd, "force-date"),
+		concurrency:     mustGetInt(cmd, "concurrency"),
+	}
+}
+
+func runSort(cmd *cobra.Command, args []string) error {
+	albumUID := args[0]
+	cfg := config.Load()
+	flags := parseSortFlags(cmd)
+
+	aiProvider, err := createAIProvider(flags.providerName, cfg)
+	if err != nil {
+		return err
+	}
+	if flags.batchMode {
+		aiProvider.SetBatchMode(true)
+	}
+
+	ctx, cancel := setupCancellableContext()
+	defer cancel()
+
+	pp, err := photoprism.NewPhotoPrismWithCapture(
+		cfg.PhotoPrism.URL, cfg.PhotoPrism.Username,
+		cfg.PhotoPrism.GetPassword(), captureDir,
+	)
 	if err != nil {
 		return fmt.Errorf("failed to connect to PhotoPrism: %w", err)
 	}
@@ -187,32 +209,36 @@ func runSort(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get album: %w", err)
 	}
 
-	fmt.Printf("Sorting album: %s\n", album.Title)
-	if album.Description != "" {
-		fmt.Printf("Description: %s\n", album.Description)
-	}
-	fmt.Printf("Provider: %s\n", aiProvider.Name())
-	if dryRun {
-		fmt.Println("Mode: DRY RUN (no changes will be applied)")
-	}
-	if batchMode {
-		fmt.Println("Mode: BATCH (50% cost savings, may take minutes)")
-	}
-	fmt.Println()
+	printSortHeader(album, aiProvider, flags)
 
 	s := sorter.New(pp, aiProvider)
 	result, err := s.Sort(ctx, albumUID, album.Title, album.Description, sorter.SortOptions{
-		DryRun:          dryRun,
-		Limit:           limit,
-		IndividualDates: individualDates,
-		BatchMode:       batchMode,
-		ForceDate:       forceDate,
-		Concurrency:     concurrency,
+		DryRun:          flags.dryRun,
+		Limit:           flags.limit,
+		IndividualDates: flags.individualDates,
+		BatchMode:       flags.batchMode,
+		ForceDate:       flags.forceDate,
+		Concurrency:     flags.concurrency,
 	})
 	if err != nil {
 		return fmt.Errorf("sorting failed: %w", err)
 	}
 
-	printSortResults(result, aiProvider, cfg, individualDates)
+	printSortResults(result, aiProvider, cfg, flags.individualDates)
 	return nil
+}
+
+func printSortHeader(album *photoprism.Album, provider ai.Provider, flags sortFlags) {
+	fmt.Printf("Sorting album: %s\n", album.Title)
+	if album.Description != "" {
+		fmt.Printf("Description: %s\n", album.Description)
+	}
+	fmt.Printf("Provider: %s\n", provider.Name())
+	if flags.dryRun {
+		fmt.Println("Mode: DRY RUN (no changes will be applied)")
+	}
+	if flags.batchMode {
+		fmt.Println("Mode: BATCH (50% cost savings, may take minutes)")
+	}
+	fmt.Println()
 }

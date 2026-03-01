@@ -285,9 +285,11 @@ photo-sorter/
 
 ## Documentation
 
+- [Architecture](docs/architecture.md) - System design, package structure, and data flow
 - [CLI Reference](docs/cli-reference.md) - Complete reference for all CLI commands
 - [Web UI Guide](docs/web-ui.md) - Guide to the web interface features
 - [API Reference](docs/API.md) - REST API documentation
+- [HNSW Architecture](docs/hnsw-architecture.md) - In-memory HNSW vs pgvector design rationale
 - [Face Markers](docs/markers.md) - Face matching and marker coordinate handling
 - [Era Estimation](docs/era-estimation.md) - Era estimation using CLIP embeddings
 - [Photo Books](docs/photo-book.md) - Photo book planning tool
@@ -296,11 +298,23 @@ photo-sorter/
 ## Development
 
 ```bash
-# Run tests
+# Run full quality gate (fmt + vet + lint + test)
+make check
+
+# Format Go code
+make fmt
+
+# Run go vet
+make vet
+
+# Run tests (with race detector)
 make test
 
 # Run tests with verbose output
 make test-v
+
+# Lint Go code
+make lint
 
 # Build frontend only
 make build-web

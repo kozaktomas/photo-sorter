@@ -63,7 +63,7 @@ func TestSimilar(t *testing.T) {
 }
 
 func TestComputeHashes(t *testing.T) {
-	// Create a simple test image
+	// Create a simple test image.
 	img := createTestImage(100, 100, color.White)
 	imgData := encodeJPEG(img)
 
@@ -72,7 +72,7 @@ func TestComputeHashes(t *testing.T) {
 		t.Fatalf("ComputeHashes failed: %v", err)
 	}
 
-	// Check that hashes are not empty
+	// Check that hashes are not empty.
 	if result.PHash == "" {
 		t.Error("PHash should not be empty")
 	}
@@ -80,7 +80,7 @@ func TestComputeHashes(t *testing.T) {
 		t.Error("DHash should not be empty")
 	}
 
-	// Check hex format (16 characters for 64-bit hash)
+	// Check hex format (16 characters for 64-bit hash).
 	if len(result.PHash) != 16 {
 		t.Errorf("PHash should be 16 hex characters, got %d: %s", len(result.PHash), result.PHash)
 	}
@@ -90,7 +90,7 @@ func TestComputeHashes(t *testing.T) {
 }
 
 func TestComputeHashesConsistency(t *testing.T) {
-	// Same image should produce same hashes
+	// Same image should produce same hashes.
 	img := createTestImage(100, 100, color.RGBA{128, 128, 128, 255})
 	imgData := encodeJPEG(img)
 
@@ -113,7 +113,7 @@ func TestComputeHashesConsistency(t *testing.T) {
 }
 
 func TestComputeHashesDifferentImages(t *testing.T) {
-	// Very different images should have different hashes
+	// Very different images should have different hashes.
 	whiteImg := createTestImage(100, 100, color.White)
 	blackImg := createTestImage(100, 100, color.Black)
 
@@ -130,14 +130,14 @@ func TestComputeHashesDifferentImages(t *testing.T) {
 		t.Fatalf("ComputeHashes for black image failed: %v", err)
 	}
 
-	// Solid color images may have similar hashes due to lack of features
-	// but they should still be computed without error
+	// Solid color images may have similar hashes due to lack of features.
+	// but they should still be computed without error.
 	t.Logf("White pHash: %s, Black pHash: %s", whiteResult.PHash, blackResult.PHash)
 	t.Logf("White dHash: %s, Black dHash: %s", whiteResult.DHash, blackResult.DHash)
 }
 
 func TestComputeHashesGradient(t *testing.T) {
-	// Create gradient image
+	// Create gradient image.
 	img := createGradientImage(100, 100)
 	imgData := encodeJPEG(img)
 
@@ -146,7 +146,7 @@ func TestComputeHashesGradient(t *testing.T) {
 		t.Fatalf("ComputeHashes failed: %v", err)
 	}
 
-	// Gradient should produce non-trivial hashes
+	// Gradient should produce non-trivial hashes.
 	if result.PHashBits == 0 && result.DHashBits == 0 {
 		t.Error("Gradient image should produce non-zero hashes")
 	}
@@ -165,10 +165,10 @@ func TestComputeHashesInvalidImage(t *testing.T) {
 }
 
 func TestResizeImage(t *testing.T) {
-	// Create a 100x100 image
+	// Create a 100x100 image.
 	img := createTestImage(100, 100, color.White)
 
-	// Resize to 32x32
+	// Resize to 32x32.
 	resized := resizeImage(img, 32, 32)
 
 	bounds := resized.Bounds()
@@ -178,7 +178,7 @@ func TestResizeImage(t *testing.T) {
 }
 
 func TestToGrayscale(t *testing.T) {
-	// Create a simple colored image
+	// Create a simple colored image.
 	img := image.NewRGBA(image.Rect(0, 0, 10, 10))
 	for x := range 10 {
 		for y := range 10 {
@@ -188,7 +188,7 @@ func TestToGrayscale(t *testing.T) {
 
 	gray := toGrayscale(img)
 
-	// Check dimensions
+	// Check dimensions.
 	if len(gray) != 10 {
 		t.Errorf("Grayscale width should be 10, got %d", len(gray))
 	}
@@ -196,7 +196,7 @@ func TestToGrayscale(t *testing.T) {
 		t.Errorf("Grayscale height should be 10, got %d", len(gray[0]))
 	}
 
-	// Red should convert to approximately 0.299 * 255 = 76.245
+	// Red should convert to approximately 0.299 * 255 = 76.245.
 	expectedLuma := 0.299 * 255
 	tolerance := 1.0
 	if gray[0][0] < expectedLuma-tolerance || gray[0][0] > expectedLuma+tolerance {
@@ -279,7 +279,7 @@ func TestEmbeddingSimilar(t *testing.T) {
 	}
 }
 
-// Helper functions
+// Helper functions.
 
 func createTestImage(width, height int, c color.Color) *image.RGBA {
 	img := image.NewRGBA(image.Rect(0, 0, width, height))
@@ -323,7 +323,7 @@ func TestHammingDistance_Symmetry(t *testing.T) {
 }
 
 func TestHammingDistance_MaxValue(t *testing.T) {
-	// Test with max uint64 value
+	// Test with max uint64 value.
 	hash1 := uint64(0xFFFFFFFFFFFFFFFF)
 	hash2 := uint64(0x0)
 
@@ -335,7 +335,7 @@ func TestHammingDistance_MaxValue(t *testing.T) {
 }
 
 func TestHammingDistance_SingleBitPositions(t *testing.T) {
-	// Test single bit at each position
+	// Test single bit at each position.
 	for i := range 64 {
 		hash := uint64(1) << i
 		distance := HammingDistance(hash, 0)
@@ -376,7 +376,7 @@ func TestComputeHashes_DifferentSizes(t *testing.T) {
 }
 
 func TestComputeHashes_SimilarImagesHaveSimilarHashes(t *testing.T) {
-	// Create two very similar images (slight brightness difference)
+	// Create two very similar images (slight brightness difference).
 	img1 := createTestImage(100, 100, color.Gray{128})
 	img2 := createTestImage(100, 100, color.Gray{130}) // Slightly brighter
 
@@ -393,11 +393,11 @@ func TestComputeHashes_SimilarImagesHaveSimilarHashes(t *testing.T) {
 		t.Fatalf("ComputeHashes failed for img2: %v", err)
 	}
 
-	// Similar images should have small Hamming distance
+	// Similar images should have small Hamming distance.
 	pHashDist := HammingDistance(result1.PHashBits, result2.PHashBits)
 	dHashDist := HammingDistance(result1.DHashBits, result2.DHashBits)
 
-	// For very similar solid color images, distance should be small
+	// For very similar solid color images, distance should be small.
 	if pHashDist > 20 {
 		t.Logf("pHash distance %d may be higher than expected for similar images", pHashDist)
 	}
@@ -408,7 +408,7 @@ func TestComputeHashes_SimilarImagesHaveSimilarHashes(t *testing.T) {
 }
 
 func TestResizeImage_NoResizeNeeded(t *testing.T) {
-	// Create a small image that doesn't need resizing
+	// Create a small image that doesn't need resizing.
 	img := createTestImage(100, 100, color.White)
 	data := encodeJPEG(img)
 
@@ -417,14 +417,14 @@ func TestResizeImage_NoResizeNeeded(t *testing.T) {
 		t.Fatalf("ResizeImage failed: %v", err)
 	}
 
-	// Should return original data (or re-encoded at same size)
+	// Should return original data (or re-encoded at same size).
 	if len(resized) == 0 {
 		t.Error("expected non-empty result")
 	}
 }
 
 func TestResizeImage_NeedsResize(t *testing.T) {
-	// Create a large image that needs resizing
+	// Create a large image that needs resizing.
 	img := createTestImage(2000, 1500, color.White)
 	data := encodeJPEG(img)
 
@@ -433,7 +433,7 @@ func TestResizeImage_NeedsResize(t *testing.T) {
 		t.Fatalf("ResizeImage failed: %v", err)
 	}
 
-	// Decode resized image to verify dimensions
+	// Decode resized image to verify dimensions.
 	decodedImg, _, err := image.Decode(bytes.NewReader(resized))
 	if err != nil {
 		t.Fatalf("failed to decode resized image: %v", err)
@@ -448,7 +448,7 @@ func TestResizeImage_NeedsResize(t *testing.T) {
 }
 
 func TestResizeImage_PreservesAspectRatio(t *testing.T) {
-	// Create a landscape image (2:1 ratio)
+	// Create a landscape image (2:1 ratio).
 	img := createTestImage(1000, 500, color.White)
 	data := encodeJPEG(img)
 
@@ -465,14 +465,14 @@ func TestResizeImage_PreservesAspectRatio(t *testing.T) {
 	bounds := decodedImg.Bounds()
 	ratio := float64(bounds.Dx()) / float64(bounds.Dy())
 
-	// Should maintain approximately 2:1 ratio
+	// Should maintain approximately 2:1 ratio.
 	if ratio < 1.9 || ratio > 2.1 {
 		t.Errorf("expected aspect ratio ~2.0, got %f (%dx%d)", ratio, bounds.Dx(), bounds.Dy())
 	}
 }
 
 func TestResizeImage_Portrait(t *testing.T) {
-	// Create a portrait image (1:2 ratio)
+	// Create a portrait image (1:2 ratio).
 	img := createTestImage(500, 1000, color.White)
 	data := encodeJPEG(img)
 
@@ -488,12 +488,12 @@ func TestResizeImage_Portrait(t *testing.T) {
 
 	bounds := decodedImg.Bounds()
 
-	// Height should be maxSize (200)
+	// Height should be maxSize (200).
 	if bounds.Dy() != 200 {
 		t.Errorf("expected height 200, got %d", bounds.Dy())
 	}
 
-	// Width should be proportionally smaller
+	// Width should be proportionally smaller.
 	if bounds.Dx() >= bounds.Dy() {
 		t.Errorf("expected width < height for portrait, got %dx%d", bounds.Dx(), bounds.Dy())
 	}
@@ -524,7 +524,7 @@ func TestResizeImage_Square(t *testing.T) {
 
 	bounds := decodedImg.Bounds()
 
-	// Should be exactly 200x200 for square image
+	// Should be exactly 200x200 for square image.
 	if bounds.Dx() != 200 || bounds.Dy() != 200 {
 		t.Errorf("expected 200x200, got %dx%d", bounds.Dx(), bounds.Dy())
 	}
@@ -569,7 +569,7 @@ func TestToGrayscale_WhitePixel(t *testing.T) {
 
 	gray := toGrayscale(img)
 
-	// White should convert to 255
+	// White should convert to 255.
 	if gray[0][0] < 254 || gray[0][0] > 256 {
 		t.Errorf("expected white pixel luma ~255, got %f", gray[0][0])
 	}
@@ -581,7 +581,7 @@ func TestToGrayscale_BlackPixel(t *testing.T) {
 
 	gray := toGrayscale(img)
 
-	// Black should convert to 0
+	// Black should convert to 0.
 	if gray[0][0] != 0 {
 		t.Errorf("expected black pixel luma 0, got %f", gray[0][0])
 	}
@@ -593,7 +593,7 @@ func TestToGrayscale_GreenChannel(t *testing.T) {
 
 	gray := toGrayscale(img)
 
-	// Green should convert to 0.587 * 255 ≈ 149.7
+	// Green should convert to 0.587 * 255 ≈ 149.7.
 	expectedLuma := 0.587 * 255
 	tolerance := 1.0
 	if gray[0][0] < expectedLuma-tolerance || gray[0][0] > expectedLuma+tolerance {
@@ -607,7 +607,7 @@ func TestToGrayscale_BlueChannel(t *testing.T) {
 
 	gray := toGrayscale(img)
 
-	// Blue should convert to 0.114 * 255 ≈ 29.07
+	// Blue should convert to 0.114 * 255 ≈ 29.07.
 	expectedLuma := 0.114 * 255
 	tolerance := 1.0
 	if gray[0][0] < expectedLuma-tolerance || gray[0][0] > expectedLuma+tolerance {
@@ -616,7 +616,7 @@ func TestToGrayscale_BlueChannel(t *testing.T) {
 }
 
 func TestComputeHashes_HashStability(t *testing.T) {
-	// Verify that hashing the same image multiple times produces same result
+	// Verify that hashing the same image multiple times produces same result.
 	img := createGradientImage(100, 100)
 	data := encodeJPEG(img)
 
@@ -665,7 +665,7 @@ func TestSimilar_EdgeCases(t *testing.T) {
 	}
 }
 
-// Benchmark tests
+// Benchmark tests.
 
 func BenchmarkComputeHashes_Small(b *testing.B) {
 	img := createTestImage(100, 100, color.Gray{128})

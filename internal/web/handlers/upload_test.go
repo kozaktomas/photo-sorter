@@ -17,7 +17,7 @@ import (
 func TestUploadHandler_Upload_Success(t *testing.T) {
 	server := setupMockPhotoPrismServer(t, map[string]http.HandlerFunc{
 		"/api/v1/upload/": func(w http.ResponseWriter, r *http.Request) {
-			// Accept any upload path
+			// Accept any upload path.
 			if r.Method != "POST" {
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 				return
@@ -44,23 +44,23 @@ func TestUploadHandler_Upload_Success(t *testing.T) {
 	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := NewUploadHandler(cfg, sm)
 
-	// Create a temp file to upload
+	// Create a temp file to upload.
 	tempDir := t.TempDir()
 	testFile := filepath.Join(tempDir, "test.jpg")
 	if err := os.WriteFile(testFile, []byte("fake image data"), 0644); err != nil {
 		t.Fatalf("failed to create test file: %v", err)
 	}
 
-	// Create multipart request
+	// Create multipart request.
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
 
-	// Add album_uid field
+	// Add album_uid field.
 	if err := writer.WriteField("album_uid", "album123"); err != nil {
 		t.Fatalf("failed to write field: %v", err)
 	}
 
-	// Add file
+	// Add file.
 	part, err := writer.CreateFormFile("files", "test.jpg")
 	if err != nil {
 		t.Fatalf("failed to create form file: %v", err)
@@ -79,9 +79,9 @@ func TestUploadHandler_Upload_Success(t *testing.T) {
 
 	handler.Upload(recorder, req)
 
-	// The upload may fail due to PhotoPrism API quirks in testing,
-	// but we can verify the handler processes the multipart form correctly
-	// A successful upload would return 200
+	// The upload may fail due to PhotoPrism API quirks in testing,.
+	// but we can verify the handler processes the multipart form correctly.
+	// A successful upload would return 200.
 	if recorder.Code != http.StatusOK && recorder.Code != http.StatusInternalServerError {
 		t.Errorf("unexpected status code %d", recorder.Code)
 	}
@@ -97,11 +97,11 @@ func TestUploadHandler_Upload_MissingAlbumUID(t *testing.T) {
 	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := NewUploadHandler(cfg, sm)
 
-	// Create multipart request without album_uid
+	// Create multipart request without album_uid.
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
 
-	// Add file but no album_uid
+	// Add file but no album_uid.
 	part, _ := writer.CreateFormFile("files", "test.jpg")
 	part.Write([]byte("fake image data"))
 	writer.Close()
@@ -129,7 +129,7 @@ func TestUploadHandler_Upload_NoFiles(t *testing.T) {
 	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := NewUploadHandler(cfg, sm)
 
-	// Create multipart request with album_uid but no files
+	// Create multipart request with album_uid but no files.
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
 	writer.WriteField("album_uid", "album123")
@@ -153,7 +153,7 @@ func TestUploadHandler_Upload_InvalidMultipart(t *testing.T) {
 	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := NewUploadHandler(cfg, sm)
 
-	// Send non-multipart request
+	// Send non-multipart request.
 	req := httptest.NewRequest("POST", "/api/v1/upload", bytes.NewBufferString("not multipart"))
 	req.Header.Set("Content-Type", "text/plain")
 
@@ -170,7 +170,7 @@ func TestUploadHandler_Upload_NoPhotoPrismClient(t *testing.T) {
 	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := NewUploadHandler(cfg, sm)
 
-	// Create valid multipart request but without PhotoPrism client
+	// Create valid multipart request but without PhotoPrism client.
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
 	writer.WriteField("album_uid", "album123")
@@ -180,7 +180,7 @@ func TestUploadHandler_Upload_NoPhotoPrismClient(t *testing.T) {
 
 	req := httptest.NewRequest("POST", "/api/v1/upload", body)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
-	// No PhotoPrism client in context
+	// No PhotoPrism client in context.
 
 	recorder := httptest.NewRecorder()
 
@@ -210,12 +210,12 @@ func TestUploadHandler_Upload_MultipleFiles(t *testing.T) {
 	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := NewUploadHandler(cfg, sm)
 
-	// Create multipart request with multiple files
+	// Create multipart request with multiple files.
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
 	writer.WriteField("album_uid", "album123")
 
-	// Add multiple files
+	// Add multiple files.
 	for i := range 3 {
 		part, _ := writer.CreateFormFile("files", "test"+string(rune('0'+i))+".jpg")
 		part.Write([]byte("fake image data " + string(rune('0'+i))))
@@ -231,7 +231,7 @@ func TestUploadHandler_Upload_MultipleFiles(t *testing.T) {
 
 	handler.Upload(recorder, req)
 
-	// Check the response parses correctly (may fail due to mock limitations)
+	// Check the response parses correctly (may fail due to mock limitations).
 	if recorder.Code == http.StatusOK {
 		var result map[string]any
 		if err := json.Unmarshal(recorder.Body.Bytes(), &result); err == nil {

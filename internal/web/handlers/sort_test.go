@@ -164,7 +164,7 @@ func TestSortHandler_Start_DefaultProvider(t *testing.T) {
 	cfg.OpenAI.Token = "test-token"
 	handler := createSortHandlerForTest(cfg)
 
-	// Request without provider - should default to openai
+	// Request without provider - should default to openai.
 	body := bytes.NewBufferString(`{"album_uid": "album123"}`)
 	req := httptest.NewRequest("POST", "/api/v1/sort", body)
 	req.Header.Set("Content-Type", "application/json")
@@ -185,7 +185,7 @@ func TestSortHandler_Start_DefaultProvider(t *testing.T) {
 func TestSortHandler_Status_Success(t *testing.T) {
 	handler := createSortHandlerForTest(testConfig())
 
-	// Create a job first
+	// Create a job first.
 	options := SortJobOptions{DryRun: true}
 	job := handler.jobManager.CreateJob("test-job-id", "album123", "Test Album", options)
 
@@ -239,7 +239,7 @@ func TestSortHandler_Status_NotFound(t *testing.T) {
 func TestSortHandler_Cancel_Success(t *testing.T) {
 	handler := createSortHandlerForTest(testConfig())
 
-	// Create a job first
+	// Create a job first.
 	options := SortJobOptions{DryRun: true}
 	handler.jobManager.CreateJob("test-job-id", "album123", "Test Album", options)
 
@@ -423,7 +423,7 @@ func TestJobManager_CreateAndGet(t *testing.T) {
 		t.Errorf("expected status pending, got %v", job.Status)
 	}
 
-	// Get the job
+	// Get the job.
 	retrieved := jm.GetJob("job123")
 	if retrieved == nil {
 		t.Fatal("expected to retrieve job")

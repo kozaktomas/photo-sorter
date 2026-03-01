@@ -6,14 +6,17 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-// isJobTerminal returns true if the job status is a terminal state
+// isJobTerminal returns true if the job status is a terminal state.
 func isJobTerminal(status JobStatus) bool {
 	return status == JobStatusCompleted || status == JobStatusFailed || status == JobStatusCancelled
 }
 
 // setupSSEConnection validates the request, finds the job, and sets up SSE headers.
-// Returns the job, flusher, and true on success. On failure, writes an error response and returns zero values with false.
-func setupSSEConnection(w http.ResponseWriter, r *http.Request, lookupJob func(string) SSEJob) (SSEJob, http.Flusher, bool) {
+// Returns the job, flusher, and true on success. On failure, writes an error.
+// response and returns zero values with false.
+func setupSSEConnection(
+	w http.ResponseWriter, r *http.Request, lookupJob func(string) SSEJob,
+) (SSEJob, http.Flusher, bool) {
 	jobID := chi.URLParam(r, "jobId")
 	if jobID == "" {
 		respondError(w, http.StatusBadRequest, "missing job ID")
@@ -40,10 +43,13 @@ func setupSSEConnection(w http.ResponseWriter, r *http.Request, lookupJob func(s
 	return job, flusher, true
 }
 
-// streamSSEEvents sets up SSE headers and streams events from an SSEJob until the job
+// streamSSEEvents sets up SSE headers and streams events from an SSEJob until the job.
 // completes, the client disconnects, or the event channel closes.
 // The lookupJob function retrieves the job by ID from the URL parameter "jobId".
-func streamSSEEvents(w http.ResponseWriter, r *http.Request, lookupJob func(string) SSEJob, getInitialData func(SSEJob) any) {
+func streamSSEEvents(
+	w http.ResponseWriter, r *http.Request,
+	lookupJob func(string) SSEJob, getInitialData func(SSEJob) any,
+) {
 	job, flusher, ok := setupSSEConnection(w, r, lookupJob)
 	if !ok {
 		return

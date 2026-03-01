@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// Build metadata variables, set by -ldflags at compile time.
 var (
 	Version   = "dev"
 	CommitSHA = "unknown"

@@ -3,9 +3,9 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/spf13/cobra"
 	"github.com/kozaktomas/photo-sorter/internal/config"
 	"github.com/kozaktomas/photo-sorter/internal/photoprism"
+	"github.com/spf13/cobra"
 )
 
 var countCmd = &cobra.Command{
@@ -25,7 +25,9 @@ func runCount(cmd *cobra.Command, args []string) error {
 
 	cfg := config.Load()
 
-	pp, err := photoprism.NewPhotoPrismWithCapture(cfg.PhotoPrism.URL, cfg.PhotoPrism.Username, cfg.PhotoPrism.GetPassword(), captureDir)
+	pp, err := photoprism.NewPhotoPrismWithCapture(
+		cfg.PhotoPrism.URL, cfg.PhotoPrism.Username, cfg.PhotoPrism.GetPassword(), captureDir,
+	)
 	if err != nil {
 		return fmt.Errorf("failed to connect to PhotoPrism: %w", err)
 	}
@@ -36,7 +38,7 @@ func runCount(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get album: %w", err)
 	}
 
-	// Count photos by fetching them with pagination
+	// Count photos by fetching them with pagination.
 	totalPhotos := 0
 	batchSize := 1000
 	offset := 0

@@ -13,7 +13,7 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
 
-// testConfig creates a minimal config for testing
+// testConfig creates a minimal config for testing.
 func testConfig() *config.Config {
 	return &config.Config{
 		PhotoPrism: config.PhotoPrismConfig{
@@ -22,7 +22,7 @@ func testConfig() *config.Config {
 	}
 }
 
-// requestWithPhotoPrism creates a request with a PhotoPrism client in context
+// requestWithPhotoPrism creates a request with a PhotoPrism client in context.
 func requestWithPhotoPrism(t *testing.T, method, path string, pp *photoprism.PhotoPrism) *http.Request {
 	t.Helper()
 	req := httptest.NewRequest(method, path, nil)
@@ -30,7 +30,7 @@ func requestWithPhotoPrism(t *testing.T, method, path string, pp *photoprism.Pho
 	return req.WithContext(ctx)
 }
 
-// requestWithChiParams creates a request with chi URL parameters
+// requestWithChiParams creates a request with chi URL parameters.
 func requestWithChiParams(r *http.Request, params map[string]string) *http.Request {
 	rctx := chi.NewRouteContext()
 	for key, value := range params {
@@ -39,13 +39,13 @@ func requestWithChiParams(r *http.Request, params map[string]string) *http.Reque
 	return r.WithContext(context.WithValue(r.Context(), chi.RouteCtxKey, rctx))
 }
 
-// setupMockPhotoPrismServer creates a mock PhotoPrism server for handler tests
+// setupMockPhotoPrismServer creates a mock PhotoPrism server for handler tests.
 func setupMockPhotoPrismServer(t *testing.T, handlers map[string]http.HandlerFunc) *httptest.Server {
 	t.Helper()
 
 	mux := http.NewServeMux()
 
-	// Mock auth endpoint (always needed for NewPhotoPrism)
+	// Mock auth endpoint (always needed for NewPhotoPrism).
 	mux.HandleFunc("/api/v1/sessions", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
@@ -61,7 +61,7 @@ func setupMockPhotoPrismServer(t *testing.T, handlers map[string]http.HandlerFun
 		})
 	})
 
-	// Add custom handlers
+	// Add custom handlers.
 	for pattern, handler := range handlers {
 		mux.HandleFunc(pattern, handler)
 	}
@@ -69,7 +69,7 @@ func setupMockPhotoPrismServer(t *testing.T, handlers map[string]http.HandlerFun
 	return httptest.NewServer(mux)
 }
 
-// createPhotoPrismClient creates a PhotoPrism client connected to a mock server
+// createPhotoPrismClient creates a PhotoPrism client connected to a mock server.
 func createPhotoPrismClient(t *testing.T, server *httptest.Server) *photoprism.PhotoPrism {
 	t.Helper()
 	pp, err := photoprism.NewPhotoPrism(server.URL, "test", "test")
@@ -79,7 +79,7 @@ func createPhotoPrismClient(t *testing.T, server *httptest.Server) *photoprism.P
 	return pp
 }
 
-// parseJSONResponse parses a JSON response body into the target type
+// parseJSONResponse parses a JSON response body into the target type.
 func parseJSONResponse(t *testing.T, recorder *httptest.ResponseRecorder, target any) {
 	t.Helper()
 	if err := json.Unmarshal(recorder.Body.Bytes(), target); err != nil {
@@ -87,7 +87,7 @@ func parseJSONResponse(t *testing.T, recorder *httptest.ResponseRecorder, target
 	}
 }
 
-// assertStatusCode checks if the response has the expected status code
+// assertStatusCode checks if the response has the expected status code.
 func assertStatusCode(t *testing.T, recorder *httptest.ResponseRecorder, expected int) {
 	t.Helper()
 	if recorder.Code != expected {
@@ -95,7 +95,7 @@ func assertStatusCode(t *testing.T, recorder *httptest.ResponseRecorder, expecte
 	}
 }
 
-// assertContentType checks if the response has the expected content type
+// assertContentType checks if the response has the expected content type.
 func assertContentType(t *testing.T, recorder *httptest.ResponseRecorder, expected string) {
 	t.Helper()
 	ct := recorder.Header().Get("Content-Type")
@@ -104,7 +104,7 @@ func assertContentType(t *testing.T, recorder *httptest.ResponseRecorder, expect
 	}
 }
 
-// assertJSONError checks if the response is a JSON error with the expected message
+// assertJSONError checks if the response is a JSON error with the expected message.
 func assertJSONError(t *testing.T, recorder *httptest.ResponseRecorder, expectedMessage string) {
 	t.Helper()
 	var result map[string]string

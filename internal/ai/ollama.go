@@ -18,6 +18,7 @@ const (
 	defaultOllamaModel = "llama3.2-vision:11b"
 )
 
+// OllamaProvider implements Provider using a local Ollama server.
 type OllamaProvider struct {
 	parsedURL *url.URL
 	model     string
@@ -25,6 +26,7 @@ type OllamaProvider struct {
 	usage     Usage
 }
 
+// NewOllamaProvider creates a new Ollama provider with the given config.
 func NewOllamaProvider(baseURL, model string) (*OllamaProvider, error) {
 	if baseURL == "" {
 		baseURL = defaultOllamaURL
@@ -49,23 +51,27 @@ func NewOllamaProvider(baseURL, model string) (*OllamaProvider, error) {
 	}, nil
 }
 
+// Name returns the provider name.
 func (p *OllamaProvider) Name() string {
 	return p.model
 }
 
+// SetBatchMode is a no-op; Ollama does not support batch mode.
 func (p *OllamaProvider) SetBatchMode(enabled bool) {
-	// Ollama doesn't support batch mode - no-op
+	// Ollama doesn't support batch mode - no-op.
 }
 
+// GetUsage returns the accumulated API token usage.
 func (p *OllamaProvider) GetUsage() *Usage {
 	return &p.usage
 }
 
+// ResetUsage zeroes out the accumulated token usage counters.
 func (p *OllamaProvider) ResetUsage() {
 	p.usage = Usage{}
 }
 
-// ollamaRequest represents a request to the Ollama chat API
+// ollamaRequest represents a request to the Ollama chat API.
 type ollamaRequest struct {
 	Model    string          `json:"model"`
 	Messages []ollamaMessage `json:"messages"`
@@ -84,43 +90,34 @@ type ollamaOptions struct {
 	NumPredict int `json:"num_predict,omitempty"`
 }
 
-// ollamaResponse represents a response from the Ollama chat API
+// ollamaResponse represents a response from the Ollama chat API.
 type ollamaResponse struct {
 	Model   string `json:"model"`
 	Message struct {
 		Role    string `json:"role"`
 		Content string `json:"content"`
 	} `json:"message"`
-	Done               bool `json:"done"`
-	PromptEvalCount    int  `json:"prompt_eval_count"`
-	EvalCount          int  `json:"eval_count"`
+	Done            bool `json:"done"`
+	PromptEvalCount int  `json:"prompt_eval_count"`
+	EvalCount       int  `json:"eval_count"`
 }
 
-func (p *OllamaProvider) AnalyzePhoto(ctx context.Context, imageData []byte, metadata *PhotoMetadata, availableLabels []string, estimateDate bool) (*PhotoAnalysis, error) {
+// AnalyzePhoto sends a photo to Ollama for AI analysis and returns labels and description.
+func (p *OllamaProvider) AnalyzePhoto(
+	ctx context.Context,
+	imageData []byte,
+	metadata *PhotoMetadata,
+	availableLabels []string,
+	estimateDate bool,
+) (*PhotoAnalysis, error) {
 	const maxRetries = 5
 
-	// Resize image to max 800px to reduce processing time
 	resizedData, err := ResizeImage(imageData, 800)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resize image: %w", err)
 	}
 
-	systemPrompt := buildPhotoAnalysisPrompt(availableLabels, estimateDate)
-	base64Image := base64.StdEncoding.EncodeToString(resizedData)
-	userMessage := buildUserMessageWithMetadata(metadata)
-
-	// Build initial messages
-	messages := []ollamaMessage{
-		{
-			Role:    "system",
-			Content: systemPrompt,
-		},
-		{
-			Role:    "user",
-			Content: userMessage,
-			Images:  []string{base64Image},
-		},
-	}
+	messages := buildOllamaPhotoMessages(resizedData, metadata, availableLabels, estimateDate)
 
 	var lastError error
 	var lastResponse string
@@ -131,41 +128,65 @@ func (p *OllamaProvider) AnalyzePhoto(ctx context.Context, imageData []byte, met
 			return nil, fmt.Errorf("ollama API error: %w", err)
 		}
 
-		// Track usage (Ollama is free, but we track tokens for stats)
 		p.usage.InputTokens += resp.PromptEvalCount
 		p.usage.OutputTokens += resp.EvalCount
 
 		content := resp.Message.Content
 		lastResponse = content
 
-		// Try to extract JSON from the response
-		jsonContent := extractJSON(content)
-
 		var analysis PhotoAnalysis
-		if err := json.Unmarshal([]byte(jsonContent), &analysis); err != nil {
+		if err := json.Unmarshal([]byte(extractJSON(content)), &analysis); err != nil {
 			lastError = err
-
-			// Add assistant response and error feedback for retry
-			messages = append(messages,
-				ollamaMessage{
-					Role:    "assistant",
-					Content: content,
-				},
-				ollamaMessage{
-					Role:    "user",
-					Content: fmt.Sprintf("JSON parse error: %v. Please fix the JSON and try again. Remember to escape quotes inside strings with backslash. Output ONLY valid JSON, no other text.", err),
-				},
-			)
+			messages = appendOllamaRetryMessages(messages, content, err)
 			continue
 		}
 
 		return &analysis, nil
 	}
 
-	return nil, fmt.Errorf("failed to parse analysis JSON after %d attempts: %w (last response: %s)", maxRetries, lastError, lastResponse)
+	return nil, fmt.Errorf(
+		"failed to parse analysis JSON after %d attempts: %w (last response: %s)",
+		maxRetries, lastError, lastResponse,
+	)
 }
 
-func (p *OllamaProvider) EstimateAlbumDate(ctx context.Context, albumTitle string, albumDescription string, photoDescriptions []string) (*AlbumDateEstimate, error) {
+func buildOllamaPhotoMessages(
+	imageData []byte,
+	metadata *PhotoMetadata,
+	availableLabels []string,
+	estimateDate bool,
+) []ollamaMessage {
+	systemPrompt := buildPhotoAnalysisPrompt(availableLabels, estimateDate)
+	base64Image := base64.StdEncoding.EncodeToString(imageData)
+	userMessage := buildUserMessageWithMetadata(metadata)
+
+	return []ollamaMessage{
+		{Role: "system", Content: systemPrompt},
+		{Role: "user", Content: userMessage, Images: []string{base64Image}},
+	}
+}
+
+func appendOllamaRetryMessages(messages []ollamaMessage, content string, parseErr error) []ollamaMessage {
+	return append(messages,
+		ollamaMessage{Role: "assistant", Content: content},
+		ollamaMessage{
+			Role: "user",
+			Content: fmt.Sprintf(
+				"JSON parse error: %v. Please fix the JSON and try again."+
+					" Remember to escape quotes inside strings with backslash."+
+					" Output ONLY valid JSON, no other text.", parseErr,
+			),
+		},
+	)
+}
+
+// EstimateAlbumDate estimates the date for a set of photos based on their descriptions.
+func (p *OllamaProvider) EstimateAlbumDate(
+	ctx context.Context,
+	albumTitle string,
+	albumDescription string,
+	photoDescriptions []string,
+) (*AlbumDateEstimate, error) {
 	systemPrompt := buildAlbumDatePrompt()
 	userContent := buildAlbumDateContent(albumTitle, albumDescription, photoDescriptions)
 
@@ -185,7 +206,7 @@ func (p *OllamaProvider) EstimateAlbumDate(ctx context.Context, albumTitle strin
 		return nil, fmt.Errorf("ollama API error: %w", err)
 	}
 
-	// Track usage
+	// Track usage.
 	p.usage.InputTokens += resp.PromptEvalCount
 	p.usage.OutputTokens += resp.EvalCount
 
@@ -246,15 +267,15 @@ func (p *OllamaProvider) sendRequest(ctx context.Context, messages []ollamaMessa
 	return &ollamaResp, nil
 }
 
-// extractJSON attempts to extract JSON from a response that may contain extra text
+// extractJSON attempts to extract JSON from a response that may contain extra text.
 func extractJSON(content string) string {
-	// Try to find JSON object boundaries
+	// Try to find JSON object boundaries.
 	start := strings.Index(content, "{")
 	if start == -1 {
 		return content
 	}
 
-	// Find matching closing brace
+	// Find matching closing brace.
 	depth := 0
 	for i := start; i < len(content); i++ {
 		switch content[i] {
@@ -268,23 +289,26 @@ func extractJSON(content string) string {
 		}
 	}
 
-	// If no matching brace found, return from start
+	// If no matching brace found, return from start.
 	return content[start:]
 }
 
-// Batch API methods - Ollama doesn't support batch operations
+// CreatePhotoBatch is not supported by Ollama and returns an error.
 func (p *OllamaProvider) CreatePhotoBatch(ctx context.Context, requests []BatchPhotoRequest) (string, error) {
 	return "", errors.New("ollama does not support batch operations")
 }
 
+// GetBatchStatus is not supported by Ollama and returns an error.
 func (p *OllamaProvider) GetBatchStatus(ctx context.Context, batchID string) (*BatchStatus, error) {
 	return nil, errors.New("ollama does not support batch operations")
 }
 
+// GetBatchResults is not supported by Ollama and returns an error.
 func (p *OllamaProvider) GetBatchResults(ctx context.Context, batchID string) ([]BatchPhotoResult, error) {
 	return nil, errors.New("ollama does not support batch operations")
 }
 
+// CancelBatch is not supported by Ollama and returns an error.
 func (p *OllamaProvider) CancelBatch(ctx context.Context, batchID string) error {
 	return errors.New("ollama does not support batch operations")
 }

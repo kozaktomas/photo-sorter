@@ -98,7 +98,7 @@ func TestPhotoToMetadata_ClearDateFalse(t *testing.T) {
 
 	metadata := photoToMetadata(photo, false)
 
-	// Date fields should be preserved
+	// Date fields should be preserved.
 	if metadata.TakenAt != "2024-01-15T10:30:00Z" {
 		t.Errorf("expected TakenAt preserved, got '%s'", metadata.TakenAt)
 	}
@@ -127,7 +127,7 @@ func TestPhotoToMetadata_ClearDateTrue(t *testing.T) {
 
 	metadata := photoToMetadata(photo, true)
 
-	// Date fields should be cleared
+	// Date fields should be cleared.
 	if metadata.TakenAt != "" {
 		t.Errorf("expected TakenAt cleared, got '%s'", metadata.TakenAt)
 	}
@@ -144,7 +144,7 @@ func TestPhotoToMetadata_ClearDateTrue(t *testing.T) {
 		t.Errorf("expected Day 0, got %d", metadata.Day)
 	}
 
-	// Non-date fields should still be preserved
+	// Non-date fields should still be preserved.
 	if metadata.OriginalName != "test.jpg" {
 		t.Errorf("expected OriginalName preserved, got '%s'", metadata.OriginalName)
 	}
@@ -155,7 +155,7 @@ func TestPhotoToMetadata_EmptyPhoto(t *testing.T) {
 
 	metadata := photoToMetadata(photo, false)
 
-	// Should not panic, should return zero values
+	// Should not panic, should return zero values.
 	if metadata == nil {
 		t.Fatal("expected non-nil metadata")
 		return
@@ -178,7 +178,7 @@ func TestPhotoToMetadata_ZeroCoordinates(t *testing.T) {
 
 	metadata := photoToMetadata(photo, false)
 
-	// Zero coordinates should be preserved (location at 0,0 is valid)
+	// Zero coordinates should be preserved (location at 0,0 is valid).
 	if metadata.Lat != 0.0 {
 		t.Errorf("expected Lat 0.0, got %f", metadata.Lat)
 	}
@@ -222,7 +222,7 @@ func TestPhotoToMetadata_PreservesNonDateFieldsWhenClearing(t *testing.T) {
 
 	metadata := photoToMetadata(photo, true)
 
-	// Non-date fields should be preserved
+	// Non-date fields should be preserved.
 	if metadata.OriginalName != "vacation.jpg" {
 		t.Errorf("expected OriginalName 'vacation.jpg', got '%s'", metadata.OriginalName)
 	}
@@ -251,7 +251,7 @@ func TestPhotoToMetadata_PreservesNonDateFieldsWhenClearing(t *testing.T) {
 		t.Errorf("expected Height 3000, got %d", metadata.Height)
 	}
 
-	// Date fields should be cleared
+	// Date fields should be cleared.
 	if metadata.TakenAt != "" {
 		t.Errorf("expected TakenAt cleared")
 	}
@@ -273,7 +273,7 @@ func TestPhotoToMetadata_ReturnsPointer(t *testing.T) {
 		return
 	}
 
-	// Modifying the returned metadata should not affect the original photo
+	// Modifying the returned metadata should not affect the original photo.
 	metadata.OriginalName = "modified.jpg"
 
 	if photo.OriginalName != "test.jpg" {
@@ -314,7 +314,7 @@ func TestPhotoToMetadata_LongFilename(t *testing.T) {
 }
 
 func TestNew(t *testing.T) {
-	// New() should not panic with nil arguments
+	// New() should not panic with nil arguments.
 	// (actual usage would require real PhotoPrism client and AI provider)
 	sorter := New(nil, nil)
 
@@ -326,7 +326,7 @@ func TestNew(t *testing.T) {
 func TestSortOptions_Defaults(t *testing.T) {
 	opts := SortOptions{}
 
-	// Default values
+	// Default values.
 	if opts.DryRun != false {
 		t.Error("expected DryRun default to be false")
 	}

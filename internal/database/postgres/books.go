@@ -11,12 +11,12 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/database"
 )
 
-// BookRepository provides PostgreSQL-backed photo book storage
+// BookRepository provides PostgreSQL-backed photo book storage.
 type BookRepository struct {
 	pool *Pool
 }
 
-// NewBookRepository creates a new BookRepository
+// NewBookRepository creates a new BookRepository.
 func NewBookRepository(pool *Pool) *BookRepository {
 	return &BookRepository{pool: pool}
 }
@@ -27,6 +27,7 @@ func newID() string {
 
 // --- Books ---
 
+// CreateBook inserts a new book into the database and populates its ID.
 func (r *BookRepository) CreateBook(ctx context.Context, book *database.PhotoBook) error {
 	if book.ID == "" {
 		book.ID = newID()
@@ -43,6 +44,7 @@ func (r *BookRepository) CreateBook(ctx context.Context, book *database.PhotoBoo
 	return nil
 }
 
+// GetBook retrieves a book by ID from the database.
 func (r *BookRepository) GetBook(ctx context.Context, id string) (*database.PhotoBook, error) {
 	var b database.PhotoBook
 	err := r.pool.QueryRow(ctx,
@@ -57,6 +59,7 @@ func (r *BookRepository) GetBook(ctx context.Context, id string) (*database.Phot
 	return &b, nil
 }
 
+// ListBooks retrieves all books ordered by creation date.
 func (r *BookRepository) ListBooks(ctx context.Context) ([]database.PhotoBook, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, title, description, created_at, updated_at FROM photo_books ORDER BY created_at DESC`)
@@ -78,6 +81,7 @@ func (r *BookRepository) ListBooks(ctx context.Context) ([]database.PhotoBook, e
 	return books, nil
 }
 
+// ListBooksWithCounts retrieves all books with section, page, and photo counts.
 func (r *BookRepository) ListBooksWithCounts(ctx context.Context) ([]database.PhotoBookWithCounts, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT pb.id, pb.title, pb.description, pb.created_at, pb.updated_at,
@@ -107,6 +111,7 @@ func (r *BookRepository) ListBooksWithCounts(ctx context.Context) ([]database.Ph
 	return books, nil
 }
 
+// UpdateBook updates a book's title and description.
 func (r *BookRepository) UpdateBook(ctx context.Context, book *database.PhotoBook) error {
 	book.UpdatedAt = time.Now()
 	_, err := r.pool.Exec(ctx,
@@ -118,6 +123,7 @@ func (r *BookRepository) UpdateBook(ctx context.Context, book *database.PhotoBoo
 	return nil
 }
 
+// DeleteBook removes a book and all its associated data.
 func (r *BookRepository) DeleteBook(ctx context.Context, id string) error {
 	_, err := r.pool.Exec(ctx, `DELETE FROM photo_books WHERE id = $1`, id)
 	if err != nil {
@@ -128,6 +134,7 @@ func (r *BookRepository) DeleteBook(ctx context.Context, id string) error {
 
 // --- Chapters ---
 
+// GetChapters retrieves all chapters for a book, ordered by sort order.
 func (r *BookRepository) GetChapters(ctx context.Context, bookID string) ([]database.BookChapter, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, book_id, title, sort_order, created_at, updated_at
@@ -150,6 +157,7 @@ func (r *BookRepository) GetChapters(ctx context.Context, bookID string) ([]data
 	return chapters, nil
 }
 
+// CreateChapter inserts a new chapter into the database and populates its ID.
 func (r *BookRepository) CreateChapter(ctx context.Context, chapter *database.BookChapter) error {
 	if chapter.ID == "" {
 		chapter.ID = newID()
@@ -158,7 +166,7 @@ func (r *BookRepository) CreateChapter(ctx context.Context, chapter *database.Bo
 	chapter.CreatedAt = now
 	chapter.UpdatedAt = now
 
-	// Auto-assign sort_order as max+1
+	// Auto-assign sort_order as max+1.
 	var maxOrder sql.NullInt64
 	if err := r.pool.QueryRow(ctx,
 		`SELECT MAX(sort_order) FROM book_chapters WHERE book_id = $1`, chapter.BookID).
@@ -178,6 +186,7 @@ func (r *BookRepository) CreateChapter(ctx context.Context, chapter *database.Bo
 	return nil
 }
 
+// UpdateChapter updates a chapter's title.
 func (r *BookRepository) UpdateChapter(ctx context.Context, chapter *database.BookChapter) error {
 	chapter.UpdatedAt = time.Now()
 	_, err := r.pool.Exec(ctx,
@@ -189,6 +198,7 @@ func (r *BookRepository) UpdateChapter(ctx context.Context, chapter *database.Bo
 	return nil
 }
 
+// DeleteChapter removes a chapter from the database.
 func (r *BookRepository) DeleteChapter(ctx context.Context, id string) error {
 	_, err := r.pool.Exec(ctx, `DELETE FROM book_chapters WHERE id = $1`, id)
 	if err != nil {
@@ -197,6 +207,7 @@ func (r *BookRepository) DeleteChapter(ctx context.Context, id string) error {
 	return nil
 }
 
+// ReorderChapters updates the sort order of chapters based on the given ID order.
 func (r *BookRepository) ReorderChapters(ctx context.Context, bookID string, chapterIDs []string) error {
 	tx, err := r.pool.BeginTx(ctx, nil)
 	if err != nil {
@@ -220,6 +231,7 @@ func (r *BookRepository) ReorderChapters(ctx context.Context, bookID string, cha
 
 // --- Sections ---
 
+// CreateSection inserts a new section into the database and populates its ID.
 func (r *BookRepository) CreateSection(ctx context.Context, section *database.BookSection) error {
 	if section.ID == "" {
 		section.ID = newID()
@@ -228,7 +240,7 @@ func (r *BookRepository) CreateSection(ctx context.Context, section *database.Bo
 	section.CreatedAt = now
 	section.UpdatedAt = now
 
-	// Auto-assign sort_order as max+1
+	// Auto-assign sort_order as max+1.
 	var maxOrder sql.NullInt64
 	if err := r.pool.QueryRow(ctx,
 		`SELECT MAX(sort_order) FROM book_sections WHERE book_id = $1`, section.BookID).
@@ -245,14 +257,18 @@ func (r *BookRepository) CreateSection(ctx context.Context, section *database.Bo
 	}
 
 	_, err := r.pool.Exec(ctx,
-		`INSERT INTO book_sections (id, book_id, chapter_id, title, sort_order, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-		section.ID, section.BookID, chapterID, section.Title, section.SortOrder, section.CreatedAt, section.UpdatedAt)
+		`INSERT INTO book_sections
+		 (id, book_id, chapter_id, title, sort_order, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		section.ID, section.BookID, chapterID, section.Title,
+		section.SortOrder, section.CreatedAt, section.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("create section: %w", err)
 	}
 	return nil
 }
 
+// GetSection retrieves a section by ID from the database.
 func (r *BookRepository) GetSection(ctx context.Context, id string) (*database.BookSection, error) {
 	var s database.BookSection
 	err := r.pool.QueryRow(ctx,
@@ -268,6 +284,7 @@ func (r *BookRepository) GetSection(ctx context.Context, id string) (*database.B
 	return &s, nil
 }
 
+// GetSections retrieves all sections for a book with computed photo counts.
 func (r *BookRepository) GetSections(ctx context.Context, bookID string) ([]database.BookSection, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT s.id, s.book_id, COALESCE(s.chapter_id, ''), s.title, s.sort_order, s.created_at, s.updated_at,
@@ -282,7 +299,10 @@ func (r *BookRepository) GetSections(ctx context.Context, bookID string) ([]data
 	var sections []database.BookSection
 	for rows.Next() {
 		var s database.BookSection
-		if err := rows.Scan(&s.ID, &s.BookID, &s.ChapterID, &s.Title, &s.SortOrder, &s.CreatedAt, &s.UpdatedAt, &s.PhotoCount); err != nil {
+		if err := rows.Scan(
+			&s.ID, &s.BookID, &s.ChapterID, &s.Title,
+			&s.SortOrder, &s.CreatedAt, &s.UpdatedAt, &s.PhotoCount,
+		); err != nil {
 			return nil, fmt.Errorf("scan section: %w", err)
 		}
 		sections = append(sections, s)
@@ -293,6 +313,7 @@ func (r *BookRepository) GetSections(ctx context.Context, bookID string) ([]data
 	return sections, nil
 }
 
+// UpdateSection updates a section's title and chapter assignment.
 func (r *BookRepository) UpdateSection(ctx context.Context, section *database.BookSection) error {
 	section.UpdatedAt = time.Now()
 	var chapterID *string
@@ -308,6 +329,7 @@ func (r *BookRepository) UpdateSection(ctx context.Context, section *database.Bo
 	return nil
 }
 
+// DeleteSection removes a section and its photos from the database.
 func (r *BookRepository) DeleteSection(ctx context.Context, id string) error {
 	_, err := r.pool.Exec(ctx, `DELETE FROM book_sections WHERE id = $1`, id)
 	if err != nil {
@@ -316,6 +338,7 @@ func (r *BookRepository) DeleteSection(ctx context.Context, id string) error {
 	return nil
 }
 
+// ReorderSections updates the sort order of sections based on the given ID order.
 func (r *BookRepository) ReorderSections(ctx context.Context, bookID string, sectionIDs []string) error {
 	tx, err := r.pool.BeginTx(ctx, nil)
 	if err != nil {
@@ -339,6 +362,7 @@ func (r *BookRepository) ReorderSections(ctx context.Context, bookID string, sec
 
 // --- Section Photos ---
 
+// GetSectionPhotos retrieves all photos in a section, ordered by addition date.
 func (r *BookRepository) GetSectionPhotos(ctx context.Context, sectionID string) ([]database.SectionPhoto, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, section_id, photo_uid, description, note, added_at
@@ -361,6 +385,7 @@ func (r *BookRepository) GetSectionPhotos(ctx context.Context, sectionID string)
 	return photos, nil
 }
 
+// CountSectionPhotos returns the number of photos in a section.
 func (r *BookRepository) CountSectionPhotos(ctx context.Context, sectionID string) (int, error) {
 	var count int
 	err := r.pool.QueryRow(ctx, `SELECT COUNT(*) FROM section_photos WHERE section_id = $1`, sectionID).Scan(&count)
@@ -370,6 +395,7 @@ func (r *BookRepository) CountSectionPhotos(ctx context.Context, sectionID strin
 	return count, nil
 }
 
+// AddSectionPhotos adds photos to a section, skipping duplicates.
 func (r *BookRepository) AddSectionPhotos(ctx context.Context, sectionID string, photoUIDs []string) error {
 	tx, err := r.pool.BeginTx(ctx, nil)
 	if err != nil {
@@ -391,6 +417,7 @@ func (r *BookRepository) AddSectionPhotos(ctx context.Context, sectionID string,
 	return nil
 }
 
+// RemoveSectionPhotos removes photos from a section.
 func (r *BookRepository) RemoveSectionPhotos(ctx context.Context, sectionID string, photoUIDs []string) error {
 	tx, err := r.pool.BeginTx(ctx, nil)
 	if err != nil {
@@ -412,7 +439,11 @@ func (r *BookRepository) RemoveSectionPhotos(ctx context.Context, sectionID stri
 	return nil
 }
 
-func (r *BookRepository) UpdateSectionPhoto(ctx context.Context, sectionID string, photoUID string, description string, note string) error {
+// UpdateSectionPhoto updates the description and note for a photo in a section.
+func (r *BookRepository) UpdateSectionPhoto(
+	ctx context.Context, sectionID string, photoUID string,
+	description string, note string,
+) error {
 	_, err := r.pool.Exec(ctx,
 		`UPDATE section_photos SET description = $1, note = $2 WHERE section_id = $3 AND photo_uid = $4`,
 		description, note, sectionID, photoUID)
@@ -424,6 +455,7 @@ func (r *BookRepository) UpdateSectionPhoto(ctx context.Context, sectionID strin
 
 // --- Pages ---
 
+// CreatePage inserts a new page with initial empty slots into the database.
 func (r *BookRepository) CreatePage(ctx context.Context, page *database.BookPage) error {
 	if page.ID == "" {
 		page.ID = newID()
@@ -432,7 +464,7 @@ func (r *BookRepository) CreatePage(ctx context.Context, page *database.BookPage
 	page.CreatedAt = now
 	page.UpdatedAt = now
 
-	// Auto-assign sort_order as max+1
+	// Auto-assign sort_order as max+1.
 	var maxOrder sql.NullInt64
 	if err := r.pool.QueryRow(ctx,
 		`SELECT MAX(sort_order) FROM book_pages WHERE book_id = $1`, page.BookID).
@@ -453,20 +485,30 @@ func (r *BookRepository) CreatePage(ctx context.Context, page *database.BookPage
 	}
 
 	_, err := r.pool.Exec(ctx,
-		`INSERT INTO book_pages (id, book_id, section_id, format, style, description, sort_order, split_position, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
-		page.ID, page.BookID, sectionID, page.Format, page.Style, page.Description, page.SortOrder, page.SplitPosition, page.CreatedAt, page.UpdatedAt)
+		`INSERT INTO book_pages
+		 (id, book_id, section_id, format, style, description, sort_order, split_position, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		page.ID, page.BookID, sectionID, page.Format, page.Style,
+		page.Description, page.SortOrder, page.SplitPosition,
+		page.CreatedAt, page.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("create page: %w", err)
 	}
 	return nil
 }
 
+// GetPage retrieves a page by ID with its slots from the database.
 func (r *BookRepository) GetPage(ctx context.Context, pageID string) (*database.BookPage, error) {
 	var p database.BookPage
 	err := r.pool.QueryRow(ctx,
-		`SELECT id, book_id, COALESCE(section_id, ''), format, style, description, sort_order, split_position, created_at, updated_at
+		`SELECT id, book_id, COALESCE(section_id, ''), format, style,
+		        description, sort_order, split_position, created_at, updated_at
 		 FROM book_pages WHERE id = $1`, pageID).
-		Scan(&p.ID, &p.BookID, &p.SectionID, &p.Format, &p.Style, &p.Description, &p.SortOrder, &p.SplitPosition, &p.CreatedAt, &p.UpdatedAt)
+		Scan(
+			&p.ID, &p.BookID, &p.SectionID, &p.Format, &p.Style,
+			&p.Description, &p.SortOrder, &p.SplitPosition,
+			&p.CreatedAt, &p.UpdatedAt,
+		)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -481,9 +523,11 @@ func (r *BookRepository) GetPage(ctx context.Context, pageID string) (*database.
 	return &p, nil
 }
 
+// GetPages retrieves all pages for a book with their slots, ordered by sort order.
 func (r *BookRepository) GetPages(ctx context.Context, bookID string) ([]database.BookPage, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, book_id, COALESCE(section_id, ''), format, style, description, sort_order, split_position, created_at, updated_at
+		`SELECT id, book_id, COALESCE(section_id, ''), format, style,
+		        description, sort_order, split_position, created_at, updated_at
 		 FROM book_pages WHERE book_id = $1 ORDER BY sort_order`, bookID)
 	if err != nil {
 		return nil, fmt.Errorf("get pages: %w", err)
@@ -492,7 +536,11 @@ func (r *BookRepository) GetPages(ctx context.Context, bookID string) ([]databas
 	var pages []database.BookPage
 	for rows.Next() {
 		var p database.BookPage
-		if err := rows.Scan(&p.ID, &p.BookID, &p.SectionID, &p.Format, &p.Style, &p.Description, &p.SortOrder, &p.SplitPosition, &p.CreatedAt, &p.UpdatedAt); err != nil {
+		if err := rows.Scan(
+			&p.ID, &p.BookID, &p.SectionID, &p.Format, &p.Style,
+			&p.Description, &p.SortOrder, &p.SplitPosition,
+			&p.CreatedAt, &p.UpdatedAt,
+		); err != nil {
 			return nil, fmt.Errorf("scan page: %w", err)
 		}
 		pages = append(pages, p)
@@ -501,9 +549,10 @@ func (r *BookRepository) GetPages(ctx context.Context, bookID string) ([]databas
 		return nil, fmt.Errorf("iterate pages: %w", err)
 	}
 
-	// Batch-load all slots for the book in one query
+	// Batch-load all slots for the book in one query.
 	slotRows, err := r.pool.Query(ctx,
-		`SELECT ps.page_id, ps.slot_index, COALESCE(ps.photo_uid, ''), COALESCE(ps.text_content, ''), ps.crop_x, ps.crop_y, ps.crop_scale
+		`SELECT ps.page_id, ps.slot_index, COALESCE(ps.photo_uid, ''),
+		        COALESCE(ps.text_content, ''), ps.crop_x, ps.crop_y, ps.crop_scale
 		 FROM page_slots ps
 		 JOIN book_pages bp ON bp.id = ps.page_id
 		 WHERE bp.book_id = $1
@@ -516,7 +565,10 @@ func (r *BookRepository) GetPages(ctx context.Context, bookID string) ([]databas
 	for slotRows.Next() {
 		var pageID string
 		var s database.PageSlot
-		if err := slotRows.Scan(&pageID, &s.SlotIndex, &s.PhotoUID, &s.TextContent, &s.CropX, &s.CropY, &s.CropScale); err != nil {
+		if err := slotRows.Scan(
+			&pageID, &s.SlotIndex, &s.PhotoUID, &s.TextContent,
+			&s.CropX, &s.CropY, &s.CropScale,
+		); err != nil {
 			return nil, fmt.Errorf("scan slot: %w", err)
 		}
 		slotsByPage[pageID] = append(slotsByPage[pageID], s)
@@ -531,6 +583,7 @@ func (r *BookRepository) GetPages(ctx context.Context, bookID string) ([]databas
 	return pages, nil
 }
 
+// UpdatePage updates a page's format, section, style, description, and split position.
 func (r *BookRepository) UpdatePage(ctx context.Context, page *database.BookPage) error {
 	page.UpdatedAt = time.Now()
 	var sectionID *string
@@ -541,14 +594,18 @@ func (r *BookRepository) UpdatePage(ctx context.Context, page *database.BookPage
 		page.Style = "modern"
 	}
 	_, err := r.pool.Exec(ctx,
-		`UPDATE book_pages SET section_id = $1, format = $2, style = $3, description = $4, split_position = $5, updated_at = $6 WHERE id = $7`,
-		sectionID, page.Format, page.Style, page.Description, page.SplitPosition, page.UpdatedAt, page.ID)
+		`UPDATE book_pages SET section_id = $1, format = $2, style = $3,
+		        description = $4, split_position = $5, updated_at = $6
+		 WHERE id = $7`,
+		sectionID, page.Format, page.Style, page.Description,
+		page.SplitPosition, page.UpdatedAt, page.ID)
 	if err != nil {
 		return fmt.Errorf("update page: %w", err)
 	}
 	return nil
 }
 
+// DeletePage removes a page and its slots from the database.
 func (r *BookRepository) DeletePage(ctx context.Context, id string) error {
 	_, err := r.pool.Exec(ctx, `DELETE FROM book_pages WHERE id = $1`, id)
 	if err != nil {
@@ -557,6 +614,7 @@ func (r *BookRepository) DeletePage(ctx context.Context, id string) error {
 	return nil
 }
 
+// ReorderPages updates the sort order of pages based on the given ID order.
 func (r *BookRepository) ReorderPages(ctx context.Context, bookID string, pageIDs []string) error {
 	tx, err := r.pool.BeginTx(ctx, nil)
 	if err != nil {
@@ -580,9 +638,12 @@ func (r *BookRepository) ReorderPages(ctx context.Context, bookID string, pageID
 
 // --- Slots ---
 
+// GetPageSlots retrieves all slots for a page, ordered by slot index.
 func (r *BookRepository) GetPageSlots(ctx context.Context, pageID string) ([]database.PageSlot, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT slot_index, COALESCE(photo_uid, ''), COALESCE(text_content, ''), crop_x, crop_y, crop_scale FROM page_slots WHERE page_id = $1 ORDER BY slot_index`, pageID)
+		`SELECT slot_index, COALESCE(photo_uid, ''), COALESCE(text_content, ''),
+		        crop_x, crop_y, crop_scale
+		 FROM page_slots WHERE page_id = $1 ORDER BY slot_index`, pageID)
 	if err != nil {
 		return nil, fmt.Errorf("get page slots: %w", err)
 	}
@@ -601,10 +662,15 @@ func (r *BookRepository) GetPageSlots(ctx context.Context, pageID string) ([]dat
 	return slots, nil
 }
 
+// AssignSlot assigns a photo to a page slot, clearing any existing text content.
 func (r *BookRepository) AssignSlot(ctx context.Context, pageID string, slotIndex int, photoUID string) error {
 	_, err := r.pool.Exec(ctx,
-		`INSERT INTO page_slots (page_id, slot_index, photo_uid, text_content, crop_x, crop_y, crop_scale) VALUES ($1, $2, $3, '', 0.5, 0.5, 1.0)
-		 ON CONFLICT (page_id, slot_index) DO UPDATE SET photo_uid = EXCLUDED.photo_uid, text_content = '', crop_x = 0.5, crop_y = 0.5, crop_scale = 1.0`,
+		`INSERT INTO page_slots
+		 (page_id, slot_index, photo_uid, text_content, crop_x, crop_y, crop_scale)
+		 VALUES ($1, $2, $3, '', 0.5, 0.5, 1.0)
+		 ON CONFLICT (page_id, slot_index) DO UPDATE SET
+		   photo_uid = EXCLUDED.photo_uid, text_content = '',
+		   crop_x = 0.5, crop_y = 0.5, crop_scale = 1.0`,
 		pageID, slotIndex, photoUID)
 	if err != nil {
 		return fmt.Errorf("assign slot: %w", err)
@@ -612,10 +678,15 @@ func (r *BookRepository) AssignSlot(ctx context.Context, pageID string, slotInde
 	return nil
 }
 
+// AssignTextSlot assigns text content to a page slot, clearing any existing photo.
 func (r *BookRepository) AssignTextSlot(ctx context.Context, pageID string, slotIndex int, textContent string) error {
 	_, err := r.pool.Exec(ctx,
-		`INSERT INTO page_slots (page_id, slot_index, photo_uid, text_content, crop_x, crop_y, crop_scale) VALUES ($1, $2, NULL, $3, 0.5, 0.5, 1.0)
-		 ON CONFLICT (page_id, slot_index) DO UPDATE SET photo_uid = NULL, text_content = EXCLUDED.text_content, crop_x = 0.5, crop_y = 0.5, crop_scale = 1.0`,
+		`INSERT INTO page_slots
+		 (page_id, slot_index, photo_uid, text_content, crop_x, crop_y, crop_scale)
+		 VALUES ($1, $2, NULL, $3, 0.5, 0.5, 1.0)
+		 ON CONFLICT (page_id, slot_index) DO UPDATE SET
+		   photo_uid = NULL, text_content = EXCLUDED.text_content,
+		   crop_x = 0.5, crop_y = 0.5, crop_scale = 1.0`,
 		pageID, slotIndex, textContent)
 	if err != nil {
 		return fmt.Errorf("assign text slot: %w", err)
@@ -623,6 +694,7 @@ func (r *BookRepository) AssignTextSlot(ctx context.Context, pageID string, slot
 	return nil
 }
 
+// ClearSlot removes the photo or text from a page slot.
 func (r *BookRepository) ClearSlot(ctx context.Context, pageID string, slotIndex int) error {
 	_, err := r.pool.Exec(ctx,
 		`DELETE FROM page_slots WHERE page_id = $1 AND slot_index = $2`,
@@ -633,6 +705,7 @@ func (r *BookRepository) ClearSlot(ctx context.Context, pageID string, slotIndex
 	return nil
 }
 
+// SwapSlots atomically swaps the contents of two page slots.
 func (r *BookRepository) SwapSlots(ctx context.Context, pageID string, slotA int, slotB int) error {
 	tx, err := r.pool.BeginTx(ctx, nil)
 	if err != nil {
@@ -640,9 +713,11 @@ func (r *BookRepository) SwapSlots(ctx context.Context, pageID string, slotA int
 	}
 	defer tx.Rollback()
 
-	// Read current slot data (photo_uid + text_content + crop) for both slots
+	// Read current slot data (photo_uid + text_content + crop) for both slots.
 	rows, err := tx.QueryContext(ctx,
-		`SELECT slot_index, photo_uid, COALESCE(text_content, ''), crop_x, crop_y, crop_scale FROM page_slots WHERE page_id = $1 AND slot_index IN ($2, $3)`,
+		`SELECT slot_index, photo_uid, COALESCE(text_content, ''),
+		        crop_x, crop_y, crop_scale
+		 FROM page_slots WHERE page_id = $1 AND slot_index IN ($2, $3)`,
 		pageID, slotA, slotB)
 	if err != nil {
 		return fmt.Errorf("swap slots read: %w", err)
@@ -656,19 +731,25 @@ func (r *BookRepository) SwapSlots(ctx context.Context, pageID string, slotA int
 		return fmt.Errorf("swap slots: expected 2 slots, found %d", len(slotDataMap))
 	}
 
-	// Delete both slots to avoid unique constraint violations
+	// Delete both slots to avoid unique constraint violations.
 	if _, err := tx.ExecContext(ctx,
 		`DELETE FROM page_slots WHERE page_id = $1 AND slot_index IN ($2, $3)`,
 		pageID, slotA, slotB); err != nil {
 		return fmt.Errorf("swap slots delete: %w", err)
 	}
 
-	// Re-insert with swapped data (crop travels with photo)
+	// Re-insert with swapped data (crop travels with photo).
 	dataA := slotDataMap[slotA]
 	dataB := slotDataMap[slotB]
 	if _, err := tx.ExecContext(ctx,
-		`INSERT INTO page_slots (page_id, slot_index, photo_uid, text_content, crop_x, crop_y, crop_scale) VALUES ($1, $2, $3, $4, $5, $6, $7), ($1, $8, $9, $10, $11, $12, $13)`,
-		pageID, slotA, dataB.photoUID, dataB.textContent, dataB.cropX, dataB.cropY, dataB.cropScale, slotB, dataA.photoUID, dataA.textContent, dataA.cropX, dataA.cropY, dataA.cropScale); err != nil {
+		`INSERT INTO page_slots
+		 (page_id, slot_index, photo_uid, text_content, crop_x, crop_y, crop_scale)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7), ($1, $8, $9, $10, $11, $12, $13)`,
+		pageID, slotA, dataB.photoUID, dataB.textContent,
+		dataB.cropX, dataB.cropY, dataB.cropScale,
+		slotB, dataA.photoUID, dataA.textContent,
+		dataA.cropX, dataA.cropY, dataA.cropScale,
+	); err != nil {
 		return fmt.Errorf("swap slots insert: %w", err)
 	}
 
@@ -678,7 +759,11 @@ func (r *BookRepository) SwapSlots(ctx context.Context, pageID string, slotA int
 	return nil
 }
 
-func (r *BookRepository) UpdateSlotCrop(ctx context.Context, pageID string, slotIndex int, cropX, cropY, cropScale float64) error {
+// UpdateSlotCrop updates the crop position and scale for a page slot.
+func (r *BookRepository) UpdateSlotCrop(
+	ctx context.Context, pageID string, slotIndex int,
+	cropX, cropY, cropScale float64,
+) error {
 	_, err := r.pool.Exec(ctx,
 		`UPDATE page_slots SET crop_x = $1, crop_y = $2, crop_scale = $3 WHERE page_id = $4 AND slot_index = $5`,
 		cropX, cropY, cropScale, pageID, slotIndex)
@@ -688,7 +773,10 @@ func (r *BookRepository) UpdateSlotCrop(ctx context.Context, pageID string, slot
 	return nil
 }
 
-func (r *BookRepository) GetPhotoBookMemberships(ctx context.Context, photoUID string) ([]database.PhotoBookMembership, error) {
+// GetPhotoBookMemberships returns all book and section memberships for a photo.
+func (r *BookRepository) GetPhotoBookMemberships(
+	ctx context.Context, photoUID string,
+) ([]database.PhotoBookMembership, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT pb.id, pb.title, bs.id, bs.title
 		 FROM section_photos sp

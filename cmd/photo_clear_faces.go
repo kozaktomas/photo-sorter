@@ -3,10 +3,10 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/spf13/cobra"
 	"github.com/kozaktomas/photo-sorter/internal/config"
 	"github.com/kozaktomas/photo-sorter/internal/constants"
 	"github.com/kozaktomas/photo-sorter/internal/photoprism"
+	"github.com/spf13/cobra"
 )
 
 var photoClearFacesCmd = &cobra.Command{
@@ -75,7 +75,7 @@ func runPhotoClearFaces(cmd *cobra.Command, args []string) error {
 
 	cfg := config.Load()
 
-	// Connect to PhotoPrism
+	// Connect to PhotoPrism.
 	fmt.Println("Connecting to PhotoPrism...")
 	pp, err := photoprism.NewPhotoPrismWithCapture(
 		cfg.PhotoPrism.URL,
@@ -88,7 +88,7 @@ func runPhotoClearFaces(cmd *cobra.Command, args []string) error {
 	}
 	defer pp.Logout()
 
-	// Get markers for the photo
+	// Get markers for the photo.
 	fmt.Printf("Getting markers for photo %s...\n", photoUID)
 	markers, err := pp.GetPhotoMarkers(photoUID)
 	if err != nil {

@@ -8,11 +8,11 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/schollz/progressbar/v3"
-	"github.com/spf13/cobra"
 	"github.com/kozaktomas/photo-sorter/internal/config"
 	"github.com/kozaktomas/photo-sorter/internal/constants"
 	"github.com/kozaktomas/photo-sorter/internal/photoprism"
+	"github.com/schollz/progressbar/v3"
+	"github.com/spf13/cobra"
 )
 
 var uploadCmd = &cobra.Command{
@@ -37,10 +37,10 @@ Example:
 func init() {
 	rootCmd.AddCommand(uploadCmd)
 	uploadCmd.Flags().BoolP("recursive", "r", false, "Search for photos recursively in subdirectories")
-	uploadCmd.Flags().StringSliceP("label", "l", nil, "Labels to apply to uploaded photos (can be specified multiple times)")
+	uploadCmd.Flags().StringSliceP("label", "l", nil, "Labels to apply to uploaded photos (repeatable)")
 }
 
-// isImageFile checks if a file has a supported image extension
+// isImageFile checks if a file has a supported image extension.
 func isImageFile(name string) bool {
 	ext := strings.ToLower(filepath.Ext(name))
 	supported := map[string]bool{
@@ -272,7 +272,9 @@ func runUpload(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("Found %d image(s) to upload from %d folder(s)\n", len(filePaths), len(folderPaths))
 
-	pp, err := photoprism.NewPhotoPrismWithCapture(cfg.PhotoPrism.URL, cfg.PhotoPrism.Username, cfg.PhotoPrism.GetPassword(), captureDir)
+	pp, err := photoprism.NewPhotoPrismWithCapture(
+		cfg.PhotoPrism.URL, cfg.PhotoPrism.Username, cfg.PhotoPrism.GetPassword(), captureDir,
+	)
 	if err != nil {
 		return fmt.Errorf("failed to connect to PhotoPrism: %w", err)
 	}
@@ -284,7 +286,7 @@ func runUpload(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Printf("Uploading to album: %s\n\n", album.Title)
 
-	// Snapshot album photo UIDs before upload (for label diffing)
+	// Snapshot album photo UIDs before upload (for label diffing).
 	var beforeUIDs map[string]struct{}
 	if len(labels) > 0 {
 		beforeUIDs, err = getAlbumPhotoUIDs(pp, albumUID)
@@ -326,7 +328,9 @@ func uploadAndProcess(pp *photoprism.PhotoPrism, filePaths []string, albumUID st
 }
 
 // applyLabelsToNewPhotos detects newly uploaded photos and applies labels to them.
-func applyLabelsToNewPhotos(pp *photoprism.PhotoPrism, labels []string, beforeUIDs map[string]struct{}, albumUID string) error {
+func applyLabelsToNewPhotos(
+	pp *photoprism.PhotoPrism, labels []string, beforeUIDs map[string]struct{}, albumUID string,
+) error {
 	if len(labels) == 0 {
 		return nil
 	}

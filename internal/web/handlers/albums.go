@@ -12,13 +12,13 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
 
-// AlbumsHandler handles album-related endpoints
+// AlbumsHandler handles album-related endpoints.
 type AlbumsHandler struct {
 	config         *config.Config
 	sessionManager *middleware.SessionManager
 }
 
-// NewAlbumsHandler creates a new albums handler
+// NewAlbumsHandler creates a new albums handler.
 func NewAlbumsHandler(cfg *config.Config, sm *middleware.SessionManager) *AlbumsHandler {
 	return &AlbumsHandler{
 		config:         cfg,
@@ -26,7 +26,7 @@ func NewAlbumsHandler(cfg *config.Config, sm *middleware.SessionManager) *Albums
 	}
 }
 
-// AlbumResponse represents an album in API responses
+// AlbumResponse represents an album in API responses.
 type AlbumResponse struct {
 	UID         string `json:"uid"`
 	Title       string `json:"title"`
@@ -53,14 +53,14 @@ func albumToResponse(a photoprism.Album) AlbumResponse {
 	}
 }
 
-// List returns all albums
+// List returns all albums.
 func (h *AlbumsHandler) List(w http.ResponseWriter, r *http.Request) {
 	pp := middleware.MustGetPhotoPrism(r.Context(), w)
 	if pp == nil {
 		return
 	}
 
-	// Parse query parameters
+	// Parse query parameters.
 	count, _ := strconv.Atoi(r.URL.Query().Get("count"))
 	if count <= 0 {
 		count = constants.DefaultHandlerPageSize
@@ -83,7 +83,7 @@ func (h *AlbumsHandler) List(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, response)
 }
 
-// Get returns a single album
+// Get returns a single album.
 func (h *AlbumsHandler) Get(w http.ResponseWriter, r *http.Request) {
 	uid := chi.URLParam(r, "uid")
 	if uid == "" {
@@ -105,12 +105,12 @@ func (h *AlbumsHandler) Get(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, albumToResponse(*album))
 }
 
-// CreateRequest represents a create album request
+// CreateRequest represents a create album request.
 type CreateRequest struct {
 	Title string `json:"title"`
 }
 
-// Create creates a new album
+// Create creates a new album.
 func (h *AlbumsHandler) Create(w http.ResponseWriter, r *http.Request) {
 	var req CreateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -137,7 +137,7 @@ func (h *AlbumsHandler) Create(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusCreated, albumToResponse(*album))
 }
 
-// PhotoResponse represents a photo in API responses
+// PhotoResponse represents a photo in API responses.
 type PhotoResponse struct {
 	UID          string  `json:"uid"`
 	Title        string  `json:"title"`
@@ -184,7 +184,7 @@ func photoToResponse(p photoprism.Photo) PhotoResponse {
 	}
 }
 
-// GetPhotos returns photos in an album
+// GetPhotos returns photos in an album.
 func (h *AlbumsHandler) GetPhotos(w http.ResponseWriter, r *http.Request) {
 	uid := chi.URLParam(r, "uid")
 	if uid == "" {
@@ -197,7 +197,7 @@ func (h *AlbumsHandler) GetPhotos(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Parse query parameters
+	// Parse query parameters.
 	count, _ := strconv.Atoi(r.URL.Query().Get("count"))
 	if count <= 0 {
 		count = constants.DefaultHandlerPageSize
@@ -218,14 +218,16 @@ func (h *AlbumsHandler) GetPhotos(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, response)
 }
 
-// albumPhotoRequest represents a request to add or remove photos from an album
+// albumPhotoRequest represents a request to add or remove photos from an album.
 type albumPhotoRequest struct {
 	PhotoUIDs []string `json:"photo_uids"`
 }
 
 // parseAlbumPhotoRequest parses and validates an album photo modification request.
 // Returns the album UID, photo UIDs, and PhotoPrism client; sends error response on failure.
-func (h *AlbumsHandler) parseAlbumPhotoRequest(w http.ResponseWriter, r *http.Request) (string, []string, *photoprism.PhotoPrism) {
+func (h *AlbumsHandler) parseAlbumPhotoRequest(
+	w http.ResponseWriter, r *http.Request,
+) (string, []string, *photoprism.PhotoPrism) {
 	uid := chi.URLParam(r, "uid")
 	if uid == "" {
 		respondError(w, http.StatusBadRequest, "missing album UID")
@@ -251,7 +253,7 @@ func (h *AlbumsHandler) parseAlbumPhotoRequest(w http.ResponseWriter, r *http.Re
 	return uid, req.PhotoUIDs, pp
 }
 
-// AddPhotos adds photos to an album
+// AddPhotos adds photos to an album.
 func (h *AlbumsHandler) AddPhotos(w http.ResponseWriter, r *http.Request) {
 	uid, photoUIDs, pp := h.parseAlbumPhotoRequest(w, r)
 	if pp == nil {
@@ -266,7 +268,7 @@ func (h *AlbumsHandler) AddPhotos(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]int{"added": len(photoUIDs)})
 }
 
-// ClearPhotos removes all photos from an album
+// ClearPhotos removes all photos from an album.
 func (h *AlbumsHandler) ClearPhotos(w http.ResponseWriter, r *http.Request) {
 	uid := chi.URLParam(r, "uid")
 	if uid == "" {
@@ -279,7 +281,7 @@ func (h *AlbumsHandler) ClearPhotos(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get all photos in album
+	// Get all photos in album.
 	photos, err := pp.GetAlbumPhotos(uid, constants.MaxPhotosPerFetch, 0)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to get album photos")
@@ -291,13 +293,13 @@ func (h *AlbumsHandler) ClearPhotos(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Collect photo UIDs
+	// Collect photo UIDs.
 	photoUIDs := make([]string, len(photos))
 	for i, p := range photos {
 		photoUIDs[i] = p.UID
 	}
 
-	// Remove photos from album
+	// Remove photos from album.
 	if err := pp.RemovePhotosFromAlbum(uid, photoUIDs); err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to remove photos from album")
 		return
@@ -306,7 +308,7 @@ func (h *AlbumsHandler) ClearPhotos(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]int{"removed": len(photoUIDs)})
 }
 
-// RemovePhotos removes specific photos from an album
+// RemovePhotos removes specific photos from an album.
 func (h *AlbumsHandler) RemovePhotos(w http.ResponseWriter, r *http.Request) {
 	uid, photoUIDs, pp := h.parseAlbumPhotoRequest(w, r)
 	if pp == nil {

@@ -11,7 +11,7 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
 
-// errInvalidRequestBody is a shared error message for invalid JSON request bodies
+// errInvalidRequestBody is a shared error message for invalid JSON request bodies.
 const errInvalidRequestBody = "invalid request body"
 
 // sanitizeForLog removes newlines and carriage returns to prevent log injection.
@@ -19,7 +19,7 @@ func sanitizeForLog(s string) string {
 	return strings.NewReplacer("\n", "", "\r", "").Replace(s)
 }
 
-// respondJSON sends a JSON response
+// respondJSON sends a JSON response.
 func respondJSON(w http.ResponseWriter, status int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -28,7 +28,7 @@ func respondJSON(w http.ResponseWriter, status int, data any) {
 	}
 }
 
-// respondError sends an error response
+// respondError sends an error response.
 func respondError(w http.ResponseWriter, status int, message string) {
 	respondJSON(w, status, map[string]string{"error": message})
 }
@@ -44,7 +44,7 @@ func getPhotoPrismClient(cfg *config.Config, session *middleware.Session) (*phot
 		}
 		return pp, nil
 	}
-	// No session - authenticate directly with config credentials
+	// No session - authenticate directly with config credentials.
 	pp, err := photoprism.NewPhotoPrism(cfg.PhotoPrism.URL, cfg.PhotoPrism.Username, cfg.PhotoPrism.GetPassword())
 	if err != nil {
 		return nil, fmt.Errorf("creating PhotoPrism client: %w", err)
@@ -52,7 +52,7 @@ func getPhotoPrismClient(cfg *config.Config, session *middleware.Session) (*phot
 	return pp, nil
 }
 
-// HealthCheck handles the health check endpoint
+// HealthCheck handles the health check endpoint.
 func HealthCheck(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]string{
 		"status": "ok",

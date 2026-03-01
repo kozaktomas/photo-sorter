@@ -141,11 +141,11 @@ func TestAuthHandler_Logout_Success(t *testing.T) {
 	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := NewAuthHandler(cfg, sm)
 
-	// Create a session first
+	// Create a session first.
 	session, _ := sm.CreateSession("test-token", "test-download-token")
 
 	req := httptest.NewRequest("POST", "/api/v1/auth/logout", nil)
-	// Add session cookie
+	// Add session cookie.
 	cookie := &http.Cookie{
 		Name:  "photo_sorter_session",
 		Value: session.ID + "." + signSessionID(sm, session.ID),
@@ -164,7 +164,7 @@ func TestAuthHandler_Logout_Success(t *testing.T) {
 		t.Error("expected success to be true")
 	}
 
-	// Verify session was deleted
+	// Verify session was deleted.
 	if sm.GetSession(session.ID) != nil {
 		t.Error("expected session to be deleted")
 	}
@@ -195,11 +195,11 @@ func TestAuthHandler_Status_Authenticated(t *testing.T) {
 	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := NewAuthHandler(cfg, sm)
 
-	// Create a session
+	// Create a session.
 	session, _ := sm.CreateSession("test-token", "test-download-token")
 
 	req := httptest.NewRequest("GET", "/api/v1/auth/status", nil)
-	// Add session cookie
+	// Add session cookie.
 	cookie := &http.Cookie{
 		Name:  "photo_sorter_session",
 		Value: session.ID + "." + signSessionID(sm, session.ID),
@@ -253,8 +253,8 @@ func TestAuthHandler_Status_ExpiredSession(t *testing.T) {
 	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := NewAuthHandler(cfg, sm)
 
-	// Create a session but don't add it to the manager
-	// This simulates an invalid/expired session
+	// Create a session but don't add it to the manager.
+	// This simulates an invalid/expired session.
 	req := httptest.NewRequest("GET", "/api/v1/auth/status", nil)
 	cookie := &http.Cookie{
 		Name:  "photo_sorter_session",
@@ -275,10 +275,10 @@ func TestAuthHandler_Status_ExpiredSession(t *testing.T) {
 	}
 }
 
-// Helper to sign session ID (mirrors SessionManager's internal method)
+// Helper to sign session ID (mirrors SessionManager's internal method).
 func signSessionID(sm *middleware.SessionManager, sessionID string) string {
-	// We need to use the session manager's SetSessionCookie to get the proper signature
-	// For testing, we'll create a response recorder and extract the cookie
+	// We need to use the session manager's SetSessionCookie to get the proper signature.
+	// For testing, we'll create a response recorder and extract the cookie.
 	w := httptest.NewRecorder()
 	session := &middleware.Session{ID: sessionID}
 	r := httptest.NewRequest("GET", "/", nil)

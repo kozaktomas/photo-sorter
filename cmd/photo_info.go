@@ -53,7 +53,7 @@ func runPhotoInfo(cmd *cobra.Command, args []string) error {
 	limit := mustGetInt(cmd, "limit")
 	concurrency := mustGetInt(cmd, "concurrency")
 
-	// Validate args
+	// Validate args.
 	if albumUID == "" && len(args) == 0 {
 		return errors.New("either provide a photo UID or use --album flag")
 	}
@@ -63,7 +63,7 @@ func runPhotoInfo(cmd *cobra.Command, args []string) error {
 
 	cfg := config.Load()
 
-	// Connect to PhotoPrism
+	// Connect to PhotoPrism.
 	pp, err := photoprism.NewPhotoPrismWithCapture(
 		cfg.PhotoPrism.URL,
 		cfg.PhotoPrism.Username,
@@ -81,26 +81,28 @@ func runPhotoInfo(cmd *cobra.Command, args []string) error {
 	return runPhotoInfoSingle(pp, args[0], jsonOutput, &cfg.PhotoPrism)
 }
 
-func runPhotoInfoSingle(pp *photoprism.PhotoPrism, photoUID string, jsonOutput bool, ppCfg *config.PhotoPrismConfig) error {
-	// Get photo metadata
+func runPhotoInfoSingle(
+	pp *photoprism.PhotoPrism, photoUID string, jsonOutput bool, ppCfg *config.PhotoPrismConfig,
+) error {
+	// Get photo metadata.
 	details, err := pp.GetPhotoDetails(photoUID)
 	if err != nil {
 		return fmt.Errorf("failed to get photo details: %w", err)
 	}
 
-	// Download photo for hash computation
+	// Download photo for hash computation.
 	imageData, _, err := pp.GetPhotoDownload(photoUID)
 	if err != nil {
 		return fmt.Errorf("failed to download photo: %w", err)
 	}
 
-	// Compute hashes
+	// Compute hashes.
 	hashes, err := fingerprint.ComputeHashes(imageData)
 	if err != nil {
 		return fmt.Errorf("failed to compute hashes: %w", err)
 	}
 
-	// Build PhotoInfo from details map
+	// Build PhotoInfo from details map.
 	info := buildPhotoInfo(details, hashes)
 
 	if jsonOutput {
@@ -126,7 +128,9 @@ func processPhotoHash(pp *photoprism.PhotoPrism, p photoprism.Photo) (fingerprin
 }
 
 // processPhotosConcurrently processes photos with workers and returns results and errors.
-func processPhotosConcurrently(pp *photoprism.PhotoPrism, photos []photoprism.Photo, concurrency int, bar *progressbar.ProgressBar) ([]fingerprint.PhotoInfo, []error) {
+func processPhotosConcurrently(
+	pp *photoprism.PhotoPrism, photos []photoprism.Photo, concurrency int, bar *progressbar.ProgressBar,
+) ([]fingerprint.PhotoInfo, []error) {
 	results := make([]fingerprint.PhotoInfo, len(photos))
 	var errs []error
 	var mu sync.Mutex
@@ -158,7 +162,7 @@ func processPhotosConcurrently(pp *photoprism.PhotoPrism, photos []photoprism.Ph
 	}
 	wg.Wait()
 
-	// Filter out empty results (from errors)
+	// Filter out empty results (from errors).
 	validResults := make([]fingerprint.PhotoInfo, 0, len(results))
 	for i := range results {
 		if results[i].UID != "" {
@@ -185,7 +189,9 @@ func newHashProgressBar(count int, jsonOutput bool) *progressbar.ProgressBar {
 }
 
 // outputInfoAlbumResults outputs the batch info results as JSON or human-readable with errors.
-func outputInfoAlbumResults(validResults []fingerprint.PhotoInfo, errs []error, jsonOutput bool, ppCfg *config.PhotoPrismConfig) error {
+func outputInfoAlbumResults(
+	validResults []fingerprint.PhotoInfo, errs []error, jsonOutput bool, ppCfg *config.PhotoPrismConfig,
+) error {
 	if jsonOutput {
 		return outputJSON(fingerprint.PhotoInfoBatch{Photos: validResults, Count: len(validResults)})
 	}
@@ -200,7 +206,10 @@ func outputInfoAlbumResults(validResults []fingerprint.PhotoInfo, errs []error, 
 	return nil
 }
 
-func runPhotoInfoAlbum(pp *photoprism.PhotoPrism, albumUID string, limit, concurrency int, jsonOutput bool, ppCfg *config.PhotoPrismConfig) error {
+func runPhotoInfoAlbum(
+	pp *photoprism.PhotoPrism, albumUID string, limit, concurrency int,
+	jsonOutput bool, ppCfg *config.PhotoPrismConfig,
+) error {
 	album, err := pp.GetAlbum(albumUID)
 	if err != nil {
 		return fmt.Errorf("failed to get album: %w", err)

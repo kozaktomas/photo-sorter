@@ -2,48 +2,48 @@
 // Centralizing these values ensures consistency and makes them easier to modify.
 package constants
 
-// Pagination constants
+// Pagination constants.
 const (
-	// DefaultPageSize is the default number of items to fetch per API page
+	// DefaultPageSize is the default number of items to fetch per API page.
 	DefaultPageSize = 1000
 
-	// DefaultSearchLimit is the default limit for similarity search results per embedding
+	// DefaultSearchLimit is the default limit for similarity search results per embedding.
 	DefaultSearchLimit = 1000
 )
 
-// Face matching constants
+// Face matching constants.
 const (
-	// IoUThreshold is the minimum Intersection over Union required to consider
-	// a marker as matching a detected face
+	// IoUThreshold is the minimum Intersection over Union required to consider.
+	// a marker as matching a detected face.
 	IoUThreshold = 0.1
 
-	// DefaultDistanceThreshold is the default maximum cosine distance for face matching
-	// Lower values = stricter matching
+	// DefaultDistanceThreshold is the default maximum cosine distance for face matching.
+	// Lower values = stricter matching.
 	DefaultDistanceThreshold = 0.5
 
-	// DefaultSimilarityThreshold is the default threshold for photo similarity search
+	// DefaultSimilarityThreshold is the default threshold for photo similarity search.
 	DefaultSimilarityThreshold = 0.3
 )
 
-// Processing constants
+// Processing constants.
 const (
-	// WorkerPoolSize is the default number of parallel workers for face processing
+	// WorkerPoolSize is the default number of parallel workers for face processing.
 	WorkerPoolSize = 20
 
-	// GobSaveInterval is the number of photos processed before saving the GOB file
+	// GobSaveInterval is the number of photos processed before saving the GOB file.
 	GobSaveInterval = 50
 
-	// MaxImageSize is the maximum dimension (width or height) for image processing
+	// MaxImageSize is the maximum dimension (width or height) for image processing.
 	MaxImageSize = 1920
 )
 
-// Marker type constants
+// Marker type constants.
 const (
-	// MarkerTypeFace is the PhotoPrism marker type for face detections
+	// MarkerTypeFace is the PhotoPrism marker type for face detections.
 	MarkerTypeFace = "face"
 )
 
-// AI provider constants
+// AI provider constants.
 const (
 	ProviderOpenAI   = "openai"
 	ProviderGemini   = "gemini"
@@ -51,26 +51,26 @@ const (
 	ProviderLlamaCpp = "llamacpp"
 )
 
-// Label constants
+// Label constants.
 const (
-	// DefaultLabelConfidence is the minimum confidence score for AI-suggested labels
+	// DefaultLabelConfidence is the minimum confidence score for AI-suggested labels.
 	DefaultLabelConfidence = 0.8
 )
 
-// Duplicate detection constants
+// Duplicate detection constants.
 const (
-	// DefaultDuplicateThreshold is the default max cosine distance for duplicate detection
+	// DefaultDuplicateThreshold is the default max cosine distance for duplicate detection.
 	DefaultDuplicateThreshold = 0.10
-	// DefaultDuplicateLimit is the default max number of duplicate groups to return
+	// DefaultDuplicateLimit is the default max number of duplicate groups to return.
 	DefaultDuplicateLimit = 100
 )
 
-// Album completion constants
+// Album completion constants.
 const (
-	// DefaultSuggestAlbumThreshold is the default min cosine similarity for album completion
+	// DefaultSuggestAlbumThreshold is the default min cosine similarity for album completion.
 	DefaultSuggestAlbumThreshold = 0.70
-	// DefaultSuggestAlbumTopK is the default max photos suggested per album
+	// DefaultSuggestAlbumTopK is the default max photos suggested per album.
 	DefaultSuggestAlbumTopK = 20
-	// MinAlbumPhotosForCentroid is the minimum number of photos in an album to compute a centroid
+	// MinAlbumPhotosForCentroid is the minimum number of photos in an album to compute a centroid.
 	MinAlbumPhotosForCentroid = 2
 )

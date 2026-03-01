@@ -9,14 +9,14 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
 
-// OutlierRequest represents a request to find face outliers for a person
+// OutlierRequest represents a request to find face outliers for a person.
 type OutlierRequest struct {
 	PersonName string  `json:"person_name"`
 	Threshold  float64 `json:"threshold"` // min distance from centroid to include (0 = show all)
 	Limit      int     `json:"limit"`     // 0 = no limit
 }
 
-// OutlierResult represents a single outlier face
+// OutlierResult represents a single outlier face.
 type OutlierResult struct {
 	PhotoUID         string    `json:"photo_uid"`
 	DistFromCentroid float64   `json:"dist_from_centroid"`
@@ -26,7 +26,7 @@ type OutlierResult struct {
 	MarkerUID        string    `json:"marker_uid,omitempty"`
 }
 
-// OutlierResponse represents the response for face outlier detection
+// OutlierResponse represents the response for face outlier detection.
 type OutlierResponse struct {
 	Person            string          `json:"person"`
 	TotalFaces        int             `json:"total_faces"`
@@ -35,7 +35,7 @@ type OutlierResponse struct {
 	MissingEmbeddings []OutlierResult `json:"missing_embeddings"`
 }
 
-// outlierFaceData holds processed face data for outlier detection
+// outlierFaceData holds processed face data for outlier detection.
 type outlierFaceData struct {
 	PhotoUID  string
 	Embedding []float32
@@ -45,8 +45,10 @@ type outlierFaceData struct {
 	MarkerUID string
 }
 
-// classifyOutlierFaces splits person faces into faces with embeddings and those missing embeddings
-func classifyOutlierFaces(allPersonFaces []database.StoredFace) (faces []outlierFaceData, missingEmbeddings []OutlierResult) {
+// classifyOutlierFaces splits person faces into faces with embeddings and those missing embeddings.
+func classifyOutlierFaces(
+	allPersonFaces []database.StoredFace,
+) (faces []outlierFaceData, missingEmbeddings []OutlierResult) {
 	for i := range allPersonFaces {
 		face := &allPersonFaces[i]
 		if len(face.Embedding) == 0 {
@@ -71,7 +73,7 @@ func classifyOutlierFaces(allPersonFaces []database.StoredFace) (faces []outlier
 	return faces, missingEmbeddings
 }
 
-// computeFaceCentroid computes the element-wise mean of face embeddings
+// computeFaceCentroid computes the element-wise mean of face embeddings.
 func computeFaceCentroid(faces []outlierFaceData) []float32 {
 	embDim := len(faces[0].Embedding)
 	centroid := make([]float32, embDim)
@@ -88,8 +90,10 @@ func computeFaceCentroid(faces []outlierFaceData) []float32 {
 	return centroid
 }
 
-// rankFacesByDistance computes distances from centroid and returns sorted outlier results
-func rankFacesByDistance(faces []outlierFaceData, centroid []float32, threshold float64, limit int) ([]OutlierResult, float64) {
+// rankFacesByDistance computes distances from centroid and returns sorted outlier results.
+func rankFacesByDistance(
+	faces []outlierFaceData, centroid []float32, threshold float64, limit int,
+) ([]OutlierResult, float64) {
 	type faceWithDist struct {
 		data outlierFaceData
 		dist float64
@@ -183,7 +187,7 @@ func (h *FacesHandler) FindOutliers(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, OutlierResponse{
 		Person:            req.PersonName,
 		TotalFaces:        len(faces),
-		AvgDistance:        avgDistance,
+		AvgDistance:       avgDistance,
 		Outliers:          outliers,
 		MissingEmbeddings: missingEmbeddings,
 	})

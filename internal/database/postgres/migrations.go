@@ -60,7 +60,7 @@ func getPendingMigrationFiles(applied map[string]bool) ([]string, error) {
 	return files, nil
 }
 
-// Migrate applies all pending migrations automatically on startup
+// Migrate applies all pending migrations automatically on startup.
 func (p *Pool) Migrate(ctx context.Context) error {
 	applied, err := p.getAppliedMigrations(ctx)
 	if err != nil {
@@ -103,7 +103,7 @@ func (p *Pool) Migrate(ctx context.Context) error {
 	return nil
 }
 
-// MigrationsApplied returns the list of applied migrations
+// MigrationsApplied returns the list of applied migrations.
 func (p *Pool) MigrationsApplied(ctx context.Context) ([]string, error) {
 	rows, err := p.db.QueryContext(ctx, "SELECT version FROM schema_migrations ORDER BY version")
 	if err != nil {

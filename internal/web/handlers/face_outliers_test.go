@@ -14,7 +14,7 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
 
-// errMockError is a reusable mock error for testing
+// errMockError is a reusable mock error for testing.
 var errMockError = errors.New("mock error")
 
 func TestFacesHandler_FindOutliers_Success(t *testing.T) {
@@ -24,7 +24,7 @@ func TestFacesHandler_FindOutliers_Success(t *testing.T) {
 	pp := createPhotoPrismClient(t, server)
 
 	mockReader := mock.NewMockFaceReader()
-	// Add faces for "john-doe"
+	// Add faces for "john-doe".
 	embedding1 := make([]float32, 512)
 	for i := range embedding1 {
 		embedding1[i] = 0.1
@@ -33,7 +33,7 @@ func TestFacesHandler_FindOutliers_Success(t *testing.T) {
 	for i := range embedding2 {
 		embedding2[i] = 0.1
 	}
-	// Outlier with different embedding
+	// Outlier with different embedding.
 	outlierEmbedding := make([]float32, 512)
 	for i := range outlierEmbedding {
 		outlierEmbedding[i] = 0.9 // Very different
@@ -118,7 +118,7 @@ func TestFacesHandler_FindOutliers_Success(t *testing.T) {
 		t.Errorf("expected total_faces 3, got %d", response.TotalFaces)
 	}
 
-	// Should have outliers sorted by distance (most suspicious first)
+	// Should have outliers sorted by distance (most suspicious first).
 	if len(response.Outliers) == 0 {
 		t.Error("expected at least one outlier")
 	}
@@ -193,7 +193,7 @@ func TestFacesHandler_FindOutliers_PersonNotFound(t *testing.T) {
 	pp := createPhotoPrismClient(t, server)
 
 	mockReader := mock.NewMockFaceReader()
-	// No faces for "unknown-person"
+	// No faces for "unknown-person".
 
 	cfg := testConfig()
 	sm := middleware.NewSessionManager("test-secret", nil)
@@ -265,7 +265,7 @@ func TestFacesHandler_FindOutliers_WithThreshold(t *testing.T) {
 	pp := createPhotoPrismClient(t, server)
 
 	mockReader := mock.NewMockFaceReader()
-	// Add similar embeddings
+	// Add similar embeddings.
 	embedding := make([]float32, 512)
 	for i := range embedding {
 		embedding[i] = 0.5
@@ -304,7 +304,7 @@ func TestFacesHandler_FindOutliers_WithThreshold(t *testing.T) {
 		faceReader:     mockReader,
 	}
 
-	// High threshold should filter out all faces (they're identical)
+	// High threshold should filter out all faces (they're identical).
 	body := bytes.NewBufferString(`{"person_name": "john-doe", "threshold": 0.5}`)
 	req := requestWithPhotoPrism(t, "POST", "/api/v1/faces/outliers", pp)
 	req.Body = io.NopCloser(body)
@@ -318,7 +318,7 @@ func TestFacesHandler_FindOutliers_WithThreshold(t *testing.T) {
 	var response OutlierResponse
 	parseJSONResponse(t, recorder, &response)
 
-	// With identical embeddings and high threshold, no outliers should be found
+	// With identical embeddings and high threshold, no outliers should be found.
 	if len(response.Outliers) != 0 {
 		t.Errorf("expected 0 outliers with high threshold, got %d", len(response.Outliers))
 	}
@@ -332,7 +332,7 @@ func TestFacesHandler_FindOutliers_WithLimit(t *testing.T) {
 
 	mockReader := mock.NewMockFaceReader()
 
-	// Add multiple faces with different embeddings
+	// Add multiple faces with different embeddings.
 	for i := range 10 {
 		embedding := make([]float32, 512)
 		for j := range embedding {
@@ -386,7 +386,7 @@ func TestFacesHandler_FindOutliers_MissingEmbeddings(t *testing.T) {
 
 	mockReader := mock.NewMockFaceReader()
 
-	// Add face with valid embedding
+	// Add face with valid embedding.
 	embedding := make([]float32, 512)
 	for i := range embedding {
 		embedding[i] = 0.5
@@ -405,7 +405,7 @@ func TestFacesHandler_FindOutliers_MissingEmbeddings(t *testing.T) {
 		},
 	})
 
-	// Add face with empty embedding (missing)
+	// Add face with empty embedding (missing).
 	mockReader.AddFaces("photo2", []database.StoredFace{
 		{
 			PhotoUID:    "photo2",

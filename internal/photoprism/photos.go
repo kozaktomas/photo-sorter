@@ -9,24 +9,26 @@ import (
 	"net/url"
 )
 
-// GetPhotos retrieves all photos from PhotoPrism
+// GetPhotos retrieves all photos from PhotoPrism.
 // Optional quality parameter sets minimum quality score (1-7). PhotoPrism UI defaults to 3.
 func (pp *PhotoPrism) GetPhotos(count int, offset int, quality ...int) ([]Photo, error) {
 	return pp.GetPhotosWithQuery(count, offset, "", quality...)
 }
 
-// GetPhotosWithQuery retrieves photos from PhotoPrism with an optional search query
-// Query examples: "person:jan-novak", "label:cat", "year:2024"
+// GetPhotosWithQuery retrieves photos from PhotoPrism with an optional search query.
+// Query examples: "person:jan-novak", "label:cat", "year:2024".
 // Optional quality parameter sets minimum quality score (1-7). PhotoPrism UI defaults to 3.
 func (pp *PhotoPrism) GetPhotosWithQuery(count int, offset int, query string, quality ...int) ([]Photo, error) {
 	return pp.GetPhotosWithQueryAndOrder(count, offset, query, "", quality...)
 }
 
-// GetPhotosWithQueryAndOrder retrieves photos from PhotoPrism with optional search query and ordering
-// Query examples: "person:jan-novak", "label:cat", "year:2024"
-// Order examples: "newest", "oldest", "added", "edited", "name", "title", "size", "random"
+// GetPhotosWithQueryAndOrder retrieves photos from PhotoPrism with optional search query and ordering.
+// Query examples: "person:jan-novak", "label:cat", "year:2024".
+// Order examples: "newest", "oldest", "added", "edited", "name", "title", "size", "random".
 // Optional quality parameter sets minimum quality score (1-7). PhotoPrism UI defaults to 3.
-func (pp *PhotoPrism) GetPhotosWithQueryAndOrder(count int, offset int, query string, order string, quality ...int) ([]Photo, error) {
+func (pp *PhotoPrism) GetPhotosWithQueryAndOrder(
+	count int, offset int, query string, order string, quality ...int,
+) ([]Photo, error) {
 	endpoint := fmt.Sprintf("photos?count=%d&offset=%d", count, offset)
 	if query != "" {
 		endpoint += "&q=" + url.QueryEscape(query)
@@ -45,12 +47,12 @@ func (pp *PhotoPrism) GetPhotosWithQueryAndOrder(count int, offset int, query st
 	return *result, nil
 }
 
-// EditPhoto updates photo metadata
+// EditPhoto updates photo metadata.
 func (pp *PhotoPrism) EditPhoto(photoUID string, updates PhotoUpdate) (*Photo, error) {
 	return doPutJSON[Photo](pp, "photos/"+photoUID, updates)
 }
 
-// GetPhotoDetails retrieves full photo details including all metadata
+// GetPhotoDetails retrieves full photo details including all metadata.
 func (pp *PhotoPrism) GetPhotoDetails(photoUID string) (map[string]any, error) {
 	result, err := doGetJSON[map[string]any](pp, "photos/"+photoUID)
 	if err != nil {
@@ -66,20 +68,20 @@ func IsPhotoDeleted(details map[string]any) bool {
 	if !ok {
 		return false
 	}
-	// DeletedAt is a string timestamp; empty or missing means not deleted
+	// DeletedAt is a string timestamp; empty or missing means not deleted.
 	if str, ok := deletedAt.(string); ok && str != "" {
 		return true
 	}
 	return false
 }
 
-// GetPhotoDownload downloads the primary file content for a photo
-// Returns the image data as bytes and the content type
+// GetPhotoDownload downloads the primary file content for a photo.
+// Returns the image data as bytes and the content type.
 //
-// This function first retrieves the photo details to get the file hash,
+// This function first retrieves the photo details to get the file hash,.
 // then downloads the file using the /dl/{hash} endpoint with the download token.
 //
-// Example usage:
+// Example usage:.
 //
 //	data, contentType, err := pp.GetPhotoDownload("photo-uid-here")
 //	if err != nil {
@@ -118,30 +120,31 @@ func findPrimaryFileHash(details map[string]any) string {
 	return mapString(primaryFile, "Hash")
 }
 
+// GetPhotoDownload downloads the primary file for a photo and returns its bytes and hash.
 func (pp *PhotoPrism) GetPhotoDownload(photoUID string) ([]byte, string, error) {
-	// Get photo details to retrieve the file hash
+	// Get photo details to retrieve the file hash.
 	details, err := pp.GetPhotoDetails(photoUID)
 	if err != nil {
 		return nil, "", fmt.Errorf("could not get photo details: %w", err)
 	}
 
-	// Extract the PRIMARY file hash (not just files[0])
-	// Face detection coordinates are calculated relative to the primary file,
+	// Extract the PRIMARY file hash (not just files[0]).
+	// Face detection coordinates are calculated relative to the primary file,.
 	// so we must download the same file to ensure coordinates match.
 	fileHash := findPrimaryFileHash(details)
 	if fileHash == "" {
 		return nil, "", errors.New("could not find file hash for photo")
 	}
 
-	// Download using the file hash
+	// Download using the file hash.
 	return pp.GetFileDownload(fileHash)
 }
 
-// GetPhotoThumbnail downloads a thumbnail for a photo
-// size can be one of: tile_50, tile_100, left_224, right_224, tile_224, tile_500,
-// fit_720, tile_1080, fit_1280, fit_1600, fit_1920, fit_2048, fit_2560, fit_3840, fit_4096, fit_7680
+// GetPhotoThumbnail downloads a thumbnail for a photo.
+// size can be one of: tile_50, tile_100, left_224, right_224, tile_224, tile_500,.
+// fit_720, tile_1080, fit_1280, fit_1600, fit_1920, fit_2048, fit_2560, fit_3840, fit_4096, fit_7680.
 //
-// Example usage:
+// Example usage:.
 //
 //	// Get the hash from a Photo object's Hash field
 //	data, contentType, err := pp.GetPhotoThumbnail(photo.Hash, "fit_1280")
@@ -176,8 +179,8 @@ func (pp *PhotoPrism) GetPhotoThumbnail(thumbHash string, size string) ([]byte, 
 	return data, contentType, nil
 }
 
-// GetFileDownload downloads a file using its hash via the /api/v1/dl/{hash} endpoint
-// This endpoint may work differently than the photo download endpoint
+// GetFileDownload downloads a file using its hash via the /api/v1/dl/{hash} endpoint.
+// This endpoint may work differently than the photo download endpoint.
 func (pp *PhotoPrism) GetFileDownload(fileHash string) ([]byte, string, error) {
 	dlURL := pp.parsedURL.JoinPath("dl", fileHash)
 	q := dlURL.Query()
@@ -189,7 +192,7 @@ func (pp *PhotoPrism) GetFileDownload(fileHash string) ([]byte, string, error) {
 		return nil, "", fmt.Errorf("could not create request: %w", err)
 	}
 
-	// Try without Authorization header first, as this endpoint might use token in URL
+	// Try without Authorization header first, as this endpoint might use token in URL.
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return nil, "", fmt.Errorf("could not send request: %w", err)
@@ -209,7 +212,7 @@ func (pp *PhotoPrism) GetFileDownload(fileHash string) ([]byte, string, error) {
 	return data, contentType, nil
 }
 
-// ArchivePhotos archives (soft-deletes) multiple photos by their UIDs
+// ArchivePhotos archives (soft-deletes) multiple photos by their UIDs.
 func (pp *PhotoPrism) ArchivePhotos(photoUIDs []string) error {
 	if len(photoUIDs) == 0 {
 		return nil
@@ -224,12 +227,12 @@ func (pp *PhotoPrism) ArchivePhotos(photoUIDs []string) error {
 	return doRequestRaw(pp, http.MethodPost, "batch/photos/archive", selection)
 }
 
-// ApprovePhoto marks a photo in review as approved, allowing it to be downloaded
+// ApprovePhoto marks a photo in review as approved, allowing it to be downloaded.
 func (pp *PhotoPrism) ApprovePhoto(photoUID string) (*Photo, error) {
 	return doPostJSON[Photo](pp, fmt.Sprintf("photos/%s/approve", photoUID), nil)
 }
 
-// GetPhotoFileUID extracts the primary file UID from photo details
+// GetPhotoFileUID extracts the primary file UID from photo details.
 func (pp *PhotoPrism) GetPhotoFileUID(photoUID string) (string, error) {
 	details, err := pp.GetPhotoDetails(photoUID)
 	if err != nil {

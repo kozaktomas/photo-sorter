@@ -12,7 +12,7 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
 
-// createFacesHandlerWithMocks creates a FacesHandler with mock database dependencies
+// createFacesHandlerWithMocks creates a FacesHandler with mock database dependencies.
 func createFacesHandlerWithMocks(faceReader database.FaceReader, faceWriter database.FaceWriter) *FacesHandler {
 	return &FacesHandler{
 		config:         testConfig(),
@@ -97,7 +97,7 @@ func TestFacesHandler_Match_NoPhotoPrismClient(t *testing.T) {
 
 	handler.Match(recorder, req)
 
-	// Should fail because no PhotoPrism client in context
+	// Should fail because no PhotoPrism client in context.
 	assertStatusCode(t, recorder, http.StatusInternalServerError)
 }
 
@@ -105,7 +105,7 @@ func TestFacesHandler_Match_NoFacesForPerson(t *testing.T) {
 	mockReader := mock.NewMockFaceReader()
 	handler := createFacesHandlerWithMocks(mockReader, nil)
 
-	// Set up mock server for PhotoPrism
+	// Set up mock server for PhotoPrism.
 	server := setupMockPhotoPrismServer(t, nil)
 	defer server.Close()
 
@@ -142,7 +142,7 @@ func TestFacesHandler_Match_NoFacesForPerson(t *testing.T) {
 
 func TestFacesHandler_Match_WithThresholdAndLimit(t *testing.T) {
 	mockReader := mock.NewMockFaceReader()
-	// Add some faces for the person
+	// Add some faces for the person.
 	mockReader.AddFaces("photo1", []database.StoredFace{
 		{
 			ID:          1,
@@ -163,7 +163,7 @@ func TestFacesHandler_Match_WithThresholdAndLimit(t *testing.T) {
 
 	handler := createFacesHandlerWithMocks(mockReader, nil)
 
-	// Set up mock server for PhotoPrism
+	// Set up mock server for PhotoPrism.
 	server := setupMockPhotoPrismServer(t, nil)
 	defer server.Close()
 
@@ -207,7 +207,7 @@ func TestFacesHandler_Match_DefaultThreshold(t *testing.T) {
 
 	pp := createPhotoPrismClient(t, server)
 
-	// Request without threshold - should use default 0.5
+	// Request without threshold - should use default 0.5.
 	body := bytes.NewBufferString(`{"person_name": "john-doe"}`)
 	req := httptest.NewRequest("POST", "/api/v1/faces/match", body)
 	req.Header.Set("Content-Type", "application/json")
@@ -248,10 +248,10 @@ func TestFacesHandler_Match_GetFacesBySubjectError(t *testing.T) {
 
 func TestMatchRequest_Validation(t *testing.T) {
 	tests := []struct {
-		name           string
-		body           string
-		expectStatus   int
-		expectError    string
+		name         string
+		body         string
+		expectStatus int
+		expectError  string
 	}{
 		{
 			name:         "valid request",
@@ -317,7 +317,7 @@ func TestMatchRequest_Validation(t *testing.T) {
 }
 
 func TestBuildMatchSourceData_FacesWithoutEmbedding(t *testing.T) {
-	// Photo1 has an embedding, photo2 does NOT — both should be in sourcePhotoSet
+	// Photo1 has an embedding, photo2 does NOT — both should be in sourcePhotoSet.
 	allFaces := []database.StoredFace{
 		{
 			PhotoUID:    "photo1",
@@ -335,7 +335,7 @@ func TestBuildMatchSourceData_FacesWithoutEmbedding(t *testing.T) {
 
 	sourceFaces, sourcePhotoSet := buildMatchSourceData(allFaces)
 
-	// Both photos must be in sourcePhotoSet
+	// Both photos must be in sourcePhotoSet.
 	if !sourcePhotoSet["photo1"] {
 		t.Error("photo1 should be in sourcePhotoSet")
 	}
@@ -343,7 +343,7 @@ func TestBuildMatchSourceData_FacesWithoutEmbedding(t *testing.T) {
 		t.Error("photo2 should be in sourcePhotoSet (even without embedding)")
 	}
 
-	// Only photo1 should have a source face (it has an embedding)
+	// Only photo1 should have a source face (it has an embedding).
 	if len(sourceFaces) != 1 {
 		t.Fatalf("expected 1 source face, got %d", len(sourceFaces))
 	}
@@ -354,7 +354,7 @@ func TestBuildMatchSourceData_FacesWithoutEmbedding(t *testing.T) {
 
 func TestMarkAlreadyAssignedPhotos(t *testing.T) {
 	mockReader := mock.NewMockFaceReader()
-	// Add a face on "candidate-photo" that is assigned to "John"
+	// Add a face on "candidate-photo" that is assigned to "John".
 	mockReader.AddFaces("candidate-photo", []database.StoredFace{
 		{
 			PhotoUID:    "candidate-photo",
@@ -366,7 +366,7 @@ func TestMarkAlreadyAssignedPhotos(t *testing.T) {
 			MarkerUID:   "marker-1",
 		},
 	})
-	// Add a face on "new-photo" with no assignment
+	// Add a face on "new-photo" with no assignment.
 	mockReader.AddFaces("new-photo", []database.StoredFace{
 		{
 			PhotoUID:  "new-photo",
@@ -383,7 +383,7 @@ func TestMarkAlreadyAssignedPhotos(t *testing.T) {
 			FaceIndex:  0,
 			BBox:       []float64{10, 10, 50, 50},
 			MatchCount: 1,
-			// Stale HNSW data: no SubjectName/SubjectUID set
+			// Stale HNSW data: no SubjectName/SubjectUID set.
 		},
 		"new-photo": {
 			PhotoUID:   "new-photo",
@@ -396,7 +396,7 @@ func TestMarkAlreadyAssignedPhotos(t *testing.T) {
 
 	markAlreadyAssignedPhotos(context.Background(), mockReader, matchMap, "John")
 
-	// candidate-photo should now have subject data set (already assigned)
+	// candidate-photo should now have subject data set (already assigned).
 	cp := matchMap["candidate-photo"]
 	if cp.SubjectName == "" {
 		t.Error("candidate-photo SubjectName should be set after markAlreadyAssignedPhotos")
@@ -408,19 +408,19 @@ func TestMarkAlreadyAssignedPhotos(t *testing.T) {
 		t.Error("candidate-photo MarkerUID should be set after markAlreadyAssignedPhotos")
 	}
 
-	// determineMatchAction should return AlreadyDone for candidate-photo
+	// determineMatchAction should return AlreadyDone for candidate-photo.
 	action, _, _ := determineMatchAction(cp)
 	if action != ActionAlreadyDone {
 		t.Errorf("expected ActionAlreadyDone for candidate-photo, got %s", action)
 	}
 
-	// new-photo should be unchanged (no assignment in DB)
+	// new-photo should be unchanged (no assignment in DB).
 	np := matchMap["new-photo"]
 	if np.SubjectName != "" {
 		t.Errorf("new-photo SubjectName should be empty, got %q", np.SubjectName)
 	}
 
-	// determineMatchAction should return CreateMarker for new-photo
+	// determineMatchAction should return CreateMarker for new-photo.
 	action2, _, _ := determineMatchAction(np)
 	if action2 != ActionCreateMarker {
 		t.Errorf("expected ActionCreateMarker for new-photo, got %s", action2)

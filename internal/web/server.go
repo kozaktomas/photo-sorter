@@ -14,7 +14,7 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
 
-// Server represents the web server
+// Server represents the web server.
 type Server struct {
 	config         *config.Config
 	router         *chi.Mux
@@ -23,14 +23,17 @@ type Server struct {
 	sessionManager *middleware.SessionManager
 }
 
-// NewServer creates a new web server
-func NewServer(cfg *config.Config, port int, host string, sessionSecret string, sessionRepo middleware.SessionRepository) *Server {
+// NewServer creates a new web server.
+func NewServer(
+	cfg *config.Config, port int, host string,
+	sessionSecret string, sessionRepo middleware.SessionRepository,
+) *Server {
 	r := chi.NewRouter()
 
-	// Create job manager for async operations
+	// Create job manager for async operations.
 	jobManager := handlers.NewJobManager()
 
-	// Create session manager with optional persistence
+	// Create session manager with optional persistence.
 	sessionManager := middleware.NewSessionManager(sessionSecret, sessionRepo)
 
 	s := &Server{
@@ -40,7 +43,7 @@ func NewServer(cfg *config.Config, port int, host string, sessionSecret string, 
 		sessionManager: sessionManager,
 	}
 
-	// Set up middleware stack
+	// Set up middleware stack.
 	r.Use(chiMiddleware.RequestID)
 	r.Use(chiMiddleware.RealIP)
 	r.Use(chiMiddleware.Logger)
@@ -49,10 +52,10 @@ func NewServer(cfg *config.Config, port int, host string, sessionSecret string, 
 	r.Use(middleware.CORS())
 	r.Use(middleware.SecurityHeaders())
 
-	// Set up routes
+	// Set up routes.
 	s.setupRoutes(sessionManager)
 
-	// Create HTTP server
+	// Create HTTP server.
 	s.httpServer = &http.Server{
 		Addr:         fmt.Sprintf("%s:%d", host, port),
 		Handler:      r,
@@ -64,7 +67,7 @@ func NewServer(cfg *config.Config, port int, host string, sessionSecret string, 
 	return s
 }
 
-// Start starts the HTTP server
+// Start starts the HTTP server.
 func (s *Server) Start() error {
 	log.Printf("Starting web server on %s", s.httpServer.Addr)
 	if err := s.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
@@ -73,11 +76,11 @@ func (s *Server) Start() error {
 	return nil
 }
 
-// Shutdown gracefully shuts down the server
+// Shutdown gracefully shuts down the server.
 func (s *Server) Shutdown(ctx context.Context) error {
 	log.Println("Shutting down web server...")
 
-	// Stop the session cleanup goroutine
+	// Stop the session cleanup goroutine.
 	if s.sessionManager != nil {
 		s.sessionManager.Stop()
 	}
@@ -88,7 +91,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 	return nil
 }
 
-// Router returns the chi router for testing
+// Router returns the chi router for testing.
 func (s *Server) Router() *chi.Mux {
 	return s.router
 }

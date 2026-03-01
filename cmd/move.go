@@ -3,9 +3,9 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/spf13/cobra"
 	"github.com/kozaktomas/photo-sorter/internal/config"
 	"github.com/kozaktomas/photo-sorter/internal/photoprism"
+	"github.com/spf13/cobra"
 )
 
 var moveCmd = &cobra.Command{
@@ -30,20 +30,23 @@ func runMove(cmd *cobra.Command, args []string) error {
 
 	cfg := config.Load()
 
-	pp, err := photoprism.NewPhotoPrismWithCapture(cfg.PhotoPrism.URL, cfg.PhotoPrism.Username, cfg.PhotoPrism.GetPassword(), captureDir)
+	pp, err := photoprism.NewPhotoPrismWithCapture(
+		cfg.PhotoPrism.URL, cfg.PhotoPrism.Username,
+		cfg.PhotoPrism.GetPassword(), captureDir,
+	)
 	if err != nil {
 		return fmt.Errorf("failed to connect to PhotoPrism: %w", err)
 	}
 	defer pp.Logout()
 
-	// Verify source album exists
+	// Verify source album exists.
 	sourceAlbum, err := pp.GetAlbum(sourceAlbumUID)
 	if err != nil {
 		return fmt.Errorf("failed to get source album: %w", err)
 	}
 	fmt.Printf("Source album: %s\n", sourceAlbum.Title)
 
-	// Get all photos from source album
+	// Get all photos from source album.
 	fmt.Println("Fetching photos from source album...")
 	allPhotos, err := fetchAllAlbumPhotos(pp, sourceAlbumUID, 100)
 	if err != nil {
@@ -57,7 +60,7 @@ func runMove(cmd *cobra.Command, args []string) error {
 
 	fmt.Printf("Found %d photo(s) to move\n", len(allPhotos))
 
-	// Create new album
+	// Create new album.
 	fmt.Printf("Creating new album: %s\n", newAlbumName)
 	newAlbum, err := pp.CreateAlbum(newAlbumName)
 	if err != nil {
@@ -65,19 +68,19 @@ func runMove(cmd *cobra.Command, args []string) error {
 	}
 	fmt.Printf("Created album: %s (UID: %s)\n", newAlbum.Title, newAlbum.UID)
 
-	// Collect photo UIDs
+	// Collect photo UIDs.
 	photoUIDs := make([]string, len(allPhotos))
 	for i := range allPhotos {
 		photoUIDs[i] = allPhotos[i].UID
 	}
 
-	// Add photos to new album
+	// Add photos to new album.
 	fmt.Println("Adding photos to new album...")
 	if err := pp.AddPhotosToAlbum(newAlbum.UID, photoUIDs); err != nil {
 		return fmt.Errorf("failed to add photos to new album: %w", err)
 	}
 
-	// Remove photos from source album
+	// Remove photos from source album.
 	fmt.Println("Removing photos from source album...")
 	if err := pp.RemovePhotosFromAlbum(sourceAlbumUID, photoUIDs); err != nil {
 		return fmt.Errorf("failed to remove photos from source album: %w", err)

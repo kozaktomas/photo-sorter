@@ -14,14 +14,14 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
 
-// MatchRequest represents a face match request
+// MatchRequest represents a face match request.
 type MatchRequest struct {
 	PersonName string  `json:"person_name"`
 	Threshold  float64 `json:"threshold"`
 	Limit      int     `json:"limit"`
 }
 
-// FaceMatchResult represents a single matched photo
+// FaceMatchResult represents a single matched photo.
 type FaceMatchResult struct {
 	PhotoUID   string      `json:"photo_uid"`
 	Distance   float64     `json:"distance"`
@@ -35,14 +35,14 @@ type FaceMatchResult struct {
 	IoU        float64     `json:"iou,omitempty"`
 }
 
-// MatchSummary provides counts by action type
+// MatchSummary provides counts by action type.
 type MatchSummary struct {
 	CreateMarker int `json:"create_marker"`
 	AssignPerson int `json:"assign_person"`
 	AlreadyDone  int `json:"already_done"`
 }
 
-// MatchResponse represents the face match response
+// MatchResponse represents the face match response.
 type MatchResponse struct {
 	Person       string            `json:"person"`
 	SourcePhotos int               `json:"source_photos"`
@@ -51,7 +51,7 @@ type MatchResponse struct {
 	Summary      MatchSummary      `json:"summary"`
 }
 
-// matchCandidate holds data about a candidate face match
+// matchCandidate holds data about a candidate face match.
 type matchCandidate struct {
 	PhotoUID    string
 	Distance    float64
@@ -67,7 +67,7 @@ type matchCandidate struct {
 	SubjectUID  string
 }
 
-// matchSourceData holds a source face's embedding and photo info
+// matchSourceData holds a source face's embedding and photo info.
 type matchSourceData struct {
 	PhotoUID  string
 	Embedding []float32
@@ -98,7 +98,7 @@ func buildMatchSourceData(allPersonFaces []database.StoredFace) ([]matchSourceDa
 	return sourceFaces, sourcePhotoSet
 }
 
-// computeMinMatchCount scales the minimum match count based on threshold and source count
+// computeMinMatchCount scales the minimum match count based on threshold and source count.
 func computeMinMatchCount(sourceCount int, threshold float64) int {
 	thresholdFactor := threshold / 0.5 * 0.05
 	if thresholdFactor < 0.01 {
@@ -111,8 +111,14 @@ func computeMinMatchCount(sourceCount int, threshold float64) int {
 	return minMatchCount
 }
 
-// searchSimilarFaces runs parallel similarity searches and collects candidates into a map
-func searchSimilarFaces(ctx context.Context, faceRepo database.FaceReader, sourceEmbeddings [][]float32, sourcePhotoSet map[string]bool, searchLimit int, threshold float64, personName string) map[string]*matchCandidate {
+// searchSimilarFaces runs parallel similarity searches and collects candidates into a map.
+//
+//nolint:gocognit // Multi-embedding face search with candidate deduplication.
+func searchSimilarFaces(
+	ctx context.Context, faceRepo database.FaceReader,
+	sourceEmbeddings [][]float32, sourcePhotoSet map[string]bool,
+	searchLimit int, threshold float64, personName string,
+) map[string]*matchCandidate {
 	normalizedPersonName := facematch.NormalizePersonName(personName)
 	type searchResult struct {
 		faces     []database.StoredFace
@@ -148,7 +154,7 @@ func searchSimilarFaces(ctx context.Context, faceRepo database.FaceReader, sourc
 			if sourcePhotoSet[face.PhotoUID] {
 				continue
 			}
-			// Skip faces assigned to a different person
+			// Skip faces assigned to a different person.
 			if face.SubjectName != "" && face.SubjectUID != "" {
 				if facematch.NormalizePersonName(face.SubjectName) != normalizedPersonName {
 					continue
@@ -160,7 +166,7 @@ func searchSimilarFaces(ctx context.Context, faceRepo database.FaceReader, sourc
 	return matchMap
 }
 
-// mergeMatchCandidate adds or updates a candidate in the match map
+// mergeMatchCandidate adds or updates a candidate in the match map.
 func mergeMatchCandidate(matchMap map[string]*matchCandidate, face *database.StoredFace, distance float64) {
 	if existing, ok := matchMap[face.PhotoUID]; ok {
 		existing.MatchCount++
@@ -194,7 +200,7 @@ func mergeMatchCandidate(matchMap map[string]*matchCandidate, face *database.Sto
 	}
 }
 
-// filterAndSortCandidates filters by min match count, sorts by distance, and applies a limit
+// filterAndSortCandidates filters by min match count, sorts by distance, and applies a limit.
 func filterAndSortCandidates(matchMap map[string]*matchCandidate, minMatchCount, limit int) []matchCandidate {
 	candidates := make([]matchCandidate, 0, len(matchMap))
 	for _, m := range matchMap {
@@ -240,7 +246,7 @@ func resolveCandidateDimensions(c *matchCandidate, pp interface {
 	return width, height, orientation, fileUID, true
 }
 
-// determineMatchAction determines the action for a match based on cached marker data
+// determineMatchAction determines the action for a match based on cached marker data.
 func determineMatchAction(c *matchCandidate) (MatchAction, string, string) {
 	if c.MarkerUID == "" {
 		return ActionCreateMarker, "", ""
@@ -277,7 +283,7 @@ func candidateToMatchResult(c *matchCandidate, pp interface {
 	}
 }
 
-// buildMatchResults converts candidates to match results and computes the summary
+// buildMatchResults converts candidates to match results and computes the summary.
 func buildMatchResults(candidates []matchCandidate, pp interface {
 	GetPhotoDetails(string) (map[string]any, error)
 }) ([]FaceMatchResult, MatchSummary) {
@@ -302,10 +308,13 @@ func buildMatchResults(candidates []matchCandidate, pp interface {
 	return matches, summary
 }
 
-// markAlreadyAssignedPhotos checks the DB for candidate photos where the person is already
+// markAlreadyAssignedPhotos checks the DB for candidate photos where the person is already.
 // assigned, and updates those candidates so determineMatchAction returns AlreadyDone.
 // This guards against stale HNSW cache data where SubjectName/SubjectUID aren't up to date.
-func markAlreadyAssignedPhotos(ctx context.Context, faceReader database.FaceReader, matchMap map[string]*matchCandidate, personName string) {
+func markAlreadyAssignedPhotos(
+	ctx context.Context, faceReader database.FaceReader,
+	matchMap map[string]*matchCandidate, personName string,
+) {
 	if len(matchMap) == 0 {
 		return
 	}
@@ -335,7 +344,7 @@ func markAlreadyAssignedPhotos(ctx context.Context, faceReader database.FaceRead
 	}
 }
 
-// emptyMatchResponse builds an empty MatchResponse for the given person
+// emptyMatchResponse builds an empty MatchResponse for the given person.
 func emptyMatchResponse(personName string, sourcePhotos, sourceFaces int) MatchResponse {
 	return MatchResponse{
 		Person:       personName,
@@ -346,7 +355,7 @@ func emptyMatchResponse(personName string, sourcePhotos, sourceFaces int) MatchR
 	}
 }
 
-// parseMatchRequest parses and validates a match request, returning an error message if invalid
+// parseMatchRequest parses and validates a match request, returning an error message if invalid.
 func parseMatchRequest(r *http.Request) (MatchRequest, string) {
 	var req MatchRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -361,7 +370,7 @@ func parseMatchRequest(r *http.Request) (MatchRequest, string) {
 	return req, ""
 }
 
-// extractSourceEmbeddings extracts the embedding vectors from source faces
+// extractSourceEmbeddings extracts the embedding vectors from source faces.
 func extractSourceEmbeddings(sourceFaces []matchSourceData) [][]float32 {
 	embeddings := make([][]float32, len(sourceFaces))
 	for i, sf := range sourceFaces {
@@ -370,8 +379,8 @@ func extractSourceEmbeddings(sourceFaces []matchSourceData) [][]float32 {
 	return embeddings
 }
 
-// augmentSourcePhotoSet queries PhotoPrism for photos already tagged with the person
-// and adds their UIDs to sourcePhotoSet. This guards against stale local cache where
+// augmentSourcePhotoSet queries PhotoPrism for photos already tagged with the person.
+// and adds their UIDs to sourcePhotoSet. This guards against stale local cache where.
 // the faces table doesn't have subject_name set, so the photo would be missed.
 func augmentSourcePhotoSet(pp *photoprism.PhotoPrism, subjectUID string, sourcePhotoSet map[string]bool) {
 	if subjectUID == "" {
@@ -444,7 +453,10 @@ func (h *FacesHandler) Match(w http.ResponseWriter, r *http.Request) {
 		searchLimit = req.Limit * 10
 	}
 
-	matchMap := searchSimilarFaces(ctx, h.faceReader, sourceEmbeddings, sourcePhotoSet, searchLimit, req.Threshold, req.PersonName)
+	matchMap := searchSimilarFaces(
+		ctx, h.faceReader, sourceEmbeddings,
+		sourcePhotoSet, searchLimit, req.Threshold, req.PersonName,
+	)
 	markAlreadyAssignedPhotos(ctx, h.faceReader, matchMap, req.PersonName)
 	candidates := filterAndSortCandidates(matchMap, computeMinMatchCount(len(sourceEmbeddings), req.Threshold), req.Limit)
 	matches, summary := buildMatchResults(candidates, pp)

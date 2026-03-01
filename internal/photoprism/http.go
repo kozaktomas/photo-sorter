@@ -71,7 +71,10 @@ func doDeleteJSON[T any](pp *PhotoPrism, endpoint string, requestBody any) (*T, 
 
 // doRequestJSON is the internal helper that performs HTTP requests with JSON body and response.
 // It accepts one or more valid status codes. If the response status doesn't match any, an error is returned.
-func doRequestJSON[T any](pp *PhotoPrism, method, endpoint string, requestBody any, expectedStatuses ...int) (*T, error) {
+func doRequestJSON[T any](
+	pp *PhotoPrism, method, endpoint string,
+	requestBody any, expectedStatuses ...int,
+) (*T, error) {
 	url := pp.resolveURL(endpoint)
 
 	var bodyReader io.Reader

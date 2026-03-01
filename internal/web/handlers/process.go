@@ -20,7 +20,7 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
 
-// ProcessJob represents an async photo processing job
+// ProcessJob represents an async photo processing job.
 type ProcessJob struct {
 	EventBroadcaster
 
@@ -36,7 +36,7 @@ type ProcessJob struct {
 	Result          *ProcessJobResult `json:"result,omitempty"`
 }
 
-// ProcessJobOptions represents options for a process job
+// ProcessJobOptions represents options for a process job.
 type ProcessJobOptions struct {
 	Concurrency  int  `json:"concurrency"`
 	Limit        int  `json:"limit"`
@@ -44,7 +44,7 @@ type ProcessJobOptions struct {
 	NoEmbeddings bool `json:"no_embeddings"`
 }
 
-// ProcessJobResult represents the result of a process job
+// ProcessJobResult represents the result of a process job.
 type ProcessJobResult struct {
 	EmbedSuccess    int64 `json:"embed_success"`
 	EmbedError      int64 `json:"embed_error"`
@@ -56,14 +56,14 @@ type ProcessJobResult struct {
 	TotalFacePhotos int   `json:"total_face_photos"`
 }
 
-// GetStatus returns the current job status (implements SSEJob)
+// GetStatus returns the current job status (implements SSEJob).
 func (j *ProcessJob) GetStatus() JobStatus {
 	j.mu.RLock()
 	defer j.mu.RUnlock()
 	return j.Status
 }
 
-// Cancel cancels the process job
+// Cancel cancels the process job.
 func (j *ProcessJob) Cancel() {
 	j.EventBroadcaster.Cancel()
 	j.mu.Lock()
@@ -71,25 +71,25 @@ func (j *ProcessJob) Cancel() {
 	j.mu.Unlock()
 }
 
-// ProcessJobManager manages process jobs (only one at a time)
+// ProcessJobManager manages process jobs (only one at a time).
 type ProcessJobManager struct {
 	activeJob *ProcessJob
 	mu        sync.RWMutex
 }
 
-// NewProcessJobManager creates a new process job manager
+// NewProcessJobManager creates a new process job manager.
 func NewProcessJobManager() *ProcessJobManager {
 	return &ProcessJobManager{}
 }
 
-// GetActiveJob returns the currently active job
+// GetActiveJob returns the currently active job.
 func (m *ProcessJobManager) GetActiveJob() *ProcessJob {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	return m.activeJob
 }
 
-// GetJob returns a job by ID
+// GetJob returns a job by ID.
 func (m *ProcessJobManager) GetJob(id string) *ProcessJob {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -99,21 +99,21 @@ func (m *ProcessJobManager) GetJob(id string) *ProcessJob {
 	return nil
 }
 
-// SetActiveJob sets the active job
+// SetActiveJob sets the active job.
 func (m *ProcessJobManager) SetActiveJob(job *ProcessJob) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.activeJob = job
 }
 
-// ClearActiveJob clears the active job
+// ClearActiveJob clears the active job.
 func (m *ProcessJobManager) ClearActiveJob() {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.activeJob = nil
 }
 
-// ProcessHandler handles photo processing endpoints
+// ProcessHandler handles photo processing endpoints.
 type ProcessHandler struct {
 	config         *config.Config
 	sessionManager *middleware.SessionManager
@@ -123,8 +123,11 @@ type ProcessHandler struct {
 	statsHandler   *StatsHandler
 }
 
-// NewProcessHandler creates a new process handler
-func NewProcessHandler(cfg *config.Config, sm *middleware.SessionManager, fh *FacesHandler, ph *PhotosHandler, sh *StatsHandler) *ProcessHandler {
+// NewProcessHandler creates a new process handler.
+func NewProcessHandler(
+	cfg *config.Config, sm *middleware.SessionManager,
+	fh *FacesHandler, ph *PhotosHandler, sh *StatsHandler,
+) *ProcessHandler {
 	return &ProcessHandler{
 		config:         cfg,
 		sessionManager: sm,
@@ -135,7 +138,7 @@ func NewProcessHandler(cfg *config.Config, sm *middleware.SessionManager, fh *Fa
 	}
 }
 
-// ProcessStartRequest represents a request to start processing
+// ProcessStartRequest represents a request to start processing.
 type ProcessStartRequest struct {
 	Concurrency  int  `json:"concurrency"`
 	Limit        int  `json:"limit"`
@@ -143,15 +146,15 @@ type ProcessStartRequest struct {
 	NoEmbeddings bool `json:"no_embeddings"`
 }
 
-// Start starts a new processing job
+// Start starts a new processing job.
 func (h *ProcessHandler) Start(w http.ResponseWriter, r *http.Request) {
-	// Validate PostgreSQL is configured
+	// Validate PostgreSQL is configured.
 	if !database.IsInitialized() {
 		respondError(w, http.StatusBadRequest, "DATABASE_URL is not configured")
 		return
 	}
 
-	// Check no job already running
+	// Check no job already running.
 	if active := h.jobManager.GetActiveJob(); active != nil {
 		if active.Status == JobStatusRunning || active.Status == JobStatusPending {
 			respondError(w, http.StatusConflict, "a process job is already running")
@@ -176,7 +179,7 @@ func (h *ProcessHandler) Start(w http.ResponseWriter, r *http.Request) {
 
 	session := middleware.GetSessionFromContext(r.Context())
 
-	// Create job
+	// Create job.
 	jobID := uuid.New().String()
 	job := &ProcessJob{
 		ID:        jobID,
@@ -187,7 +190,7 @@ func (h *ProcessHandler) Start(w http.ResponseWriter, r *http.Request) {
 
 	h.jobManager.SetActiveJob(job)
 
-	// Launch processing goroutine
+	// Launch processing goroutine.
 	go h.runProcessJob(job, session)
 
 	respondJSON(w, http.StatusAccepted, map[string]string{
@@ -196,7 +199,7 @@ func (h *ProcessHandler) Start(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// Events streams process job events via SSE
+// Events streams process job events via SSE.
 func (h *ProcessHandler) Events(w http.ResponseWriter, r *http.Request) {
 	streamSSEEvents(w, r,
 		func(id string) SSEJob {
@@ -212,7 +215,7 @@ func (h *ProcessHandler) Events(w http.ResponseWriter, r *http.Request) {
 	)
 }
 
-// Cancel cancels a process job
+// Cancel cancels a process job.
 func (h *ProcessHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 	jobID := chi.URLParam(r, "jobId")
 	if jobID == "" {
@@ -230,13 +233,13 @@ func (h *ProcessHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]bool{"cancelled": true})
 }
 
-// processJobRepos holds the repositories needed for a process job
+// processJobRepos holds the repositories needed for a process job.
 type processJobRepos struct {
 	embRepo    database.EmbeddingReader
 	faceWriter database.FaceWriter
 }
 
-// processJobCounters tracks atomic counters for the process job
+// processJobCounters tracks atomic counters for the process job.
 type processJobCounters struct {
 	embedSuccess   int64
 	embedError     int64
@@ -246,7 +249,7 @@ type processJobCounters struct {
 	processedCount int64
 }
 
-// initProcessJobRepos initializes the repositories needed for the process job
+// initProcessJobRepos initializes the repositories needed for the process job.
 func initProcessJobRepos(ctx context.Context, options ProcessJobOptions) (*processJobRepos, error) {
 	repos := &processJobRepos{}
 	if !options.NoEmbeddings {
@@ -266,7 +269,7 @@ func initProcessJobRepos(ctx context.Context, options ProcessJobOptions) (*proce
 	return repos, nil
 }
 
-// fetchAllPhotos fetches all photos from PhotoPrism with pagination, respecting context cancellation
+// fetchAllPhotos fetches all photos from PhotoPrism with pagination, respecting context cancellation.
 func fetchAllPhotos(ctx context.Context, pp *photoprism.PhotoPrism) ([]photoprism.Photo, error) {
 	var allPhotos []photoprism.Photo
 	pageSize := constants.DefaultPageSize
@@ -289,8 +292,11 @@ func fetchAllPhotos(ctx context.Context, pp *photoprism.PhotoPrism) ([]photopris
 	return allPhotos, nil
 }
 
-// filterUnprocessedPhotos filters photos that need embedding or face processing
-func filterUnprocessedPhotos(ctx context.Context, allPhotos []photoprism.Photo, repos *processJobRepos, limit int) ([]photoprism.Photo, int) {
+// filterUnprocessedPhotos filters photos that need embedding or face processing.
+func filterUnprocessedPhotos(
+	ctx context.Context, allPhotos []photoprism.Photo,
+	repos *processJobRepos, limit int,
+) ([]photoprism.Photo, int) {
 	var photosToProcess []photoprism.Photo
 	for _, photo := range allPhotos {
 		needsEmbed := false
@@ -316,7 +322,7 @@ func filterUnprocessedPhotos(ctx context.Context, allPhotos []photoprism.Photo, 
 	return photosToProcess, skipped
 }
 
-// processOnePhoto processes a single photo for embeddings and faces
+// processOnePhoto processes a single photo for embeddings and faces.
 func processOnePhoto(ctx context.Context, pp *photoprism.PhotoPrism, embClient, faceClient *fingerprint.EmbeddingClient,
 	repos *processJobRepos, photoUID string, counters *processJobCounters) {
 	needsEmbed := false
@@ -349,8 +355,12 @@ func processOnePhoto(ctx context.Context, pp *photoprism.PhotoPrism, embClient, 
 	}
 }
 
-// processPhotoEmbedding computes and saves a CLIP embedding for a single photo
-func processPhotoEmbedding(ctx context.Context, embClient *fingerprint.EmbeddingClient, embRepo database.EmbeddingReader, photoUID string, imageData []byte, counters *processJobCounters) {
+// processPhotoEmbedding computes and saves a CLIP embedding for a single photo.
+func processPhotoEmbedding(
+	ctx context.Context, embClient *fingerprint.EmbeddingClient,
+	embRepo database.EmbeddingReader, photoUID string,
+	imageData []byte, counters *processJobCounters,
+) {
 	resizedData, err := fingerprint.ResizeImage(imageData, 1920)
 	if err != nil {
 		atomic.AddInt64(&counters.embedError, 1)
@@ -372,8 +382,12 @@ func processPhotoEmbedding(ctx context.Context, embClient *fingerprint.Embedding
 	}
 }
 
-// processPhotoFaces computes face embeddings and enriches with marker data
-func processPhotoFaces(ctx context.Context, pp *photoprism.PhotoPrism, faceClient *fingerprint.EmbeddingClient, faceWriter database.FaceWriter, photoUID string, imageData []byte, counters *processJobCounters) {
+// processPhotoFaces computes face embeddings and enriches with marker data.
+func processPhotoFaces(
+	ctx context.Context, pp *photoprism.PhotoPrism,
+	faceClient *fingerprint.EmbeddingClient, faceWriter database.FaceWriter,
+	photoUID string, imageData []byte, counters *processJobCounters,
+) {
 	result, err := faceClient.ComputeFaceEmbeddings(ctx, imageData)
 	if err != nil {
 		atomic.AddInt64(&counters.faceError, 1)
@@ -396,7 +410,7 @@ func processPhotoFaces(ctx context.Context, pp *photoprism.PhotoPrism, faceClien
 	atomic.AddInt64(&counters.totalNewFaces, int64(len(faces)))
 }
 
-// getEmbeddingURL returns the embedding service URL from config
+// getEmbeddingURL returns the embedding service URL from config.
 func getEmbeddingURL(cfg *config.Config) string {
 	if cfg.Embedding.URL != "" {
 		return cfg.Embedding.URL
@@ -404,9 +418,39 @@ func getEmbeddingURL(cfg *config.Config) string {
 	return cfg.LlamaCpp.URL
 }
 
-// processPhotosWorkerPool runs the concurrent photo processing worker pool
-func (h *ProcessHandler) processPhotosWorkerPool(ctx context.Context, pp *photoprism.PhotoPrism, embClient, faceClient *fingerprint.EmbeddingClient,
-	repos *processJobRepos, photosToProcess []photoprism.Photo, concurrency int, job *ProcessJob) *processJobCounters {
+// processJobClients holds the initialized clients for a process job.
+type processJobClients struct {
+	pp         *photoprism.PhotoPrism
+	embClient  *fingerprint.EmbeddingClient
+	faceClient *fingerprint.EmbeddingClient
+}
+
+func (h *ProcessHandler) initProcessJobClients(session *middleware.Session) (*processJobClients, error) {
+	pp, err := getPhotoPrismClient(h.config, session)
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect to PhotoPrism: %w", err)
+	}
+
+	embURL := getEmbeddingURL(h.config)
+	embClient, err := fingerprint.NewEmbeddingClient(embURL, "clip")
+	if err != nil {
+		return nil, fmt.Errorf("invalid embedding config: %w", err)
+	}
+	faceClient, err := fingerprint.NewEmbeddingClient(embURL, "faces")
+	if err != nil {
+		return nil, fmt.Errorf("invalid embedding config: %w", err)
+	}
+
+	return &processJobClients{pp: pp, embClient: embClient, faceClient: faceClient}, nil
+}
+
+// processPhotosWorkerPool runs the concurrent photo processing worker pool.
+func (h *ProcessHandler) processPhotosWorkerPool(
+	ctx context.Context, pp *photoprism.PhotoPrism,
+	embClient, faceClient *fingerprint.EmbeddingClient,
+	repos *processJobRepos, photosToProcess []photoprism.Photo,
+	concurrency int, job *ProcessJob,
+) *processJobCounters {
 	counters := &processJobCounters{}
 	sem := make(chan struct{}, concurrency)
 	var wg sync.WaitGroup
@@ -436,49 +480,13 @@ func (h *ProcessHandler) processPhotosWorkerPool(ctx context.Context, pp *photop
 	return counters
 }
 
-// runProcessJob executes the process job in the background
-func (h *ProcessHandler) runProcessJob(job *ProcessJob, session *middleware.Session) {
-	ctx, cancel := context.WithCancel(context.Background())
-	job.cancel = cancel
-	defer cancel()
-
-	job.mu.Lock()
-	job.Status = JobStatusRunning
-	job.mu.Unlock()
-	job.SendEvent(JobEvent{Type: "started", Message: "Process job started"})
-
-	repos, err := initProcessJobRepos(ctx, job.Options)
+func (h *ProcessHandler) fetchAndFilterPhotos(
+	ctx context.Context, clients *processJobClients, repos *processJobRepos,
+	job *ProcessJob,
+) ([]photoprism.Photo, error) {
+	allPhotos, err := fetchAllPhotos(ctx, clients.pp)
 	if err != nil {
-		h.failJob(job, err.Error())
-		return
-	}
-
-	pp, err := getPhotoPrismClient(h.config, session)
-	if err != nil {
-		h.failJob(job, fmt.Sprintf("failed to connect to PhotoPrism: %v", err))
-		return
-	}
-
-	embURL := getEmbeddingURL(h.config)
-	embClient, err := fingerprint.NewEmbeddingClient(embURL, "clip")
-	if err != nil {
-		h.failJob(job, fmt.Sprintf("invalid embedding config: %v", err))
-		return
-	}
-	faceClient, err := fingerprint.NewEmbeddingClient(embURL, "faces")
-	if err != nil {
-		h.failJob(job, fmt.Sprintf("invalid embedding config: %v", err))
-		return
-	}
-
-	allPhotos, err := fetchAllPhotos(ctx, pp)
-	if err != nil {
-		if ctx.Err() != nil {
-			h.cancelJob(job)
-		} else {
-			h.failJob(job, fmt.Sprintf("failed to get photos: %v", err))
-		}
-		return
+		return nil, err
 	}
 
 	job.mu.Lock()
@@ -496,12 +504,51 @@ func (h *ProcessHandler) runProcessJob(job *ProcessJob, session *middleware.Sess
 		"to_process": len(photosToProcess), "skipped": skipped,
 	}})
 
+	return photosToProcess, nil
+}
+
+// runProcessJob executes the process job in the background.
+func (h *ProcessHandler) runProcessJob(job *ProcessJob, session *middleware.Session) {
+	ctx, cancel := context.WithCancel(context.Background())
+	job.cancel = cancel
+	defer cancel()
+
+	job.mu.Lock()
+	job.Status = JobStatusRunning
+	job.mu.Unlock()
+	job.SendEvent(JobEvent{Type: "started", Message: "Process job started"})
+
+	repos, err := initProcessJobRepos(ctx, job.Options)
+	if err != nil {
+		h.failJob(job, err.Error())
+		return
+	}
+
+	clients, err := h.initProcessJobClients(session)
+	if err != nil {
+		h.failJob(job, err.Error())
+		return
+	}
+
+	photosToProcess, err := h.fetchAndFilterPhotos(ctx, clients, repos, job)
+	if err != nil {
+		if ctx.Err() != nil {
+			h.cancelJob(job)
+		} else {
+			h.failJob(job, fmt.Sprintf("failed to get photos: %v", err))
+		}
+		return
+	}
+
 	if len(photosToProcess) == 0 {
 		h.completeJob(job, repos.embRepo, repos.faceWriter, 0, 0, 0, 0, 0)
 		return
 	}
 
-	counters := h.processPhotosWorkerPool(ctx, pp, embClient, faceClient, repos, photosToProcess, job.Options.Concurrency, job)
+	counters := h.processPhotosWorkerPool(
+		ctx, clients.pp, clients.embClient, clients.faceClient, repos,
+		photosToProcess, job.Options.Concurrency, job,
+	)
 
 	if ctx.Err() != nil {
 		h.cancelJob(job)
@@ -509,7 +556,8 @@ func (h *ProcessHandler) runProcessJob(job *ProcessJob, session *middleware.Sess
 	}
 
 	h.completeJob(job, repos.embRepo, repos.faceWriter,
-		counters.embedSuccess, counters.embedError, counters.faceSuccess, counters.faceError, counters.totalNewFaces)
+		counters.embedSuccess, counters.embedError,
+		counters.faceSuccess, counters.faceError, counters.totalNewFaces)
 }
 
 func (h *ProcessHandler) sendProgress(job *ProcessJob, processed int) {
@@ -546,7 +594,7 @@ func (h *ProcessHandler) cancelJob(job *ProcessJob) {
 
 func (h *ProcessHandler) completeJob(job *ProcessJob, embRepo database.EmbeddingReader, faceWriter database.FaceWriter,
 	embedSuccess, embedError, faceSuccess, faceError, totalNewFaces int64) {
-	// Refresh handlers to use updated data
+	// Refresh handlers to use updated data.
 	if h.facesHandler != nil {
 		h.facesHandler.RefreshReader()
 	}
@@ -557,7 +605,7 @@ func (h *ProcessHandler) completeJob(job *ProcessJob, embRepo database.Embedding
 		h.statsHandler.InvalidateCache()
 	}
 
-	// Gather stats
+	// Gather stats.
 	ctx := context.Background()
 	result := &ProcessJobResult{
 		EmbedSuccess:  embedSuccess,
@@ -587,7 +635,7 @@ func (h *ProcessHandler) completeJob(job *ProcessJob, embRepo database.Embedding
 	job.SendEvent(JobEvent{Type: "completed", Data: result})
 }
 
-// convertMarkersToInfos converts PhotoPrism markers to facematch.MarkerInfo slice
+// convertMarkersToInfos converts PhotoPrism markers to facematch.MarkerInfo slice.
 func convertMarkersToInfos(markers []photoprism.Marker) []facematch.MarkerInfo {
 	markerInfos := make([]facematch.MarkerInfo, 0, len(markers))
 	for i := range markers {
@@ -600,21 +648,35 @@ func convertMarkersToInfos(markers []photoprism.Marker) []facematch.MarkerInfo {
 	return markerInfos
 }
 
-// matchFacesToMarkers matches each face to its best marker and updates the face cache
-func matchFacesToMarkers(ctx context.Context, faceWriter database.FaceWriter, photoUID string, faces []database.StoredFace, markerInfos []facematch.MarkerInfo, fileInfo *facematch.PrimaryFileInfo) {
+// matchFacesToMarkers matches each face to its best marker and updates the face cache.
+func matchFacesToMarkers(
+	ctx context.Context, faceWriter database.FaceWriter,
+	photoUID string, faces []database.StoredFace,
+	markerInfos []facematch.MarkerInfo, fileInfo *facematch.PrimaryFileInfo,
+) {
 	for _, face := range faces {
 		if len(face.BBox) != 4 {
 			continue
 		}
-		match := facematch.MatchFaceToMarkers(face.BBox, markerInfos, fileInfo.Width, fileInfo.Height, fileInfo.Orientation, constants.IoUThreshold)
+		match := facematch.MatchFaceToMarkers(
+			face.BBox, markerInfos,
+			fileInfo.Width, fileInfo.Height,
+			fileInfo.Orientation, constants.IoUThreshold,
+		)
 		if match != nil {
-			faceWriter.UpdateFaceMarker(ctx, photoUID, face.FaceIndex, match.MarkerUID, match.SubjectUID, match.SubjectName)
+			faceWriter.UpdateFaceMarker(
+				ctx, photoUID, face.FaceIndex,
+				match.MarkerUID, match.SubjectUID, match.SubjectName,
+			)
 		}
 	}
 }
 
-// enrichFacesWithMarkerData fetches PhotoPrism marker/dimension data and caches it in the face records
-func enrichFacesWithMarkerData(pp *photoprism.PhotoPrism, faceWriter database.FaceWriter, photoUID string, faces []database.StoredFace) {
+// enrichFacesWithMarkerData fetches PhotoPrism marker/dimension data and caches it in the face records.
+func enrichFacesWithMarkerData(
+	pp *photoprism.PhotoPrism, faceWriter database.FaceWriter,
+	photoUID string, faces []database.StoredFace,
+) {
 	if len(faces) == 0 {
 		return
 	}
@@ -630,7 +692,11 @@ func enrichFacesWithMarkerData(pp *photoprism.PhotoPrism, faceWriter database.Fa
 		return
 	}
 
-	faceWriter.UpdateFacePhotoInfo(ctx, photoUID, fileInfo.Width, fileInfo.Height, fileInfo.Orientation, fileInfo.UID)
+	faceWriter.UpdateFacePhotoInfo(
+		ctx, photoUID,
+		fileInfo.Width, fileInfo.Height,
+		fileInfo.Orientation, fileInfo.UID,
+	)
 
 	markers, err := pp.GetPhotoMarkers(photoUID)
 	if err != nil || len(markers) == 0 {
@@ -638,10 +704,13 @@ func enrichFacesWithMarkerData(pp *photoprism.PhotoPrism, faceWriter database.Fa
 	}
 
 	markerInfos := convertMarkersToInfos(markers)
-	matchFacesToMarkers(ctx, faceWriter, photoUID, faces, markerInfos, fileInfo)
+	matchFacesToMarkers(
+		ctx, faceWriter, photoUID,
+		faces, markerInfos, fileInfo,
+	)
 }
 
-// RebuildIndexResponse represents the response from rebuilding the HNSW index
+// RebuildIndexResponse represents the response from rebuilding the HNSW index.
 type RebuildIndexResponse struct {
 	Success            bool   `json:"success"`
 	FaceCount          int    `json:"face_count"`
@@ -651,7 +720,7 @@ type RebuildIndexResponse struct {
 	DurationMs         int64  `json:"duration_ms"`
 }
 
-// SyncCacheResponse represents the response from syncing the cache
+// SyncCacheResponse represents the response from syncing the cache.
 type SyncCacheResponse struct {
 	Success       bool   `json:"success"`
 	PhotosScanned int    `json:"photos_scanned"`
@@ -661,41 +730,41 @@ type SyncCacheResponse struct {
 	Error         string `json:"error,omitempty"`
 }
 
-// RebuildIndex rebuilds the HNSW indexes and reloads them in memory
+// RebuildIndex rebuilds the HNSW indexes and reloads them in memory.
 func (h *ProcessHandler) RebuildIndex(w http.ResponseWriter, _ *http.Request) {
 	ctx := context.Background()
 	startTime := time.Now()
 
-	// Rebuild face HNSW index
+	// Rebuild face HNSW index.
 	faceRebuilder := database.GetFaceHNSWRebuilder()
 	if faceRebuilder == nil {
 		respondError(w, http.StatusInternalServerError, "Face HNSW rebuilder not registered")
 		return
 	}
 
-	// Rebuild in-memory face HNSW index from PostgreSQL
+	// Rebuild in-memory face HNSW index from PostgreSQL.
 	if err := faceRebuilder.RebuildHNSW(ctx); err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to rebuild face HNSW index: %v", err))
 		return
 	}
 
-	// Save face index to disk if path is configured
+	// Save face index to disk if path is configured.
 	if err := faceRebuilder.SaveHNSWIndex(); err != nil {
-		// Log warning but don't fail - index is usable in memory
+		// Log warning but don't fail - index is usable in memory.
 		fmt.Printf("Warning: failed to save face HNSW index to disk: %v\n", err)
 	}
 
 	faceCount := faceRebuilder.HNSWCount()
 
-	// Rebuild embedding HNSW index
+	// Rebuild embedding HNSW index.
 	embCount := 0
 	embRebuilder := database.GetEmbeddingHNSWRebuilder()
 	if embRebuilder != nil {
-		// Rebuild in-memory embedding HNSW index from PostgreSQL
+		// Rebuild in-memory embedding HNSW index from PostgreSQL.
 		if err := embRebuilder.RebuildHNSW(ctx); err != nil {
 			fmt.Printf("Warning: failed to rebuild embedding HNSW index: %v\n", err)
 		} else {
-			// Save embedding index to disk if path is configured
+			// Save embedding index to disk if path is configured.
 			if err := embRebuilder.SaveHNSWIndex(); err != nil {
 				fmt.Printf("Warning: failed to save embedding HNSW index to disk: %v\n", err)
 			}
@@ -703,7 +772,7 @@ func (h *ProcessHandler) RebuildIndex(w http.ResponseWriter, _ *http.Request) {
 		}
 	}
 
-	// Fall back to count from reader if HNSW not enabled
+	// Fall back to count from reader if HNSW not enabled.
 	if embCount == 0 {
 		embReader, err := database.GetEmbeddingReader(ctx)
 		if err == nil {
@@ -723,8 +792,11 @@ func (h *ProcessHandler) RebuildIndex(w http.ResponseWriter, _ *http.Request) {
 	})
 }
 
-// collectSyncPhotoUIDs collects all unique photo UIDs from faces and embeddings tables
-func collectSyncPhotoUIDs(ctx context.Context, faceWriter database.FaceWriter, embWriter database.EmbeddingWriter) ([]string, error) {
+// collectSyncPhotoUIDs collects all unique photo UIDs from faces and embeddings tables.
+func collectSyncPhotoUIDs(
+	ctx context.Context, faceWriter database.FaceWriter,
+	embWriter database.EmbeddingWriter,
+) ([]string, error) {
 	faceUIDs, err := faceWriter.GetUniquePhotoUIDs(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("getting unique photo UIDs: %w", err)
@@ -751,9 +823,9 @@ func collectSyncPhotoUIDs(ctx context.Context, faceWriter database.FaceWriter, e
 	return photoUIDs, nil
 }
 
-// SyncCache syncs face marker data from PhotoPrism to the local cache
-// without recomputing embeddings. This is useful when faces are assigned/unassigned
-// directly in PhotoPrism's native UI. Also cleans up data for photos that have
+// SyncCache syncs face marker data from PhotoPrism to the local cache.
+// without recomputing embeddings. This is useful when faces are assigned/unassigned.
+// directly in PhotoPrism's native UI. Also cleans up data for photos that have.
 // been deleted or archived in PhotoPrism.
 func (h *ProcessHandler) SyncCache(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -812,25 +884,42 @@ func (h *ProcessHandler) SyncCache(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// cleanupDeletedPhoto removes all cached data for a deleted/archived photo
-func cleanupDeletedPhoto(ctx context.Context, faceWriter database.FaceWriter, embWriter database.EmbeddingWriter, photoUID string) {
+// cleanupDeletedPhoto removes all cached data for a deleted/archived photo.
+func cleanupDeletedPhoto(
+	ctx context.Context, faceWriter database.FaceWriter,
+	embWriter database.EmbeddingWriter, photoUID string,
+) {
 	faceWriter.DeleteFacesByPhoto(ctx, photoUID)
 	if embWriter != nil {
 		embWriter.DeleteEmbedding(ctx, photoUID)
 	}
 }
 
-// syncFaceMarkers matches faces to markers and updates changed entries, returning the count of updates
-func syncFaceMarkers(ctx context.Context, faceWriter database.FaceWriter, photoUID string, faces []database.StoredFace, markerInfos []facematch.MarkerInfo, fileInfo *facematch.PrimaryFileInfo) int {
+// syncFaceMarkers matches faces to markers and updates changed entries, returning the count of updates.
+func syncFaceMarkers(
+	ctx context.Context, faceWriter database.FaceWriter,
+	photoUID string, faces []database.StoredFace,
+	markerInfos []facematch.MarkerInfo, fileInfo *facematch.PrimaryFileInfo,
+) int {
 	updated := 0
 	for _, face := range faces {
 		if len(face.BBox) != 4 {
 			continue
 		}
-		match := facematch.MatchFaceToMarkers(face.BBox, markerInfos, fileInfo.Width, fileInfo.Height, fileInfo.Orientation, constants.IoUThreshold)
+		match := facematch.MatchFaceToMarkers(
+			face.BBox, markerInfos,
+			fileInfo.Width, fileInfo.Height,
+			fileInfo.Orientation, constants.IoUThreshold,
+		)
 		if match != nil {
-			if face.MarkerUID != match.MarkerUID || face.SubjectUID != match.SubjectUID || face.SubjectName != match.SubjectName {
-				faceWriter.UpdateFaceMarker(ctx, photoUID, face.FaceIndex, match.MarkerUID, match.SubjectUID, match.SubjectName)
+			if face.MarkerUID != match.MarkerUID ||
+				face.SubjectUID != match.SubjectUID ||
+				face.SubjectName != match.SubjectName {
+				faceWriter.UpdateFaceMarker(
+					ctx, photoUID, face.FaceIndex,
+					match.MarkerUID, match.SubjectUID,
+					match.SubjectName,
+				)
 				updated++
 			}
 		} else if face.MarkerUID != "" {
@@ -842,8 +931,13 @@ func syncFaceMarkers(ctx context.Context, faceWriter database.FaceWriter, photoU
 }
 
 // fetchPhotoDetailsForSync fetches photo details and handles deleted/archived photos.
-// Returns details and fileInfo on success, or (nil, nil, true) if the photo was deleted, or (nil, nil, false) on other errors.
-func fetchPhotoDetailsForSync(ctx context.Context, pp *photoprism.PhotoPrism, faceWriter database.FaceWriter, embWriter database.EmbeddingWriter, photoUID string) (details map[string]any, fileInfo *facematch.PrimaryFileInfo, deleted bool) {
+// Returns details and fileInfo on success, or (nil, nil, true) if the photo.
+// was deleted, or (nil, nil, false) on other errors.
+func fetchPhotoDetailsForSync(
+	ctx context.Context, pp *photoprism.PhotoPrism,
+	faceWriter database.FaceWriter, embWriter database.EmbeddingWriter,
+	photoUID string,
+) (details map[string]any, fileInfo *facematch.PrimaryFileInfo, deleted bool) {
 	var err error
 	details, err = pp.GetPhotoDetails(photoUID)
 	if err != nil {
@@ -866,15 +960,25 @@ func fetchPhotoDetailsForSync(ctx context.Context, pp *photoprism.PhotoPrism, fa
 	return details, fileInfo, false
 }
 
-// syncPhotoCache syncs the cache for a single photo and returns the number of faces updated
+// syncPhotoCache syncs the cache for a single photo and returns the number of faces updated.
 // and whether the photo was deleted/archived in PhotoPrism (404 or DeletedAt set).
-func (h *ProcessHandler) syncPhotoCache(ctx context.Context, pp *photoprism.PhotoPrism, faceWriter database.FaceWriter, embWriter database.EmbeddingWriter, photoUID string) (int, bool) {
-	_, fileInfo, deleted := fetchPhotoDetailsForSync(ctx, pp, faceWriter, embWriter, photoUID)
+func (h *ProcessHandler) syncPhotoCache(
+	ctx context.Context, pp *photoprism.PhotoPrism,
+	faceWriter database.FaceWriter, embWriter database.EmbeddingWriter,
+	photoUID string,
+) (int, bool) {
+	_, fileInfo, deleted := fetchPhotoDetailsForSync(
+		ctx, pp, faceWriter, embWriter, photoUID,
+	)
 	if fileInfo == nil {
 		return 0, deleted
 	}
 
-	faceWriter.UpdateFacePhotoInfo(ctx, photoUID, fileInfo.Width, fileInfo.Height, fileInfo.Orientation, fileInfo.UID)
+	faceWriter.UpdateFacePhotoInfo(
+		ctx, photoUID,
+		fileInfo.Width, fileInfo.Height,
+		fileInfo.Orientation, fileInfo.UID,
+	)
 
 	markers, err := pp.GetPhotoMarkers(photoUID)
 	if err != nil || len(markers) == 0 {

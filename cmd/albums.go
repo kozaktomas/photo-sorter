@@ -5,9 +5,9 @@ import (
 	"os"
 	"text/tabwriter"
 
-	"github.com/spf13/cobra"
 	"github.com/kozaktomas/photo-sorter/internal/config"
 	"github.com/kozaktomas/photo-sorter/internal/photoprism"
+	"github.com/spf13/cobra"
 )
 
 var albumsCmd = &cobra.Command{
@@ -34,7 +34,9 @@ func runAlbums(cmd *cobra.Command, args []string) error {
 	order := mustGetString(cmd, "order")
 	query := mustGetString(cmd, "query")
 
-	pp, err := photoprism.NewPhotoPrismWithCapture(cfg.PhotoPrism.URL, cfg.PhotoPrism.Username, cfg.PhotoPrism.GetPassword(), captureDir)
+	pp, err := photoprism.NewPhotoPrismWithCapture(
+		cfg.PhotoPrism.URL, cfg.PhotoPrism.Username, cfg.PhotoPrism.GetPassword(), captureDir,
+	)
 	if err != nil {
 		return fmt.Errorf("failed to connect to PhotoPrism: %w", err)
 	}

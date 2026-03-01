@@ -9,11 +9,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/spf13/cobra"
 	"github.com/kozaktomas/photo-sorter/internal/config"
 	"github.com/kozaktomas/photo-sorter/internal/database"
 	"github.com/kozaktomas/photo-sorter/internal/database/postgres"
 	"github.com/kozaktomas/photo-sorter/internal/web"
+	"github.com/spf13/cobra"
 )
 
 var serveCmd = &cobra.Command{
@@ -68,7 +68,9 @@ func initEmbeddingHNSW(ctx context.Context, embeddingRepo *postgres.EmbeddingRep
 }
 
 // registerServeBackends registers all database backends and repositories for the serve command.
-func registerServeBackends(pool *postgres.Pool, embeddingRepo *postgres.EmbeddingRepository, faceRepo *postgres.FaceRepository) *postgres.SessionRepository {
+func registerServeBackends(
+	pool *postgres.Pool, embeddingRepo *postgres.EmbeddingRepository, faceRepo *postgres.FaceRepository,
+) *postgres.SessionRepository {
 	database.RegisterPostgresBackend(
 		func() database.EmbeddingReader { return embeddingRepo },
 		func() database.FaceReader { return faceRepo },

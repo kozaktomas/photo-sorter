@@ -30,13 +30,13 @@ func setupMockServer(t *testing.T) *httptest.Server {
 
 	mux := http.NewServeMux()
 
-	// Mock auth endpoint
+	// Mock auth endpoint.
 	mux.HandleFunc("/api/v1/sessions", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(sessionData)
 	})
 
-	// Mock logout endpoint
+	// Mock logout endpoint.
 	mux.HandleFunc("/api/v1/session", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != "DELETE" {
 			http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -47,19 +47,19 @@ func setupMockServer(t *testing.T) *httptest.Server {
 		w.Write([]byte(`{"status":"ok"}`))
 	})
 
-	// Mock get album endpoint
+	// Mock get album endpoint.
 	mux.HandleFunc("/api/v1/albums/at8e94h6pa15hbk7", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(albumData)
 	})
 
-	// Mock get photos endpoint
+	// Mock get photos endpoint.
 	mux.HandleFunc("/api/v1/photos", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(photosData)
 	})
 
-	// Mock get labels endpoint
+	// Mock get labels endpoint.
 	mux.HandleFunc("/api/v1/labels", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write(labelsData)
@@ -77,7 +77,7 @@ func TestAuth(t *testing.T) {
 		t.Fatalf("NewPhotoPrism failed: %v", err)
 	}
 
-	// Verify tokens were parsed from session response
+	// Verify tokens were parsed from session response.
 	if pp.token == "" {
 		t.Error("expected access token to be set")
 	}
@@ -100,18 +100,18 @@ func TestLogout(t *testing.T) {
 		t.Fatalf("NewPhotoPrism failed: %v", err)
 	}
 
-	// Verify we have tokens
+	// Verify we have tokens.
 	if pp.token == "" {
 		t.Fatal("expected token to be set before logout")
 	}
 
-	// Logout
+	// Logout.
 	err = pp.Logout()
 	if err != nil {
 		t.Fatalf("Logout failed: %v", err)
 	}
 
-	// Verify tokens are cleared
+	// Verify tokens are cleared.
 	if pp.token != "" {
 		t.Errorf("expected token to be empty after logout, got '%s'", pp.token)
 	}
@@ -120,7 +120,7 @@ func TestLogout(t *testing.T) {
 		t.Errorf("expected downloadToken to be empty after logout, got '%s'", pp.downloadToken)
 	}
 
-	// Logout again should be no-op
+	// Logout again should be no-op.
 	err = pp.Logout()
 	if err != nil {
 		t.Fatalf("second Logout failed: %v", err)
@@ -145,7 +145,7 @@ func TestGetLabels(t *testing.T) {
 		t.Errorf("expected 22 labels, got %d", len(labels))
 	}
 
-	// Check first label
+	// Check first label.
 	firstLabel := labels[0]
 	if firstLabel.UID != "lt4l73hjorg9e6s8" {
 		t.Errorf("expected first label UID 'lt4l73hjorg9e6s8', got '%s'", firstLabel.UID)
@@ -205,7 +205,7 @@ func TestGetAlbumPhotos(t *testing.T) {
 		t.Errorf("expected 17 photos, got %d", len(photos))
 	}
 
-	// Check first photo
+	// Check first photo.
 	firstPhoto := photos[0]
 	if firstPhoto.UID != "pt8e94z35jw6c114" {
 		t.Errorf("expected first photo UID 'pt8e94z35jw6c114', got '%s'", firstPhoto.UID)
@@ -242,13 +242,13 @@ func TestGetAlbumPhotos_CountsCorrectly(t *testing.T) {
 		t.Fatalf("GetAlbumPhotos failed: %v", err)
 	}
 
-	// Verify we can count photos correctly
+	// Verify we can count photos correctly.
 	count := len(photos)
 	if count != 17 {
 		t.Errorf("expected photo count 17, got %d", count)
 	}
 
-	// Verify all photos have valid UIDs
+	// Verify all photos have valid UIDs.
 	for i, photo := range photos {
 		if photo.UID == "" {
 			t.Errorf("photo %d has empty UID", i)
@@ -270,7 +270,7 @@ func TestPhotoFields(t *testing.T) {
 		t.Fatalf("GetAlbumPhotos failed: %v", err)
 	}
 
-	// Find a photo with caption
+	// Find a photo with caption.
 	var photoWithCaption *Photo
 	for i := range photos {
 		if photos[i].Caption != "" {
@@ -288,7 +288,7 @@ func TestPhotoFields(t *testing.T) {
 		t.Error("expected non-empty caption")
 	}
 
-	// Find a portrait photo
+	// Find a portrait photo.
 	var portraitPhoto *Photo
 	for i := range photos {
 		if photos[i].Height > photos[i].Width {
@@ -310,7 +310,7 @@ func TestPhotoFields(t *testing.T) {
 func setupErrorServer(statusCode int, body string) *httptest.Server {
 	mux := http.NewServeMux()
 
-	// Auth always succeeds
+	// Auth always succeeds.
 	mux.HandleFunc("/api/v1/sessions", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
@@ -323,7 +323,7 @@ func setupErrorServer(statusCode int, body string) *httptest.Server {
 		})
 	})
 
-	// All other endpoints return the error
+	// All other endpoints return the error.
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(statusCode)
 		w.Write([]byte(body))
@@ -447,7 +447,7 @@ func TestNewPhotoPrism_AuthFailure_InvalidJSON(t *testing.T) {
 }
 
 func TestNewPhotoPrism_AuthFailure_ConnectionRefused(t *testing.T) {
-	// Use a port that's unlikely to be in use
+	// Use a port that's unlikely to be in use.
 	_, err := NewPhotoPrism("http://localhost:59999", "test", "test")
 	if err == nil {
 		t.Fatal("expected error for connection refused")
@@ -491,7 +491,7 @@ func TestGetAlbums(t *testing.T) {
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 				return
 			}
-			// Verify query parameters
+			// Verify query parameters.
 			query := r.URL.Query()
 			if query.Get("count") != "100" {
 				t.Errorf("expected count=100, got %s", query.Get("count"))
@@ -695,7 +695,7 @@ func TestAddPhotosToAlbum_EmptyList(t *testing.T) {
 		t.Fatalf("failed to create client: %v", err)
 	}
 
-	// Should return nil without making request
+	// Should return nil without making request.
 	err = pp.AddPhotosToAlbum("album123", []string{})
 	if err != nil {
 		t.Fatalf("AddPhotosToAlbum with empty list failed: %v", err)
@@ -1060,7 +1060,7 @@ func TestGetPhotos(t *testing.T) {
 		t.Fatalf("GetPhotos failed: %v", err)
 	}
 
-	// The mock server returns the album photos data which has 17 photos
+	// The mock server returns the album photos data which has 17 photos.
 	if len(photos) != 17 {
 		t.Errorf("expected 17 photos, got %d", len(photos))
 	}
@@ -1156,13 +1156,13 @@ func TestGetPhotoDetails(t *testing.T) {
 		t.Errorf("expected Type 'image', got '%v'", details["Type"])
 	}
 
-	// Check nested Files array
+	// Check nested Files array.
 	files, ok := details["Files"].([]any)
 	if !ok || len(files) == 0 {
 		t.Fatal("expected non-empty Files array")
 	}
 
-	// Check Labels array
+	// Check Labels array.
 	labels, ok := details["Labels"].([]any)
 	if !ok || len(labels) != 3 {
 		t.Errorf("expected 3 labels, got %d", len(labels))
@@ -1402,7 +1402,7 @@ func TestGetPhotoMarkers(t *testing.T) {
 		t.Errorf("expected 2 markers, got %d", len(markers))
 	}
 
-	// Check first marker
+	// Check first marker.
 	if markers[0].UID != "mt8sur3f4rl6r2ii" {
 		t.Errorf("expected first marker UID 'mt8sur3f4rl6r2ii', got '%s'", markers[0].UID)
 	}
@@ -1415,7 +1415,7 @@ func TestGetPhotoMarkers(t *testing.T) {
 		t.Errorf("expected first marker type 'face', got '%s'", markers[0].Type)
 	}
 
-	// Check position data
+	// Check position data.
 	if markers[0].X < 0.4 || markers[0].X > 0.42 {
 		t.Errorf("expected marker X around 0.41, got %f", markers[0].X)
 	}
@@ -1633,7 +1633,7 @@ func TestGetFileDownload(t *testing.T) {
 				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 				return
 			}
-			// Verify download token in query
+			// Verify download token in query.
 			if r.URL.Query().Get("t") != "test-download-token" {
 				t.Errorf("expected download token in query")
 			}
@@ -1772,7 +1772,7 @@ func TestRemoveAllPhotoLabels(t *testing.T) {
 		t.Fatalf("RemoveAllPhotoLabels failed: %v", err)
 	}
 
-	// The photo has 3 labels with LabelIDs: 248, 22, 19
+	// The photo has 3 labels with LabelIDs: 248, 22, 19.
 	if len(removedLabels) != 3 {
 		t.Errorf("expected 3 labels to be removed, got %d", len(removedLabels))
 	}
@@ -1785,7 +1785,7 @@ func setupMockServerWithHandlers(t *testing.T, handlers map[string]http.HandlerF
 
 	mux := http.NewServeMux()
 
-	// Mock auth endpoint (always needed)
+	// Mock auth endpoint (always needed).
 	mux.HandleFunc("/api/v1/sessions", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(map[string]any{
@@ -1801,7 +1801,7 @@ func setupMockServerWithHandlers(t *testing.T, handlers map[string]http.HandlerF
 		})
 	})
 
-	// Add custom handlers
+	// Add custom handlers.
 	for pattern, handler := range handlers {
 		mux.HandleFunc(pattern, handler)
 	}

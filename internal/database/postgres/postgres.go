@@ -8,11 +8,11 @@ import (
 	"sync"
 	"time"
 
-	_ "github.com/lib/pq"
 	"github.com/kozaktomas/photo-sorter/internal/config"
+	_ "github.com/lib/pq"
 )
 
-// Pool manages a PostgreSQL connection pool
+// Pool manages a PostgreSQL connection pool.
 type Pool struct {
 	db *sql.DB
 }
@@ -22,7 +22,7 @@ var (
 	poolMu     sync.RWMutex
 )
 
-// NewPool creates a new PostgreSQL connection pool
+// NewPool creates a new PostgreSQL connection pool.
 func NewPool(cfg *config.DatabaseConfig) (*Pool, error) {
 	if cfg.URL == "" {
 		return nil, errors.New("database URL is required")
@@ -33,13 +33,13 @@ func NewPool(cfg *config.DatabaseConfig) (*Pool, error) {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	// Configure connection pool
+	// Configure connection pool.
 	db.SetMaxOpenConns(cfg.MaxOpenConns)
 	db.SetMaxIdleConns(cfg.MaxIdleConns)
 	db.SetConnMaxLifetime(time.Hour)
 	db.SetConnMaxIdleTime(10 * time.Minute)
 
-	// Verify connection
+	// Verify connection.
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
@@ -51,12 +51,12 @@ func NewPool(cfg *config.DatabaseConfig) (*Pool, error) {
 	return &Pool{db: db}, nil
 }
 
-// DB returns the underlying sql.DB for direct access
+// DB returns the underlying sql.DB for direct access.
 func (p *Pool) DB() *sql.DB {
 	return p.db
 }
 
-// Close closes the connection pool
+// Close closes the connection pool.
 func (p *Pool) Close() error {
 	if p.db != nil {
 		if err := p.db.Close(); err != nil {
@@ -66,33 +66,33 @@ func (p *Pool) Close() error {
 	return nil
 }
 
-// SetGlobalPool sets the global pool instance and registers the backend
+// SetGlobalPool sets the global pool instance and registers the backend.
 func SetGlobalPool(p *Pool) {
 	poolMu.Lock()
 	defer poolMu.Unlock()
 	globalPool = p
 }
 
-// GetGlobalPool returns the global pool instance
+// GetGlobalPool returns the global pool instance.
 func GetGlobalPool() *Pool {
 	poolMu.RLock()
 	defer poolMu.RUnlock()
 	return globalPool
 }
 
-// IsAvailable returns true if a global pool is configured
+// IsAvailable returns true if a global pool is configured.
 func IsAvailable() bool {
 	poolMu.RLock()
 	defer poolMu.RUnlock()
 	return globalPool != nil
 }
 
-// QueryRow executes a query that returns a single row
+// QueryRow executes a query that returns a single row.
 func (p *Pool) QueryRow(ctx context.Context, query string, args ...any) *sql.Row {
 	return p.db.QueryRowContext(ctx, query, args...)
 }
 
-// Query executes a query that returns rows
+// Query executes a query that returns rows.
 func (p *Pool) Query(ctx context.Context, query string, args ...any) (*sql.Rows, error) {
 	rows, err := p.db.QueryContext(ctx, query, args...)
 	if err != nil {
@@ -101,7 +101,7 @@ func (p *Pool) Query(ctx context.Context, query string, args ...any) (*sql.Rows,
 	return rows, nil
 }
 
-// Exec executes a query that doesn't return rows
+// Exec executes a query that doesn't return rows.
 func (p *Pool) Exec(ctx context.Context, query string, args ...any) (sql.Result, error) {
 	result, err := p.db.ExecContext(ctx, query, args...)
 	if err != nil {
@@ -110,7 +110,7 @@ func (p *Pool) Exec(ctx context.Context, query string, args ...any) (sql.Result,
 	return result, nil
 }
 
-// BeginTx starts a transaction
+// BeginTx starts a transaction.
 func (p *Pool) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error) {
 	tx, err := p.db.BeginTx(ctx, opts)
 	if err != nil {
@@ -119,7 +119,7 @@ func (p *Pool) BeginTx(ctx context.Context, opts *sql.TxOptions) (*sql.Tx, error
 	return tx, nil
 }
 
-// Initialize sets up the PostgreSQL backend with migrations and registers it
+// Initialize sets up the PostgreSQL backend with migrations and registers it.
 // as the active storage backend.
 func Initialize(cfg *config.DatabaseConfig) error {
 	if cfg == nil || cfg.URL == "" {
@@ -131,7 +131,7 @@ func Initialize(cfg *config.DatabaseConfig) error {
 		return fmt.Errorf("failed to create PostgreSQL pool: %w", err)
 	}
 
-	// Run migrations
+	// Run migrations.
 	if err := pool.Migrate(context.Background()); err != nil {
 		pool.Close()
 		return fmt.Errorf("failed to run migrations: %w", err)

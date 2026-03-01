@@ -81,8 +81,8 @@ func extractMarkersFromFiles(files []any) []Marker {
 	return markers
 }
 
-// GetPhotoMarkers extracts markers from photo details
-// Returns markers found in the photo's files
+// GetPhotoMarkers extracts markers from photo details.
+// Returns markers found in the photo's files.
 func (pp *PhotoPrism) GetPhotoMarkers(photoUID string) ([]Marker, error) {
 	details, err := pp.GetPhotoDetails(photoUID)
 	if err != nil {
@@ -97,23 +97,23 @@ func (pp *PhotoPrism) GetPhotoMarkers(photoUID string) ([]Marker, error) {
 	return extractMarkersFromFiles(files), nil
 }
 
-// CreateMarker creates a new face marker on a photo
+// CreateMarker creates a new face marker on a photo.
 func (pp *PhotoPrism) CreateMarker(marker MarkerCreate) (*Marker, error) {
 	return doPostJSONCreated[Marker](pp, "markers", marker)
 }
 
-// UpdateMarker updates an existing marker (e.g., to assign a person)
+// UpdateMarker updates an existing marker (e.g., to assign a person).
 func (pp *PhotoPrism) UpdateMarker(markerUID string, update MarkerUpdate) (*Marker, error) {
 	return doPutJSON[Marker](pp, "markers/"+markerUID, update)
 }
 
-// DeleteMarker marks a marker as invalid (soft delete)
+// DeleteMarker marks a marker as invalid (soft delete).
 func (pp *PhotoPrism) DeleteMarker(markerUID string) (*Marker, error) {
 	invalid := true
 	return pp.UpdateMarker(markerUID, MarkerUpdate{Invalid: &invalid})
 }
 
-// ClearMarkerSubject removes the person assignment from a marker
+// ClearMarkerSubject removes the person assignment from a marker.
 func (pp *PhotoPrism) ClearMarkerSubject(markerUID string) (*Marker, error) {
 	return doDeleteJSON[Marker](pp, "markers/"+markerUID+"/subject", nil)
 }

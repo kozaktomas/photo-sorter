@@ -16,14 +16,14 @@ import (
 
 var errMock = errors.New("mock error")
 
-// setupBookTest registers a MockBookWriter via the database provider system
+// setupBookTest registers a MockBookWriter via the database provider system.
 // and returns it along with a BooksHandler. Cleanup deregisters the mock.
 func setupBookTest(t *testing.T) (*mock.MockBookWriter, *BooksHandler) {
 	t.Helper()
 
 	mockBW := mock.NewMockBookWriter()
 
-	// Register the mock as the postgres backend so getBookWriter() works
+	// Register the mock as the postgres backend so getBookWriter() works.
 	database.RegisterPostgresBackend(nil, nil, nil)
 	database.RegisterBookWriter(func() database.BookWriter { return mockBW })
 
@@ -893,13 +893,13 @@ func TestBooksHandler_UpdatePage_BackendError(t *testing.T) {
 func TestBooksHandler_UpdatePage_FormatDownsizeClearsExcessSlots(t *testing.T) {
 	mockBW, handler := setupBookTest(t)
 	mockBW.AddPage(database.BookPage{ID: "p1", BookID: "b1", SectionID: "s1", Format: "4_landscape"})
-	// Assign 4 slots (indices 0-3)
+	// Assign 4 slots (indices 0-3).
 	ctx := context.TODO()
 	for i := range 4 {
 		_ = mockBW.AssignSlot(ctx, "p1", i, fmt.Sprintf("photo%d", i))
 	}
 
-	// Change format to 2_portrait (2 slots) — slots 2 and 3 should be cleared
+	// Change format to 2_portrait (2 slots) — slots 2 and 3 should be cleared.
 	body := bytes.NewBufferString(`{"format":"2_portrait"}`)
 	req := httptest.NewRequest("PUT", "/api/v1/pages/p1", body)
 	req.Header.Set("Content-Type", "application/json")
@@ -909,13 +909,13 @@ func TestBooksHandler_UpdatePage_FormatDownsizeClearsExcessSlots(t *testing.T) {
 
 	assertStatusCode(t, recorder, http.StatusOK)
 
-	// Verify page format was updated
+	// Verify page format was updated.
 	page, _ := mockBW.GetPage(ctx, "p1")
 	if page.Format != "2_portrait" {
 		t.Errorf("expected format '2_portrait', got '%s'", page.Format)
 	}
 
-	// Verify slots 0 and 1 still have photos
+	// Verify slots 0 and 1 still have photos.
 	slots, _ := mockBW.GetPageSlots(ctx, "p1")
 	for _, s := range slots {
 		if s.SlotIndex < 2 && s.PhotoUID == "" {
@@ -930,12 +930,12 @@ func TestBooksHandler_UpdatePage_FormatDownsizeClearsExcessSlots(t *testing.T) {
 func TestBooksHandler_UpdatePage_FormatUpsizePreservesSlots(t *testing.T) {
 	mockBW, handler := setupBookTest(t)
 	mockBW.AddPage(database.BookPage{ID: "p1", BookID: "b1", SectionID: "s1", Format: "2_portrait"})
-	// Assign 2 slots
+	// Assign 2 slots.
 	ctx := context.TODO()
 	_ = mockBW.AssignSlot(ctx, "p1", 0, "photoA")
 	_ = mockBW.AssignSlot(ctx, "p1", 1, "photoB")
 
-	// Change format to 4_landscape (4 slots) — both existing slots should be preserved
+	// Change format to 4_landscape (4 slots) — both existing slots should be preserved.
 	body := bytes.NewBufferString(`{"format":"4_landscape"}`)
 	req := httptest.NewRequest("PUT", "/api/v1/pages/p1", body)
 	req.Header.Set("Content-Type", "application/json")
@@ -945,13 +945,13 @@ func TestBooksHandler_UpdatePage_FormatUpsizePreservesSlots(t *testing.T) {
 
 	assertStatusCode(t, recorder, http.StatusOK)
 
-	// Verify page format was updated
+	// Verify page format was updated.
 	page, _ := mockBW.GetPage(ctx, "p1")
 	if page.Format != "4_landscape" {
 		t.Errorf("expected format '4_landscape', got '%s'", page.Format)
 	}
 
-	// Verify both original slots are preserved
+	// Verify both original slots are preserved.
 	slots, _ := mockBW.GetPageSlots(ctx, "p1")
 	photosBySlot := make(map[int]string)
 	for _, s := range slots {
@@ -1291,7 +1291,7 @@ func TestBooksHandler_GetPhotoBookMemberships_BackendError(t *testing.T) {
 // --- Writer not available ---
 
 func TestBooksHandler_WriterNotAvailable(t *testing.T) {
-	// Deregister the book writer but keep postgres initialized
+	// Deregister the book writer but keep postgres initialized.
 	database.RegisterPostgresBackend(nil, nil, nil)
 	database.RegisterBookWriter(nil)
 	t.Cleanup(func() {
@@ -1500,7 +1500,7 @@ func TestBooksHandler_UpdateSlotCrop_BackendError(t *testing.T) {
 func TestBooksHandler_UpdateSlotCrop_BoundaryValues(t *testing.T) {
 	_, handler := setupBookTest(t)
 
-	// All boundary values should pass validation
+	// All boundary values should pass validation.
 	tests := []struct {
 		name string
 		body string

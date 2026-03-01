@@ -69,26 +69,26 @@ type FooterCaption struct {
 type TemplateSlot struct {
 	HasPhoto bool
 	HasText  bool
-	// Clip rectangle (mm from page bottom-left — TikZ convention)
+	// Clip rectangle (mm from page bottom-left — TikZ convention).
 	ClipX, ClipY float64
 	ClipW, ClipH float64
-	// Image node anchor position
+	// Image node anchor position.
 	ImgX, ImgY float64
-	// Sizing dimension and value
+	// Sizing dimension and value.
 	SizeDim  string  // "width" or "height"
 	SizeVal  float64 // mm
 	FilePath string
-	// DPI tracking
+	// DPI tracking.
 	EffectiveDPI float64
-	// Archival mode
-	IsArchival  bool
-	MatInsetMM  float64
-	// Border rect (for archival — same as clip for modern)
+	// Archival mode.
+	IsArchival bool
+	MatInsetMM float64
+	// Border rect (for archival — same as clip for modern).
 	BorderX, BorderY, BorderW, BorderH float64
-	// Text type: "T1", "T2", "T3"
+	// Text type: "T1", "T2", "T3".
 	TextContent string
 	TextType    string
-	// Caption marker (1-based; 0 = no marker)
+	// Caption marker (1-based; 0 = no marker).
 	CaptionMarker        int
 	CaptionMarkerX       float64 // bottom-left X of marker rect
 	CaptionMarkerY       float64 // bottom-left Y of marker rect
@@ -100,35 +100,35 @@ type TemplateSlot struct {
 type TemplatePage struct {
 	Slots      []TemplateSlot
 	IsLast     bool
-	PageNumber int  // continuous page number (1-based)
-	IsRecto    bool // true for odd pages (right-hand, recto)
+	PageNumber int    // continuous page number (1-based)
+	IsRecto    bool   // true for odd pages (right-hand, recto)
 	Style      string // "modern" or "archival"
-	// Content area bounds
+	// Content area bounds.
 	ContentLeftX  float64
 	ContentRightX float64
 	ContentW      float64
-	// Header zone
+	// Header zone.
 	HeaderY      float64 // Y position for running header text
 	RunningLeft  string  // section title (verso only)
 	RunningRight string  // page description (recto only)
-	// Inline section heading (first page of each titled section)
+	// Inline section heading (first page of each titled section).
 	HasSectionTitle bool
 	SectionTitle    string
 	SectionTitleY   float64 // Y for title text node
 	SectionRuleY    float64 // Y for decorative line above title
-	// Canvas zone
+	// Canvas zone.
 	CanvasTopY    float64
 	CanvasBottomY float64
-	// Footer zone
-	FooterRuleY    float64 // Y of 0.3pt separation line
-	FolioX         float64
-	FolioY         float64
-	FolioAnchor    string // "south east" (recto) or "south west" (verso)
-	Captions       []FooterCaption
-	CaptionBlockX  float64
-	CaptionBlockY  float64
-	CaptionBlockW  float64
-	HasCaptions    bool
+	// Footer zone.
+	FooterRuleY   float64 // Y of 0.3pt separation line
+	FolioX        float64
+	FolioY        float64
+	FolioAnchor   string // "south east" (recto) or "south west" (verso)
+	Captions      []FooterCaption
+	CaptionBlockX float64
+	CaptionBlockY float64
+	CaptionBlockW float64
+	HasCaptions   bool
 }
 
 // TemplateSection holds a section title and its pages.
@@ -139,11 +139,11 @@ type TemplateSection struct {
 
 // TemplateData is the root data passed to the LaTeX template.
 type TemplateData struct {
-	Sections       []TemplateSection
-	BookTitle      string
-	PageW          float64
-	PageH          float64
-	DebugOverlay   bool
+	Sections        []TemplateSection
+	BookTitle       string
+	PageW           float64
+	PageH           float64
+	DebugOverlay    bool
 	DebugColOffsets []float64 // relative X offsets for column left edges
 }
 
@@ -184,12 +184,17 @@ const (
 )
 
 // GeneratePDF renders a photo book to PDF using lualatex.
-func GeneratePDF(ctx context.Context, pp *photoprism.PhotoPrism, br database.BookReader, bookID string) ([]byte, *ExportReport, error) {
+func GeneratePDF(
+	ctx context.Context, pp *photoprism.PhotoPrism, br database.BookReader, bookID string,
+) ([]byte, *ExportReport, error) {
 	return GeneratePDFWithOptions(ctx, pp, br, bookID, false)
 }
 
 // GeneratePDFWithOptions renders a photo book to PDF with optional debug overlay.
-func GeneratePDFWithOptions(ctx context.Context, pp *photoprism.PhotoPrism, br database.BookReader, bookID string, debug bool) ([]byte, *ExportReport, error) {
+func GeneratePDFWithOptions(
+	ctx context.Context, pp *photoprism.PhotoPrism,
+	br database.BookReader, bookID string, debug bool,
+) ([]byte, *ExportReport, error) {
 	book, err := br.GetBook(ctx, bookID)
 	if err != nil || book == nil {
 		return nil, nil, fmt.Errorf("book not found: %s", bookID)
@@ -228,7 +233,7 @@ func GeneratePDFWithOptions(ctx context.Context, pp *photoprism.PhotoPrism, br d
 		applyDebugOverlay(&data, config)
 	}
 
-	// Layout validation
+	// Layout validation.
 	validationWarnings := ValidatePages(data.Sections, config)
 	for _, vw := range validationWarnings {
 		report.Warnings = append(report.Warnings,
@@ -351,7 +356,10 @@ func groupPagesBySection(pages []database.BookPage, sections []database.BookSect
 }
 
 // buildTemplateData constructs the template data and export report.
-func buildTemplateData(groups []sectionGroup, photos map[string]photoImage, captions captionMap, config LayoutConfig, bookTitle string) (TemplateData, *ExportReport) {
+func buildTemplateData(
+	groups []sectionGroup, photos map[string]photoImage,
+	captions captionMap, config LayoutConfig, bookTitle string,
+) (TemplateData, *ExportReport) {
 	pb := &pageBuilder{
 		config:   config,
 		photos:   photos,
@@ -362,7 +370,7 @@ func buildTemplateData(groups []sectionGroup, photos map[string]photoImage, capt
 		pb.totalContentPages += len(g.pages)
 	}
 
-	// Title page counts as page 1 when book has a title
+	// Title page counts as page 1 when book has a title.
 	if bookTitle != "" {
 		pb.pageNumber++
 		pb.reportPages = append(pb.reportPages, ReportPage{
@@ -378,16 +386,16 @@ func buildTemplateData(groups []sectionGroup, photos map[string]photoImage, capt
 	}
 
 	return TemplateData{
-		Sections:  tmplSections,
-		BookTitle: bookTitle,
-		PageW:     PageW,
-		PageH:     PageH,
-	}, &ExportReport{
-		BookTitle:  bookTitle,
-		PageCount:  pb.pageNumber,
-		PhotoCount: len(pb.photoSet),
-		Pages:      pb.reportPages,
-	}
+			Sections:  tmplSections,
+			BookTitle: bookTitle,
+			PageW:     PageW,
+			PageH:     PageH,
+		}, &ExportReport{
+			BookTitle:  bookTitle,
+			PageCount:  pb.pageNumber,
+			PhotoCount: len(pb.photoSet),
+			Pages:      pb.reportPages,
+		}
 }
 
 // buildSection builds a TemplateSection and accumulates report data.
@@ -407,9 +415,12 @@ func (pb *pageBuilder) buildSection(g sectionGroup) TemplateSection {
 
 // computeZones returns the TikZ Y coordinates for the 3-zone layout.
 // TikZ origin is page bottom-left, Y increases upward.
-func (pb *pageBuilder) computeZones(isRecto bool) (contentLeftX, contentRightX, headerY, canvasTopY, canvasBottomY, footerRuleY, folioX, folioY float64, folioAnchor string) {
+func (pb *pageBuilder) computeZones(isRecto bool) (
+	contentLeftX, contentRightX, headerY, canvasTopY, canvasBottomY,
+	footerRuleY, folioX, folioY float64, folioAnchor string,
+) {
 	cfg := pb.config
-	// Mirrored margins: recto has inside (binding) on left, verso has inside on right
+	// Mirrored margins: recto has inside (binding) on left, verso has inside on right.
 	if isRecto {
 		contentLeftX = cfg.InsideMarginMM
 	} else {
@@ -418,14 +429,14 @@ func (pb *pageBuilder) computeZones(isRecto bool) (contentLeftX, contentRightX, 
 	contentW := cfg.ContentWidth()
 	contentRightX = contentLeftX + contentW
 
-	// Vertical zones (from top of page, converted to TikZ Y from bottom)
-	topEdge := PageH - cfg.TopMarginMM               // 200mm from bottom
-	headerY = topEdge - 2.0                            // baseline in header zone
-	canvasTopY = topEdge - cfg.HeaderHeightMM          // 196mm
-	canvasBottomY = canvasTopY - cfg.CanvasHeightMM    // 24mm
-	footerRuleY = canvasBottomY                        // 24mm
+	// Vertical zones (from top of page, converted to TikZ Y from bottom).
+	topEdge := PageH - cfg.TopMarginMM              // 200mm from bottom
+	headerY = topEdge - 2.0                         // baseline in header zone
+	canvasTopY = topEdge - cfg.HeaderHeightMM       // 196mm
+	canvasBottomY = canvasTopY - cfg.CanvasHeightMM // 24mm
+	footerRuleY = canvasBottomY                     // 24mm
 
-	// Folio at bottom margin, mirrored
+	// Folio at bottom margin, mirrored.
 	folioY = cfg.BottomMarginMM / 2.0
 	if isRecto {
 		folioX = contentRightX
@@ -438,6 +449,8 @@ func (pb *pageBuilder) computeZones(isRecto bool) (contentLeftX, contentRightX, 
 }
 
 // buildContentPage builds a single TemplatePage with slots and accumulates report data.
+//
+//nolint:funlen // Complex layout logic.
 func (pb *pageBuilder) buildContentPage(p database.BookPage, sectionTitle string, pageIndexInSection int) TemplatePage {
 	isLast := pb.contentPageIdx == pb.totalContentPages
 	isRecto := pb.pageNumber%2 == 1
@@ -446,26 +459,28 @@ func (pb *pageBuilder) buildContentPage(p database.BookPage, sectionTitle string
 		style = "modern"
 	}
 
-	contentLeftX, contentRightX, headerY, canvasTopY, canvasBottomY, footerRuleY, folioX, folioY, folioAnchor := pb.computeZones(isRecto)
+	contentLeftX, contentRightX, headerY, canvasTopY,
+		canvasBottomY, footerRuleY, folioX, folioY,
+		folioAnchor := pb.computeZones(isRecto)
 	contentW := pb.config.ContentWidth()
 
-	// Inline section heading on first page of titled sections
+	// Inline section heading on first page of titled sections.
 	hasSectionTitle := pageIndexInSection == 0 && sectionTitle != ""
 	var sectionRuleY, sectionTitleY float64
 	slotConfig := pb.config
 	effectiveCanvasTopY := canvasTopY
 	if hasSectionTitle {
-		// Rule sits at the normal canvas top
+		// Rule sits at the normal canvas top.
 		sectionRuleY = canvasTopY
-		// Title text sits below the rule (4mm gap)
+		// Title text sits below the rule (4mm gap).
 		sectionTitleY = canvasTopY - 5.0
-		// Shift canvas down to make room for heading
+		// Shift canvas down to make room for heading.
 		effectiveCanvasTopY = canvasTopY - SectionHeadingHeightMM
-		// Create modified config for slot computation
+		// Create modified config for slot computation.
 		slotConfig.CanvasHeightMM -= SectionHeadingHeightMM
 	}
 
-	// Build slots using grid system (with possibly reduced canvas)
+	// Build slots using grid system (with possibly reduced canvas).
 	slots := FormatSlotsGridWithSplit(p.Format, slotConfig, p.SplitPosition)
 	tmplSlots, reportPhotos, footerCaptions := pb.buildSlots(p, slots, contentLeftX, effectiveCanvasTopY, style, isRecto)
 
@@ -477,7 +492,7 @@ func (pb *pageBuilder) buildContentPage(p database.BookPage, sectionTitle string
 		Photos:       reportPhotos,
 	})
 
-	// Running headers
+	// Running headers.
 	var runningLeft, runningRight string
 	if !isRecto {
 		runningLeft = sectionTitle // verso: section title on left (outside)
@@ -489,7 +504,7 @@ func (pb *pageBuilder) buildContentPage(p database.BookPage, sectionTitle string
 		}
 	}
 
-	// Caption block position
+	// Caption block position.
 	var captionBlockX, captionBlockY, captionBlockW float64
 	hasCaptions := len(footerCaptions) > 0
 	if hasCaptions {
@@ -536,7 +551,7 @@ type slotCaption struct {
 
 // captionTracking holds precomputed caption and marker data for slot building.
 type captionTracking struct {
-	markerMap map[int]int     // slotIdx -> marker number (1-based)
+	markerMap map[int]int // slotIdx -> marker number (1-based)
 	captions  []slotCaption
 }
 
@@ -600,7 +615,10 @@ func buildFooterCaptions(ct captionTracking) []FooterCaption {
 }
 
 // buildSlots builds template slots, report photos, and footer captions for a page.
-func (pb *pageBuilder) buildSlots(p database.BookPage, slots []SlotRect, contentLeftX, canvasTopY float64, style string, isRecto bool) ([]TemplateSlot, []ReportPhoto, []FooterCaption) {
+func (pb *pageBuilder) buildSlots(
+	p database.BookPage, slots []SlotRect,
+	contentLeftX, canvasTopY float64, style string, isRecto bool,
+) ([]TemplateSlot, []ReportPhoto, []FooterCaption) {
 	isArchival := style == "archival"
 	cfg := pb.config
 	ct := buildCaptionTracking(p, slots, pb.captions)
@@ -630,7 +648,10 @@ func (pb *pageBuilder) buildSlots(p database.BookPage, slots []SlotRect, content
 		if cropScale <= 0 {
 			cropScale = 1.0
 		}
-		ts := buildPhotoSlotNew(slot, img, contentLeftX, canvasTopY, isArchival, cfg.ArchivalInsetMM, ps.CropX, ps.CropY, cropScale)
+		ts := buildPhotoSlotNew(
+			slot, img, contentLeftX, canvasTopY, isArchival,
+			cfg.ArchivalInsetMM, ps.CropX, ps.CropY, cropScale,
+		)
 		placeCaptionMarker(&ts, ct.markerMap[i], cfg, isRecto)
 		tmplSlots[i] = ts
 
@@ -666,7 +687,7 @@ func latexEscapeRaw(s string) string {
 // czechTypographyRe matches single-letter Czech prepositions followed by a space.
 var czechTypographyRe = regexp.MustCompile(`(^|[\s])([vVkKsSzZuUoOiIaA])\s`)
 
-// czechTypography inserts LaTeX non-breaking spaces (~) after single-letter Czech
+// czechTypography inserts LaTeX non-breaking spaces (~) after single-letter Czech.
 // prepositions to prevent them from appearing at end of line.
 func czechTypography(s string) string {
 	return czechTypographyRe.ReplaceAllString(s, "${1}${2}~")
@@ -701,8 +722,8 @@ func compileLatex(ctx context.Context, data TemplateData, tmpDir string) ([]byte
 		return nil, fmt.Errorf("failed to write tex file: %w", err)
 	}
 
-	// Run lualatex twice — second pass resolves remember picture positions
-	// Arguments are safe (tmpDir from os.MkdirTemp, texPath derived from it)
+	// Run lualatex twice — second pass resolves remember picture positions.
+	// Arguments are safe (tmpDir from os.MkdirTemp, texPath derived from it).
 	for pass := range 2 {
 		cmd := exec.CommandContext(ctx, "lualatex", //nolint:gosec
 			"-interaction=nonstopmode",
@@ -736,7 +757,10 @@ func getPageSlot(page database.BookPage, slotIndex int) database.PageSlot {
 }
 
 // downloadPhotos fetches photos concurrently and returns a map of UID -> photoImage.
-func downloadPhotos(ctx context.Context, pp *photoprism.PhotoPrism, uids map[string]bool, tmpDir string) map[string]photoImage {
+func downloadPhotos(
+	ctx context.Context, pp *photoprism.PhotoPrism,
+	uids map[string]bool, tmpDir string,
+) map[string]photoImage {
 	result := make(map[string]photoImage)
 	var mu sync.Mutex
 
@@ -789,7 +813,7 @@ func downloadPhoto(pp *photoprism.PhotoPrism, uid string, tmpDir string) (*photo
 		return nil, fmt.Errorf("failed to write photo: %w", err)
 	}
 
-	// Decode dimensions
+	// Decode dimensions.
 	f, err := os.Open(path) //nolint:gosec
 	if err != nil {
 		return nil, fmt.Errorf("failed to open photo: %w", err)
@@ -813,7 +837,7 @@ func downloadPhoto(pp *photoprism.PhotoPrism, uid string, tmpDir string) (*photo
 
 // buildTextSlotNew creates a TemplateSlot for text content in the new 3-zone layout.
 func buildTextSlotNew(slot SlotRect, ps database.PageSlot, contentLeftX, canvasTopY float64) TemplateSlot {
-	// Convert canvas-relative coords to TikZ page coords
+	// Convert canvas-relative coords to TikZ page coords.
 	clipX := contentLeftX + slot.X
 	clipY := canvasTopY - slot.Y - slot.H // TikZ Y from bottom
 	return TemplateSlot{
@@ -830,12 +854,18 @@ func buildTextSlotNew(slot SlotRect, ps database.PageSlot, contentLeftX, canvasT
 // buildPhotoSlotNew creates a TemplateSlot for a photo with object-cover behavior.
 // cropX/cropY (0.0-1.0) control the focal point; 0.5 = centered.
 // cropScale (0.1-1.0) controls zoom: 1.0 = fill slot, <1.0 = zoom in.
-func buildPhotoSlotNew(slot SlotRect, img photoImage, contentLeftX, canvasTopY float64, isArchival bool, archivalInset float64, cropX, cropY, cropScale float64) TemplateSlot {
-	// Border rect (full slot in page coords)
+//
+//nolint:funlen // Complex layout logic.
+func buildPhotoSlotNew(
+	slot SlotRect, img photoImage, contentLeftX, canvasTopY float64,
+	isArchival bool, archivalInset float64,
+	cropX, cropY, cropScale float64,
+) TemplateSlot {
+	// Border rect (full slot in page coords).
 	borderX := contentLeftX + slot.X
 	borderY := canvasTopY - slot.Y - slot.H
 
-	// Clip area: inset for archival, same as border for modern
+	// Clip area: inset for archival, same as border for modern.
 	clipX := borderX
 	clipY := borderY
 	clipW := slot.W
@@ -850,7 +880,7 @@ func buildPhotoSlotNew(slot SlotRect, img photoImage, contentLeftX, canvasTopY f
 		clipH = slot.H - 2*inset
 	}
 
-	// Object-cover: scale image to fill clip area, centered crop
+	// Object-cover: scale image to fill clip area, centered crop.
 	slotAspect := clipW / clipH
 	imgAspect := float64(img.width) / float64(img.height)
 
@@ -869,7 +899,7 @@ func buildPhotoSlotNew(slot SlotRect, img photoImage, contentLeftX, canvasTopY f
 		renderH = clipW / imgAspect
 	}
 
-	// Apply crop scale: zoom in by rendering image larger
+	// Apply crop scale: zoom in by rendering image larger.
 	renderW /= cropScale
 	renderH /= cropScale
 	sizeVal /= cropScale

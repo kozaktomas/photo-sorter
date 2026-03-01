@@ -9,7 +9,7 @@ import (
 //go:embed all:dist/*
 var distFS embed.FS
 
-// GetFileSystem returns an http.FileSystem for the embedded dist directory
+// GetFileSystem returns an http.FileSystem for the embedded dist directory.
 func GetFileSystem() http.FileSystem {
 	fsys, err := fs.Sub(distFS, "dist")
 	if err != nil {
@@ -18,7 +18,7 @@ func GetFileSystem() http.FileSystem {
 	return http.FS(fsys)
 }
 
-// HasDist returns true if the dist directory exists and has content
+// HasDist returns true if the dist directory exists and has content.
 func HasDist() bool {
 	entries, err := fs.ReadDir(distFS, "dist")
 	if err != nil {

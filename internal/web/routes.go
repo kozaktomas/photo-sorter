@@ -11,8 +11,9 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/web/static"
 )
 
+//nolint:funlen // Route registration is inherently long.
 func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
-	// Create handlers
+	// Create handlers.
 	authHandler := handlers.NewAuthHandler(s.config, sessionManager)
 	albumsHandler := handlers.NewAlbumsHandler(s.config, sessionManager)
 	labelsHandler := handlers.NewLabelsHandler(s.config, sessionManager)
@@ -25,22 +26,22 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 	processHandler := handlers.NewProcessHandler(s.config, sessionManager, facesHandler, photosHandler, statsHandler)
 	booksHandler := handlers.NewBooksHandler(s.config, sessionManager)
 
-	// Health check (no auth required)
+	// Health check (no auth required).
 	s.router.Get("/api/v1/health", handlers.HealthCheck)
 
-	// API routes
+	// API routes.
 	s.router.Route("/api/v1", func(r chi.Router) {
-		// Auth routes (no PhotoPrism client needed for login)
+		// Auth routes (no PhotoPrism client needed for login).
 		r.Post("/auth/login", authHandler.Login)
 		r.Post("/auth/logout", authHandler.Logout)
 		r.Get("/auth/status", authHandler.Status)
 
-		// All other routes require authentication and get a PhotoPrism client injected
+		// All other routes require authentication and get a PhotoPrism client injected.
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireAuth(sessionManager))
 			r.Use(middleware.WithPhotoPrismClient(s.config))
 
-			// Albums
+			// Albums.
 			r.Get("/albums", albumsHandler.List)
 			r.Post("/albums", albumsHandler.Create)
 			r.Get("/albums/{uid}", albumsHandler.Get)
@@ -49,13 +50,13 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 			r.Delete("/albums/{uid}/photos", albumsHandler.ClearPhotos)
 			r.Delete("/albums/{uid}/photos/batch", albumsHandler.RemovePhotos)
 
-			// Labels
+			// Labels.
 			r.Get("/labels", labelsHandler.List)
 			r.Get("/labels/{uid}", labelsHandler.Get)
 			r.Put("/labels/{uid}", labelsHandler.Update)
 			r.Delete("/labels", labelsHandler.BatchDelete)
 
-			// Photos
+			// Photos.
 			r.Get("/photos", photosHandler.List)
 			r.Get("/photos/{uid}", photosHandler.Get)
 			r.Put("/photos/{uid}", photosHandler.Update)
@@ -73,22 +74,22 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 			r.Post("/photos/suggest-albums", photosHandler.SuggestAlbums)
 			r.Post("/photos/search-by-text", photosHandler.SearchByText)
 
-			// Sort (long-running operations)
+			// Sort (long-running operations).
 			r.Post("/sort", sortHandler.Start)
 			r.Get("/sort/{jobId}", sortHandler.Status)
 			r.Get("/sort/{jobId}/events", sortHandler.Events)
 			r.Delete("/sort/{jobId}", sortHandler.Cancel)
 
-			// Upload
+			// Upload.
 			r.Post("/upload", uploadHandler.Upload)
 
-			// Config
+			// Config.
 			r.Get("/config", configHandler.Get)
 
-			// Stats
+			// Stats.
 			r.Get("/stats", statsHandler.Get)
 
-			// Faces
+			// Faces.
 			r.Get("/subjects", facesHandler.ListSubjects)
 			r.Get("/subjects/{uid}", facesHandler.GetSubject)
 			r.Put("/subjects/{uid}", facesHandler.UpdateSubject)
@@ -96,14 +97,14 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 			r.Post("/faces/apply", facesHandler.Apply)
 			r.Post("/faces/outliers", facesHandler.FindOutliers)
 
-			// Process (embeddings & face detection)
+			// Process (embeddings & face detection).
 			r.Post("/process", processHandler.Start)
 			r.Get("/process/{jobId}/events", processHandler.Events)
 			r.Delete("/process/{jobId}", processHandler.Cancel)
 			r.Post("/process/rebuild-index", processHandler.RebuildIndex)
 			r.Post("/process/sync-cache", processHandler.SyncCache)
 
-			// Photo Books
+			// Photo Books.
 			r.Get("/books", booksHandler.ListBooks)
 			r.Post("/books", booksHandler.CreateBook)
 			r.Get("/books/{id}", booksHandler.GetBook)
@@ -133,7 +134,7 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 		})
 	})
 
-	// Serve static files for frontend (SPA)
+	// Serve static files for frontend (SPA).
 	s.router.Get("/*", s.serveSPA)
 }
 
@@ -154,7 +155,7 @@ var contentTypeByExt = map[string]string{
 
 // getContentTypeForExt returns the MIME content type for a file path based on its extension.
 func getContentTypeForExt(path string) string {
-	// Find the last dot to extract extension
+	// Find the last dot to extract extension.
 	for i := len(path) - 1; i >= 0; i-- {
 		if path[i] == '.' {
 			if ct, ok := contentTypeByExt[path[i:]]; ok {
@@ -189,7 +190,7 @@ func serveEmbeddedFile(w http.ResponseWriter, fsys http.FileSystem, path string)
 	return true
 }
 
-// serveSPA serves the single-page application
+// serveSPA serves the single-page application.
 func (s *Server) serveSPA(w http.ResponseWriter, r *http.Request) {
 	if static.HasDist() {
 		fs := static.GetFileSystem()
@@ -202,13 +203,13 @@ func (s *Server) serveSPA(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// For SPA routing, serve index.html for non-asset paths
+		// For SPA routing, serve index.html for non-asset paths.
 		if !strings.HasPrefix(path, "/assets/") && serveEmbeddedFile(w, fs, "/index.html") {
 			return
 		}
 	}
 
-	// Fallback: return placeholder page if no frontend is built
+	// Fallback: return placeholder page if no frontend is built.
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`<!DOCTYPE html>
@@ -216,7 +217,10 @@ func (s *Server) serveSPA(w http.ResponseWriter, r *http.Request) {
 <head>
     <title>Photo Sorter</title>
     <style>
-        body { font-family: system-ui, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #1a1a2e; color: #eee; }
+        body { font-family: system-ui, sans-serif; display: flex;
+            justify-content: center; align-items: center;
+            height: 100vh; margin: 0;
+            background: #1a1a2e; color: #eee; }
         .container { text-align: center; }
         h1 { color: #00d9ff; }
         p { color: #aaa; }

@@ -11,12 +11,12 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/facematch"
 )
 
-// MockEmbeddingReader is a mock implementation of database.EmbeddingReader
-type MockEmbeddingReader struct {
+// MockEmbeddingReader is a mock implementation of database.EmbeddingReader.
+type MockEmbeddingReader struct { //nolint:revive // Mock prefix is conventional for test doubles.
 	mu         sync.RWMutex
 	embeddings map[string]*database.StoredEmbedding
 
-	// Error injection
+	// Error injection.
 	GetError                error
 	HasError                error
 	CountError              error
@@ -25,21 +25,21 @@ type MockEmbeddingReader struct {
 	GetUniquePhotoUIDsError error
 }
 
-// NewMockEmbeddingReader creates a new mock embedding reader
+// NewMockEmbeddingReader creates a new mock embedding reader.
 func NewMockEmbeddingReader() *MockEmbeddingReader {
 	return &MockEmbeddingReader{
 		embeddings: make(map[string]*database.StoredEmbedding),
 	}
 }
 
-// AddEmbedding adds an embedding to the mock store
+// AddEmbedding adds an embedding to the mock store.
 func (m *MockEmbeddingReader) AddEmbedding(emb database.StoredEmbedding) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.embeddings[emb.PhotoUID] = &emb
 }
 
-// Get retrieves an embedding by photo UID
+// Get retrieves an embedding by photo UID.
 func (m *MockEmbeddingReader) Get(ctx context.Context, photoUID string) (*database.StoredEmbedding, error) {
 	if m.GetError != nil {
 		return nil, m.GetError
@@ -49,7 +49,7 @@ func (m *MockEmbeddingReader) Get(ctx context.Context, photoUID string) (*databa
 	return m.embeddings[photoUID], nil
 }
 
-// Has checks if an embedding exists
+// Has checks if an embedding exists.
 func (m *MockEmbeddingReader) Has(ctx context.Context, photoUID string) (bool, error) {
 	if m.HasError != nil {
 		return false, m.HasError
@@ -60,7 +60,7 @@ func (m *MockEmbeddingReader) Has(ctx context.Context, photoUID string) (bool, e
 	return ok, nil
 }
 
-// Count returns the total number of embeddings
+// Count returns the total number of embeddings.
 func (m *MockEmbeddingReader) Count(ctx context.Context) (int, error) {
 	if m.CountError != nil {
 		return 0, m.CountError
@@ -70,7 +70,7 @@ func (m *MockEmbeddingReader) Count(ctx context.Context) (int, error) {
 	return len(m.embeddings), nil
 }
 
-// CountByUIDs returns the number of embeddings whose photo_uid is in the given list
+// CountByUIDs returns the number of embeddings whose photo_uid is in the given list.
 func (m *MockEmbeddingReader) CountByUIDs(ctx context.Context, uids []string) (int, error) {
 	if m.CountError != nil {
 		return 0, m.CountError
@@ -90,8 +90,10 @@ func (m *MockEmbeddingReader) CountByUIDs(ctx context.Context, uids []string) (i
 	return count, nil
 }
 
-// FindSimilar finds similar embeddings
-func (m *MockEmbeddingReader) FindSimilar(ctx context.Context, embedding []float32, limit int) ([]database.StoredEmbedding, error) {
+// FindSimilar finds similar embeddings.
+func (m *MockEmbeddingReader) FindSimilar(
+	ctx context.Context, embedding []float32, limit int,
+) ([]database.StoredEmbedding, error) {
 	if m.FindSimilarError != nil {
 		return nil, m.FindSimilarError
 	}
@@ -108,8 +110,10 @@ func (m *MockEmbeddingReader) FindSimilar(ctx context.Context, embedding []float
 	return results, nil
 }
 
-// FindSimilarWithDistance finds similar embeddings with distances
-func (m *MockEmbeddingReader) FindSimilarWithDistance(ctx context.Context, embedding []float32, limit int, maxDistance float64) ([]database.StoredEmbedding, []float64, error) {
+// FindSimilarWithDistance finds similar embeddings with distances.
+func (m *MockEmbeddingReader) FindSimilarWithDistance(
+	ctx context.Context, embedding []float32, limit int, maxDistance float64,
+) ([]database.StoredEmbedding, []float64, error) {
 	if m.FindSimilarWDError != nil {
 		return nil, nil, m.FindSimilarWDError
 	}
@@ -128,7 +132,7 @@ func (m *MockEmbeddingReader) FindSimilarWithDistance(ctx context.Context, embed
 	return results, distances, nil
 }
 
-// GetUniquePhotoUIDs returns all unique photo UIDs that have embeddings
+// GetUniquePhotoUIDs returns all unique photo UIDs that have embeddings.
 func (m *MockEmbeddingReader) GetUniquePhotoUIDs(ctx context.Context) ([]string, error) {
 	if m.GetUniquePhotoUIDsError != nil {
 		return nil, m.GetUniquePhotoUIDsError
@@ -143,38 +147,38 @@ func (m *MockEmbeddingReader) GetUniquePhotoUIDs(ctx context.Context) ([]string,
 	return uids, nil
 }
 
-// MockFaceReader is a mock implementation of database.FaceReader
-type MockFaceReader struct {
+// MockFaceReader is a mock implementation of database.FaceReader.
+type MockFaceReader struct { //nolint:revive // Mock prefix is conventional for test doubles.
 	mu    sync.RWMutex
 	faces map[string][]database.StoredFace // keyed by PhotoUID
 
-	// Error injection
-	GetFacesError          error
-	GetFacesBySubjectError error
-	HasFacesError          error
-	IsFacesProcessedError  error
-	CountError             error
-	CountPhotosError       error
-	FindSimilarError       error
-	FindSimilarWDError     error
+	// Error injection.
+	GetFacesError           error
+	GetFacesBySubjectError  error
+	HasFacesError           error
+	IsFacesProcessedError   error
+	CountError              error
+	CountPhotosError        error
+	FindSimilarError        error
+	FindSimilarWDError      error
 	GetUniquePhotoUIDsError error
 }
 
-// NewMockFaceReader creates a new mock face reader
+// NewMockFaceReader creates a new mock face reader.
 func NewMockFaceReader() *MockFaceReader {
 	return &MockFaceReader{
 		faces: make(map[string][]database.StoredFace),
 	}
 }
 
-// AddFaces adds faces for a photo
+// AddFaces adds faces for a photo.
 func (m *MockFaceReader) AddFaces(photoUID string, faces []database.StoredFace) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.faces[photoUID] = faces
 }
 
-// GetFaces retrieves all faces for a photo
+// GetFaces retrieves all faces for a photo.
 func (m *MockFaceReader) GetFaces(ctx context.Context, photoUID string) ([]database.StoredFace, error) {
 	if m.GetFacesError != nil {
 		return nil, m.GetFacesError
@@ -184,7 +188,7 @@ func (m *MockFaceReader) GetFaces(ctx context.Context, photoUID string) ([]datab
 	return m.faces[photoUID], nil
 }
 
-// GetFacesBySubjectName retrieves all faces for a subject
+// GetFacesBySubjectName retrieves all faces for a subject.
 func (m *MockFaceReader) GetFacesBySubjectName(ctx context.Context, subjectName string) ([]database.StoredFace, error) {
 	if m.GetFacesBySubjectError != nil {
 		return nil, m.GetFacesBySubjectError
@@ -203,7 +207,7 @@ func (m *MockFaceReader) GetFacesBySubjectName(ctx context.Context, subjectName 
 	return results, nil
 }
 
-// HasFaces checks if faces exist for a photo
+// HasFaces checks if faces exist for a photo.
 func (m *MockFaceReader) HasFaces(ctx context.Context, photoUID string) (bool, error) {
 	if m.HasFacesError != nil {
 		return false, m.HasFacesError
@@ -214,7 +218,7 @@ func (m *MockFaceReader) HasFaces(ctx context.Context, photoUID string) (bool, e
 	return ok && len(faces) > 0, nil
 }
 
-// IsFacesProcessed checks if face detection has been run
+// IsFacesProcessed checks if face detection has been run.
 func (m *MockFaceReader) IsFacesProcessed(ctx context.Context, photoUID string) (bool, error) {
 	if m.IsFacesProcessedError != nil {
 		return false, m.IsFacesProcessedError
@@ -225,7 +229,7 @@ func (m *MockFaceReader) IsFacesProcessed(ctx context.Context, photoUID string) 
 	return ok, nil
 }
 
-// Count returns the total number of faces
+// Count returns the total number of faces.
 func (m *MockFaceReader) Count(ctx context.Context) (int, error) {
 	if m.CountError != nil {
 		return 0, m.CountError
@@ -240,7 +244,7 @@ func (m *MockFaceReader) Count(ctx context.Context) (int, error) {
 	return count, nil
 }
 
-// CountByUIDs returns the number of faces whose photo_uid is in the given list
+// CountByUIDs returns the number of faces whose photo_uid is in the given list.
 func (m *MockFaceReader) CountByUIDs(ctx context.Context, uids []string) (int, error) {
 	if m.CountError != nil {
 		return 0, m.CountError
@@ -260,7 +264,7 @@ func (m *MockFaceReader) CountByUIDs(ctx context.Context, uids []string) (int, e
 	return count, nil
 }
 
-// CountPhotos returns the number of distinct photos with faces
+// CountPhotos returns the number of distinct photos with faces.
 func (m *MockFaceReader) CountPhotos(ctx context.Context) (int, error) {
 	if m.CountPhotosError != nil {
 		return 0, m.CountPhotosError
@@ -270,7 +274,7 @@ func (m *MockFaceReader) CountPhotos(ctx context.Context) (int, error) {
 	return len(m.faces), nil
 }
 
-// CountPhotosByUIDs returns the number of distinct photos with faces whose photo_uid is in the given list
+// CountPhotosByUIDs returns the number of distinct photos with faces whose photo_uid is in the given list.
 func (m *MockFaceReader) CountPhotosByUIDs(ctx context.Context, uids []string) (int, error) {
 	if m.CountPhotosError != nil {
 		return 0, m.CountPhotosError
@@ -290,8 +294,10 @@ func (m *MockFaceReader) CountPhotosByUIDs(ctx context.Context, uids []string) (
 	return count, nil
 }
 
-// FindSimilar finds similar faces
-func (m *MockFaceReader) FindSimilar(ctx context.Context, embedding []float32, limit int) ([]database.StoredFace, error) {
+// FindSimilar finds similar faces.
+func (m *MockFaceReader) FindSimilar(
+	ctx context.Context, embedding []float32, limit int,
+) ([]database.StoredFace, error) {
 	if m.FindSimilarError != nil {
 		return nil, m.FindSimilarError
 	}
@@ -310,8 +316,10 @@ func (m *MockFaceReader) FindSimilar(ctx context.Context, embedding []float32, l
 	return results, nil
 }
 
-// FindSimilarWithDistance finds similar faces with distances
-func (m *MockFaceReader) FindSimilarWithDistance(ctx context.Context, embedding []float32, limit int, maxDistance float64) ([]database.StoredFace, []float64, error) {
+// FindSimilarWithDistance finds similar faces with distances.
+func (m *MockFaceReader) FindSimilarWithDistance(
+	ctx context.Context, embedding []float32, limit int, maxDistance float64,
+) ([]database.StoredFace, []float64, error) {
 	if m.FindSimilarWDError != nil {
 		return nil, nil, m.FindSimilarWDError
 	}
@@ -332,7 +340,7 @@ func (m *MockFaceReader) FindSimilarWithDistance(ctx context.Context, embedding 
 	return results, distances, nil
 }
 
-// GetUniquePhotoUIDs returns all unique photo UIDs
+// GetUniquePhotoUIDs returns all unique photo UIDs.
 func (m *MockFaceReader) GetUniquePhotoUIDs(ctx context.Context) ([]string, error) {
 	if m.GetUniquePhotoUIDsError != nil {
 		return nil, m.GetUniquePhotoUIDsError
@@ -347,8 +355,10 @@ func (m *MockFaceReader) GetUniquePhotoUIDs(ctx context.Context) ([]string, erro
 	return uids, nil
 }
 
-// GetPhotoUIDsWithSubjectName returns photo UIDs from the given list that have a face assigned to the subject
-func (m *MockFaceReader) GetPhotoUIDsWithSubjectName(ctx context.Context, photoUIDs []string, subjectName string) (map[string]bool, error) {
+// GetPhotoUIDsWithSubjectName returns photo UIDs from the given list that have a face assigned to the subject.
+func (m *MockFaceReader) GetPhotoUIDsWithSubjectName(
+	ctx context.Context, photoUIDs []string, subjectName string,
+) (map[string]bool, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
@@ -373,7 +383,7 @@ func (m *MockFaceReader) GetPhotoUIDsWithSubjectName(ctx context.Context, photoU
 	return result, nil
 }
 
-// GetFacesWithMarkerUID returns all faces that have a non-empty marker_uid
+// GetFacesWithMarkerUID returns all faces that have a non-empty marker_uid.
 func (m *MockFaceReader) GetFacesWithMarkerUID(ctx context.Context) ([]database.StoredFace, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -389,38 +399,38 @@ func (m *MockFaceReader) GetFacesWithMarkerUID(ctx context.Context) ([]database.
 	return result, nil
 }
 
-// MockFaceWriter is a mock implementation of database.FaceWriter
-type MockFaceWriter struct {
+// MockFaceWriter is a mock implementation of database.FaceWriter.
+type MockFaceWriter struct { //nolint:revive // Mock prefix is conventional for test doubles.
 	*MockFaceReader
 
-	// Track calls
-	SaveFacesCalls         []SaveFacesCall
-	MarkProcessedCalls     []MarkProcessedCall
-	UpdateMarkerCalls      []UpdateMarkerCall
-	UpdatePhotoInfoCalls   []UpdatePhotoInfoCall
-	DeleteFacesCalls       []string
+	// Track calls.
+	SaveFacesCalls       []SaveFacesCall
+	MarkProcessedCalls   []MarkProcessedCall
+	UpdateMarkerCalls    []UpdateMarkerCall
+	UpdatePhotoInfoCalls []UpdatePhotoInfoCall
+	DeleteFacesCalls     []string
 
-	// Error injection
-	SaveFacesError         error
-	MarkProcessedError     error
-	UpdateMarkerError      error
-	UpdatePhotoInfoError   error
-	DeleteFacesError       error
+	// Error injection.
+	SaveFacesError       error
+	MarkProcessedError   error
+	UpdateMarkerError    error
+	UpdatePhotoInfoError error
+	DeleteFacesError     error
 }
 
-// SaveFacesCall tracks a SaveFaces call
+// SaveFacesCall tracks a SaveFaces call.
 type SaveFacesCall struct {
 	PhotoUID string
 	Faces    []database.StoredFace
 }
 
-// MarkProcessedCall tracks a MarkFacesProcessed call
+// MarkProcessedCall tracks a MarkFacesProcessed call.
 type MarkProcessedCall struct {
 	PhotoUID  string
 	FaceCount int
 }
 
-// UpdateMarkerCall tracks an UpdateFaceMarker call
+// UpdateMarkerCall tracks an UpdateFaceMarker call.
 type UpdateMarkerCall struct {
 	PhotoUID    string
 	FaceIndex   int
@@ -429,7 +439,7 @@ type UpdateMarkerCall struct {
 	SubjectName string
 }
 
-// UpdatePhotoInfoCall tracks an UpdateFacePhotoInfo call
+// UpdatePhotoInfoCall tracks an UpdateFacePhotoInfo call.
 type UpdatePhotoInfoCall struct {
 	PhotoUID    string
 	Width       int
@@ -438,14 +448,14 @@ type UpdatePhotoInfoCall struct {
 	FileUID     string
 }
 
-// NewMockFaceWriter creates a new mock face writer
+// NewMockFaceWriter creates a new mock face writer.
 func NewMockFaceWriter() *MockFaceWriter {
 	return &MockFaceWriter{
 		MockFaceReader: NewMockFaceReader(),
 	}
 }
 
-// SaveFaces stores faces for a photo
+// SaveFaces stores faces for a photo.
 func (m *MockFaceWriter) SaveFaces(ctx context.Context, photoUID string, faces []database.StoredFace) error {
 	if m.SaveFacesError != nil {
 		return m.SaveFacesError
@@ -455,7 +465,7 @@ func (m *MockFaceWriter) SaveFaces(ctx context.Context, photoUID string, faces [
 	return nil
 }
 
-// MarkFacesProcessed marks a photo as processed
+// MarkFacesProcessed marks a photo as processed.
 func (m *MockFaceWriter) MarkFacesProcessed(ctx context.Context, photoUID string, faceCount int) error {
 	if m.MarkProcessedError != nil {
 		return m.MarkProcessedError
@@ -464,8 +474,11 @@ func (m *MockFaceWriter) MarkFacesProcessed(ctx context.Context, photoUID string
 	return nil
 }
 
-// UpdateFaceMarker updates marker data for a face
-func (m *MockFaceWriter) UpdateFaceMarker(ctx context.Context, photoUID string, faceIndex int, markerUID, subjectUID, subjectName string) error {
+// UpdateFaceMarker updates marker data for a face.
+func (m *MockFaceWriter) UpdateFaceMarker(
+	ctx context.Context, photoUID string, faceIndex int,
+	markerUID, subjectUID, subjectName string,
+) error {
 	if m.UpdateMarkerError != nil {
 		return m.UpdateMarkerError
 	}
@@ -479,8 +492,10 @@ func (m *MockFaceWriter) UpdateFaceMarker(ctx context.Context, photoUID string, 
 	return nil
 }
 
-// UpdateFacePhotoInfo updates photo info for faces
-func (m *MockFaceWriter) UpdateFacePhotoInfo(ctx context.Context, photoUID string, width, height, orientation int, fileUID string) error {
+// UpdateFacePhotoInfo updates photo info for faces.
+func (m *MockFaceWriter) UpdateFacePhotoInfo(
+	ctx context.Context, photoUID string, width, height, orientation int, fileUID string,
+) error {
 	if m.UpdatePhotoInfoError != nil {
 		return m.UpdatePhotoInfoError
 	}
@@ -494,7 +509,7 @@ func (m *MockFaceWriter) UpdateFacePhotoInfo(ctx context.Context, photoUID strin
 	return nil
 }
 
-// DeleteFacesByPhoto removes all faces for a photo
+// DeleteFacesByPhoto removes all faces for a photo.
 func (m *MockFaceWriter) DeleteFacesByPhoto(ctx context.Context, photoUID string) ([]int64, error) {
 	if m.DeleteFacesError != nil {
 		return nil, m.DeleteFacesError
@@ -511,25 +526,25 @@ func (m *MockFaceWriter) DeleteFacesByPhoto(ctx context.Context, photoUID string
 	return ids, nil
 }
 
-// MockEmbeddingWriter is a mock implementation of database.EmbeddingWriter
-type MockEmbeddingWriter struct {
+// MockEmbeddingWriter is a mock implementation of database.EmbeddingWriter.
+type MockEmbeddingWriter struct { //nolint:revive // Mock prefix is conventional for test doubles.
 	*MockEmbeddingReader
 
-	// Track calls
+	// Track calls.
 	DeleteEmbeddingCalls []string
 
-	// Error injection
+	// Error injection.
 	DeleteEmbeddingError error
 }
 
-// NewMockEmbeddingWriter creates a new mock embedding writer
+// NewMockEmbeddingWriter creates a new mock embedding writer.
 func NewMockEmbeddingWriter() *MockEmbeddingWriter {
 	return &MockEmbeddingWriter{
 		MockEmbeddingReader: NewMockEmbeddingReader(),
 	}
 }
 
-// DeleteEmbedding removes an embedding for a photo
+// DeleteEmbedding removes an embedding for a photo.
 func (m *MockEmbeddingWriter) DeleteEmbedding(ctx context.Context, photoUID string) error {
 	if m.DeleteEmbeddingError != nil {
 		return m.DeleteEmbeddingError
@@ -541,52 +556,51 @@ func (m *MockEmbeddingWriter) DeleteEmbedding(ctx context.Context, photoUID stri
 	return nil
 }
 
-
-// MockBookWriter is a mock implementation of database.BookWriter
-type MockBookWriter struct {
+// MockBookWriter is a mock implementation of database.BookWriter.
+type MockBookWriter struct { //nolint:revive // Mock prefix is conventional for test doubles.
 	mu            sync.RWMutex
 	books         map[string]*database.PhotoBook
 	sections      map[string]*database.BookSection
 	sectionPhotos map[string][]database.SectionPhoto // keyed by sectionID
 	pages         map[string]*database.BookPage
-	pageSlots     map[string][]database.PageSlot // keyed by pageID
+	pageSlots     map[string][]database.PageSlot            // keyed by pageID
 	memberships   map[string][]database.PhotoBookMembership // keyed by photoUID
 
 	bookCounter    int
 	sectionCounter int
 	pageCounter    int
 
-	// Error injection
-	ListBooksError             error
-	GetBookError               error
-	CreateBookError            error
-	UpdateBookError            error
-	DeleteBookError            error
-	GetSectionsError           error
-	CreateSectionError         error
-	UpdateSectionError         error
-	DeleteSectionError         error
-	ReorderSectionsError       error
-	GetSectionPhotosError      error
-	CountSectionPhotosError    error
-	AddSectionPhotosError      error
-	RemoveSectionPhotosError   error
-	UpdateSectionPhotoError    error
-	GetPagesError              error
-	GetPageError               error
-	CreatePageError            error
-	UpdatePageError            error
-	DeletePageError            error
-	ReorderPagesError          error
-	GetPageSlotsError          error
-	AssignSlotError            error
-	ClearSlotError             error
+	// Error injection.
+	ListBooksError               error
+	GetBookError                 error
+	CreateBookError              error
+	UpdateBookError              error
+	DeleteBookError              error
+	GetSectionsError             error
+	CreateSectionError           error
+	UpdateSectionError           error
+	DeleteSectionError           error
+	ReorderSectionsError         error
+	GetSectionPhotosError        error
+	CountSectionPhotosError      error
+	AddSectionPhotosError        error
+	RemoveSectionPhotosError     error
+	UpdateSectionPhotoError      error
+	GetPagesError                error
+	GetPageError                 error
+	CreatePageError              error
+	UpdatePageError              error
+	DeletePageError              error
+	ReorderPagesError            error
+	GetPageSlotsError            error
+	AssignSlotError              error
+	ClearSlotError               error
 	SwapSlotsError               error
 	UpdateSlotCropError          error
 	GetPhotoBookMembershipsError error
 }
 
-// NewMockBookWriter creates a new mock book writer
+// NewMockBookWriter creates a new mock book writer.
 func NewMockBookWriter() *MockBookWriter {
 	return &MockBookWriter{
 		books:         make(map[string]*database.PhotoBook),
@@ -598,48 +612,49 @@ func NewMockBookWriter() *MockBookWriter {
 	}
 }
 
-// AddBook adds a book to the mock store
+// AddBook adds a book to the mock store.
 func (m *MockBookWriter) AddBook(book database.PhotoBook) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.books[book.ID] = &book
 }
 
-// AddSection adds a section to the mock store
+// AddSection adds a section to the mock store.
 func (m *MockBookWriter) AddSection(section database.BookSection) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.sections[section.ID] = &section
 }
 
-// AddPage adds a page to the mock store
+// AddPage adds a page to the mock store.
 func (m *MockBookWriter) AddPage(page database.BookPage) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.pages[page.ID] = &page
 }
 
-// SetPageSlots sets slots for a page
+// SetPageSlots sets slots for a page.
 func (m *MockBookWriter) SetPageSlots(pageID string, slots []database.PageSlot) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.pageSlots[pageID] = slots
 }
 
-// SetSectionPhotos sets photos for a section
+// SetSectionPhotos sets photos for a section.
 func (m *MockBookWriter) SetSectionPhotos(sectionID string, photos []database.SectionPhoto) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.sectionPhotos[sectionID] = photos
 }
 
-// SetMemberships sets book memberships for a photo
+// SetMemberships sets book memberships for a photo.
 func (m *MockBookWriter) SetMemberships(photoUID string, memberships []database.PhotoBookMembership) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.memberships[photoUID] = memberships
 }
 
+// ListBooks returns all books from the mock store.
 func (m *MockBookWriter) ListBooks(ctx context.Context) ([]database.PhotoBook, error) {
 	if m.ListBooksError != nil {
 		return nil, m.ListBooksError
@@ -653,6 +668,7 @@ func (m *MockBookWriter) ListBooks(ctx context.Context) ([]database.PhotoBook, e
 	return result, nil
 }
 
+// ListBooksWithCounts returns all books with their section, photo, and page counts.
 func (m *MockBookWriter) ListBooksWithCounts(ctx context.Context) ([]database.PhotoBookWithCounts, error) {
 	if m.ListBooksError != nil {
 		return nil, m.ListBooksError
@@ -678,6 +694,7 @@ func (m *MockBookWriter) ListBooksWithCounts(ctx context.Context) ([]database.Ph
 	return result, nil
 }
 
+// GetBook returns a book by ID from the mock store.
 func (m *MockBookWriter) GetBook(ctx context.Context, id string) (*database.PhotoBook, error) {
 	if m.GetBookError != nil {
 		return nil, m.GetBookError
@@ -691,6 +708,7 @@ func (m *MockBookWriter) GetBook(ctx context.Context, id string) (*database.Phot
 	return b, nil
 }
 
+// CreateBook adds a new book to the mock store and assigns it a generated ID.
 func (m *MockBookWriter) CreateBook(ctx context.Context, book *database.PhotoBook) error {
 	if m.CreateBookError != nil {
 		return m.CreateBookError
@@ -703,6 +721,7 @@ func (m *MockBookWriter) CreateBook(ctx context.Context, book *database.PhotoBoo
 	return nil
 }
 
+// UpdateBook replaces a book in the mock store.
 func (m *MockBookWriter) UpdateBook(ctx context.Context, book *database.PhotoBook) error {
 	if m.UpdateBookError != nil {
 		return m.UpdateBookError
@@ -713,6 +732,7 @@ func (m *MockBookWriter) UpdateBook(ctx context.Context, book *database.PhotoBoo
 	return nil
 }
 
+// DeleteBook removes a book from the mock store by ID.
 func (m *MockBookWriter) DeleteBook(ctx context.Context, id string) error {
 	if m.DeleteBookError != nil {
 		return m.DeleteBookError
@@ -723,10 +743,12 @@ func (m *MockBookWriter) DeleteBook(ctx context.Context, id string) error {
 	return nil
 }
 
+// GetChapters returns all chapters for a book (always returns nil in the mock).
 func (m *MockBookWriter) GetChapters(_ context.Context, _ string) ([]database.BookChapter, error) {
 	return nil, nil
 }
 
+// CreateChapter creates a chapter and assigns it a mock ID if empty.
 func (m *MockBookWriter) CreateChapter(_ context.Context, chapter *database.BookChapter) error {
 	if chapter.ID == "" {
 		chapter.ID = "mock-chapter-id"
@@ -734,18 +756,22 @@ func (m *MockBookWriter) CreateChapter(_ context.Context, chapter *database.Book
 	return nil
 }
 
+// UpdateChapter updates a chapter in the mock store (no-op).
 func (m *MockBookWriter) UpdateChapter(_ context.Context, _ *database.BookChapter) error {
 	return nil
 }
 
+// DeleteChapter removes a chapter from the mock store (no-op).
 func (m *MockBookWriter) DeleteChapter(_ context.Context, _ string) error {
 	return nil
 }
 
+// ReorderChapters reorders chapters in a book (no-op).
 func (m *MockBookWriter) ReorderChapters(_ context.Context, _ string, _ []string) error {
 	return nil
 }
 
+// GetSection returns a section by ID from the mock store.
 func (m *MockBookWriter) GetSection(_ context.Context, id string) (*database.BookSection, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -755,6 +781,7 @@ func (m *MockBookWriter) GetSection(_ context.Context, id string) (*database.Boo
 	return nil, nil
 }
 
+// GetSections returns all sections for a book, with computed photo counts.
 func (m *MockBookWriter) GetSections(ctx context.Context, bookID string) ([]database.BookSection, error) {
 	if m.GetSectionsError != nil {
 		return nil, m.GetSectionsError
@@ -765,7 +792,7 @@ func (m *MockBookWriter) GetSections(ctx context.Context, bookID string) ([]data
 	for _, s := range m.sections {
 		if s.BookID == bookID {
 			sec := *s
-			// Compute PhotoCount from sectionPhotos
+			// Compute PhotoCount from sectionPhotos.
 			sec.PhotoCount = len(m.sectionPhotos[sec.ID])
 			result = append(result, sec)
 		}
@@ -773,6 +800,7 @@ func (m *MockBookWriter) GetSections(ctx context.Context, bookID string) ([]data
 	return result, nil
 }
 
+// CreateSection adds a new section to the mock store and assigns it a generated ID.
 func (m *MockBookWriter) CreateSection(ctx context.Context, section *database.BookSection) error {
 	if m.CreateSectionError != nil {
 		return m.CreateSectionError
@@ -785,6 +813,7 @@ func (m *MockBookWriter) CreateSection(ctx context.Context, section *database.Bo
 	return nil
 }
 
+// UpdateSection updates the title of an existing section in the mock store.
 func (m *MockBookWriter) UpdateSection(ctx context.Context, section *database.BookSection) error {
 	if m.UpdateSectionError != nil {
 		return m.UpdateSectionError
@@ -797,6 +826,7 @@ func (m *MockBookWriter) UpdateSection(ctx context.Context, section *database.Bo
 	return nil
 }
 
+// DeleteSection removes a section and its photos from the mock store.
 func (m *MockBookWriter) DeleteSection(ctx context.Context, id string) error {
 	if m.DeleteSectionError != nil {
 		return m.DeleteSectionError
@@ -808,6 +838,7 @@ func (m *MockBookWriter) DeleteSection(ctx context.Context, id string) error {
 	return nil
 }
 
+// ReorderSections updates the sort order of sections based on the given ID order.
 func (m *MockBookWriter) ReorderSections(ctx context.Context, bookID string, sectionIDs []string) error {
 	if m.ReorderSectionsError != nil {
 		return m.ReorderSectionsError
@@ -822,6 +853,7 @@ func (m *MockBookWriter) ReorderSections(ctx context.Context, bookID string, sec
 	return nil
 }
 
+// GetSectionPhotos returns all photos in a section from the mock store.
 func (m *MockBookWriter) GetSectionPhotos(ctx context.Context, sectionID string) ([]database.SectionPhoto, error) {
 	if m.GetSectionPhotosError != nil {
 		return nil, m.GetSectionPhotosError
@@ -831,6 +863,7 @@ func (m *MockBookWriter) GetSectionPhotos(ctx context.Context, sectionID string)
 	return m.sectionPhotos[sectionID], nil
 }
 
+// CountSectionPhotos returns the number of photos in a section.
 func (m *MockBookWriter) CountSectionPhotos(ctx context.Context, sectionID string) (int, error) {
 	if m.CountSectionPhotosError != nil {
 		return 0, m.CountSectionPhotosError
@@ -840,6 +873,7 @@ func (m *MockBookWriter) CountSectionPhotos(ctx context.Context, sectionID strin
 	return len(m.sectionPhotos[sectionID]), nil
 }
 
+// AddSectionPhotos adds photos to a section in the mock store.
 func (m *MockBookWriter) AddSectionPhotos(ctx context.Context, sectionID string, photoUIDs []string) error {
 	if m.AddSectionPhotosError != nil {
 		return m.AddSectionPhotosError
@@ -855,6 +889,7 @@ func (m *MockBookWriter) AddSectionPhotos(ctx context.Context, sectionID string,
 	return nil
 }
 
+// RemoveSectionPhotos removes photos from a section in the mock store.
 func (m *MockBookWriter) RemoveSectionPhotos(ctx context.Context, sectionID string, photoUIDs []string) error {
 	if m.RemoveSectionPhotosError != nil {
 		return m.RemoveSectionPhotosError
@@ -875,7 +910,10 @@ func (m *MockBookWriter) RemoveSectionPhotos(ctx context.Context, sectionID stri
 	return nil
 }
 
-func (m *MockBookWriter) UpdateSectionPhoto(ctx context.Context, sectionID string, photoUID string, description string, note string) error {
+// UpdateSectionPhoto updates the description and note for a photo in a section.
+func (m *MockBookWriter) UpdateSectionPhoto(
+	ctx context.Context, sectionID string, photoUID string, description string, note string,
+) error {
 	if m.UpdateSectionPhotoError != nil {
 		return m.UpdateSectionPhotoError
 	}
@@ -893,6 +931,7 @@ func (m *MockBookWriter) UpdateSectionPhoto(ctx context.Context, sectionID strin
 	return nil
 }
 
+// GetPages returns all pages for a book, including their slots.
 func (m *MockBookWriter) GetPages(ctx context.Context, bookID string) ([]database.BookPage, error) {
 	if m.GetPagesError != nil {
 		return nil, m.GetPagesError
@@ -910,6 +949,7 @@ func (m *MockBookWriter) GetPages(ctx context.Context, bookID string) ([]databas
 	return result, nil
 }
 
+// GetPage returns a page by ID from the mock store, including its slots.
 func (m *MockBookWriter) GetPage(ctx context.Context, pageID string) (*database.BookPage, error) {
 	if m.GetPageError != nil {
 		return nil, m.GetPageError
@@ -925,6 +965,7 @@ func (m *MockBookWriter) GetPage(ctx context.Context, pageID string) (*database.
 	return &page, nil
 }
 
+// CreatePage adds a new page to the mock store and assigns it a generated ID.
 func (m *MockBookWriter) CreatePage(ctx context.Context, page *database.BookPage) error {
 	if m.CreatePageError != nil {
 		return m.CreatePageError
@@ -937,6 +978,7 @@ func (m *MockBookWriter) CreatePage(ctx context.Context, page *database.BookPage
 	return nil
 }
 
+// UpdatePage replaces a page in the mock store.
 func (m *MockBookWriter) UpdatePage(ctx context.Context, page *database.BookPage) error {
 	if m.UpdatePageError != nil {
 		return m.UpdatePageError
@@ -947,6 +989,7 @@ func (m *MockBookWriter) UpdatePage(ctx context.Context, page *database.BookPage
 	return nil
 }
 
+// DeletePage removes a page and its slots from the mock store.
 func (m *MockBookWriter) DeletePage(ctx context.Context, id string) error {
 	if m.DeletePageError != nil {
 		return m.DeletePageError
@@ -958,6 +1001,7 @@ func (m *MockBookWriter) DeletePage(ctx context.Context, id string) error {
 	return nil
 }
 
+// ReorderPages updates the sort order of pages based on the given ID order.
 func (m *MockBookWriter) ReorderPages(ctx context.Context, bookID string, pageIDs []string) error {
 	if m.ReorderPagesError != nil {
 		return m.ReorderPagesError
@@ -972,6 +1016,7 @@ func (m *MockBookWriter) ReorderPages(ctx context.Context, bookID string, pageID
 	return nil
 }
 
+// GetPageSlots returns all slots for a page from the mock store.
 func (m *MockBookWriter) GetPageSlots(ctx context.Context, pageID string) ([]database.PageSlot, error) {
 	if m.GetPageSlotsError != nil {
 		return nil, m.GetPageSlotsError
@@ -981,6 +1026,7 @@ func (m *MockBookWriter) GetPageSlots(ctx context.Context, pageID string) ([]dat
 	return m.pageSlots[pageID], nil
 }
 
+// AssignSlot assigns a photo to a page slot, creating the slot if it does not exist.
 func (m *MockBookWriter) AssignSlot(ctx context.Context, pageID string, slotIndex int, photoUID string) error {
 	if m.AssignSlotError != nil {
 		return m.AssignSlotError
@@ -999,10 +1045,14 @@ func (m *MockBookWriter) AssignSlot(ctx context.Context, pageID string, slotInde
 			return nil
 		}
 	}
-	m.pageSlots[pageID] = append(slots, database.PageSlot{SlotIndex: slotIndex, PhotoUID: photoUID, CropX: 0.5, CropY: 0.5, CropScale: 1.0})
+	m.pageSlots[pageID] = append(slots, database.PageSlot{
+		SlotIndex: slotIndex, PhotoUID: photoUID,
+		CropX: 0.5, CropY: 0.5, CropScale: 1.0,
+	})
 	return nil
 }
 
+// AssignTextSlot assigns text content to a page slot, creating the slot if it does not exist.
 func (m *MockBookWriter) AssignTextSlot(ctx context.Context, pageID string, slotIndex int, textContent string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -1019,6 +1069,7 @@ func (m *MockBookWriter) AssignTextSlot(ctx context.Context, pageID string, slot
 	return nil
 }
 
+// ClearSlot removes the photo assignment from a page slot.
 func (m *MockBookWriter) ClearSlot(ctx context.Context, pageID string, slotIndex int) error {
 	if m.ClearSlotError != nil {
 		return m.ClearSlotError
@@ -1036,6 +1087,7 @@ func (m *MockBookWriter) ClearSlot(ctx context.Context, pageID string, slotIndex
 	return nil
 }
 
+// SwapSlots swaps the contents of two page slots atomically.
 func (m *MockBookWriter) SwapSlots(ctx context.Context, pageID string, slotA int, slotB int) error {
 	if m.SwapSlotsError != nil {
 		return m.SwapSlotsError
@@ -1063,7 +1115,10 @@ func (m *MockBookWriter) SwapSlots(ctx context.Context, pageID string, slotA int
 	return nil
 }
 
-func (m *MockBookWriter) UpdateSlotCrop(ctx context.Context, pageID string, slotIndex int, cropX, cropY, cropScale float64) error {
+// UpdateSlotCrop updates the crop position and scale for a page slot.
+func (m *MockBookWriter) UpdateSlotCrop(
+	ctx context.Context, pageID string, slotIndex int, cropX, cropY, cropScale float64,
+) error {
 	if m.UpdateSlotCropError != nil {
 		return m.UpdateSlotCropError
 	}
@@ -1082,7 +1137,10 @@ func (m *MockBookWriter) UpdateSlotCrop(ctx context.Context, pageID string, slot
 	return nil
 }
 
-func (m *MockBookWriter) GetPhotoBookMemberships(ctx context.Context, photoUID string) ([]database.PhotoBookMembership, error) {
+// GetPhotoBookMemberships returns all book and section memberships for a photo.
+func (m *MockBookWriter) GetPhotoBookMemberships(
+	ctx context.Context, photoUID string,
+) ([]database.PhotoBookMembership, error) {
 	if m.GetPhotoBookMembershipsError != nil {
 		return nil, m.GetPhotoBookMembershipsError
 	}
@@ -1091,7 +1149,7 @@ func (m *MockBookWriter) GetPhotoBookMemberships(ctx context.Context, photoUID s
 	return m.memberships[photoUID], nil
 }
 
-// Verify interface compliance
+// Verify interface compliance.
 var _ database.EmbeddingReader = (*MockEmbeddingReader)(nil)
 var _ database.EmbeddingWriter = (*MockEmbeddingWriter)(nil)
 var _ database.FaceReader = (*MockFaceReader)(nil)

@@ -11,6 +11,7 @@ import (
 //go:embed prices.yaml
 var pricesYAML []byte
 
+// Config holds all application configuration loaded from environment variables.
 type Config struct {
 	PhotoPrism PhotoPrismConfig
 	OpenAI     OpenAIConfig
@@ -22,6 +23,7 @@ type Config struct {
 	Prices     PricesConfig
 }
 
+// PhotoPrismConfig holds PhotoPrism API connection settings.
 type PhotoPrismConfig struct {
 	URL         string
 	Username    string
@@ -33,22 +35,24 @@ type PhotoPrismConfig struct {
 // GetPassword returns the PhotoPrism password.
 func (c *PhotoPrismConfig) GetPassword() string { return c.password }
 
-// PhotoURL returns an OSC 8 hyperlink for terminal emulators (iTerm2, etc.)
-// Displays the UID but makes it clickable to open the photo in PhotoPrism
-// Returns empty string if Domain is not set
+// PhotoURL returns an OSC 8 hyperlink for terminal emulators (iTerm2, etc.).
+// Displays the UID but makes it clickable to open the photo in PhotoPrism.
+// Returns empty string if Domain is not set.
 func (c *PhotoPrismConfig) PhotoURL(uid string) string {
 	if c.Domain == "" {
 		return ""
 	}
 	url := c.Domain + "/library/browse?view=cards&order=oldest&q=uid:" + uid
-	// OSC 8 hyperlink format: \e]8;;URL\e\\TEXT\e]8;;\e\\
+	// OSC 8 hyperlink format: \e]8;;URL\e\\TEXT\e]8;;\e\\.
 	return "\x1b]8;;" + url + "\x1b\\" + uid + "\x1b]8;;\x1b\\"
 }
 
+// OpenAIConfig holds OpenAI API credentials.
 type OpenAIConfig struct {
 	Token string
 }
 
+// GeminiConfig holds Google Gemini API credentials.
 type GeminiConfig struct {
 	apiKey string
 }
@@ -59,21 +63,25 @@ func NewGeminiConfig(apiKey string) GeminiConfig { return GeminiConfig{apiKey: a
 // GetAPIKey returns the Gemini API key.
 func (c *GeminiConfig) GetAPIKey() string { return c.apiKey }
 
+// OllamaConfig holds Ollama server connection settings.
 type OllamaConfig struct {
 	URL   string // defaults to http://localhost:11434
 	Model string // defaults to llama3.2-vision:11b
 }
 
+// LlamaCppConfig holds llama.cpp server connection settings.
 type LlamaCppConfig struct {
 	URL   string // defaults to http://localhost:8080
 	Model string // defaults to llava
 }
 
+// EmbeddingConfig holds embeddings service connection settings.
 type EmbeddingConfig struct {
 	URL string // defaults to http://localhost:8000
 	Dim int    // defaults to 768
 }
 
+// DatabaseConfig holds PostgreSQL database connection settings.
 type DatabaseConfig struct {
 	URL                    string // PostgreSQL connection URL
 	MaxOpenConns           int    // Maximum open connections (default 25)
@@ -82,15 +90,18 @@ type DatabaseConfig struct {
 	HNSWEmbeddingIndexPath string // Path to persist embedding HNSW index (optional, if empty index is rebuilt on startup)
 }
 
+// PricesConfig holds model pricing data loaded from prices.yaml.
 type PricesConfig struct {
 	Models map[string]ModelPricing `yaml:"models"`
 }
 
+// ModelPricing holds standard and batch pricing for a single AI model.
 type ModelPricing struct {
 	Standard RequestPricing `yaml:"standard"`
 	Batch    RequestPricing `yaml:"batch"`
 }
 
+// RequestPricing holds per-token pricing for input and output.
 type RequestPricing struct {
 	Input  float64 `yaml:"input"`
 	Output float64 `yaml:"output"`
@@ -109,11 +120,12 @@ func envInt(key string, defaultVal int) int {
 	return defaultVal
 }
 
+// Load reads all configuration from environment variables and returns a Config.
 func Load() *Config {
 	var prices PricesConfig
 	if err := yaml.Unmarshal(pricesYAML, &prices); err != nil {
-		// Log error but continue - prices will be zero which is safe
-		// This is an embedded file so this error should never happen in practice
+		// Log error but continue - prices will be zero which is safe.
+		// This is an embedded file so this error should never happen in practice.
 		panic("failed to unmarshal embedded prices.yaml: " + err.Error())
 	}
 
@@ -154,11 +166,11 @@ func Load() *Config {
 	}
 }
 
-// GetModelPricing returns pricing for a specific model, with fallback defaults
+// GetModelPricing returns pricing for a specific model, with fallback defaults.
 func (c *Config) GetModelPricing(modelName string) ModelPricing {
 	if pricing, ok := c.Prices.Models[modelName]; ok {
 		return pricing
 	}
-	// Return zero pricing if model not found
+	// Return zero pricing if model not found.
 	return ModelPricing{}
 }

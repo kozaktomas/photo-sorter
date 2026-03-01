@@ -3,9 +3,9 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/spf13/cobra"
 	"github.com/kozaktomas/photo-sorter/internal/config"
 	"github.com/kozaktomas/photo-sorter/internal/photoprism"
+	"github.com/spf13/cobra"
 )
 
 var createCmd = &cobra.Command{
@@ -28,14 +28,16 @@ func runCreate(cmd *cobra.Command, args []string) error {
 
 	cfg := config.Load()
 
-	// Connect to PhotoPrism
-	pp, err := photoprism.NewPhotoPrismWithCapture(cfg.PhotoPrism.URL, cfg.PhotoPrism.Username, cfg.PhotoPrism.GetPassword(), captureDir)
+	// Connect to PhotoPrism.
+	pp, err := photoprism.NewPhotoPrismWithCapture(
+		cfg.PhotoPrism.URL, cfg.PhotoPrism.Username, cfg.PhotoPrism.GetPassword(), captureDir,
+	)
 	if err != nil {
 		return fmt.Errorf("failed to connect to PhotoPrism: %w", err)
 	}
 	defer pp.Logout()
 
-	// Create album
+	// Create album.
 	album, err := pp.CreateAlbum(albumName)
 	if err != nil {
 		return fmt.Errorf("failed to create album: %w", err)

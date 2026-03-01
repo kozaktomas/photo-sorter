@@ -17,13 +17,13 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
 
-// BooksHandler handles photo book endpoints
+// BooksHandler handles photo book endpoints.
 type BooksHandler struct {
 	config         *config.Config
 	sessionManager *middleware.SessionManager
 }
 
-// NewBooksHandler creates a new books handler
+// NewBooksHandler creates a new books handler.
 func NewBooksHandler(cfg *config.Config, sm *middleware.SessionManager) *BooksHandler {
 	return &BooksHandler{config: cfg, sessionManager: sm}
 }
@@ -111,6 +111,7 @@ type photoBookMembershipResponse struct {
 	SectionTitle string `json:"section_title"`
 }
 
+// GetPhotoBookMemberships handles GET /api/v1/photos/:uid/books and returns book/section memberships for a photo.
 func (h *BooksHandler) GetPhotoBookMemberships(w http.ResponseWriter, r *http.Request) {
 	bw := getBookWriter(r, w)
 	if bw == nil {
@@ -136,6 +137,7 @@ func (h *BooksHandler) GetPhotoBookMemberships(w http.ResponseWriter, r *http.Re
 
 // --- Books CRUD ---
 
+// ListBooks handles GET /api/v1/books and returns all photo books with counts.
 func (h *BooksHandler) ListBooks(w http.ResponseWriter, r *http.Request) {
 	bw := getBookWriter(r, w)
 	if bw == nil {
@@ -163,6 +165,7 @@ func (h *BooksHandler) ListBooks(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, result)
 }
 
+// CreateBook handles POST /api/v1/books and creates a new photo book.
 func (h *BooksHandler) CreateBook(w http.ResponseWriter, r *http.Request) {
 	bw := getBookWriter(r, w)
 	if bw == nil {
@@ -195,6 +198,7 @@ func (h *BooksHandler) CreateBook(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// GetBook handles GET /api/v1/books/:id and returns a book with its chapters, sections, and pages.
 func (h *BooksHandler) GetBook(w http.ResponseWriter, r *http.Request) {
 	bw := getBookWriter(r, w)
 	if bw == nil {
@@ -226,7 +230,10 @@ func (h *BooksHandler) GetBook(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, buildBookDetailResponse(book, chapters, sections, pages))
 }
 
-func buildBookDetailResponse(book *database.PhotoBook, chapters []database.BookChapter, sections []database.BookSection, pages []database.BookPage) bookDetailResponse {
+func buildBookDetailResponse(
+	book *database.PhotoBook, chapters []database.BookChapter,
+	sections []database.BookSection, pages []database.BookPage,
+) bookDetailResponse {
 	chapterResps := make([]chapterResponse, len(chapters))
 	for i, c := range chapters {
 		chapterResps[i] = chapterResponse{
@@ -252,7 +259,14 @@ func buildBookDetailResponse(book *database.PhotoBook, chapters []database.BookC
 		p := &pages[i]
 		slots := make([]slotResponse, len(p.Slots))
 		for j := range p.Slots {
-			slots[j] = slotResponse{SlotIndex: p.Slots[j].SlotIndex, PhotoUID: p.Slots[j].PhotoUID, TextContent: p.Slots[j].TextContent, CropX: p.Slots[j].CropX, CropY: p.Slots[j].CropY, CropScale: p.Slots[j].CropScale}
+			slots[j] = slotResponse{
+				SlotIndex:   p.Slots[j].SlotIndex,
+				PhotoUID:    p.Slots[j].PhotoUID,
+				TextContent: p.Slots[j].TextContent,
+				CropX:       p.Slots[j].CropX,
+				CropY:       p.Slots[j].CropY,
+				CropScale:   p.Slots[j].CropScale,
+			}
 		}
 		pageResps[i] = pageResponse{
 			ID:            p.ID,
@@ -278,6 +292,7 @@ func buildBookDetailResponse(book *database.PhotoBook, chapters []database.BookC
 	}
 }
 
+// UpdateBook handles PUT /api/v1/books/:id and updates a book's title and description.
 func (h *BooksHandler) UpdateBook(w http.ResponseWriter, r *http.Request) {
 	bw := getBookWriter(r, w)
 	if bw == nil {
@@ -310,6 +325,7 @@ func (h *BooksHandler) UpdateBook(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]string{"id": book.ID})
 }
 
+// DeleteBook handles DELETE /api/v1/books/:id and deletes a book and all its contents.
 func (h *BooksHandler) DeleteBook(w http.ResponseWriter, r *http.Request) {
 	bw := getBookWriter(r, w)
 	if bw == nil {
@@ -325,6 +341,7 @@ func (h *BooksHandler) DeleteBook(w http.ResponseWriter, r *http.Request) {
 
 // --- Chapters ---
 
+// CreateChapter handles POST /api/v1/books/:id/chapters and creates a chapter in a book.
 func (h *BooksHandler) CreateChapter(w http.ResponseWriter, r *http.Request) {
 	bw := getBookWriter(r, w)
 	if bw == nil {
@@ -354,6 +371,7 @@ func (h *BooksHandler) CreateChapter(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// UpdateChapter handles PUT /api/v1/chapters/:id and updates a chapter's title.
 func (h *BooksHandler) UpdateChapter(w http.ResponseWriter, r *http.Request) {
 	bw := getBookWriter(r, w)
 	if bw == nil {
@@ -375,6 +393,7 @@ func (h *BooksHandler) UpdateChapter(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]string{"id": id})
 }
 
+// DeleteChapter handles DELETE /api/v1/chapters/:id and deletes a chapter.
 func (h *BooksHandler) DeleteChapter(w http.ResponseWriter, r *http.Request) {
 	bw := getBookWriter(r, w)
 	if bw == nil {
@@ -388,6 +407,7 @@ func (h *BooksHandler) DeleteChapter(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]bool{"deleted": true})
 }
 
+// ReorderChapters handles PUT /api/v1/books/:id/chapters/reorder and reorders chapters in a book.
 func (h *BooksHandler) ReorderChapters(w http.ResponseWriter, r *http.Request) {
 	bw := getBookWriter(r, w)
 	if bw == nil {
@@ -410,6 +430,7 @@ func (h *BooksHandler) ReorderChapters(w http.ResponseWriter, r *http.Request) {
 
 // --- Sections ---
 
+// CreateSection handles POST /api/v1/books/:id/sections and creates a section in a book.
 func (h *BooksHandler) CreateSection(w http.ResponseWriter, r *http.Request) {
 	bw := getBookWriter(r, w)
 	if bw == nil {
@@ -441,6 +462,7 @@ func (h *BooksHandler) CreateSection(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// UpdateSection handles PUT /api/v1/sections/:id and updates a section's title and chapter assignment.
 func (h *BooksHandler) UpdateSection(w http.ResponseWriter, r *http.Request) {
 	bw := getBookWriter(r, w)
 	if bw == nil {
@@ -455,7 +477,7 @@ func (h *BooksHandler) UpdateSection(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return
 	}
-	// Read existing section to preserve fields not being updated
+	// Read existing section to preserve fields not being updated.
 	section, err := bw.GetSection(r.Context(), id)
 	if err != nil || section == nil {
 		respondError(w, http.StatusNotFound, "section not found")
@@ -474,6 +496,7 @@ func (h *BooksHandler) UpdateSection(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]string{"id": id})
 }
 
+// DeleteSection handles DELETE /api/v1/sections/:id and deletes a section.
 func (h *BooksHandler) DeleteSection(w http.ResponseWriter, r *http.Request) {
 	bw := getBookWriter(r, w)
 	if bw == nil {
@@ -487,6 +510,7 @@ func (h *BooksHandler) DeleteSection(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]bool{"deleted": true})
 }
 
+// ReorderSections handles PUT /api/v1/books/:id/sections/reorder and reorders sections in a book.
 func (h *BooksHandler) ReorderSections(w http.ResponseWriter, r *http.Request) {
 	bw := getBookWriter(r, w)
 	if bw == nil {
@@ -509,6 +533,7 @@ func (h *BooksHandler) ReorderSections(w http.ResponseWriter, r *http.Request) {
 
 // --- Section Photos ---
 
+// GetSectionPhotos handles GET /api/v1/sections/:id/photos and returns photos in a section.
 func (h *BooksHandler) GetSectionPhotos(w http.ResponseWriter, r *http.Request) {
 	bw := getBookWriter(r, w)
 	if bw == nil {
@@ -532,6 +557,7 @@ func (h *BooksHandler) GetSectionPhotos(w http.ResponseWriter, r *http.Request) 
 	respondJSON(w, http.StatusOK, result)
 }
 
+// AddSectionPhotos handles POST /api/v1/sections/:id/photos and adds photos to a section.
 func (h *BooksHandler) AddSectionPhotos(w http.ResponseWriter, r *http.Request) {
 	bw := getBookWriter(r, w)
 	if bw == nil {
@@ -556,6 +582,7 @@ func (h *BooksHandler) AddSectionPhotos(w http.ResponseWriter, r *http.Request) 
 	respondJSON(w, http.StatusOK, map[string]int{"added": len(req.PhotoUIDs)})
 }
 
+// RemoveSectionPhotos handles DELETE /api/v1/sections/:id/photos and removes photos from a section.
 func (h *BooksHandler) RemoveSectionPhotos(w http.ResponseWriter, r *http.Request) {
 	bw := getBookWriter(r, w)
 	if bw == nil {
@@ -576,6 +603,8 @@ func (h *BooksHandler) RemoveSectionPhotos(w http.ResponseWriter, r *http.Reques
 	respondJSON(w, http.StatusOK, map[string]int{"removed": len(req.PhotoUIDs)})
 }
 
+// UpdatePhotoDescription handles PUT /api/v1/sections/:id/photos/:photoUid/description
+// and updates a photo's description and note in a section.
 func (h *BooksHandler) UpdatePhotoDescription(w http.ResponseWriter, r *http.Request) {
 	bw := getBookWriter(r, w)
 	if bw == nil {
@@ -600,6 +629,7 @@ func (h *BooksHandler) UpdatePhotoDescription(w http.ResponseWriter, r *http.Req
 
 // --- Pages ---
 
+// CreatePage handles POST /api/v1/books/:id/pages and creates a page in a book.
 func (h *BooksHandler) CreatePage(w http.ResponseWriter, r *http.Request) {
 	bw := getBookWriter(r, w)
 	if bw == nil {
@@ -718,6 +748,8 @@ func applySplitPosition(page *database.BookPage, raw json.RawMessage) string {
 	return ""
 }
 
+// UpdatePage handles PUT /api/v1/pages/:id and updates a page's format,
+// section, style, description, and split position.
 func (h *BooksHandler) UpdatePage(w http.ResponseWriter, r *http.Request) {
 	bw := getBookWriter(r, w)
 	if bw == nil {
@@ -730,7 +762,7 @@ func (h *BooksHandler) UpdatePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fetch existing page to preserve fields not being updated
+	// Fetch existing page to preserve fields not being updated.
 	page, err := bw.GetPage(r.Context(), id)
 	if err != nil || page == nil {
 		respondError(w, http.StatusNotFound, "page not found")
@@ -748,7 +780,7 @@ func (h *BooksHandler) UpdatePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// If format changed to fewer slots, clear excess slots
+	// If format changed to fewer slots, clear excess slots.
 	if req.Format != nil {
 		newSlotCount := database.PageFormatSlotCount(*req.Format)
 		for i := newSlotCount; i < oldSlotCount; i++ {
@@ -761,6 +793,7 @@ func (h *BooksHandler) UpdatePage(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]string{"id": id})
 }
 
+// DeletePage handles DELETE /api/v1/pages/:id and deletes a page.
 func (h *BooksHandler) DeletePage(w http.ResponseWriter, r *http.Request) {
 	bw := getBookWriter(r, w)
 	if bw == nil {
@@ -774,6 +807,7 @@ func (h *BooksHandler) DeletePage(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]bool{"deleted": true})
 }
 
+// ReorderPages handles PUT /api/v1/books/:id/pages/reorder and reorders pages in a book.
 func (h *BooksHandler) ReorderPages(w http.ResponseWriter, r *http.Request) {
 	bw := getBookWriter(r, w)
 	if bw == nil {
@@ -811,6 +845,7 @@ func (r assignSlotRequest) validate() string {
 	return ""
 }
 
+// AssignSlot handles PUT /api/v1/pages/:id/slots/:index and assigns a photo or text content to a page slot.
 func (h *BooksHandler) AssignSlot(w http.ResponseWriter, r *http.Request) {
 	bw := getBookWriter(r, w)
 	if bw == nil {
@@ -845,6 +880,7 @@ func (h *BooksHandler) AssignSlot(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]bool{"assigned": true})
 }
 
+// SwapSlots handles POST /api/v1/pages/:id/slots/swap and swaps two page slots atomically.
 func (h *BooksHandler) SwapSlots(w http.ResponseWriter, r *http.Request) {
 	bw := getBookWriter(r, w)
 	if bw == nil {
@@ -884,6 +920,8 @@ func validateCropParams(cropX, cropY float64, cropScalePtr *float64) (float64, s
 	return cropScale, ""
 }
 
+// UpdateSlotCrop handles PUT /api/v1/pages/:id/slots/:index/crop
+// and updates the crop position and scale for a page slot.
 func (h *BooksHandler) UpdateSlotCrop(w http.ResponseWriter, r *http.Request) {
 	bw := getBookWriter(r, w)
 	if bw == nil {
@@ -916,6 +954,7 @@ func (h *BooksHandler) UpdateSlotCrop(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]bool{"updated": true})
 }
 
+// ClearSlot handles DELETE /api/v1/pages/:id/slots/:index and clears a page slot.
 func (h *BooksHandler) ClearSlot(w http.ResponseWriter, r *http.Request) {
 	bw := getBookWriter(r, w)
 	if bw == nil {
@@ -956,6 +995,7 @@ func handleTestExport(w http.ResponseWriter, r *http.Request, bookTitle string) 
 	writePDFResponse(w, testPDF, bookTitle+"-test", nil)
 }
 
+// ExportPDF handles GET /api/v1/books/:id/export-pdf and exports a book as a PDF via LaTeX.
 func (h *BooksHandler) ExportPDF(w http.ResponseWriter, r *http.Request) {
 	pp := middleware.MustGetPhotoPrism(r.Context(), w)
 	if pp == nil {
@@ -984,7 +1024,7 @@ func (h *BooksHandler) ExportPDF(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Debug and normal exports both use GeneratePDFWithOptions
+	// Debug and normal exports both use GeneratePDFWithOptions.
 	pdfData, report, err := latex.GeneratePDFWithOptions(r.Context(), pp, bw, id, format == "debug")
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Sprintf("PDF generation failed: %v", err))

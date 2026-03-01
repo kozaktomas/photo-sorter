@@ -7,11 +7,11 @@ import (
 	"math"
 	"time"
 
-	"github.com/spf13/cobra"
 	"github.com/kozaktomas/photo-sorter/internal/config"
 	"github.com/kozaktomas/photo-sorter/internal/database"
 	"github.com/kozaktomas/photo-sorter/internal/database/postgres"
 	"github.com/kozaktomas/photo-sorter/internal/fingerprint"
+	"github.com/spf13/cobra"
 )
 
 var cacheComputeErasCmd = &cobra.Command{
@@ -43,7 +43,7 @@ func init() {
 	cacheComputeErasCmd.Flags().Bool("dry-run", false, "Compute embeddings but don't save to database")
 }
 
-// eraDef defines an era with its label, representative date, and visual cues
+// eraDef defines an era with its label, representative date, and visual cues.
 type eraDef struct {
 	Slug               string
 	Name               string
@@ -258,7 +258,7 @@ var eras = []eraDef{
 	},
 }
 
-// promptTemplatesPlain are templates that don't use cues (only {label})
+// promptTemplatesPlain are templates that don't use cues (only {label}).
 var promptTemplatesPlain = []string{
 	"a photograph taken in the %s",
 	"a %s film photograph",
@@ -268,7 +268,7 @@ var promptTemplatesPlain = []string{
 	"a %s photograph found in a photo album",
 }
 
-// promptTemplatesCue are templates that use both {label} and {cue}
+// promptTemplatesCue are templates that use both {label} and {cue}.
 var promptTemplatesCue = []string{
 	"a photograph with %s photographic look, %s",
 	"a documentary photograph from the %s, %s",
@@ -282,17 +282,17 @@ var promptTemplatesCue = []string{
 
 const promptsPerEra = 30
 
-// generatePrompts generates text prompts for an era
+// generatePrompts generates text prompts for an era.
 func generatePrompts(era eraDef) []string {
 	var prompts []string
 
-	// Add plain templates (no cue) — 6 prompts
+	// Add plain templates (no cue) — 6 prompts.
 	for _, tmpl := range promptTemplatesPlain {
 		prompts = append(prompts, fmt.Sprintf(tmpl, era.Name))
 	}
 
-	// Add cue-based templates — 24 prompts (12 cues × 2 uses each, 8 templates × 3 uses each)
-	// Interleave: cycle through cues and templates together for even distribution
+	// Add cue-based templates — 24 prompts (12 cues × 2 uses each, 8 templates × 3 uses each).
+	// Interleave: cycle through cues and templates together for even distribution.
 	cueCount := len(era.Cues)
 	tmplCount := len(promptTemplatesCue)
 	needed := promptsPerEra - len(prompts)
@@ -302,7 +302,7 @@ func generatePrompts(era eraDef) []string {
 		prompts = append(prompts, fmt.Sprintf(tmpl, era.Name, cue))
 	}
 
-	// Truncate to promptsPerEra
+	// Truncate to promptsPerEra.
 	if len(prompts) > promptsPerEra {
 		prompts = prompts[:promptsPerEra]
 	}
@@ -310,7 +310,7 @@ func generatePrompts(era eraDef) []string {
 	return prompts
 }
 
-// computeCentroid averages a slice of embeddings and L2-normalizes the result
+// computeCentroid averages a slice of embeddings and L2-normalizes the result.
 func computeCentroid(embeddings [][]float32) []float32 {
 	if len(embeddings) == 0 {
 		return nil
@@ -330,7 +330,7 @@ func computeCentroid(embeddings [][]float32) []float32 {
 		centroid[i] /= n
 	}
 
-	// L2-normalize
+	// L2-normalize.
 	var norm float64
 	for _, v := range centroid {
 		norm += float64(v) * float64(v)
@@ -345,21 +345,21 @@ func computeCentroid(embeddings [][]float32) []float32 {
 	return centroid
 }
 
-// ComputeErasResult represents the result of a compute-eras operation
+// ComputeErasResult represents the result of a compute-eras operation.
 type ComputeErasResult struct {
-	Success       bool              `json:"success"`
-	ErasComputed  int               `json:"eras_computed"`
-	PromptsTotal  int               `json:"prompts_total"`
-	EmbeddingDim  int               `json:"embedding_dim"`
-	Model         string            `json:"model"`
-	Pretrained    string            `json:"pretrained"`
-	DryRun        bool              `json:"dry_run"`
-	Eras          []EraResultEntry  `json:"eras"`
-	DurationMs    int64             `json:"duration_ms"`
-	DurationHuman string            `json:"duration_human,omitempty"`
+	Success       bool             `json:"success"`
+	ErasComputed  int              `json:"eras_computed"`
+	PromptsTotal  int              `json:"prompts_total"`
+	EmbeddingDim  int              `json:"embedding_dim"`
+	Model         string           `json:"model"`
+	Pretrained    string           `json:"pretrained"`
+	DryRun        bool             `json:"dry_run"`
+	Eras          []EraResultEntry `json:"eras"`
+	DurationMs    int64            `json:"duration_ms"`
+	DurationHuman string           `json:"duration_human,omitempty"`
 }
 
-// EraResultEntry represents a single era in the result
+// EraResultEntry represents a single era in the result.
 type EraResultEntry struct {
 	Slug               string `json:"slug"`
 	Name               string `json:"name"`
@@ -376,7 +376,10 @@ type eraEmbeddingMeta struct {
 
 // computeEraEmbeddings computes text embeddings for an era's prompts and returns the centroid.
 // On the first call (when meta.Model is empty), it captures model metadata.
-func computeEraEmbeddings(ctx context.Context, embClient *fingerprint.EmbeddingClient, era eraDef, prompts []string, meta *eraEmbeddingMeta) ([]float32, error) {
+func computeEraEmbeddings(
+	ctx context.Context, embClient *fingerprint.EmbeddingClient,
+	era eraDef, prompts []string, meta *eraEmbeddingMeta,
+) ([]float32, error) {
 	var embeddings [][]float32
 	for j, prompt := range prompts {
 		if meta.Model == "" {
@@ -400,7 +403,9 @@ func computeEraEmbeddings(ctx context.Context, embClient *fingerprint.EmbeddingC
 }
 
 // saveEraCentroid saves a computed era centroid to the database.
-func saveEraCentroid(ctx context.Context, era eraDef, centroid []float32, promptCount int, meta *eraEmbeddingMeta) error {
+func saveEraCentroid(
+	ctx context.Context, era eraDef, centroid []float32, promptCount int, meta *eraEmbeddingMeta,
+) error {
 	eraWriter, err := database.GetEraEmbeddingWriter(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get era embedding writer: %w", err)
@@ -485,7 +490,10 @@ func initComputeErasDB(cfg *config.Config, dryRun bool) error {
 }
 
 // processAllEras computes embeddings for all eras and returns era result entries.
-func processAllEras(ctx context.Context, embClient *fingerprint.EmbeddingClient, meta *eraEmbeddingMeta, dryRun bool, jsonOutput bool) ([]EraResultEntry, error) {
+func processAllEras(
+	ctx context.Context, embClient *fingerprint.EmbeddingClient,
+	meta *eraEmbeddingMeta, dryRun bool, jsonOutput bool,
+) ([]EraResultEntry, error) {
 	var entries []EraResultEntry
 	for i, era := range eras {
 		prompts := generatePrompts(era)

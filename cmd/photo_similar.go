@@ -9,11 +9,11 @@ import (
 	"sort"
 	"text/tabwriter"
 
-	"github.com/spf13/cobra"
 	"github.com/kozaktomas/photo-sorter/internal/config"
 	"github.com/kozaktomas/photo-sorter/internal/database"
 	"github.com/kozaktomas/photo-sorter/internal/database/postgres"
 	"github.com/kozaktomas/photo-sorter/internal/photoprism"
+	"github.com/spf13/cobra"
 )
 
 var photoSimilarCmd = &cobra.Command{
@@ -61,21 +61,22 @@ func init() {
 	photoSimilarCmd.Flags().Float64("threshold", 0.3, "Maximum cosine distance for similarity (lower = more similar)")
 	photoSimilarCmd.Flags().Int("limit", 50, "Maximum number of results")
 	photoSimilarCmd.Flags().Bool("json", false, "Output as JSON")
-	photoSimilarCmd.Flags().StringSlice("label", nil, "Find photos similar to all photos with this label (can be specified multiple times)")
+	photoSimilarCmd.Flags().StringSlice("label", nil,
+		"Find photos similar to all photos with this label (can be specified multiple times)")
 	photoSimilarCmd.Flags().Bool("apply", false, "Apply the label(s) to similar photos found")
 	photoSimilarCmd.Flags().Bool("dry-run", false, "Preview label assignments without applying them")
 }
 
-// SimilarPhoto represents a similar photo result
+// SimilarPhoto represents a similar photo result.
 type SimilarPhoto struct {
 	PhotoUID   string  `json:"photo_uid"`
 	Distance   float64 `json:"distance"`
-	Similarity float64 `json:"similarity"`  // 1 - distance, for easier interpretation
+	Similarity float64 `json:"similarity"` // 1 - distance, for easier interpretation
 	Applied    bool    `json:"applied,omitempty"`
 	ApplyError string  `json:"apply_error,omitempty"`
 }
 
-// LabelSimilarOutput represents the JSON output structure for label-based search
+// LabelSimilarOutput represents the JSON output structure for label-based search.
 type LabelSimilarOutput struct {
 	Labels       []string       `json:"labels"`
 	SourcePhotos []string       `json:"source_photos"`
@@ -86,7 +87,7 @@ type LabelSimilarOutput struct {
 	Failed       int            `json:"failed,omitempty"`
 }
 
-// SimilarOutput represents the JSON output structure for single photo search
+// SimilarOutput represents the JSON output structure for single photo search.
 type SimilarOutput struct {
 	SourcePhotoUID string         `json:"source_photo_uid"`
 	Threshold      float64        `json:"threshold"`
@@ -102,7 +103,7 @@ func runPhotoSimilar(cmd *cobra.Command, args []string) error {
 	apply := mustGetBool(cmd, "apply")
 	dryRun := mustGetBool(cmd, "dry-run")
 
-	// Determine mode: label-based or single photo
+	// Determine mode: label-based or single photo.
 	if len(labels) > 0 {
 		return runPhotoSimilarByLabel(labels, threshold, limit, jsonOutput, apply, dryRun)
 	}
@@ -112,7 +113,7 @@ func runPhotoSimilar(cmd *cobra.Command, args []string) error {
 		return errors.New("--apply and --dry-run flags require --label flag")
 	}
 
-	// Single photo mode - require exactly one argument
+	// Single photo mode - require exactly one argument.
 	if len(args) != 1 {
 		return errors.New("requires either a photo-uid argument or --label flag")
 	}
@@ -203,7 +204,16 @@ type similarMatchCandidate struct {
 }
 
 // findSimilarByEmbeddings searches for similar photos using source embeddings.
-func findSimilarByEmbeddings(ctx context.Context, embRepo database.EmbeddingReader, sourcePhotoUIDs map[string]bool, limit int, threshold float64, jsonOutput bool) (map[string]*similarMatchCandidate, []string, int, error) {
+//
+//nolint:gocognit // Multi-embedding similarity search with deduplication.
+func findSimilarByEmbeddings(
+	ctx context.Context,
+	embRepo database.EmbeddingReader,
+	sourcePhotoUIDs map[string]bool,
+	limit int,
+	threshold float64,
+	jsonOutput bool,
+) (map[string]*similarMatchCandidate, []string, int, error) {
 	candidateMap := make(map[string]*similarMatchCandidate)
 	sourceList := make([]string, 0, len(sourcePhotoUIDs))
 	sourceEmbeddingCount := 0
@@ -249,7 +259,11 @@ func findSimilarByEmbeddings(ctx context.Context, embRepo database.EmbeddingRead
 }
 
 // filterAndSortSimilarResults filters candidates by min match count and sorts by distance.
-func filterAndSortSimilarResults(candidateMap map[string]*similarMatchCandidate, minMatchCount int, limit int) []SimilarPhoto {
+func filterAndSortSimilarResults(
+	candidateMap map[string]*similarMatchCandidate,
+	minMatchCount int,
+	limit int,
+) []SimilarPhoto {
 	for photoUID, candidate := range candidateMap {
 		if candidate.MatchCount < minMatchCount {
 			delete(candidateMap, photoUID)
@@ -309,7 +323,15 @@ func applyLabelsToPhoto(pp *photoprism.PhotoPrism, r *SimilarPhoto, labels []str
 }
 
 // applySimilarLabels applies labels to similar photos.
-func applySimilarLabels(pp *photoprism.PhotoPrism, results []SimilarPhoto, labels []string, dryRun bool, jsonOutput bool) (int, int) {
+//
+//nolint:gocognit // Label application with dry-run and error handling.
+func applySimilarLabels(
+	pp *photoprism.PhotoPrism,
+	results []SimilarPhoto,
+	labels []string,
+	dryRun bool,
+	jsonOutput bool,
+) (int, int) {
 	if !jsonOutput {
 		if dryRun {
 			fmt.Printf("\n[DRY-RUN] Would apply %d label(s) to %d photos:\n", len(labels), len(results))
@@ -347,7 +369,16 @@ func applySimilarLabels(pp *photoprism.PhotoPrism, results []SimilarPhoto, label
 }
 
 // outputSimilarByLabelResults handles the output for label-based similar search (applying labels, printing, or JSON).
-func outputSimilarByLabelResults(deps *similarLabelDeps, results []SimilarPhoto, labels []string, sourceList []string, threshold float64, apply bool, dryRun bool, jsonOutput bool) error {
+func outputSimilarByLabelResults(
+	deps *similarLabelDeps,
+	results []SimilarPhoto,
+	labels []string,
+	sourceList []string,
+	threshold float64,
+	apply bool,
+	dryRun bool,
+	jsonOutput bool,
+) error {
 	if !jsonOutput && len(results) == 0 {
 		fmt.Printf("No similar photos found within threshold %.2f\n", threshold)
 		return nil
@@ -376,7 +407,14 @@ func outputSimilarByLabelResults(deps *similarLabelDeps, results []SimilarPhoto,
 	return nil
 }
 
-func runPhotoSimilarByLabel(labels []string, threshold float64, limit int, jsonOutput bool, apply bool, dryRun bool) error {
+func runPhotoSimilarByLabel(
+	labels []string,
+	threshold float64,
+	limit int,
+	jsonOutput bool,
+	apply bool,
+	dryRun bool,
+) error {
 	ctx := context.Background()
 
 	deps, err := initSimilarLabelDeps(ctx, jsonOutput)
@@ -400,7 +438,9 @@ func runPhotoSimilarByLabel(labels []string, threshold float64, limit int, jsonO
 		fmt.Printf("Found %d source photos with specified labels\n", len(sourcePhotoUIDs))
 	}
 
-	candidateMap, sourceList, sourceEmbeddingCount, err := findSimilarByEmbeddings(ctx, deps.embRepo, sourcePhotoUIDs, limit, threshold, jsonOutput)
+	candidateMap, sourceList, sourceEmbeddingCount, err := findSimilarByEmbeddings(
+		ctx, deps.embRepo, sourcePhotoUIDs, limit, threshold, jsonOutput,
+	)
 	if err != nil {
 		return err
 	}
@@ -446,7 +486,14 @@ func initSimilarUIDDeps(ctx context.Context, jsonOutput bool) (database.Embeddin
 }
 
 // searchAndFilterSimilarByUID searches for similar photos and filters out the source photo.
-func searchAndFilterSimilarByUID(ctx context.Context, embRepo database.EmbeddingReader, sourceEmb []float32, photoUID string, limit int, threshold float64) ([]SimilarPhoto, error) {
+func searchAndFilterSimilarByUID(
+	ctx context.Context,
+	embRepo database.EmbeddingReader,
+	sourceEmb []float32,
+	photoUID string,
+	limit int,
+	threshold float64,
+) ([]SimilarPhoto, error) {
 	similar, distances, err := embRepo.FindSimilarWithDistance(ctx, sourceEmb, limit+1, threshold)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find similar photos: %w", err)
@@ -500,7 +547,13 @@ func runPhotoSimilarByUID(photoUID string, threshold float64, limit int, jsonOut
 	return outputSimilarByUIDResults(results, photoUID, threshold, cfg, jsonOutput)
 }
 
-func outputSimilarByUIDResults(results []SimilarPhoto, photoUID string, threshold float64, cfg *config.Config, jsonOutput bool) error {
+func outputSimilarByUIDResults(
+	results []SimilarPhoto,
+	photoUID string,
+	threshold float64,
+	cfg *config.Config,
+	jsonOutput bool,
+) error {
 	if jsonOutput {
 		if err := json.NewEncoder(os.Stdout).Encode(SimilarOutput{
 			SourcePhotoUID: photoUID, Threshold: threshold, Results: results, Count: len(results),

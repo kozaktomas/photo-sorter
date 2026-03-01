@@ -289,8 +289,8 @@ func TestBuildPhotoSlotNew(t *testing.T) {
 		if !ts.HasPhoto {
 			t.Error("expected HasPhoto=true")
 		}
-		// imgAspect = 3840/2160 = 1.778, slotAspect = 130.5/84 = 1.554
-		// imgAspect > slotAspect → sizeDim="height"
+		// imgAspect = 3840/2160 = 1.778, slotAspect = 130.5/84 = 1.554.
+		// imgAspect > slotAspect → sizeDim="height".
 		if ts.SizeDim != "height" {
 			t.Errorf("expected height-binding for landscape-in-landscape, got %s", ts.SizeDim)
 		}
@@ -320,8 +320,8 @@ func TestBuildPhotoSlotNew(t *testing.T) {
 		if !ts.HasPhoto {
 			t.Error("expected HasPhoto=true")
 		}
-		// Portrait in landscape: image wider axis is height, slot is landscape
-		// imgAspect (0.5625) < slotAspect (1.55) → sizeDim="width"
+		// Portrait in landscape: image wider axis is height, slot is landscape.
+		// imgAspect (0.5625) < slotAspect (1.55) → sizeDim="width".
 		if ts.SizeDim != "width" {
 			t.Errorf("expected width-binding for portrait in landscape slot, got %s", ts.SizeDim)
 		}
@@ -336,14 +336,14 @@ func TestBuildPhotoSlotNew(t *testing.T) {
 		if math.Abs(ts.MatInsetMM-3.0) > eps {
 			t.Errorf("expected inset 3.0, got %.2f", ts.MatInsetMM)
 		}
-		// Clip should be inset from border
+		// Clip should be inset from border.
 		if math.Abs(ts.ClipW-(slot.W-6.0)) > eps {
 			t.Errorf("expected clip width %.2f, got %.2f", slot.W-6.0, ts.ClipW)
 		}
 		if math.Abs(ts.ClipH-(slot.H-6.0)) > eps {
 			t.Errorf("expected clip height %.2f, got %.2f", slot.H-6.0, ts.ClipH)
 		}
-		// Border should be the full slot
+		// Border should be the full slot.
 		if math.Abs(ts.BorderW-slot.W) > eps {
 			t.Errorf("expected border width %.2f, got %.2f", slot.W, ts.BorderW)
 		}
@@ -352,8 +352,8 @@ func TestBuildPhotoSlotNew(t *testing.T) {
 	t.Run("crop offset top-left", func(t *testing.T) {
 		img := photoImage{path: "/tmp/c.jpg", width: 3840, height: 2160}
 		ts := buildPhotoSlotNew(slot, img, 20.0, 196.0, false, 0, 0.0, 0.0, 1.0)
-		// cropX=0 → image shifted to left, cropY=0 → shifted to top
-		// With 0.0 crop, the image start should be at clip boundary
+		// cropX=0 → image shifted to left, cropY=0 → shifted to top.
+		// With 0.0 crop, the image start should be at clip boundary.
 		if ts.ImgX > ts.ClipX+eps {
 			t.Errorf("expected ImgX <= ClipX for cropX=0, got ImgX=%.2f ClipX=%.2f", ts.ImgX, ts.ClipX)
 		}
@@ -362,8 +362,8 @@ func TestBuildPhotoSlotNew(t *testing.T) {
 	t.Run("crop offset bottom-right", func(t *testing.T) {
 		img := photoImage{path: "/tmp/c.jpg", width: 3840, height: 2160}
 		ts := buildPhotoSlotNew(slot, img, 20.0, 196.0, false, 0, 1.0, 1.0, 1.0)
-		// cropX=1 → full overflow on left side
-		// cropY=1 → full overflow on bottom side (TikZ Y inverted)
+		// cropX=1 → full overflow on left side.
+		// cropY=1 → full overflow on bottom side (TikZ Y inverted).
 		if ts.HasPhoto != true {
 			t.Error("expected HasPhoto=true")
 		}
@@ -373,7 +373,7 @@ func TestBuildPhotoSlotNew(t *testing.T) {
 		img := photoImage{path: "/tmp/z.jpg", width: 3840, height: 2160}
 		tsNormal := buildPhotoSlotNew(slot, img, 20.0, 196.0, false, 0, 0.5, 0.5, 1.0)
 		tsZoomed := buildPhotoSlotNew(slot, img, 20.0, 196.0, false, 0, 0.5, 0.5, 0.5)
-		// Zoom in = smaller cropScale = larger sizeVal
+		// Zoom in = smaller cropScale = larger sizeVal.
 		if tsZoomed.SizeVal <= tsNormal.SizeVal {
 			t.Errorf("expected zoomed SizeVal > normal SizeVal, got %.2f <= %.2f", tsZoomed.SizeVal, tsNormal.SizeVal)
 		}
@@ -385,7 +385,7 @@ func TestBuildPhotoSlotNew(t *testing.T) {
 		if !ts.HasPhoto {
 			t.Error("expected HasPhoto=true")
 		}
-		// Square image in landscape slot: imgAspect(1.0) < slotAspect(1.55) → width binding
+		// Square image in landscape slot: imgAspect(1.0) < slotAspect(1.55) → width binding.
 		if ts.SizeDim != "width" {
 			t.Errorf("expected width-binding for square in landscape, got %s", ts.SizeDim)
 		}
@@ -414,11 +414,11 @@ func TestBuildTextSlotNew(t *testing.T) {
 		if ts.TextContent != "Hello world" {
 			t.Errorf("expected 'Hello world', got '%s'", ts.TextContent)
 		}
-		// ClipX = contentLeftX + slot.X = 20 + 0 = 20
+		// ClipX = contentLeftX + slot.X = 20 + 0 = 20.
 		if math.Abs(ts.ClipX-20.0) > eps {
 			t.Errorf("expected ClipX=20.0, got %.2f", ts.ClipX)
 		}
-		// ClipY = canvasTopY - slot.Y - slot.H = 196 - 0 - 84 = 112
+		// ClipY = canvasTopY - slot.Y - slot.H = 196 - 0 - 84 = 112.
 		if math.Abs(ts.ClipY-112.0) > eps {
 			t.Errorf("expected ClipY=112.0, got %.2f", ts.ClipY)
 		}
@@ -428,11 +428,11 @@ func TestBuildTextSlotNew(t *testing.T) {
 		slot := SlotRect{X: 50.0, Y: 10.0, W: 100.0, H: 80.0}
 		ps := database.PageSlot{TextContent: "offset text"}
 		ts := buildTextSlotNew(slot, ps, 20.0, 196.0)
-		// ClipX = 20 + 50 = 70
+		// ClipX = 20 + 50 = 70.
 		if math.Abs(ts.ClipX-70.0) > eps {
 			t.Errorf("expected ClipX=70.0, got %.2f", ts.ClipX)
 		}
-		// ClipY = 196 - 10 - 80 = 106
+		// ClipY = 196 - 10 - 80 = 106.
 		if math.Abs(ts.ClipY-106.0) > eps {
 			t.Errorf("expected ClipY=106.0, got %.2f", ts.ClipY)
 		}
@@ -570,7 +570,7 @@ func TestBuildTemplateData(t *testing.T) {
 		if data.BookTitle != "My Book" {
 			t.Errorf("expected book title 'My Book', got '%s'", data.BookTitle)
 		}
-		// Title page is page 1, content is page 2
+		// Title page is page 1, content is page 2.
 		if report.PageCount != 2 {
 			t.Errorf("expected 2 pages (title + content), got %d", report.PageCount)
 		}
@@ -630,7 +630,7 @@ func TestBuildTemplateData(t *testing.T) {
 		if pages[0].PageNumber != 1 || pages[1].PageNumber != 2 || pages[2].PageNumber != 3 {
 			t.Errorf("unexpected page numbers: %d, %d, %d", pages[0].PageNumber, pages[1].PageNumber, pages[2].PageNumber)
 		}
-		// Odd=recto, even=verso
+		// Odd=recto, even=verso.
 		if !pages[0].IsRecto {
 			t.Error("page 1 should be recto")
 		}
@@ -767,7 +767,7 @@ func TestLatexEscape(t *testing.T) {
 	t.Run("combined escaping and typography", func(t *testing.T) {
 		input := "100% v lese & 50$"
 		got := latexEscape(input)
-		// First escapes special chars, then applies typography
+		// First escapes special chars, then applies typography.
 		expected := `100\% v~lese \& 50\$`
 		if got != expected {
 			t.Errorf("latexEscape(%q) = %q, want %q", input, got, expected)
@@ -791,7 +791,7 @@ func TestComputeZones(t *testing.T) {
 
 	t.Run("recto margins", func(t *testing.T) {
 		contentLeftX, contentRightX, _, _, _, _, _, _, _ := pb.computeZones(true)
-		// Recto: inside margin on left (20mm)
+		// Recto: inside margin on left (20mm).
 		if math.Abs(contentLeftX-cfg.InsideMarginMM) > eps {
 			t.Errorf("recto contentLeftX: expected %.2f, got %.2f", cfg.InsideMarginMM, contentLeftX)
 		}
@@ -802,7 +802,7 @@ func TestComputeZones(t *testing.T) {
 
 	t.Run("verso margins", func(t *testing.T) {
 		contentLeftX, contentRightX, _, _, _, _, _, _, _ := pb.computeZones(false)
-		// Verso: outside margin on left (12mm)
+		// Verso: outside margin on left (12mm).
 		if math.Abs(contentLeftX-cfg.OutsideMarginMM) > eps {
 			t.Errorf("verso contentLeftX: expected %.2f, got %.2f", cfg.OutsideMarginMM, contentLeftX)
 		}
@@ -813,20 +813,20 @@ func TestComputeZones(t *testing.T) {
 
 	t.Run("zone Y coordinates", func(t *testing.T) {
 		_, _, headerY, canvasTopY, canvasBottomY, footerRuleY, _, _, _ := pb.computeZones(true)
-		// topEdge = 210 - 10 = 200
-		// headerY = 200 - 2 = 198
+		// topEdge = 210 - 10 = 200.
+		// headerY = 200 - 2 = 198.
 		if math.Abs(headerY-198.0) > eps {
 			t.Errorf("headerY: expected 198.0, got %.2f", headerY)
 		}
-		// canvasTopY = 200 - 4 = 196
+		// canvasTopY = 200 - 4 = 196.
 		if math.Abs(canvasTopY-196.0) > eps {
 			t.Errorf("canvasTopY: expected 196.0, got %.2f", canvasTopY)
 		}
-		// canvasBottomY = 196 - 172 = 24
+		// canvasBottomY = 196 - 172 = 24.
 		if math.Abs(canvasBottomY-24.0) > eps {
 			t.Errorf("canvasBottomY: expected 24.0, got %.2f", canvasBottomY)
 		}
-		// footerRuleY = canvasBottomY = 24
+		// footerRuleY = canvasBottomY = 24.
 		if math.Abs(footerRuleY-24.0) > eps {
 			t.Errorf("footerRuleY: expected 24.0, got %.2f", footerRuleY)
 		}
@@ -834,7 +834,7 @@ func TestComputeZones(t *testing.T) {
 
 	t.Run("folio positioning recto", func(t *testing.T) {
 		_, contentRightX, _, _, _, _, folioX, folioY, folioAnchor := pb.computeZones(true)
-		// Recto: folio at bottom-right
+		// Recto: folio at bottom-right.
 		if math.Abs(folioX-contentRightX) > eps {
 			t.Errorf("recto folioX: expected %.2f, got %.2f", contentRightX, folioX)
 		}
@@ -848,7 +848,7 @@ func TestComputeZones(t *testing.T) {
 
 	t.Run("folio positioning verso", func(t *testing.T) {
 		contentLeftX, _, _, _, _, _, folioX, _, folioAnchor := pb.computeZones(false)
-		// Verso: folio at bottom-left
+		// Verso: folio at bottom-left.
 		if math.Abs(folioX-contentLeftX) > eps {
 			t.Errorf("verso folioX: expected %.2f, got %.2f", contentLeftX, folioX)
 		}

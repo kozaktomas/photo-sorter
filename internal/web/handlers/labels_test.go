@@ -269,7 +269,7 @@ func TestLabelsHandler_Update_PartialUpdate(t *testing.T) {
 			var update map[string]any
 			json.NewDecoder(r.Body).Decode(&update)
 
-			// Should only have description field
+			// Should only have description field.
 			if _, ok := update["Name"]; ok {
 				t.Error("Name should not be in update")
 			}

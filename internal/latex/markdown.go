@@ -14,7 +14,7 @@ var (
 
 // MarkdownToLatex converts a subset of Markdown to LaTeX.
 //
-// Supported syntax:
+// Supported syntax:.
 //   - # Heading       → {\Large\bfseries Heading}\par\vspace{4mm}
 //   - ## Subheading   → {\large\bfseries Subheading}\par\vspace{4mm}
 //   - **bold**        → \textbf{bold}
@@ -24,6 +24,8 @@ var (
 //   - > quote         → \begin{quote}\itshape ... \end{quote}
 //   - blank line      → \par\vspace{4mm}
 //   - plain text      → escaped text (backward compatible)
+//
+//nolint:funlen // Sequential markdown transformation pipeline.
 func MarkdownToLatex(md string) string {
 	lines := strings.Split(md, "\n")
 	var out []string
@@ -32,28 +34,28 @@ func MarkdownToLatex(md string) string {
 	for i < len(lines) {
 		trimmed := strings.TrimSpace(lines[i])
 
-		// Blank line → paragraph break
+		// Blank line → paragraph break.
 		if trimmed == "" {
 			out = append(out, `\par\vspace{4mm}`)
 			i++
 			continue
 		}
 
-		// Heading ## (must check before #)
+		// Heading ## (must check before #).
 		if text, ok := strings.CutPrefix(trimmed, "## "); ok {
 			out = append(out, formatHeading(text, `\large`))
 			i++
 			continue
 		}
 
-		// Heading #
+		// Heading #.
 		if text, ok := strings.CutPrefix(trimmed, "# "); ok {
 			out = append(out, formatHeading(text, `\Large`))
 			i++
 			continue
 		}
 
-		// Unordered list (- or *)
+		// Unordered list (- or *).
 		if isUnorderedListItem(trimmed) {
 			items, newI := collectListItems(lines, i, isUnorderedListItem, stripListMarker)
 			out = append(out, `\begin{itemize}[nosep,leftmargin=1.5em]`)
@@ -63,7 +65,7 @@ func MarkdownToLatex(md string) string {
 			continue
 		}
 
-		// Ordered list
+		// Ordered list.
 		if isOrderedListItem(trimmed) {
 			items, newI := collectListItems(lines, i, isOrderedListItem, stripOrderedListMarker)
 			out = append(out, `\begin{enumerate}[nosep,leftmargin=1.5em]`)
@@ -73,7 +75,7 @@ func MarkdownToLatex(md string) string {
 			continue
 		}
 
-		// Blockquote
+		// Blockquote.
 		if isBlockquoteLine(trimmed) {
 			quoteLines, newI := collectBlockquote(lines, i)
 			out = append(out, `\begin{quote}\itshape`)
@@ -83,7 +85,7 @@ func MarkdownToLatex(md string) string {
 			continue
 		}
 
-		// Plain text paragraph
+		// Plain text paragraph.
 		text := inlineFormat(latexEscapeRaw(trimmed))
 		text = czechTypography(text)
 		out = append(out, text)
@@ -101,7 +103,10 @@ func formatHeading(text, sizeCmd string) string {
 }
 
 // collectListItems consumes consecutive list items and returns formatted LaTeX items.
-func collectListItems(lines []string, start int, isItem func(string) bool, stripMarker func(string) string) ([]string, int) {
+func collectListItems(
+	lines []string, start int,
+	isItem func(string) bool, stripMarker func(string) string,
+) ([]string, int) {
 	var items []string
 	i := start
 	for i < len(lines) {
@@ -139,7 +144,7 @@ func collectBlockquote(lines []string, start int) ([]string, int) {
 // inlineFormat applies bold and italic formatting.
 // Must be called AFTER latexEscapeRaw so that * chars (not LaTeX special) are still present.
 func inlineFormat(s string) string {
-	// Bold first (** before *)
+	// Bold first (** before *).
 	s = boldRe.ReplaceAllString(s, `\textbf{$1}`)
 	s = italicRe.ReplaceAllString(s, `\textit{$1}`)
 	return s

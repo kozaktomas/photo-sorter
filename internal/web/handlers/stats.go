@@ -15,7 +15,7 @@ import (
 
 const statsCacheTTL = 10 * time.Minute
 
-// statsCache holds cached stats with expiry
+// statsCache holds cached stats with expiry.
 type statsCache struct {
 	mu        sync.RWMutex
 	data      *StatsResponse
@@ -44,14 +44,14 @@ func (c *statsCache) invalidate() {
 	c.data = nil
 }
 
-// StatsHandler handles statistics endpoints
+// StatsHandler handles statistics endpoints.
 type StatsHandler struct {
 	config         *config.Config
 	sessionManager *middleware.SessionManager
 	cache          statsCache
 }
 
-// NewStatsHandler creates a new stats handler
+// NewStatsHandler creates a new stats handler.
 func NewStatsHandler(cfg *config.Config, sm *middleware.SessionManager) *StatsHandler {
 	return &StatsHandler{
 		config:         cfg,
@@ -59,22 +59,22 @@ func NewStatsHandler(cfg *config.Config, sm *middleware.SessionManager) *StatsHa
 	}
 }
 
-// InvalidateCache clears the cached stats so the next request fetches fresh data
+// InvalidateCache clears the cached stats so the next request fetches fresh data.
 func (h *StatsHandler) InvalidateCache() {
 	h.cache.invalidate()
 }
 
-// StatsResponse represents the statistics response
+// StatsResponse represents the statistics response.
 type StatsResponse struct {
-	TotalPhotos      int `json:"total_photos"`
-	PhotosProcessed  int `json:"photos_processed"`
-	PhotosWithEmbed  int `json:"photos_with_embeddings"`
-	PhotosWithFaces  int `json:"photos_with_faces"`
-	TotalFaces       int `json:"total_faces"`
-	TotalEmbeddings  int `json:"total_embeddings"`
+	TotalPhotos     int `json:"total_photos"`
+	PhotosProcessed int `json:"photos_processed"`
+	PhotosWithEmbed int `json:"photos_with_embeddings"`
+	PhotosWithFaces int `json:"photos_with_faces"`
+	TotalFaces      int `json:"total_faces"`
+	TotalEmbeddings int `json:"total_embeddings"`
 }
 
-// fetchAllPhotoUIDs fetches all photo UIDs from PhotoPrism with pagination
+// fetchAllPhotoUIDs fetches all photo UIDs from PhotoPrism with pagination.
 func fetchAllPhotoUIDs(pp *photoprism.PhotoPrism) []string {
 	var allPhotos []photoprism.Photo
 	pageSize := constants.DefaultPageSize
@@ -97,8 +97,10 @@ func fetchAllPhotoUIDs(pp *photoprism.PhotoPrism) []string {
 	return photoUIDs
 }
 
-// fetchDBStats retrieves embedding and face statistics from PostgreSQL
-func fetchDBStats(ctx context.Context, photoUIDs []string) (photosWithEmbed, totalEmbeddings, photosWithFaces, totalFaces int) {
+// fetchDBStats retrieves embedding and face statistics from PostgreSQL.
+func fetchDBStats(
+	ctx context.Context, photoUIDs []string,
+) (photosWithEmbed, totalEmbeddings, photosWithFaces, totalFaces int) {
 	if embRepo, err := database.GetEmbeddingReader(ctx); err == nil {
 		if count, err := embRepo.CountByUIDs(ctx, photoUIDs); err == nil {
 			totalEmbeddings = count
@@ -116,7 +118,7 @@ func fetchDBStats(ctx context.Context, photoUIDs []string) (photosWithEmbed, tot
 	return
 }
 
-// Get returns statistics about photos and embeddings
+// Get returns statistics about photos and embeddings.
 func (h *StatsHandler) Get(w http.ResponseWriter, r *http.Request) {
 	if cached, ok := h.cache.get(); ok {
 		respondJSON(w, http.StatusOK, cached)

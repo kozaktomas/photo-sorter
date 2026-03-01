@@ -17,11 +17,15 @@ linters:
     - exptostd
     - fatcontext
     - forcetypeassert
+    - funlen
+    - gocognit
     - goconst
     - gocritic
+    - godot
     - godox
     - gosec
     - intrange
+    - lll
     - makezero
     - mirror
     - misspell
@@ -52,6 +56,11 @@ linters:
     - wrapcheck
 
   settings:
+    funlen:
+      lines: 60
+      statements: 40
+    gocognit:
+      min-complexity: 15
     goconst:
       min-occurrences: 3
     gocritic:
@@ -71,11 +80,13 @@ linters:
     revive:
       rules:
         - name: exported
-          disabled: true
+          disabled: false
         - name: package-comments
           disabled: true
     exhaustive:
       default-signifies-exhaustive: true
+    lll:
+      line-length: 120
     nakedret:
       max-func-lines: 20
     perfsprint:
@@ -129,17 +140,25 @@ linters:
         linters:
           - cyclop
           - dupl
+          - funlen
+          - gocognit
           - gocritic
           - errcheck
           - goconst
           - gosec
           - forcetypeassert
+          - lll
           - unparam
           - usestdlibvars
           - nestif
           - thelper
           - usetesting
           - wrapcheck
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
 
 output:
   sort-order:

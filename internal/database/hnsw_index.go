@@ -13,7 +13,7 @@ import (
 	"github.com/coder/hnsw"
 )
 
-// HNSWIndexMetadata stores metadata for validating cached HNSW indexes
+// HNSWIndexMetadata stores metadata for validating cached HNSW indexes.
 type HNSWIndexMetadata struct {
 	FaceCount int64     `json:"face_count"`
 	MaxFaceID int64     `json:"max_face_id"`
@@ -23,7 +23,7 @@ type HNSWIndexMetadata struct {
 
 const hnswMetadataVersion = 1
 
-// HNSWIndex wraps the HNSW graph for face embedding search
+// HNSWIndex wraps the HNSW graph for face embedding search.
 type HNSWIndex struct {
 	graph      *hnsw.Graph[int64]
 	savedGraph *hnsw.SavedGraph[int64] // For persistence
@@ -32,14 +32,14 @@ type HNSWIndex struct {
 	path       string // Path to save/load index
 }
 
-// NewHNSWIndex creates a new empty HNSW index
+// NewHNSWIndex creates a new empty HNSW index.
 func NewHNSWIndex() *HNSWIndex {
 	return &HNSWIndex{
 		idToFace: make(map[int64]*StoredFace),
 	}
 }
 
-// BuildFromFaces builds the index from a slice of faces
+// BuildFromFaces builds the index from a slice of faces.
 func (h *HNSWIndex) BuildFromFaces(faces []StoredFace) error { //nolint:dupl
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -51,7 +51,7 @@ func (h *HNSWIndex) BuildFromFaces(faces []StoredFace) error { //nolint:dupl
 		return nil
 	}
 
-	// Create new graph with cosine distance
+	// Create new graph with cosine distance.
 	g := hnsw.NewGraph[int64]()
 	g.M = HNSWMaxNeighbors
 	g.Ml = 1.0 / float64(HNSWMaxNeighbors) // Standard HNSW formula
@@ -59,7 +59,7 @@ func (h *HNSWIndex) BuildFromFaces(faces []StoredFace) error { //nolint:dupl
 
 	h.idToFace = make(map[int64]*StoredFace, len(faces))
 
-	// Add all faces to the graph
+	// Add all faces to the graph.
 	for i := range faces {
 		face := &faces[i]
 		if len(face.Embedding) == 0 {
@@ -74,8 +74,8 @@ func (h *HNSWIndex) BuildFromFaces(faces []StoredFace) error { //nolint:dupl
 	return nil
 }
 
-// Search finds the k nearest neighbors to the query embedding
-// Returns face IDs and their distances
+// Search finds the k nearest neighbors to the query embedding.
+// Returns face IDs and their distances.
 func (h *HNSWIndex) Search(query []float32, k int) ([]int64, []float64, error) {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -96,8 +96,8 @@ func (h *HNSWIndex) Search(query []float32, k int) ([]int64, []float64, error) {
 
 	for i, n := range neighbors {
 		ids[i] = n.Key
-		// Compute actual cosine distance using the embedding from the node directly
-		// This avoids needing the idToFace map for distance computation
+		// Compute actual cosine distance using the embedding from the node directly.
+		// This avoids needing the idToFace map for distance computation.
 		if len(n.Value) > 0 {
 			distances[i] = float64(CosineDistance(query, n.Value))
 		}
@@ -106,14 +106,14 @@ func (h *HNSWIndex) Search(query []float32, k int) ([]int64, []float64, error) {
 	return ids, distances, nil
 }
 
-// GetFace returns the face for a given ID
+// GetFace returns the face for a given ID.
 func (h *HNSWIndex) GetFace(id int64) *StoredFace {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 	return h.idToFace[id]
 }
 
-// Add adds a single face to the index
+// Add adds a single face to the index.
 func (h *HNSWIndex) Add(face *StoredFace) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -123,7 +123,7 @@ func (h *HNSWIndex) Add(face *StoredFace) error {
 	}
 
 	if h.graph == nil {
-		// Create new graph
+		// Create new graph.
 		h.graph = hnsw.NewGraph[int64]()
 		h.graph.M = HNSWMaxNeighbors
 		h.graph.Ml = 1.0 / float64(HNSWMaxNeighbors)
@@ -136,24 +136,24 @@ func (h *HNSWIndex) Add(face *StoredFace) error {
 	return nil
 }
 
-// Delete removes a face from the index (marks as deleted)
+// Delete removes a face from the index (marks as deleted).
 func (h *HNSWIndex) Delete(id int64) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
 	delete(h.idToFace, id)
-	// Note: HNSW doesn't support true deletion, but removing from idToFace
-	// effectively removes it from search results since we filter by lookup
+	// Note: HNSW doesn't support true deletion, but removing from idToFace.
+	// effectively removes it from search results since we filter by lookup.
 }
 
-// SetPath sets the path for saving/loading the index
+// SetPath sets the path for saving/loading the index.
 func (h *HNSWIndex) SetPath(path string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	h.path = path
 }
 
-// Save persists the index to disk
+// Save persists the index to disk.
 func (h *HNSWIndex) Save() error {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -163,12 +163,12 @@ func (h *HNSWIndex) Save() error {
 	}
 
 	if h.graph == nil {
-		// Remove existing file if index is empty (best-effort cleanup)
+		// Remove existing file if index is empty (best-effort cleanup).
 		_ = os.Remove(h.path)
 		return nil
 	}
 
-	// Write to file
+	// Write to file.
 	f, err := os.Create(h.path)
 	if err != nil {
 		return fmt.Errorf("failed to create HNSW index file: %w", err)
@@ -181,14 +181,14 @@ func (h *HNSWIndex) Save() error {
 	return nil
 }
 
-// Load loads the index from disk
+// Load loads the index from disk.
 func (h *HNSWIndex) Load(path string) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
 	h.path = path
 
-	// Check if file exists
+	// Check if file exists.
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return nil // No index file, will build from faces
 	}
@@ -202,7 +202,7 @@ func (h *HNSWIndex) Load(path string) error {
 	return nil
 }
 
-// Count returns the number of indexed faces
+// Count returns the number of indexed faces.
 func (h *HNSWIndex) Count() int {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
@@ -217,8 +217,8 @@ func (h *HNSWIndex) IsEmpty() bool {
 	return h.graph == nil && h.savedGraph == nil
 }
 
-// RebuildFromFaces rebuilds the idToFace map from faces
-// Called after loading index from disk
+// RebuildFromFaces rebuilds the idToFace map from faces.
+// Called after loading index from disk.
 func (h *HNSWIndex) RebuildFromFaces(faces []StoredFace) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -229,19 +229,19 @@ func (h *HNSWIndex) RebuildFromFaces(faces []StoredFace) {
 	}
 }
 
-// SaveWithMetadata persists the index to disk along with metadata for staleness detection
+// SaveWithMetadata persists the index to disk along with metadata for staleness detection.
 func (h *HNSWIndex) SaveWithMetadata(path string, metadata HNSWIndexMetadata) error {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
 	if h.graph == nil {
-		// Remove existing files if index is empty (best-effort cleanup)
+		// Remove existing files if index is empty (best-effort cleanup).
 		_ = os.Remove(path)
 		_ = os.Remove(path + ".meta")
 		return nil
 	}
 
-	// Write graph to file
+	// Write graph to file.
 	f, err := os.Create(path) //nolint:gosec // path is from trusted config
 	if err != nil {
 		return fmt.Errorf("failed to create HNSW index file: %w", err)
@@ -252,7 +252,7 @@ func (h *HNSWIndex) SaveWithMetadata(path string, metadata HNSWIndexMetadata) er
 		return fmt.Errorf("failed to export HNSW graph: %w", err)
 	}
 
-	// Write metadata to separate file
+	// Write metadata to separate file.
 	metadata.Version = hnswMetadataVersion
 	metaData, err := json.Marshal(metadata)
 	if err != nil {
@@ -266,7 +266,7 @@ func (h *HNSWIndex) SaveWithMetadata(path string, metadata HNSWIndexMetadata) er
 	return nil
 }
 
-// LoadHNSWMetadata loads metadata from a separate .meta file
+// LoadHNSWMetadata loads metadata from a separate .meta file.
 func LoadHNSWMetadata(path string) (HNSWIndexMetadata, error) {
 	var metadata HNSWIndexMetadata
 
@@ -283,7 +283,7 @@ func LoadHNSWMetadata(path string) (HNSWIndexMetadata, error) {
 	return metadata, nil
 }
 
-// SaveFaceMetadata saves face metadata to a .faces file for fast loading at startup
+// SaveFaceMetadata saves face metadata to a .faces file for fast loading at startup.
 func SaveFaceMetadata(path string, faces []StoredFace) error {
 	facesPath := path + ".faces"
 
@@ -300,7 +300,7 @@ func SaveFaceMetadata(path string, faces []StoredFace) error {
 	return nil
 }
 
-// LoadFaceMetadata loads face metadata from a .faces file
+// LoadFaceMetadata loads face metadata from a .faces file.
 func LoadFaceMetadata(path string) ([]StoredFace, error) {
 	facesPath := path + ".faces"
 
@@ -318,14 +318,14 @@ func LoadFaceMetadata(path string) ([]StoredFace, error) {
 	return faces, nil
 }
 
-// LoadWithFaceMetadata loads both the HNSW graph and face metadata from disk
+// LoadWithFaceMetadata loads both the HNSW graph and face metadata from disk.
 func (h *HNSWIndex) LoadWithFaceMetadata(path string) error {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
 	h.path = path
 
-	// Load HNSW graph
+	// Load HNSW graph.
 	if _, err := os.Stat(path); os.IsNotExist(err) {
 		return fmt.Errorf("HNSW index file not found: %s", path)
 	}
@@ -335,7 +335,7 @@ func (h *HNSWIndex) LoadWithFaceMetadata(path string) error {
 		return fmt.Errorf("failed to load HNSW index: %w", err)
 	}
 
-	// Load face metadata
+	// Load face metadata.
 	faces, err := LoadFaceMetadata(path)
 	if err != nil {
 		return fmt.Errorf("failed to load face metadata: %w", err)
@@ -372,7 +372,7 @@ func (h *HNSWIndex) exportFaceGraph(path string) error {
 	return nil
 }
 
-// SaveWithFaceMetadata persists the index and face metadata to disk
+// SaveWithFaceMetadata persists the index and face metadata to disk.
 func (h *HNSWIndex) SaveWithFaceMetadata(path string, metadata HNSWIndexMetadata) error {
 	h.mu.RLock()
 	defer h.mu.RUnlock()

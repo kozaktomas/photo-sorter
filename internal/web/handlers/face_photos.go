@@ -12,7 +12,7 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
 
-// PhotoFacesResponse represents the response for getting faces in a photo
+// PhotoFacesResponse represents the response for getting faces in a photo.
 type PhotoFacesResponse struct {
 	PhotoUID        string      `json:"photo_uid"`
 	FileUID         string      `json:"file_uid"`
@@ -25,7 +25,7 @@ type PhotoFacesResponse struct {
 	Faces           []PhotoFace `json:"faces"`
 }
 
-// PhotoFace represents a face in a photo with suggestions
+// PhotoFace represents a face in a photo with suggestions.
 type PhotoFace struct {
 	FaceIndex   int              `json:"face_index"`
 	BBox        []float64        `json:"bbox"`
@@ -37,7 +37,7 @@ type PhotoFace struct {
 	Suggestions []FaceSuggestion `json:"suggestions"`
 }
 
-// FaceSuggestion represents a suggested person for a face
+// FaceSuggestion represents a suggested person for a face.
 type FaceSuggestion struct {
 	PersonName string  `json:"person_name"`
 	PersonUID  string  `json:"person_uid"`
@@ -46,7 +46,7 @@ type FaceSuggestion struct {
 	PhotoCount int     `json:"photo_count"`
 }
 
-// buildSubjectMap creates a lookup map from subjects indexed by both Name and UID
+// buildSubjectMap creates a lookup map from subjects indexed by both Name and UID.
 func buildSubjectMap(subjects []photoprism.Subject) map[string]photoprism.Subject {
 	subjectMap := make(map[string]photoprism.Subject, len(subjects)*2)
 	for i := range subjects {
@@ -56,7 +56,7 @@ func buildSubjectMap(subjects []photoprism.Subject) map[string]photoprism.Subjec
 	return subjectMap
 }
 
-// matchFaceToMarker finds the best matching marker for a face's display bbox
+// matchFaceToMarker finds the best matching marker for a face's display bbox.
 func matchFaceToMarker(displayBBox []float64, markers []photoprism.Marker) (*photoprism.Marker, float64) {
 	displayBBoxCorners := []float64{
 		displayBBox[0],
@@ -82,7 +82,7 @@ func matchFaceToMarker(displayBBox []float64, markers []photoprism.Marker) (*pho
 	return bestMarker, bestIoU
 }
 
-// buildDBFaces converts database faces to PhotoFace responses, matching with markers
+// buildDBFaces converts database faces to PhotoFace responses, matching with markers.
 func (h *FacesHandler) buildDBFaces(ctx context.Context, dbFaces []database.StoredFace, markers []photoprism.Marker,
 	width, height, orientation int, faceRepo database.FaceReader, pp *photoprism.PhotoPrism,
 	threshold float64, limit int, subjectMap map[string]photoprism.Subject,
@@ -90,7 +90,7 @@ func (h *FacesHandler) buildDBFaces(ctx context.Context, dbFaces []database.Stor
 	faces := make([]PhotoFace, 0, len(dbFaces))
 	matchedMarkerUIDs := make(map[string]bool)
 
-	// Collect names already assigned on this photo to exclude from suggestions
+	// Collect names already assigned on this photo to exclude from suggestions.
 	assignedNames := make(map[string]bool)
 	for _, m := range markers {
 		if m.Name != "" && m.SubjUID != "" {
@@ -121,14 +121,19 @@ func (h *FacesHandler) buildDBFaces(ctx context.Context, dbFaces []database.Stor
 			}
 		}
 
-		face.Suggestions = h.findFaceSuggestions(ctx, faceRepo, pp, dbFace.Embedding, threshold, limit, subjectMap, assignedNames)
+		face.Suggestions = h.findFaceSuggestions(
+			ctx, faceRepo, pp, dbFace.Embedding,
+			threshold, limit, subjectMap, assignedNames,
+		)
 		faces = append(faces, face)
 	}
 	return faces, matchedMarkerUIDs
 }
 
-// appendUnmatchedMarkers adds markers not matched to any database face
-func appendUnmatchedMarkers(faces []PhotoFace, markers []photoprism.Marker, matchedMarkerUIDs map[string]bool) []PhotoFace {
+// appendUnmatchedMarkers adds markers not matched to any database face.
+func appendUnmatchedMarkers(
+	faces []PhotoFace, markers []photoprism.Marker, matchedMarkerUIDs map[string]bool,
+) []PhotoFace {
 	unmatchedIdx := -1
 	for i := range markers {
 		m := &markers[i]
@@ -150,7 +155,7 @@ func appendUnmatchedMarkers(faces []PhotoFace, markers []photoprism.Marker, matc
 	return faces
 }
 
-// countFaceMarkers counts markers of type "face"
+// countFaceMarkers counts markers of type "face".
 func countFaceMarkers(markers []photoprism.Marker) int {
 	count := 0
 	for i := range markers {
@@ -161,7 +166,7 @@ func countFaceMarkers(markers []photoprism.Marker) int {
 	return count
 }
 
-// parsePhotoFacesParams extracts threshold and limit from query parameters
+// parsePhotoFacesParams extracts threshold and limit from query parameters.
 func parsePhotoFacesParams(r *http.Request) (float64, int) {
 	threshold := 0.5
 	if t, err := strconv.ParseFloat(r.URL.Query().Get("threshold"), 64); err == nil && t > 0 {
@@ -176,8 +181,13 @@ func parsePhotoFacesParams(r *http.Request) (float64, int) {
 
 // fetchPhotoFacesData fetches faces, details, markers, and subjects for a photo.
 // Returns an error message if any required data cannot be fetched.
-func fetchPhotoFacesData(ctx context.Context, faceRepo database.FaceReader, pp *photoprism.PhotoPrism, photoUID string) (
-	dbFaces []database.StoredFace, fileInfo *primaryFileInfo, markers []photoprism.Marker, subjects []photoprism.Subject, errMsg string,
+func fetchPhotoFacesData(
+	ctx context.Context, faceRepo database.FaceReader,
+	pp *photoprism.PhotoPrism, photoUID string,
+) (
+	dbFaces []database.StoredFace, fileInfo *primaryFileInfo,
+	markers []photoprism.Marker, subjects []photoprism.Subject,
+	errMsg string,
 ) {
 	dbFaces, err := faceRepo.GetFaces(ctx, photoUID)
 	if err != nil {
@@ -199,7 +209,7 @@ func fetchPhotoFacesData(ctx context.Context, faceRepo database.FaceReader, pp *
 	return dbFaces, fileInfo, markers, subjects, ""
 }
 
-// GetPhotoFaces returns all faces in a photo with suggestions for unassigned ones
+// GetPhotoFaces returns all faces in a photo with suggestions for unassigned ones.
 func (h *FacesHandler) GetPhotoFaces(w http.ResponseWriter, r *http.Request) {
 	if h.faceReader == nil {
 		respondError(w, http.StatusServiceUnavailable, "face data not available")
@@ -241,7 +251,7 @@ func (h *FacesHandler) GetPhotoFaces(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// personMatch aggregates face match data for a single person
+// personMatch aggregates face match data for a single person.
 type personMatch struct {
 	name       string
 	uid        string
@@ -252,7 +262,12 @@ type personMatch struct {
 
 // aggregatePersonMatches groups similar faces by person using cached subject data.
 // excludeNames, if non-nil, skips faces whose resolved person name is in the set.
-func aggregatePersonMatches(similarFaces []database.StoredFace, distances []float64, subjectMap map[string]photoprism.Subject, excludeNames map[string]bool) map[string]*personMatch {
+//
+//nolint:gocognit // Person match aggregation with subject resolution.
+func aggregatePersonMatches(
+	similarFaces []database.StoredFace, distances []float64,
+	subjectMap map[string]photoprism.Subject, excludeNames map[string]bool,
+) map[string]*personMatch {
 	personMatches := make(map[string]*personMatch)
 
 	for i, face := range similarFaces {
@@ -288,7 +303,7 @@ func aggregatePersonMatches(similarFaces []database.StoredFace, distances []floa
 	return personMatches
 }
 
-// personMatchesToSuggestions converts aggregated person matches to sorted suggestions
+// personMatchesToSuggestions converts aggregated person matches to sorted suggestions.
 func personMatchesToSuggestions(personMatches map[string]*personMatch, limit int) []FaceSuggestion {
 	suggestions := make([]FaceSuggestion, 0, len(personMatches))
 	for _, pm := range personMatches {
@@ -334,7 +349,9 @@ func (h *FacesHandler) findFaceSuggestions(
 		return []FaceSuggestion{}
 	}
 
-	similarFaces, distances, err := faceRepo.FindSimilarWithDistance(ctx, embedding, constants.DefaultFaceSimilarSearchLimit, threshold)
+	similarFaces, distances, err := faceRepo.FindSimilarWithDistance(
+		ctx, embedding, constants.DefaultFaceSimilarSearchLimit, threshold,
+	)
 	if err != nil || len(similarFaces) == 0 {
 		return []FaceSuggestion{}
 	}

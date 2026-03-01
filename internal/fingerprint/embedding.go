@@ -19,7 +19,7 @@ const (
 	defaultEmbeddingModel = "clip" // model name for reference only
 )
 
-// EmbeddingClient computes image embeddings using the embedding server
+// EmbeddingClient computes image embeddings using the embedding server.
 type EmbeddingClient struct {
 	parsedURL *url.URL
 	model     string
@@ -52,7 +52,7 @@ func NewEmbeddingClient(baseURL, model string) (*EmbeddingClient, error) {
 	}, nil
 }
 
-// embeddingResponse represents the response from the embedding server
+// embeddingResponse represents the response from the embedding server.
 type embeddingResponse struct {
 	Dim        int       `json:"dim"`
 	Embedding  []float32 `json:"embedding"`
@@ -60,7 +60,7 @@ type embeddingResponse struct {
 	Pretrained string    `json:"pretrained"`
 }
 
-// EmbeddingResult contains the embedding and its metadata
+// EmbeddingResult contains the embedding and its metadata.
 type EmbeddingResult struct {
 	Embedding  []float32
 	Model      string
@@ -70,7 +70,9 @@ type EmbeddingResult struct {
 
 // postMultipartImage constructs a multipart form with the image data and posts it to the given endpoint.
 // If withMIME is true, the part includes an explicit Content-Type header based on magic byte detection.
-func (c *EmbeddingClient) postMultipartImage(ctx context.Context, endpoint string, imageData []byte, withMIME bool) ([]byte, error) {
+func (c *EmbeddingClient) postMultipartImage(
+	ctx context.Context, endpoint string, imageData []byte, withMIME bool,
+) ([]byte, error) {
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
 
@@ -122,7 +124,7 @@ func (c *EmbeddingClient) postMultipartImage(ctx context.Context, endpoint strin
 	return body, nil
 }
 
-// ComputeEmbedding computes the embedding for an image using the embedding server
+// ComputeEmbedding computes the embedding for an image using the embedding server.
 func (c *EmbeddingClient) ComputeEmbedding(ctx context.Context, imageData []byte) ([]float32, error) {
 	body, err := c.postMultipartImage(ctx, "/embed/image", imageData, false)
 	if err != nil {
@@ -166,7 +168,7 @@ func detectMIMEType(data []byte) string {
 		if !bytes.Equal(data[sig.offset:end], sig.magic) {
 			continue
 		}
-		// WebP requires additional check at offset 8
+		// WebP requires additional check at offset 8.
 		if sig.mimeType == "image/webp" {
 			if len(data) < 12 || !bytes.Equal(data[8:12], []byte{0x57, 0x45, 0x42, 0x50}) {
 				continue
@@ -177,8 +179,10 @@ func detectMIMEType(data []byte) string {
 	return "application/octet-stream"
 }
 
-// ComputeEmbeddingWithMetadata computes the embedding and returns full metadata
-func (c *EmbeddingClient) ComputeEmbeddingWithMetadata(ctx context.Context, imageData []byte) (*EmbeddingResult, error) {
+// ComputeEmbeddingWithMetadata computes the embedding and returns full metadata.
+func (c *EmbeddingClient) ComputeEmbeddingWithMetadata(
+	ctx context.Context, imageData []byte,
+) (*EmbeddingResult, error) {
 	body, err := c.postMultipartImage(ctx, "/embed/image", imageData, true)
 	if err != nil {
 		return nil, err
@@ -201,12 +205,12 @@ func (c *EmbeddingClient) ComputeEmbeddingWithMetadata(ctx context.Context, imag
 	}, nil
 }
 
-// Model returns the model name being used
+// Model returns the model name being used.
 func (c *EmbeddingClient) Model() string {
 	return c.model
 }
 
-// FaceDetection represents a single detected face
+// FaceDetection represents a single detected face.
 type FaceDetection struct {
 	FaceIndex int       `json:"face_index"`
 	Dim       int       `json:"dim"`
@@ -215,19 +219,19 @@ type FaceDetection struct {
 	DetScore  float64   `json:"det_score"`
 }
 
-// FaceResponse represents the response from the face embedding endpoint
+// FaceResponse represents the response from the face embedding endpoint.
 type FaceResponse struct {
 	FacesCount int             `json:"faces_count"`
 	Faces      []FaceDetection `json:"faces"`
 	Model      string          `json:"model"`
 }
 
-// textEmbeddingRequest represents the request body for text embedding
+// textEmbeddingRequest represents the request body for text embedding.
 type textEmbeddingRequest struct {
 	Text string `json:"text"`
 }
 
-// ComputeTextEmbedding computes the CLIP embedding for a text query
+// ComputeTextEmbedding computes the CLIP embedding for a text query.
 func (c *EmbeddingClient) ComputeTextEmbedding(ctx context.Context, text string) ([]float32, error) {
 	reqBody, err := json.Marshal(textEmbeddingRequest{Text: text})
 	if err != nil {
@@ -268,7 +272,7 @@ func (c *EmbeddingClient) ComputeTextEmbedding(ctx context.Context, text string)
 	return embResp.Embedding, nil
 }
 
-// ComputeTextEmbeddingWithMetadata computes the CLIP embedding for a text query and returns full metadata
+// ComputeTextEmbeddingWithMetadata computes the CLIP embedding for a text query and returns full metadata.
 func (c *EmbeddingClient) ComputeTextEmbeddingWithMetadata(ctx context.Context, text string) (*EmbeddingResult, error) {
 	reqBody, err := json.Marshal(textEmbeddingRequest{Text: text})
 	if err != nil {
@@ -314,7 +318,7 @@ func (c *EmbeddingClient) ComputeTextEmbeddingWithMetadata(ctx context.Context, 
 	}, nil
 }
 
-// ComputeFaceEmbeddings detects faces and computes their embeddings
+// ComputeFaceEmbeddings detects faces and computes their embeddings.
 func (c *EmbeddingClient) ComputeFaceEmbeddings(ctx context.Context, imageData []byte) (*FaceResponse, error) {
 	body, err := c.postMultipartImage(ctx, "/embed/face", imageData, true)
 	if err != nil {

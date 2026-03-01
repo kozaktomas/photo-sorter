@@ -15,19 +15,20 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/ai"
 	"github.com/kozaktomas/photo-sorter/internal/config"
 	"github.com/kozaktomas/photo-sorter/internal/constants"
+	"github.com/kozaktomas/photo-sorter/internal/photoprism"
 	"github.com/kozaktomas/photo-sorter/internal/sorter"
 
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
 
-// SortHandler handles sort-related endpoints
+// SortHandler handles sort-related endpoints.
 type SortHandler struct {
 	config         *config.Config
 	sessionManager *middleware.SessionManager
 	jobManager     *JobManager
 }
 
-// NewSortHandler creates a new sort handler
+// NewSortHandler creates a new sort handler.
 func NewSortHandler(cfg *config.Config, sm *middleware.SessionManager, jm *JobManager) *SortHandler {
 	return &SortHandler{
 		config:         cfg,
@@ -36,7 +37,7 @@ func NewSortHandler(cfg *config.Config, sm *middleware.SessionManager, jm *JobMa
 	}
 }
 
-// StartRequest represents a sort start request
+// StartRequest represents a sort start request.
 type StartRequest struct {
 	AlbumUID        string `json:"album_uid"`
 	DryRun          bool   `json:"dry_run"`
@@ -48,7 +49,7 @@ type StartRequest struct {
 	Concurrency     int    `json:"concurrency"`
 }
 
-// Start starts a new sort job
+// Start starts a new sort job.
 func (h *SortHandler) Start(w http.ResponseWriter, r *http.Request) {
 	var req StartRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -74,20 +75,20 @@ func (h *SortHandler) Start(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get session for background goroutine (context will be cancelled when handler returns)
+	// Get session for background goroutine (context will be cancelled when handler returns).
 	session := middleware.GetSessionFromContext(r.Context())
 
-	// Get album info
+	// Get album info.
 	album, err := pp.GetAlbum(req.AlbumUID)
 	if err != nil {
 		respondError(w, http.StatusNotFound, "album not found")
 		return
 	}
 
-	// Generate job ID
+	// Generate job ID.
 	jobID := uuid.New().String()
 
-	// Create job
+	// Create job.
 	options := SortJobOptions{
 		DryRun:          req.DryRun,
 		Limit:           req.Limit,
@@ -99,7 +100,7 @@ func (h *SortHandler) Start(w http.ResponseWriter, r *http.Request) {
 	}
 	job := h.jobManager.CreateJob(jobID, req.AlbumUID, album.Title, options)
 
-	// Start job in background
+	// Start job in background.
 	go h.runSortJob(job, session)
 
 	respondJSON(w, http.StatusAccepted, map[string]string{
@@ -110,7 +111,7 @@ func (h *SortHandler) Start(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// Status returns the status of a sort job
+// Status returns the status of a sort job.
 func (h *SortHandler) Status(w http.ResponseWriter, r *http.Request) {
 	jobID := chi.URLParam(r, "jobId")
 	if jobID == "" {
@@ -127,7 +128,7 @@ func (h *SortHandler) Status(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, job)
 }
 
-// Events streams job events via SSE
+// Events streams job events via SSE.
 func (h *SortHandler) Events(w http.ResponseWriter, r *http.Request) {
 	streamSSEEvents(w, r,
 		func(id string) SSEJob {
@@ -143,7 +144,7 @@ func (h *SortHandler) Events(w http.ResponseWriter, r *http.Request) {
 	)
 }
 
-// Cancel cancels a sort job
+// Cancel cancels a sort job.
 func (h *SortHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 	jobID := chi.URLParam(r, "jobId")
 	if jobID == "" {
@@ -161,56 +162,28 @@ func (h *SortHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]bool{"cancelled": true})
 }
 
-// runSortJob runs the sort job in the background
-func (h *SortHandler) runSortJob(job *SortJob, session *middleware.Session) {
-	ctx, cancel := context.WithCancel(context.Background())
-	job.cancel = cancel
-	defer cancel()
-
-	job.mu.Lock()
-	job.Status = JobStatusRunning
-	job.mu.Unlock()
-	job.SendEvent(JobEvent{Type: "started", Message: "Sort job started"})
-
-	// Create PhotoPrism client
+func (h *SortHandler) initSortJobDeps(
+	job *SortJob, session *middleware.Session,
+) (*photoprism.PhotoPrism, ai.Provider, error) {
 	pp, err := getPhotoPrismClient(h.config, session)
 	if err != nil {
-		h.failJob(job, fmt.Sprintf("failed to connect to PhotoPrism: %v", err))
-		return
+		return nil, nil, fmt.Errorf("failed to connect to PhotoPrism: %w", err)
 	}
 
-	// Create AI provider
 	aiProvider, err := h.createAIProvider(job.Options.Provider)
 	if err != nil {
-		h.failJob(job, err.Error())
-		return
+		return nil, nil, err
 	}
 
 	if job.Options.BatchMode {
 		aiProvider.SetBatchMode(true)
 	}
 
-	// Get photos to count
-	limit := job.Options.Limit
-	if limit == 0 {
-		limit = constants.MaxPhotosPerFetch
-	}
-	photos, err := pp.GetAlbumPhotos(job.AlbumUID, limit, 0)
-	if err != nil {
-		h.failJob(job, fmt.Sprintf("failed to get photos: %v", err))
-		return
-	}
+	return pp, aiProvider, nil
+}
 
-	job.mu.Lock()
-	job.TotalPhotos = len(photos)
-	job.mu.Unlock()
-	job.SendEvent(JobEvent{Type: "photos_counted", Data: map[string]int{"total": len(photos)}})
-
-	// Create sorter and run with progress callback
-	s := sorter.New(pp, aiProvider)
-
-	// Run the sort with progress callback
-	result, err := s.Sort(ctx, job.AlbumUID, job.AlbumTitle, "", sorter.SortOptions{
+func (job *SortJob) buildSortOptions() sorter.SortOptions {
+	return sorter.SortOptions{
 		DryRun:          job.Options.DryRun,
 		Limit:           job.Options.Limit,
 		IndividualDates: job.Options.IndividualDates,
@@ -234,7 +207,43 @@ func (h *SortHandler) runSortJob(job *SortJob, session *middleware.Session) {
 				},
 			})
 		},
-	})
+	}
+}
+
+// runSortJob runs the sort job in the background.
+func (h *SortHandler) runSortJob(job *SortJob, session *middleware.Session) {
+	ctx, cancel := context.WithCancel(context.Background())
+	job.cancel = cancel
+	defer cancel()
+
+	job.mu.Lock()
+	job.Status = JobStatusRunning
+	job.mu.Unlock()
+	job.SendEvent(JobEvent{Type: "started", Message: "Sort job started"})
+
+	pp, aiProvider, err := h.initSortJobDeps(job, session)
+	if err != nil {
+		h.failJob(job, err.Error())
+		return
+	}
+
+	limit := job.Options.Limit
+	if limit == 0 {
+		limit = constants.MaxPhotosPerFetch
+	}
+	photos, err := pp.GetAlbumPhotos(job.AlbumUID, limit, 0)
+	if err != nil {
+		h.failJob(job, fmt.Sprintf("failed to get photos: %v", err))
+		return
+	}
+
+	job.mu.Lock()
+	job.TotalPhotos = len(photos)
+	job.mu.Unlock()
+	job.SendEvent(JobEvent{Type: "photos_counted", Data: map[string]int{"total": len(photos)}})
+
+	s := sorter.New(pp, aiProvider)
+	result, err := s.Sort(ctx, job.AlbumUID, job.AlbumTitle, "", job.buildSortOptions())
 
 	if err != nil {
 		if ctx.Err() != nil {
@@ -248,10 +257,12 @@ func (h *SortHandler) runSortJob(job *SortJob, session *middleware.Session) {
 		return
 	}
 
-	// Get usage info
+	h.completeSortJob(job, result, aiProvider)
+}
+
+func (h *SortHandler) completeSortJob(job *SortJob, result *sorter.SortResult, aiProvider ai.Provider) {
 	usage := aiProvider.GetUsage()
 
-	// Build result
 	errors := make([]string, len(result.Errors))
 	for i, e := range result.Errors {
 		errors[i] = e.Error()

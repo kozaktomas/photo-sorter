@@ -1,6 +1,6 @@
 package photoprism
 
-// Album represents a PhotoPrism album
+// Album represents a PhotoPrism album.
 type Album struct {
 	UID         string `json:"UID"`
 	Title       string `json:"Title"`
@@ -13,7 +13,7 @@ type Album struct {
 	UpdatedAt   string `json:"UpdatedAt"`
 }
 
-// Label represents a PhotoPrism label/tag
+// Label represents a PhotoPrism label/tag.
 type Label struct {
 	UID         string `json:"UID"`
 	Name        string `json:"Name"`
@@ -26,7 +26,7 @@ type Label struct {
 	CreatedAt   string `json:"CreatedAt"`
 }
 
-// Photo represents a PhotoPrism photo
+// Photo represents a PhotoPrism photo.
 type Photo struct {
 	UID          string  `json:"UID"`
 	Title        string  `json:"Title"`
@@ -55,12 +55,12 @@ type Photo struct {
 	DeletedAt    string  `json:"DeletedAt"`    // Non-empty if soft-deleted/archived
 }
 
-// PhotoDetails represents additional photo details like notes
+// PhotoDetails represents additional photo details like notes.
 type PhotoDetails struct {
 	Notes *string `json:"Notes,omitempty"`
 }
 
-// PhotoUpdate represents fields that can be updated on a photo
+// PhotoUpdate represents fields that can be updated on a photo.
 type PhotoUpdate struct {
 	Title          *string       `json:"Title,omitempty"`
 	Description    *string       `json:"Description,omitempty"`
@@ -82,7 +82,7 @@ type PhotoUpdate struct {
 	Details        *PhotoDetails `json:"Details,omitempty"`
 }
 
-// PhotoLabel represents a label/tag that can be added to a photo
+// PhotoLabel represents a label/tag that can be added to a photo.
 type PhotoLabel struct {
 	Name        string `json:"Name"`
 	LabelSrc    string `json:"LabelSrc,omitempty"`
@@ -93,7 +93,7 @@ type PhotoLabel struct {
 	Uncertainty int    `json:"Uncertainty,omitempty"`
 }
 
-// LabelUpdate represents fields that can be updated on a label
+// LabelUpdate represents fields that can be updated on a label.
 type LabelUpdate struct {
 	Name        *string `json:"Name,omitempty"`
 	Description *string `json:"Description,omitempty"`
@@ -102,7 +102,7 @@ type LabelUpdate struct {
 	Favorite    *bool   `json:"Favorite,omitempty"`
 }
 
-// Face represents a PhotoPrism face (face cluster with marker info)
+// Face represents a PhotoPrism face (face cluster with marker info).
 type Face struct {
 	ID              string  `json:"ID"`
 	MarkerUID       string  `json:"MarkerUID"`
@@ -121,7 +121,7 @@ type Face struct {
 	CollisionRadius float64 `json:"CollisionRadius"`
 }
 
-// Marker represents a face/subject region marker on a photo
+// Marker represents a face/subject region marker on a photo.
 type Marker struct {
 	UID      string  `json:"UID"`
 	FileUID  string  `json:"FileUID"`
@@ -142,7 +142,7 @@ type Marker struct {
 	Review   bool    `json:"Review"`
 }
 
-// MarkerCreate represents the data needed to create a new marker
+// MarkerCreate represents the data needed to create a new marker.
 type MarkerCreate struct {
 	FileUID string  `json:"FileUID"`
 	Type    string  `json:"Type"`    // "face" for face markers
@@ -155,14 +155,14 @@ type MarkerCreate struct {
 	SubjSrc string  `json:"SubjSrc"` // Subject source: "manual" if user-assigned
 }
 
-// MarkerUpdate represents the data to update an existing marker
+// MarkerUpdate represents the data to update an existing marker.
 type MarkerUpdate struct {
 	Name    string `json:"Name,omitempty"`    // Person name
 	SubjSrc string `json:"SubjSrc,omitempty"` // Subject source: "manual" if user-assigned
 	Invalid *bool  `json:"Invalid,omitempty"` // Set to true to mark as invalid/deleted
 }
 
-// Subject represents a PhotoPrism person/subject
+// Subject represents a PhotoPrism person/subject.
 type Subject struct {
 	UID        string `json:"UID"`
 	Name       string `json:"Name"`
@@ -181,7 +181,7 @@ type Subject struct {
 	UpdatedAt  string `json:"UpdatedAt"`
 }
 
-// SubjectUpdate represents fields that can be updated on a subject
+// SubjectUpdate represents fields that can be updated on a subject.
 type SubjectUpdate struct {
 	Name     *string `json:"Name,omitempty"`
 	About    *string `json:"About,omitempty"`

@@ -92,7 +92,7 @@ func TestConfigHandler_Get_OpenAIAvailable(t *testing.T) {
 		t.Fatalf("failed to unmarshal response: %v", err)
 	}
 
-	// Find OpenAI provider
+	// Find OpenAI provider.
 	var openaiProvider *ProviderInfo
 	for i := range result.Providers {
 		if result.Providers[i].Name == "openai" {
@@ -322,7 +322,7 @@ func TestConfigHandler_Get_AllProvidersConfigured(t *testing.T) {
 		t.Fatalf("failed to unmarshal response: %v", err)
 	}
 
-	// All providers should be available
+	// All providers should be available.
 	for _, provider := range result.Providers {
 		if !provider.Available {
 			t.Errorf("expected provider %s to be available", provider.Name)
@@ -345,7 +345,7 @@ func TestConfigHandler_Get_ProviderOrder(t *testing.T) {
 		t.Fatalf("failed to unmarshal response: %v", err)
 	}
 
-	// Verify expected order
+	// Verify expected order.
 	expectedOrder := []string{"openai", "gemini", "ollama", "llamacpp"}
 	for i, expected := range expectedOrder {
 		if i >= len(result.Providers) {

@@ -13,7 +13,7 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
 
-// createPhotosHandlerForTest creates a PhotosHandler for testing
+// createPhotosHandlerForTest creates a PhotosHandler for testing.
 func createPhotosHandlerForTest(cfg *config.Config) *PhotosHandler {
 	return &PhotosHandler{
 		config:          cfg,
@@ -22,7 +22,7 @@ func createPhotosHandlerForTest(cfg *config.Config) *PhotosHandler {
 	}
 }
 
-// createPhotosHandlerWithEmbeddings creates a PhotosHandler with a mock embedding reader
+// createPhotosHandlerWithEmbeddings creates a PhotosHandler with a mock embedding reader.
 func createPhotosHandlerWithEmbeddings(cfg *config.Config, reader database.EmbeddingReader) *PhotosHandler {
 	return &PhotosHandler{
 		config:          cfg,
@@ -93,7 +93,7 @@ func TestPhotosHandler_List_WithFilters(t *testing.T) {
 
 	assertStatusCode(t, recorder, http.StatusOK)
 
-	// Check that filters were properly combined
+	// Check that filters were properly combined.
 	if receivedQuery == "" {
 		t.Error("expected q parameter with filters")
 	}
@@ -524,7 +524,7 @@ func TestPhotosHandler_FindSimilar_PhotoNotFound(t *testing.T) {
 
 func TestPhotosHandler_FindSimilar_Success(t *testing.T) {
 	mockReader := mock.NewMockEmbeddingReader()
-	// Add source and similar embeddings
+	// Add source and similar embeddings.
 	mockReader.AddEmbedding(database.StoredEmbedding{
 		PhotoUID:  "photo1",
 		Embedding: make([]float32, 768),

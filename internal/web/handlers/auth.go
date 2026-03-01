@@ -12,13 +12,13 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
 
-// AuthHandler handles authentication endpoints
+// AuthHandler handles authentication endpoints.
 type AuthHandler struct {
 	config         *config.Config
 	sessionManager *middleware.SessionManager
 }
 
-// NewAuthHandler creates a new auth handler
+// NewAuthHandler creates a new auth handler.
 func NewAuthHandler(cfg *config.Config, sm *middleware.SessionManager) *AuthHandler {
 	return &AuthHandler{
 		config:         cfg,
@@ -26,12 +26,13 @@ func NewAuthHandler(cfg *config.Config, sm *middleware.SessionManager) *AuthHand
 	}
 }
 
-// loginRequest represents a login request
+// loginRequest represents a login request.
 type loginRequest struct {
 	username string
 	password string
 }
 
+// UnmarshalJSON implements custom JSON unmarshaling for loginRequest.
 func (l *loginRequest) UnmarshalJSON(data []byte) error {
 	var raw map[string]string
 	if err := json.Unmarshal(data, &raw); err != nil {
@@ -42,7 +43,7 @@ func (l *loginRequest) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
-// LoginResponse represents a login response
+// LoginResponse represents a login response.
 type LoginResponse struct {
 	Success   bool   `json:"success"`
 	SessionID string `json:"session_id,omitempty"`
@@ -50,7 +51,7 @@ type LoginResponse struct {
 	Error     string `json:"error,omitempty"`
 }
 
-// Login handles user login
+// Login handles user login.
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	var req loginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -58,13 +59,13 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Require both username and password
+	// Require both username and password.
 	if req.username == "" || req.password == "" {
 		respondError(w, http.StatusBadRequest, "username and password are required")
 		return
 	}
 
-	// Authenticate with PhotoPrism and capture tokens
+	// Authenticate with PhotoPrism and capture tokens.
 	client := &authClient{}
 	if err := client.auth(h.config.PhotoPrism.URL, req.username, req.password); err != nil {
 		respondJSON(w, http.StatusUnauthorized, LoginResponse{
@@ -74,14 +75,14 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create session
+	// Create session.
 	session, err := h.sessionManager.CreateSession(client.token, client.downloadToken)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to create session")
 		return
 	}
 
-	// Set session cookie
+	// Set session cookie.
 	h.sessionManager.SetSessionCookie(w, r, session)
 
 	respondJSON(w, http.StatusOK, LoginResponse{
@@ -91,16 +92,16 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// Logout handles user logout
+// Logout handles user logout.
 func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	session := h.sessionManager.GetSessionFromRequest(r)
 	if session != nil {
-		// Logout from PhotoPrism
+		// Logout from PhotoPrism.
 		pp, err := getPhotoPrismClient(h.config, session)
 		if err == nil {
 			pp.Logout()
 		}
-		// Delete session
+		// Delete session.
 		h.sessionManager.DeleteSession(session.ID)
 	}
 
@@ -108,7 +109,7 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]bool{"success": true})
 }
 
-// StatusResponse represents the auth status response
+// StatusResponse represents the auth status response.
 type StatusResponse struct {
 	Authenticated bool   `json:"authenticated"`
 	ExpiresAt     string `json:"expires_at,omitempty"`
@@ -127,7 +128,7 @@ func (h *AuthHandler) Status(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// authClient is a minimal client just for authentication
+// authClient is a minimal client just for authentication.
 type authClient struct {
 	token         string
 	downloadToken string
@@ -142,7 +143,9 @@ func (c *authClient) auth(url, username, password string) error {
 		return fmt.Errorf("could not marshal input: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url+"/api/v1/sessions", bytes.NewReader(inputBody))
+	req, err := http.NewRequestWithContext(
+		context.Background(), http.MethodPost, url+"/api/v1/sessions", bytes.NewReader(inputBody),
+	)
 	if err != nil {
 		return fmt.Errorf("could not create request: %w", err)
 	}

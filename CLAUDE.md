@@ -36,7 +36,16 @@ make build-go
 # Build only frontend
 make build-web
 
-# Run tests (explicit paths to avoid root-owned volumes/ directory)
+# Run full quality gate (fmt + vet + lint + test)
+make check
+
+# Format Go code (goimports + go fmt)
+make fmt
+
+# Run go vet
+make vet
+
+# Run tests with race detector (explicit paths to avoid root-owned volumes/ directory)
 make test
 
 # Run tests with verbose output
@@ -578,6 +587,7 @@ Scans all known people for high-confidence face matches. Iterates subjects with 
 
 When adding or modifying features, update the relevant documentation:
 
+- **`docs/architecture.md`** - Update when changing system design, package structure, or data flow
 - **`docs/cli-reference.md`** - Update when adding/changing CLI commands or flags
 - **`docs/web-ui.md`** - Update when adding/changing Web UI pages or features
 - **`docs/markers.md`** - Update when changing marker/face matching logic or coordinate handling
@@ -591,6 +601,7 @@ Documentation files:
 ```
 docs/
 ├── API.md                  # REST API documentation
+├── architecture.md         # System design, package structure, and data flow
 ├── cli-reference.md        # Complete CLI command reference
 ├── era-estimation.md       # Era estimation: centroids, API, and UI
 ├── hnsw-architecture.md    # In-memory HNSW vs pgvector design rationale

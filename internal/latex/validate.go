@@ -47,8 +47,11 @@ func validatePage(page TemplatePage, config LayoutConfig) []ValidationWarning {
 		warnings = append(warnings, ValidationWarning{
 			PageNumber: page.PageNumber,
 			SlotIndex:  -1,
-			Message:    fmt.Sprintf("caption block Y (%.2f) extends below bottom margin (%.2f)", page.CaptionBlockY, config.BottomMarginMM),
-			Severity:   "warning",
+			Message: fmt.Sprintf(
+				"caption block Y (%.2f) extends below bottom margin (%.2f)",
+				page.CaptionBlockY, config.BottomMarginMM,
+			),
+			Severity: "warning",
 		})
 	}
 
@@ -72,8 +75,11 @@ func validateSlotBounds(page TemplatePage, slotIdx int, slot TemplateSlot) []Val
 		warnings = append(warnings, ValidationWarning{
 			PageNumber: page.PageNumber,
 			SlotIndex:  slotIdx,
-			Message:    fmt.Sprintf("clip right edge (%.2f) extends past content right edge (%.2f)", slot.ClipX+slot.ClipW, page.ContentRightX),
-			Severity:   "error",
+			Message: fmt.Sprintf(
+				"clip right edge (%.2f) extends past content right edge (%.2f)",
+				slot.ClipX+slot.ClipW, page.ContentRightX,
+			),
+			Severity: "error",
 		})
 	}
 	if slot.ClipY < page.CanvasBottomY-eps {
@@ -120,8 +126,11 @@ func validateGutterMarker(page TemplatePage, config LayoutConfig, slotIdx int, s
 		return []ValidationWarning{{
 			PageNumber: page.PageNumber,
 			SlotIndex:  slotIdx,
-			Message:    fmt.Sprintf("caption marker at X=%.2f falls within gutter-safe zone (%.2fmm from binding edge)", slot.CaptionMarkerX, config.GutterSafeMM),
-			Severity:   "warning",
+			Message: fmt.Sprintf(
+				"caption marker at X=%.2f falls within gutter-safe zone (%.2fmm from binding edge)",
+				slot.CaptionMarkerX, config.GutterSafeMM,
+			),
+			Severity: "warning",
 		}}
 	}
 	return nil
@@ -160,7 +169,7 @@ func validateGridAlignment(page TemplatePage, config LayoutConfig) []ValidationW
 	var warnings []ValidationWarning
 	const eps = 0.01
 
-	// Build set of valid column offsets (relative to content left)
+	// Build set of valid column offsets (relative to content left).
 	colOffsets := make([]float64, config.GridColumns)
 	for c := range config.GridColumns {
 		colOffsets[c] = config.ColOffset(c)
@@ -171,7 +180,7 @@ func validateGridAlignment(page TemplatePage, config LayoutConfig) []ValidationW
 			continue
 		}
 
-		// For archival slots, the border sits on the grid; clip is inset
+		// For archival slots, the border sits on the grid; clip is inset.
 		slotX := slot.ClipX - page.ContentLeftX
 		if slot.IsArchival {
 			slotX = slot.BorderX - page.ContentLeftX

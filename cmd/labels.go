@@ -9,9 +9,9 @@ import (
 	"strings"
 	"text/tabwriter"
 
-	"github.com/spf13/cobra"
 	"github.com/kozaktomas/photo-sorter/internal/config"
 	"github.com/kozaktomas/photo-sorter/internal/photoprism"
+	"github.com/spf13/cobra"
 )
 
 var labelsCmd = &cobra.Command{
@@ -37,13 +37,13 @@ func init() {
 	rootCmd.AddCommand(labelsCmd)
 	labelsCmd.AddCommand(labelsDeleteCmd)
 
-	// List flags
+	// List flags.
 	labelsCmd.Flags().Int("count", 1000, "Maximum number of labels to retrieve")
 	labelsCmd.Flags().Bool("all", true, "Include all labels (including unused)")
 	labelsCmd.Flags().String("sort", "name", "Sort by: name, count, -name, -count (prefix with - for descending)")
 	labelsCmd.Flags().Int("min-photos", 0, "Only show labels with at least N photos")
 
-	// Delete flags
+	// Delete flags.
 	labelsDeleteCmd.Flags().Bool("yes", false, "Skip confirmation prompt")
 }
 
@@ -55,7 +55,9 @@ func runLabelsList(cmd *cobra.Command, args []string) error {
 	sortBy := mustGetString(cmd, "sort")
 	minPhotos := mustGetInt(cmd, "min-photos")
 
-	pp, err := photoprism.NewPhotoPrismWithCapture(cfg.PhotoPrism.URL, cfg.PhotoPrism.Username, cfg.PhotoPrism.GetPassword(), captureDir)
+	pp, err := photoprism.NewPhotoPrismWithCapture(
+		cfg.PhotoPrism.URL, cfg.PhotoPrism.Username, cfg.PhotoPrism.GetPassword(), captureDir,
+	)
 	if err != nil {
 		return fmt.Errorf("failed to connect to PhotoPrism: %w", err)
 	}
@@ -66,7 +68,7 @@ func runLabelsList(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("failed to get labels: %w", err)
 	}
 
-	// Filter by minimum photo count
+	// Filter by minimum photo count.
 	if minPhotos > 0 {
 		var filtered []photoprism.Label
 		for _, label := range labels {
@@ -77,7 +79,7 @@ func runLabelsList(cmd *cobra.Command, args []string) error {
 		labels = filtered
 	}
 
-	// Sort labels
+	// Sort labels.
 	sortLabels(labels, sortBy)
 
 	if len(labels) == 0 {
@@ -122,7 +124,9 @@ func runLabelsDelete(cmd *cobra.Command, args []string) error {
 	cfg := config.Load()
 	skipConfirm := mustGetBool(cmd, "yes")
 
-	pp, err := photoprism.NewPhotoPrismWithCapture(cfg.PhotoPrism.URL, cfg.PhotoPrism.Username, cfg.PhotoPrism.GetPassword(), captureDir)
+	pp, err := photoprism.NewPhotoPrismWithCapture(
+		cfg.PhotoPrism.URL, cfg.PhotoPrism.Username, cfg.PhotoPrism.GetPassword(), captureDir,
+	)
 	if err != nil {
 		return fmt.Errorf("failed to connect to PhotoPrism: %w", err)
 	}

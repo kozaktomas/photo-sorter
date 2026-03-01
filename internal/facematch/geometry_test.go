@@ -118,8 +118,8 @@ func TestConvertPixelBBoxToDisplayRelative(t *testing.T) {
 	tests := []struct {
 		name        string
 		bbox        []float64
-		width       int  // raw file width from PhotoPrism
-		height      int  // raw file height from PhotoPrism
+		width       int // raw file width from PhotoPrism
+		height      int // raw file height from PhotoPrism
 		orientation int
 		expected    []float64
 	}{
@@ -129,7 +129,7 @@ func TestConvertPixelBBoxToDisplayRelative(t *testing.T) {
 			width:       1000,
 			height:      800,
 			orientation: 1,
-			// display = raw, so divide by 1000 and 800
+			// display = raw, so divide by 1000 and 800.
 			expected: []float64{0.1, 0.25, 0.2, 0.25}, // x, y, w, h
 		},
 		{
@@ -138,8 +138,8 @@ func TestConvertPixelBBoxToDisplayRelative(t *testing.T) {
 			width:       1000, // raw width (landscape file)
 			height:      800,  // raw height
 			orientation: 6,
-			// For orientation 6, display dimensions are swapped: 800x1000
-			// InsightFace sees rotated image (800x1000), bbox in that space
+			// For orientation 6, display dimensions are swapped: 800x1000.
+			// InsightFace sees rotated image (800x1000), bbox in that space.
 			// Divide by display dims: 100/800=0.125, 200/1000=0.2, etc.
 			expected: []float64{0.125, 0.2, 0.25, 0.2},
 		},
@@ -149,7 +149,7 @@ func TestConvertPixelBBoxToDisplayRelative(t *testing.T) {
 			width:       1000,
 			height:      800,
 			orientation: 8,
-			// Same as orientation 6 - dimensions swapped
+			// Same as orientation 6 - dimensions swapped.
 			expected: []float64{0.125, 0.2, 0.25, 0.2},
 		},
 		{
@@ -158,7 +158,7 @@ func TestConvertPixelBBoxToDisplayRelative(t *testing.T) {
 			width:       1000,
 			height:      800,
 			orientation: 3,
-			// Orientation 3 doesn't swap dimensions (just 180 rotation)
+			// Orientation 3 doesn't swap dimensions (just 180 rotation).
 			expected: []float64{0.1, 0.25, 0.2, 0.25},
 		},
 		{
@@ -167,7 +167,7 @@ func TestConvertPixelBBoxToDisplayRelative(t *testing.T) {
 			width:       1000,
 			height:      800,
 			orientation: 5,
-			// Orientation 5-8 all swap dimensions
+			// Orientation 5-8 all swap dimensions.
 			expected: []float64{0.125, 0.2, 0.25, 0.2},
 		},
 		{

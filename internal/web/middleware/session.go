@@ -21,7 +21,7 @@ const (
 	cleanupInterval   = 10 * time.Minute
 )
 
-// Session represents a user session
+// Session represents a user session.
 type Session struct {
 	ID            string    `json:"id"`
 	Token         string    `json:"token"`          // PhotoPrism access token
@@ -30,7 +30,7 @@ type Session struct {
 	ExpiresAt     time.Time `json:"expires_at"`
 }
 
-// SessionRepository defines the interface for persistent session storage
+// SessionRepository defines the interface for persistent session storage.
 type SessionRepository interface {
 	Save(ctx context.Context, id, token, downloadToken string, createdAt, expiresAt time.Time) error
 	Get(ctx context.Context, sessionID string) (*StoredSession, error)
@@ -38,7 +38,7 @@ type SessionRepository interface {
 	DeleteExpired(ctx context.Context) (int64, error)
 }
 
-// StoredSession represents session data from the repository
+// StoredSession represents session data from the repository.
 type StoredSession struct {
 	ID            string
 	Token         string
@@ -47,7 +47,7 @@ type StoredSession struct {
 	ExpiresAt     time.Time
 }
 
-// SessionManager handles session creation and validation
+// SessionManager handles session creation and validation.
 type SessionManager struct {
 	secret   []byte
 	sessions map[string]*Session
@@ -56,11 +56,12 @@ type SessionManager struct {
 	stopCh   chan struct{}     // channel to stop cleanup goroutine
 }
 
-// NewSessionManager creates a new session manager
+// NewSessionManager creates a new session manager.
 func NewSessionManager(secret string, repo SessionRepository) *SessionManager {
-	// Use a default secret if none provided (for development)
+	// Use a default secret if none provided (for development).
 	if secret == "" {
-		log.Println("WARNING: WEB_SESSION_SECRET is not set — using insecure default. Set WEB_SESSION_SECRET for production use.")
+		log.Println("WARNING: WEB_SESSION_SECRET is not set — " +
+			"using insecure default. Set WEB_SESSION_SECRET for production use.")
 		secret = "photo-sorter-dev-secret-change-in-production" //nolint:gosec // dev fallback, not a real credential
 	}
 	sm := &SessionManager{
@@ -70,7 +71,7 @@ func NewSessionManager(secret string, repo SessionRepository) *SessionManager {
 		stopCh:   make(chan struct{}),
 	}
 
-	// Start background cleanup goroutine if we have a repository
+	// Start background cleanup goroutine if we have a repository.
 	if repo != nil {
 		go sm.cleanupLoop()
 	}
@@ -78,7 +79,7 @@ func NewSessionManager(secret string, repo SessionRepository) *SessionManager {
 	return sm
 }
 
-// cleanupLoop periodically removes expired sessions from the database
+// cleanupLoop periodically removes expired sessions from the database.
 func (sm *SessionManager) cleanupLoop() {
 	ticker := time.NewTicker(cleanupInterval)
 	defer ticker.Stop()
@@ -100,16 +101,16 @@ func (sm *SessionManager) cleanupLoop() {
 	}
 }
 
-// Stop stops the cleanup goroutine
+// Stop stops the cleanup goroutine.
 func (sm *SessionManager) Stop() {
 	if sm.stopCh != nil {
 		close(sm.stopCh)
 	}
 }
 
-// CreateSession creates a new session for a user
+// CreateSession creates a new session for a user.
 func (sm *SessionManager) CreateSession(token, downloadToken string) (*Session, error) {
-	// Generate session ID
+	// Generate session ID.
 	idBytes := make([]byte, 32)
 	if _, err := rand.Read(idBytes); err != nil {
 		return nil, fmt.Errorf("generating random bytes: %w", err)
@@ -125,33 +126,36 @@ func (sm *SessionManager) CreateSession(token, downloadToken string) (*Session, 
 		ExpiresAt:     now.Add(sessionDuration),
 	}
 
-	// Store in memory
+	// Store in memory.
 	sm.mu.Lock()
 	sm.sessions[sessionID] = session
 	sm.mu.Unlock()
 
-	// Persist to database if available
+	// Persist to database if available.
 	if sm.repo != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		if err := sm.repo.Save(ctx, session.ID, session.Token, session.DownloadToken, session.CreatedAt, session.ExpiresAt); err != nil {
+		if err := sm.repo.Save(
+			ctx, session.ID, session.Token, session.DownloadToken,
+			session.CreatedAt, session.ExpiresAt,
+		); err != nil {
 			log.Printf("Warning: failed to persist session to database: %v", err)
-			// Continue anyway - session is still in memory
+			// Continue anyway - session is still in memory.
 		}
 	}
 
 	return session, nil
 }
 
-// GetSession retrieves a session by ID
+// GetSession retrieves a session by ID.
 func (sm *SessionManager) GetSession(sessionID string) *Session {
-	// Check memory first
+	// Check memory first.
 	sm.mu.RLock()
 	session, ok := sm.sessions[sessionID]
 	sm.mu.RUnlock()
 
 	if ok {
-		// Check if session has expired
+		// Check if session has expired.
 		if time.Now().After(session.ExpiresAt) {
 			go sm.DeleteSession(sessionID)
 			return nil
@@ -159,7 +163,7 @@ func (sm *SessionManager) GetSession(sessionID string) *Session {
 		return session
 	}
 
-	// Not in memory - try database if available
+	// Not in memory - try database if available.
 	if sm.repo != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -173,7 +177,7 @@ func (sm *SessionManager) GetSession(sessionID string) *Session {
 			return nil
 		}
 
-		// Restore to memory cache
+		// Restore to memory cache.
 		session = &Session{
 			ID:            stored.ID,
 			Token:         stored.Token,
@@ -192,14 +196,14 @@ func (sm *SessionManager) GetSession(sessionID string) *Session {
 	return nil
 }
 
-// DeleteSession removes a session
+// DeleteSession removes a session.
 func (sm *SessionManager) DeleteSession(sessionID string) {
-	// Remove from memory
+	// Remove from memory.
 	sm.mu.Lock()
 	delete(sm.sessions, sessionID)
 	sm.mu.Unlock()
 
-	// Remove from database if available
+	// Remove from database if available.
 	if sm.repo != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -212,7 +216,7 @@ func (sm *SessionManager) DeleteSession(sessionID string) {
 // SetSessionCookie sets the session cookie on the response.
 // Secure flag is auto-detected from X-Forwarded-Proto or TLS state.
 func (sm *SessionManager) SetSessionCookie(w http.ResponseWriter, r *http.Request, session *Session) {
-	// Sign the session ID
+	// Sign the session ID.
 	signature := sm.signData(session.ID)
 	cookieValue := session.ID + "." + signature
 
@@ -229,7 +233,7 @@ func (sm *SessionManager) SetSessionCookie(w http.ResponseWriter, r *http.Reques
 	})
 }
 
-// ClearSessionCookie removes the session cookie
+// ClearSessionCookie removes the session cookie.
 func (sm *SessionManager) ClearSessionCookie(w http.ResponseWriter) {
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
@@ -240,14 +244,14 @@ func (sm *SessionManager) ClearSessionCookie(w http.ResponseWriter) {
 	})
 }
 
-// GetSessionFromRequest extracts the session from a request
+// GetSessionFromRequest extracts the session from a request.
 func (sm *SessionManager) GetSessionFromRequest(r *http.Request) *Session {
-	// Try cookie first
+	// Try cookie first.
 	if session := sm.getSessionFromCookie(r); session != nil {
 		return session
 	}
 
-	// Try Authorization header
+	// Try Authorization header.
 	authHeader := r.Header.Get("Authorization")
 	if sessionID, ok := strings.CutPrefix(authHeader, "Bearer "); ok {
 		if session := sm.GetSession(sessionID); session != nil {
@@ -275,26 +279,26 @@ func (sm *SessionManager) getSessionFromCookie(r *http.Request) *Session {
 	return sm.GetSession(sessionID)
 }
 
-// signData creates an HMAC signature for data
+// signData creates an HMAC signature for data.
 func (sm *SessionManager) signData(data string) string {
 	h := hmac.New(sha256.New, sm.secret)
 	h.Write([]byte(data))
 	return base64.URLEncoding.EncodeToString(h.Sum(nil))
 }
 
-// verifySignature verifies an HMAC signature
+// verifySignature verifies an HMAC signature.
 func (sm *SessionManager) verifySignature(data, signature string) bool {
 	expected := sm.signData(data)
 	return hmac.Equal([]byte(signature), []byte(expected))
 }
 
-// SessionJSONData is a helper struct for JSON responses
+// SessionJSONData is a helper struct for JSON responses.
 type SessionJSONData struct {
 	SessionID string `json:"session_id"`
 	ExpiresAt string `json:"expires_at"`
 }
 
-// ToJSON returns the session data for JSON response
+// ToJSON returns the session data for JSON response.
 func (s *Session) ToJSON() SessionJSONData {
 	return SessionJSONData{
 		SessionID: s.ID,
@@ -302,7 +306,7 @@ func (s *Session) ToJSON() SessionJSONData {
 	}
 }
 
-// MarshalJSON implements json.Marshaler (excludes sensitive fields)
+// MarshalJSON implements json.Marshaler (excludes sensitive fields).
 func (s *Session) MarshalJSON() ([]byte, error) {
 	data, err := json.Marshal(s.ToJSON())
 	if err != nil {

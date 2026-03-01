@@ -14,10 +14,10 @@ import (
 	"time"
 )
 
-// PhotoPrism represents a client for the PhotoPrism API
+// PhotoPrism represents a client for the PhotoPrism API.
 type PhotoPrism struct {
-	Url       string
-	parsedURL *url.URL
+	Url           string
+	parsedURL     *url.URL
 	token         string
 	downloadToken string
 	userUID       string
@@ -25,13 +25,13 @@ type PhotoPrism struct {
 }
 
 // resolveURL builds a full URL from the base API URL and the given path segments.
-// If the last segment contains a query string (e.g. "labels?count=10"), it is
+// If the last segment contains a query string (e.g. "labels?count=10"), it is.
 // split so JoinPath only receives the path portion and the query is appended.
 func (pp *PhotoPrism) resolveURL(pathSegments ...string) string {
 	if len(pathSegments) == 0 {
 		return pp.parsedURL.String()
 	}
-	// Check if the last segment contains a query string
+	// Check if the last segment contains a query string.
 	last := pathSegments[len(pathSegments)-1]
 	if pathPart, query, ok := strings.Cut(last, "?"); ok {
 		pathSegments[len(pathSegments)-1] = pathPart
@@ -42,7 +42,7 @@ func (pp *PhotoPrism) resolveURL(pathSegments ...string) string {
 	return pp.parsedURL.JoinPath(pathSegments...).String()
 }
 
-// authResponse is the PhotoPrism session response. Fields use unexported names
+// authResponse is the PhotoPrism session response. Fields use unexported names.
 // with explicit JSON tags to avoid gosec G117 (secret field detection).
 type authResponse struct {
 	id     string
@@ -56,6 +56,7 @@ type authResponse struct {
 	}
 }
 
+// UnmarshalJSON implements custom JSON unmarshaling for authResponse.
 func (a *authResponse) UnmarshalJSON(data []byte) error {
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(data, &raw); err != nil {
@@ -109,7 +110,7 @@ func (pp *PhotoPrism) captureResponse(endpoint string, body []byte) {
 		return
 	}
 
-	// Sanitize endpoint for filename
+	// Sanitize endpoint for filename.
 	filename := strings.ReplaceAll(endpoint, "/", "_")
 	filename = strings.TrimPrefix(filename, "_")
 	timestamp := time.Now().Format("20060102_150405")
@@ -117,19 +118,19 @@ func (pp *PhotoPrism) captureResponse(endpoint string, body []byte) {
 
 	filepath := filepath.Join(pp.captureDir, filename)
 
-	// Pretty-print JSON if possible
+	// Pretty-print JSON if possible.
 	var prettyJSON bytes.Buffer
 	if err := json.Indent(&prettyJSON, body, "", "  "); err == nil {
 		body = prettyJSON.Bytes()
 	}
 
-	// WriteFile error is non-critical for capturing - log and continue
+	// WriteFile error is non-critical for capturing - log and continue.
 	if err := os.WriteFile(filepath, body, 0600); err != nil {
 		fmt.Fprintf(os.Stderr, "warning: failed to capture response to %s: %v\n", filepath, err)
 	}
 }
 
-// NewPhotoPrism creates a new PhotoPrism client
+// NewPhotoPrism creates a new PhotoPrism client.
 func NewPhotoPrism(url, username, password string) (*PhotoPrism, error) {
 	return NewPhotoPrismWithCapture(url, username, password, "")
 }
@@ -155,7 +156,7 @@ func NewPhotoPrismWithCapture(rawURL, username, password, captureDir string) (*P
 	return pp, nil
 }
 
-// NewPhotoPrismFromToken creates a new PhotoPrism client from existing tokens
+// NewPhotoPrismFromToken creates a new PhotoPrism client from existing tokens.
 func NewPhotoPrismFromToken(rawURL, token, downloadToken string) (*PhotoPrism, error) {
 	apiURL := rawURL + "/api/v1"
 	parsed, err := url.Parse(apiURL)
@@ -174,7 +175,10 @@ func (pp *PhotoPrism) auth(username, password string) error {
 		return fmt.Errorf("could not marshal input: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, pp.resolveURL("sessions"), bytes.NewReader(inputBody))
+	req, err := http.NewRequestWithContext(
+		context.Background(), http.MethodPost,
+		pp.resolveURL("sessions"), bytes.NewReader(inputBody),
+	)
 	if err != nil {
 		return fmt.Errorf("could not create request: %w", err)
 	}
@@ -207,7 +211,7 @@ func (pp *PhotoPrism) auth(username, password string) error {
 	return nil
 }
 
-// Logout deletes the current session (logout)
+// Logout deletes the current session (logout).
 func (pp *PhotoPrism) Logout() error {
 	if pp.token == "" {
 		return nil // Already logged out

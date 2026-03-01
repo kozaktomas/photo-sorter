@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// Helper functions for creating test images
+// Helper functions for creating test images.
 
 func createTestImage(width, height int, c color.Color) *image.RGBA {
 	img := image.NewRGBA(image.Rect(0, 0, width, height))
@@ -48,7 +48,7 @@ func TestResizeImage_NoResizeNeeded(t *testing.T) {
 		t.Error("expected non-empty result")
 	}
 
-	// Verify it's a valid JPEG
+	// Verify it's a valid JPEG.
 	_, format, err := image.Decode(bytes.NewReader(resized))
 	if err != nil {
 		t.Fatalf("failed to decode result: %v", err)
@@ -75,12 +75,12 @@ func TestResizeImage_NeedsResize_Landscape(t *testing.T) {
 
 	bounds := decodedImg.Bounds()
 
-	// Width should be maxSize
+	// Width should be maxSize.
 	if bounds.Dx() != 500 {
 		t.Errorf("expected width 500, got %d", bounds.Dx())
 	}
 
-	// Height should maintain aspect ratio (2000/1000 = 2:1)
+	// Height should maintain aspect ratio (2000/1000 = 2:1).
 	if bounds.Dy() != 250 {
 		t.Errorf("expected height 250, got %d", bounds.Dy())
 	}
@@ -102,12 +102,12 @@ func TestResizeImage_NeedsResize_Portrait(t *testing.T) {
 
 	bounds := decodedImg.Bounds()
 
-	// Height should be maxSize
+	// Height should be maxSize.
 	if bounds.Dy() != 500 {
 		t.Errorf("expected height 500, got %d", bounds.Dy())
 	}
 
-	// Width should maintain aspect ratio
+	// Width should maintain aspect ratio.
 	if bounds.Dx() != 250 {
 		t.Errorf("expected width 250, got %d", bounds.Dx())
 	}
@@ -129,7 +129,7 @@ func TestResizeImage_NeedsResize_Square(t *testing.T) {
 
 	bounds := decodedImg.Bounds()
 
-	// Should be exactly 200x200
+	// Should be exactly 200x200.
 	if bounds.Dx() != 200 || bounds.Dy() != 200 {
 		t.Errorf("expected 200x200, got %dx%d", bounds.Dx(), bounds.Dy())
 	}
@@ -154,7 +154,7 @@ func TestResizeImage_PreservesAspectRatio(t *testing.T) {
 	ratio := float64(bounds.Dx()) / float64(bounds.Dy())
 	expectedRatio := 4.0 / 3.0
 
-	// Allow small tolerance for rounding
+	// Allow small tolerance for rounding.
 	if ratio < expectedRatio-0.1 || ratio > expectedRatio+0.1 {
 		t.Errorf("expected aspect ratio ~%.2f, got %.2f (%dx%d)",
 			expectedRatio, ratio, bounds.Dx(), bounds.Dy())
@@ -186,7 +186,7 @@ func TestResizeImage_PNGInput(t *testing.T) {
 		t.Fatalf("ResizeImage failed for PNG: %v", err)
 	}
 
-	// Should convert to JPEG
+	// Should convert to JPEG.
 	_, format, err := image.Decode(bytes.NewReader(resized))
 	if err != nil {
 		t.Fatalf("failed to decode result: %v", err)
@@ -198,7 +198,7 @@ func TestResizeImage_PNGInput(t *testing.T) {
 }
 
 func TestResizeImage_LargeImage(t *testing.T) {
-	// Test with a large image
+	// Test with a large image.
 	img := createTestImage(4000, 3000, color.Gray{128})
 	data := encodeJPEG(img)
 
@@ -220,7 +220,7 @@ func TestResizeImage_LargeImage(t *testing.T) {
 }
 
 func TestResizeImage_ExactlyMaxSize(t *testing.T) {
-	// Image exactly at maxSize should still be returned (re-encoded)
+	// Image exactly at maxSize should still be returned (re-encoded).
 	img := createTestImage(500, 500, color.White)
 	data := encodeJPEG(img)
 
@@ -241,7 +241,7 @@ func TestResizeImage_ExactlyMaxSize(t *testing.T) {
 }
 
 func TestResizeImage_OneDimensionAtMax(t *testing.T) {
-	// Image with one dimension at max, other smaller
+	// Image with one dimension at max, other smaller.
 	img := createTestImage(500, 300, color.White)
 	data := encodeJPEG(img)
 
@@ -250,7 +250,7 @@ func TestResizeImage_OneDimensionAtMax(t *testing.T) {
 		t.Fatalf("ResizeImage failed: %v", err)
 	}
 
-	// Should not resize
+	// Should not resize.
 	decodedImg, _, err := image.Decode(bytes.NewReader(resized))
 	if err != nil {
 		t.Fatalf("failed to decode result: %v", err)
@@ -494,7 +494,7 @@ func TestBatchPhotoResult_Failure(t *testing.T) {
 	}
 }
 
-// Benchmarks
+// Benchmarks.
 
 func BenchmarkResizeImage_Small(b *testing.B) {
 	img := createTestImage(100, 100, color.Gray{128})

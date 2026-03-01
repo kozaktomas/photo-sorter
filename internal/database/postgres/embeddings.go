@@ -7,12 +7,12 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/kozaktomas/photo-sorter/internal/database"
 	"github.com/lib/pq"
 	"github.com/pgvector/pgvector-go"
-	"github.com/kozaktomas/photo-sorter/internal/database"
 )
 
-// EmbeddingRepository provides PostgreSQL-backed embedding storage with optional in-memory HNSW index
+// EmbeddingRepository provides PostgreSQL-backed embedding storage with optional in-memory HNSW index.
 type EmbeddingRepository struct {
 	pool          *Pool
 	hnswIndex     *database.HNSWEmbeddingIndex
@@ -21,12 +21,12 @@ type EmbeddingRepository struct {
 	hnswMu        sync.RWMutex
 }
 
-// NewEmbeddingRepository creates a new PostgreSQL embedding repository
+// NewEmbeddingRepository creates a new PostgreSQL embedding repository.
 func NewEmbeddingRepository(pool *Pool) *EmbeddingRepository {
 	return &EmbeddingRepository{pool: pool}
 }
 
-// Get retrieves an embedding by photo UID, returns nil if not found
+// Get retrieves an embedding by photo UID, returns nil if not found.
 func (r *EmbeddingRepository) Get(ctx context.Context, photoUID string) (*database.StoredEmbedding, error) {
 	query := `
 		SELECT photo_uid, embedding, model, pretrained, dim, created_at
@@ -56,7 +56,7 @@ func (r *EmbeddingRepository) Get(ctx context.Context, photoUID string) (*databa
 	return &emb, nil
 }
 
-// Has checks if an embedding exists for the given photo UID
+// Has checks if an embedding exists for the given photo UID.
 func (r *EmbeddingRepository) Has(ctx context.Context, photoUID string) (bool, error) {
 	var exists bool
 	err := r.pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM embeddings WHERE photo_uid = $1)", photoUID).Scan(&exists)
@@ -66,7 +66,7 @@ func (r *EmbeddingRepository) Has(ctx context.Context, photoUID string) (bool, e
 	return exists, nil
 }
 
-// Count returns the total number of embeddings stored
+// Count returns the total number of embeddings stored.
 func (r *EmbeddingRepository) Count(ctx context.Context) (int, error) {
 	var count int
 	err := r.pool.QueryRow(ctx, "SELECT COUNT(*) FROM embeddings").Scan(&count)
@@ -76,7 +76,7 @@ func (r *EmbeddingRepository) Count(ctx context.Context) (int, error) {
 	return count, nil
 }
 
-// CountByUIDs returns the number of embeddings whose photo_uid is in the given list
+// CountByUIDs returns the number of embeddings whose photo_uid is in the given list.
 func (r *EmbeddingRepository) CountByUIDs(ctx context.Context, uids []string) (int, error) {
 	if len(uids) == 0 {
 		return 0, nil
@@ -91,8 +91,10 @@ func (r *EmbeddingRepository) CountByUIDs(ctx context.Context, uids []string) (i
 
 // FindSimilar finds the most similar embeddings using cosine distance.
 // Uses in-memory HNSW index if enabled, otherwise falls back to PostgreSQL.
-func (r *EmbeddingRepository) FindSimilar(ctx context.Context, embedding []float32, limit int) ([]database.StoredEmbedding, error) {
-	// Use HNSW if enabled
+func (r *EmbeddingRepository) FindSimilar(
+	ctx context.Context, embedding []float32, limit int,
+) ([]database.StoredEmbedding, error) {
+	// Use HNSW if enabled.
 	r.hnswMu.RLock()
 	hnswEnabled := r.hnswEnabled && r.hnswIndex != nil
 	r.hnswMu.RUnlock()
@@ -101,11 +103,11 @@ func (r *EmbeddingRepository) FindSimilar(ctx context.Context, embedding []float
 		return r.findSimilarHNSW(embedding, limit)
 	}
 
-	// Fallback to PostgreSQL with ef_search optimization
+	// Fallback to PostgreSQL with ef_search optimization.
 	return r.findSimilarPostgres(ctx, embedding, limit)
 }
 
-// findSimilarHNSW uses the in-memory HNSW index for similarity search
+// findSimilarHNSW uses the in-memory HNSW index for similarity search.
 func (r *EmbeddingRepository) findSimilarHNSW(embedding []float32, limit int) ([]database.StoredEmbedding, error) {
 	r.hnswMu.RLock()
 	defer r.hnswMu.RUnlock()
@@ -130,16 +132,18 @@ func (r *EmbeddingRepository) findSimilarHNSW(embedding []float32, limit int) ([
 	return results, nil
 }
 
-// findSimilarPostgres uses PostgreSQL for similarity search with ef_search optimization
-func (r *EmbeddingRepository) findSimilarPostgres(ctx context.Context, embedding []float32, limit int) ([]database.StoredEmbedding, error) {
-	// Use transaction to set ef_search for better recall (matching GOB HNSW config)
+// findSimilarPostgres uses PostgreSQL for similarity search with ef_search optimization.
+func (r *EmbeddingRepository) findSimilarPostgres(
+	ctx context.Context, embedding []float32, limit int,
+) ([]database.StoredEmbedding, error) {
+	// Use transaction to set ef_search for better recall (matching GOB HNSW config).
 	tx, err := r.pool.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return nil, fmt.Errorf("begin transaction: %w", err)
 	}
 	defer tx.Rollback()
 
-	// Set ef_search to match GOB HNSW configuration
+	// Set ef_search to match GOB HNSW configuration.
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf("SET LOCAL hnsw.ef_search = %d", database.HNSWEfSearch)); err != nil {
 		return nil, fmt.Errorf("set ef_search: %w", err)
 	}
@@ -163,8 +167,10 @@ func (r *EmbeddingRepository) findSimilarPostgres(ctx context.Context, embedding
 
 // FindSimilarWithDistance finds similar embeddings and returns distances.
 // Uses in-memory HNSW index if enabled, otherwise falls back to PostgreSQL.
-func (r *EmbeddingRepository) FindSimilarWithDistance(ctx context.Context, embedding []float32, limit int, maxDistance float64) ([]database.StoredEmbedding, []float64, error) {
-	// Use HNSW if enabled
+func (r *EmbeddingRepository) FindSimilarWithDistance(
+	ctx context.Context, embedding []float32, limit int, maxDistance float64,
+) ([]database.StoredEmbedding, []float64, error) {
+	// Use HNSW if enabled.
 	r.hnswMu.RLock()
 	hnswEnabled := r.hnswEnabled && r.hnswIndex != nil
 	r.hnswMu.RUnlock()
@@ -173,12 +179,14 @@ func (r *EmbeddingRepository) FindSimilarWithDistance(ctx context.Context, embed
 		return r.findSimilarWithDistanceHNSW(embedding, limit, maxDistance)
 	}
 
-	// Fallback to PostgreSQL with ef_search optimization
+	// Fallback to PostgreSQL with ef_search optimization.
 	return r.findSimilarWithDistancePostgres(ctx, embedding, limit, maxDistance)
 }
 
-// findSimilarWithDistanceHNSW uses the in-memory HNSW index for similarity search
-func (r *EmbeddingRepository) findSimilarWithDistanceHNSW(embedding []float32, limit int, maxDistance float64) ([]database.StoredEmbedding, []float64, error) {
+// findSimilarWithDistanceHNSW uses the in-memory HNSW index for similarity search.
+func (r *EmbeddingRepository) findSimilarWithDistanceHNSW(
+	embedding []float32, limit int, maxDistance float64,
+) ([]database.StoredEmbedding, []float64, error) {
 	r.hnswMu.RLock()
 	defer r.hnswMu.RUnlock()
 
@@ -186,7 +194,7 @@ func (r *EmbeddingRepository) findSimilarWithDistanceHNSW(embedding []float32, l
 		return nil, nil, errors.New("HNSW index not initialized")
 	}
 
-	// Request more candidates to ensure we have enough after distance filtering
+	// Request more candidates to ensure we have enough after distance filtering.
 	searchK := limit * database.HNSWSearchMultiplier
 	searchK = max(searchK, 100) // Minimum search size for better recall
 
@@ -195,7 +203,7 @@ func (r *EmbeddingRepository) findSimilarWithDistanceHNSW(embedding []float32, l
 		return nil, nil, fmt.Errorf("HNSW search: %w", err)
 	}
 
-	// Collect results up to limit
+	// Collect results up to limit.
 	results := make([]database.StoredEmbedding, 0, limit)
 	distancesOut := make([]float64, 0, limit)
 
@@ -214,16 +222,18 @@ func (r *EmbeddingRepository) findSimilarWithDistanceHNSW(embedding []float32, l
 	return results, distancesOut, nil
 }
 
-// findSimilarWithDistancePostgres uses PostgreSQL for similarity search with ef_search optimization
-func (r *EmbeddingRepository) findSimilarWithDistancePostgres(ctx context.Context, embedding []float32, limit int, maxDistance float64) ([]database.StoredEmbedding, []float64, error) {
-	// Use transaction to set ef_search for better recall (matching GOB HNSW config)
+// findSimilarWithDistancePostgres uses PostgreSQL for similarity search with ef_search optimization.
+func (r *EmbeddingRepository) findSimilarWithDistancePostgres(
+	ctx context.Context, embedding []float32, limit int, maxDistance float64,
+) ([]database.StoredEmbedding, []float64, error) {
+	// Use transaction to set ef_search for better recall (matching GOB HNSW config).
 	tx, err := r.pool.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return nil, nil, fmt.Errorf("begin transaction: %w", err)
 	}
 	defer tx.Rollback()
 
-	// Set ef_search to match GOB HNSW configuration
+	// Set ef_search to match GOB HNSW configuration.
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf("SET LOCAL hnsw.ef_search = %d", database.HNSWEfSearch)); err != nil {
 		return nil, nil, fmt.Errorf("set ef_search: %w", err)
 	}
@@ -276,8 +286,10 @@ func (r *EmbeddingRepository) findSimilarWithDistancePostgres(ctx context.Contex
 	return embeddings, distances, nil
 }
 
-// Save stores an embedding (upsert)
-func (r *EmbeddingRepository) Save(ctx context.Context, photoUID string, embedding []float32, model, pretrained string, dim int) error {
+// Save stores an embedding (upsert).
+func (r *EmbeddingRepository) Save(
+	ctx context.Context, photoUID string, embedding []float32, model, pretrained string, dim int,
+) error {
 	query := `
 		INSERT INTO embeddings (photo_uid, embedding, model, pretrained, dim)
 		VALUES ($1, $2::vector, $3, $4, $5)
@@ -297,7 +309,7 @@ func (r *EmbeddingRepository) Save(ctx context.Context, photoUID string, embeddi
 	return nil
 }
 
-// SaveBatch saves multiple embeddings in a single transaction
+// SaveBatch saves multiple embeddings in a single transaction.
 func (r *EmbeddingRepository) SaveBatch(ctx context.Context, embeddings []database.StoredEmbedding) error {
 	if len(embeddings) == 0 {
 		return nil
@@ -366,7 +378,7 @@ func scanEmbeddings(rows *sql.Rows) ([]database.StoredEmbedding, error) {
 	return embeddings, nil
 }
 
-// GetAllEmbeddings retrieves all embeddings from the database
+// GetAllEmbeddings retrieves all embeddings from the database.
 func (r *EmbeddingRepository) GetAllEmbeddings(ctx context.Context) ([]database.StoredEmbedding, error) {
 	query := `
 		SELECT photo_uid, embedding, model, pretrained, dim, created_at
@@ -426,7 +438,7 @@ func (r *EmbeddingRepository) tryLoadFallbackEmbeddingIndex(ctx context.Context,
 		fmt.Printf("Embedding index: fallback loaded graph is empty (will rebuild)\n")
 		return false
 	}
-	fmt.Println("Loading embeddings from database (consider running 'Rebuild Index' to create .embeddings file for faster startup)...")
+	fmt.Println("Loading embeddings from database (run 'Rebuild Index' to speed up startup)...")
 	embeddings, err := r.GetAllEmbeddings(ctx)
 	if err != nil {
 		fmt.Printf("Embedding index: failed to load embeddings for fallback: %v (will rebuild)\n", err)
@@ -478,7 +490,7 @@ func (r *EmbeddingRepository) EnableHNSW(ctx context.Context, indexPath string) 
 	return nil
 }
 
-// DisableHNSW disables the in-memory HNSW index, falling back to PostgreSQL queries
+// DisableHNSW disables the in-memory HNSW index, falling back to PostgreSQL queries.
 func (r *EmbeddingRepository) DisableHNSW() {
 	r.hnswMu.Lock()
 	defer r.hnswMu.Unlock()
@@ -486,14 +498,14 @@ func (r *EmbeddingRepository) DisableHNSW() {
 	r.hnswIndex = nil
 }
 
-// IsHNSWEnabled returns whether the in-memory HNSW index is enabled
+// IsHNSWEnabled returns whether the in-memory HNSW index is enabled.
 func (r *EmbeddingRepository) IsHNSWEnabled() bool {
 	r.hnswMu.RLock()
 	defer r.hnswMu.RUnlock()
 	return r.hnswEnabled && r.hnswIndex != nil
 }
 
-// HNSWCount returns the number of embeddings in the HNSW index
+// HNSWCount returns the number of embeddings in the HNSW index.
 func (r *EmbeddingRepository) HNSWCount() int {
 	r.hnswMu.RLock()
 	defer r.hnswMu.RUnlock()
@@ -503,7 +515,7 @@ func (r *EmbeddingRepository) HNSWCount() int {
 	return r.hnswIndex.Count()
 }
 
-// RebuildHNSW rebuilds the HNSW index from PostgreSQL data
+// RebuildHNSW rebuilds the HNSW index from PostgreSQL data.
 func (r *EmbeddingRepository) RebuildHNSW(ctx context.Context) error {
 	r.hnswMu.RLock()
 	indexPath := r.hnswIndexPath
@@ -511,7 +523,7 @@ func (r *EmbeddingRepository) RebuildHNSW(ctx context.Context) error {
 	return r.EnableHNSW(ctx, indexPath)
 }
 
-// SaveHNSWIndex saves the current HNSW index to disk (if path configured)
+// SaveHNSWIndex saves the current HNSW index to disk (if path configured).
 func (r *EmbeddingRepository) SaveHNSWIndex() error {
 	r.hnswMu.RLock()
 	defer r.hnswMu.RUnlock()
@@ -528,7 +540,7 @@ func (r *EmbeddingRepository) SaveHNSWIndex() error {
 
 	fmt.Printf("Embedding index save: saving to %s\n", r.hnswIndexPath)
 
-	// Get current database stats for metadata
+	// Get current database stats for metadata.
 	ctx := context.Background()
 	var embCount int64
 	err := r.pool.QueryRow(ctx, "SELECT COUNT(*) FROM embeddings").Scan(&embCount)
@@ -548,13 +560,13 @@ func (r *EmbeddingRepository) SaveHNSWIndex() error {
 	return nil
 }
 
-// DeleteEmbedding removes the embedding for a photo and cleans up the HNSW index
+// DeleteEmbedding removes the embedding for a photo and cleans up the HNSW index.
 func (r *EmbeddingRepository) DeleteEmbedding(ctx context.Context, photoUID string) error {
 	if _, err := r.pool.Exec(ctx, "DELETE FROM embeddings WHERE photo_uid = $1", photoUID); err != nil {
 		return fmt.Errorf("delete embedding: %w", err)
 	}
 
-	// Remove from HNSW index
+	// Remove from HNSW index.
 	r.hnswMu.RLock()
 	hnswEnabled := r.hnswEnabled && r.hnswIndex != nil
 	r.hnswMu.RUnlock()
@@ -566,7 +578,7 @@ func (r *EmbeddingRepository) DeleteEmbedding(ctx context.Context, photoUID stri
 	return nil
 }
 
-// GetUniquePhotoUIDs returns all unique photo UIDs that have embeddings
+// GetUniquePhotoUIDs returns all unique photo UIDs that have embeddings.
 func (r *EmbeddingRepository) GetUniquePhotoUIDs(ctx context.Context) ([]string, error) {
 	rows, err := r.pool.Query(ctx, "SELECT photo_uid FROM embeddings ORDER BY photo_uid")
 	if err != nil {
@@ -590,6 +602,6 @@ func (r *EmbeddingRepository) GetUniquePhotoUIDs(ctx context.Context) ([]string,
 	return uids, nil
 }
 
-// Verify interface compliance
+// Verify interface compliance.
 var _ database.EmbeddingReader = (*EmbeddingRepository)(nil)
 var _ database.EmbeddingWriter = (*EmbeddingRepository)(nil)

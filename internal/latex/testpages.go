@@ -26,7 +26,7 @@ type testColumn struct {
 type testFormatSlot struct {
 	X, Y, W, H float64
 	CX, CY     float64 // center
-	Color       string
+	Color      string
 }
 
 // testFormat holds data for a complete format sample page.
@@ -38,7 +38,7 @@ type testFormat struct {
 
 // testPageData is the root data passed to the test page template.
 type testPageData struct {
-	// Grid overlay
+	// Grid overlay.
 	Columns       []testColumn
 	ContentLeftX  float64
 	ContentRightX float64
@@ -49,18 +49,18 @@ type testPageData struct {
 	CanvasBottomY float64
 	HeaderTopY    float64
 	FooterBottomY float64
-	// Baseline
+	// Baseline.
 	BaselineUnit float64
 	BaselineYs   []float64
-	// Formats
+	// Formats.
 	Formats []testFormat
-	// Gutter-safe
-	GutterSafeMM      float64
-	GutterSafeRightX  float64
-	SampleMarkerX     float64
-	SampleMarkerY     float64
-	SampleMarkerCX    float64
-	SampleMarkerCY    float64
+	// Gutter-safe.
+	GutterSafeMM       float64
+	GutterSafeRightX   float64
+	SampleMarkerX      float64
+	SampleMarkerY      float64
+	SampleMarkerCX     float64
+	SampleMarkerCY     float64
 	SampleMarkerLabelX float64
 }
 
@@ -99,7 +99,7 @@ func GenerateTestPDF(ctx context.Context) ([]byte, error) {
 		return nil, fmt.Errorf("failed to write test tex file: %w", err)
 	}
 
-	// Run lualatex twice for remember picture
+	// Run lualatex twice for remember picture.
 	for pass := range 2 {
 		cmd := exec.CommandContext(ctx, "lualatex", //nolint:gosec
 			"-interaction=nonstopmode",
@@ -121,8 +121,9 @@ func GenerateTestPDF(ctx context.Context) ([]byte, error) {
 	return pdfData, nil
 }
 
+//nolint:funlen // Test data construction with many page formats.
 func buildTestData(config LayoutConfig) testPageData {
-	// Use recto layout (inside margin on left)
+	// Use recto layout (inside margin on left).
 	contentLeftX := config.InsideMarginMM
 	contentW := config.ContentWidth()
 	contentRightX := contentLeftX + contentW
@@ -133,7 +134,7 @@ func buildTestData(config LayoutConfig) testPageData {
 	headerTopY := topEdge
 	footerBottomY := config.BottomMarginMM
 
-	// Build column data
+	// Build column data.
 	columns := make([]testColumn, config.GridColumns)
 	colW := config.ColumnWidth()
 	for i := range config.GridColumns {
@@ -147,20 +148,20 @@ func buildTestData(config LayoutConfig) testPageData {
 		}
 	}
 
-	// Build baseline Y positions
+	// Build baseline Y positions.
 	var baselineYs []float64
 	for y := canvasBottomY; y <= canvasTopY; y += config.BaselineUnitMM {
 		baselineYs = append(baselineYs, y)
 	}
 
-	// Build format samples
+	// Build format samples.
 	formatNames := []string{"1_fullscreen", "2_portrait", "4_landscape", "2l_1p", "1p_2l"}
 	formats := make([]testFormat, 0, len(formatNames))
 	for _, name := range formatNames {
 		slots := FormatSlotsGrid(name, config)
 		testSlots := make([]testFormatSlot, 0, len(slots))
 		for i, s := range slots {
-			// Convert canvas-relative to page coords
+			// Convert canvas-relative to page coords.
 			x := contentLeftX + s.X
 			y := canvasTopY - s.Y - s.H
 			color := slotColors[i%len(slotColors)]
@@ -177,9 +178,9 @@ func buildTestData(config LayoutConfig) testPageData {
 		})
 	}
 
-	// Gutter-safe visualization (recto: binding on left)
+	// Gutter-safe visualization (recto: binding on left).
 	gutterSafeRightX := contentLeftX + config.GutterSafeMM
-	// Sample marker in top-right of a hypothetical 2_portrait slot 1 (outside edge for recto)
+	// Sample marker in top-right of a hypothetical 2_portrait slot 1 (outside edge for recto).
 	sampleSlotRightX := contentRightX
 	sampleSlotTopY := canvasTopY
 	markerSize := config.BaselineUnitMM
@@ -188,25 +189,25 @@ func buildTestData(config LayoutConfig) testPageData {
 	sampleMarkerY := sampleSlotTopY - markerInset - markerSize
 
 	return testPageData{
-		Columns:       columns,
-		ContentLeftX:  contentLeftX,
-		ContentRightX: contentRightX,
-		ContentW:      contentW,
-		ColumnW:       colW,
-		GutterW:       config.ColumnGutterMM,
-		CanvasTopY:    canvasTopY,
-		CanvasBottomY: canvasBottomY,
-		HeaderTopY:    headerTopY,
-		FooterBottomY: footerBottomY,
-		BaselineUnit:  config.BaselineUnitMM,
-		BaselineYs:    baselineYs,
-		Formats:       formats,
-		GutterSafeMM:     config.GutterSafeMM,
-		GutterSafeRightX: gutterSafeRightX,
-		SampleMarkerX:     sampleMarkerX,
-		SampleMarkerY:     sampleMarkerY,
-		SampleMarkerCX:    sampleMarkerX + markerSize/2,
-		SampleMarkerCY:    sampleMarkerY + markerSize/2,
+		Columns:            columns,
+		ContentLeftX:       contentLeftX,
+		ContentRightX:      contentRightX,
+		ContentW:           contentW,
+		ColumnW:            colW,
+		GutterW:            config.ColumnGutterMM,
+		CanvasTopY:         canvasTopY,
+		CanvasBottomY:      canvasBottomY,
+		HeaderTopY:         headerTopY,
+		FooterBottomY:      footerBottomY,
+		BaselineUnit:       config.BaselineUnitMM,
+		BaselineYs:         baselineYs,
+		Formats:            formats,
+		GutterSafeMM:       config.GutterSafeMM,
+		GutterSafeRightX:   gutterSafeRightX,
+		SampleMarkerX:      sampleMarkerX,
+		SampleMarkerY:      sampleMarkerY,
+		SampleMarkerCX:     sampleMarkerX + markerSize/2,
+		SampleMarkerCY:     sampleMarkerY + markerSize/2,
 		SampleMarkerLabelX: sampleMarkerX + markerSize + 2,
 	}
 }

@@ -8,13 +8,13 @@ import (
 	"math"
 	"sync"
 
-	"github.com/lib/pq"
-	"github.com/pgvector/pgvector-go"
 	"github.com/kozaktomas/photo-sorter/internal/database"
 	"github.com/kozaktomas/photo-sorter/internal/facematch"
+	"github.com/lib/pq"
+	"github.com/pgvector/pgvector-go"
 )
 
-// safeIntToInt32 converts int to int32 with clamping to prevent overflow
+// safeIntToInt32 converts int to int32 with clamping to prevent overflow.
 func safeIntToInt32(v int) int32 {
 	if v > math.MaxInt32 {
 		return math.MaxInt32
@@ -25,7 +25,7 @@ func safeIntToInt32(v int) int32 {
 	return int32(v)
 }
 
-// FaceRepository provides PostgreSQL-backed face storage with optional in-memory HNSW index
+// FaceRepository provides PostgreSQL-backed face storage with optional in-memory HNSW index.
 type FaceRepository struct {
 	pool          *Pool
 	hnswIndex     *database.HNSWIndex
@@ -34,12 +34,12 @@ type FaceRepository struct {
 	hnswMu        sync.RWMutex
 }
 
-// NewFaceRepository creates a new PostgreSQL face repository
+// NewFaceRepository creates a new PostgreSQL face repository.
 func NewFaceRepository(pool *Pool) *FaceRepository {
 	return &FaceRepository{pool: pool}
 }
 
-// GetFaces retrieves all faces for a photo
+// GetFaces retrieves all faces for a photo.
 func (r *FaceRepository) GetFaces(ctx context.Context, photoUID string) ([]database.StoredFace, error) {
 	query := `
 		SELECT id, photo_uid, face_index, embedding, bbox, det_score, model, dim, created_at,
@@ -60,14 +60,14 @@ func (r *FaceRepository) GetFaces(ctx context.Context, photoUID string) ([]datab
 
 // GetFacesBySubjectName retrieves all faces for a specific subject/person by name.
 // This queries the cached subject_name field directly, avoiding N individual photo queries.
-// Names are normalized before comparison (lowercase, no diacritics, dashes to spaces)
+// Names are normalized before comparison (lowercase, no diacritics, dashes to spaces).
 // to handle format differences (e.g., "jan-novak" matches "Jan Novák").
 func (r *FaceRepository) GetFacesBySubjectName(ctx context.Context, subjectName string) ([]database.StoredFace, error) {
-	// Normalize input in Go (matches facematch.NormalizePersonName behavior)
+	// Normalize input in Go (matches facematch.NormalizePersonName behavior).
 	normalizedInput := facematch.NormalizePersonName(subjectName)
 
-	// Use PostgreSQL LOWER + unaccent + REPLACE for comparison
-	// This matches the Go normalization: lowercase, remove diacritics, replace dashes with spaces
+	// Use PostgreSQL LOWER + unaccent + REPLACE for comparison.
+	// This matches the Go normalization: lowercase, remove diacritics, replace dashes with spaces.
 	query := `
 		SELECT id, photo_uid, face_index, embedding, bbox, det_score, model, dim, created_at,
 		       marker_uid, subject_uid, subject_name, photo_width, photo_height, orientation, file_uid
@@ -85,7 +85,7 @@ func (r *FaceRepository) GetFacesBySubjectName(ctx context.Context, subjectName 
 	return scanFaces(rows)
 }
 
-// HasFaces checks if faces have been computed for a photo
+// HasFaces checks if faces have been computed for a photo.
 func (r *FaceRepository) HasFaces(ctx context.Context, photoUID string) (bool, error) {
 	var exists bool
 	err := r.pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM faces WHERE photo_uid = $1)", photoUID).Scan(&exists)
@@ -95,17 +95,19 @@ func (r *FaceRepository) HasFaces(ctx context.Context, photoUID string) (bool, e
 	return exists, nil
 }
 
-// IsFacesProcessed checks if face detection has been run for a photo
+// IsFacesProcessed checks if face detection has been run for a photo.
 func (r *FaceRepository) IsFacesProcessed(ctx context.Context, photoUID string) (bool, error) {
 	var exists bool
-	err := r.pool.QueryRow(ctx, "SELECT EXISTS(SELECT 1 FROM faces_processed WHERE photo_uid = $1)", photoUID).Scan(&exists)
+	err := r.pool.QueryRow(
+		ctx, "SELECT EXISTS(SELECT 1 FROM faces_processed WHERE photo_uid = $1)", photoUID,
+	).Scan(&exists)
 	if err != nil {
 		return false, fmt.Errorf("check faces processed: %w", err)
 	}
 	return exists, nil
 }
 
-// Count returns the total number of faces stored
+// Count returns the total number of faces stored.
 func (r *FaceRepository) Count(ctx context.Context) (int, error) {
 	var count int
 	err := r.pool.QueryRow(ctx, "SELECT COUNT(*) FROM faces").Scan(&count)
@@ -115,7 +117,7 @@ func (r *FaceRepository) Count(ctx context.Context) (int, error) {
 	return count, nil
 }
 
-// CountByUIDs returns the number of faces whose photo_uid is in the given list
+// CountByUIDs returns the number of faces whose photo_uid is in the given list.
 func (r *FaceRepository) CountByUIDs(ctx context.Context, uids []string) (int, error) {
 	if len(uids) == 0 {
 		return 0, nil
@@ -128,7 +130,7 @@ func (r *FaceRepository) CountByUIDs(ctx context.Context, uids []string) (int, e
 	return count, nil
 }
 
-// CountPhotos returns the number of distinct photos with faces
+// CountPhotos returns the number of distinct photos with faces.
 func (r *FaceRepository) CountPhotos(ctx context.Context) (int, error) {
 	var count int
 	err := r.pool.QueryRow(ctx, "SELECT COUNT(DISTINCT photo_uid) FROM faces").Scan(&count)
@@ -138,20 +140,22 @@ func (r *FaceRepository) CountPhotos(ctx context.Context) (int, error) {
 	return count, nil
 }
 
-// CountPhotosByUIDs returns the number of distinct photos with faces whose photo_uid is in the given list
+// CountPhotosByUIDs returns the number of distinct photos with faces whose photo_uid is in the given list.
 func (r *FaceRepository) CountPhotosByUIDs(ctx context.Context, uids []string) (int, error) {
 	if len(uids) == 0 {
 		return 0, nil
 	}
 	var count int
-	err := r.pool.QueryRow(ctx, "SELECT COUNT(DISTINCT photo_uid) FROM faces WHERE photo_uid = ANY($1)", pq.Array(uids)).Scan(&count)
+	err := r.pool.QueryRow(
+		ctx, "SELECT COUNT(DISTINCT photo_uid) FROM faces WHERE photo_uid = ANY($1)", pq.Array(uids),
+	).Scan(&count)
 	if err != nil {
 		return 0, fmt.Errorf("count photos by UIDs: %w", err)
 	}
 	return count, nil
 }
 
-// GetUniquePhotoUIDs returns all unique photo UIDs that have faces
+// GetUniquePhotoUIDs returns all unique photo UIDs that have faces.
 func (r *FaceRepository) GetUniquePhotoUIDs(ctx context.Context) ([]string, error) {
 	rows, err := r.pool.Query(ctx, "SELECT DISTINCT photo_uid FROM faces ORDER BY photo_uid")
 	if err != nil {
@@ -175,7 +179,7 @@ func (r *FaceRepository) GetUniquePhotoUIDs(ctx context.Context) ([]string, erro
 	return uids, nil
 }
 
-// GetFacesWithMarkerUID returns all faces that have a non-empty marker_uid
+// GetFacesWithMarkerUID returns all faces that have a non-empty marker_uid.
 func (r *FaceRepository) GetFacesWithMarkerUID(ctx context.Context) ([]database.StoredFace, error) {
 	query := `
 		SELECT id, photo_uid, face_index, embedding, bbox, det_score, model, dim, created_at,
@@ -194,7 +198,7 @@ func (r *FaceRepository) GetFacesWithMarkerUID(ctx context.Context) ([]database.
 	return scanFaces(rows)
 }
 
-// CountProcessed returns the number of photos that have been processed for face detection
+// CountProcessed returns the number of photos that have been processed for face detection.
 func (r *FaceRepository) CountProcessed(ctx context.Context) (int, error) {
 	var count int
 	err := r.pool.QueryRow(ctx, "SELECT COUNT(*) FROM faces_processed").Scan(&count)
@@ -206,8 +210,10 @@ func (r *FaceRepository) CountProcessed(ctx context.Context) (int, error) {
 
 // FindSimilar finds faces with similar embeddings using cosine distance.
 // Uses in-memory HNSW index if enabled, otherwise falls back to PostgreSQL.
-func (r *FaceRepository) FindSimilar(ctx context.Context, embedding []float32, limit int) ([]database.StoredFace, error) {
-	// Use HNSW if enabled
+func (r *FaceRepository) FindSimilar(
+	ctx context.Context, embedding []float32, limit int,
+) ([]database.StoredFace, error) {
+	// Use HNSW if enabled.
 	r.hnswMu.RLock()
 	hnswEnabled := r.hnswEnabled && r.hnswIndex != nil
 	r.hnswMu.RUnlock()
@@ -216,11 +222,11 @@ func (r *FaceRepository) FindSimilar(ctx context.Context, embedding []float32, l
 		return r.findSimilarHNSW(embedding, limit)
 	}
 
-	// Fallback to PostgreSQL with ef_search optimization
+	// Fallback to PostgreSQL with ef_search optimization.
 	return r.findSimilarPostgres(ctx, embedding, limit)
 }
 
-// findSimilarHNSW uses the in-memory HNSW index for similarity search
+// findSimilarHNSW uses the in-memory HNSW index for similarity search.
 func (r *FaceRepository) findSimilarHNSW(embedding []float32, limit int) ([]database.StoredFace, error) {
 	r.hnswMu.RLock()
 	defer r.hnswMu.RUnlock()
@@ -245,16 +251,18 @@ func (r *FaceRepository) findSimilarHNSW(embedding []float32, limit int) ([]data
 	return results, nil
 }
 
-// findSimilarPostgres uses PostgreSQL for similarity search with ef_search optimization
-func (r *FaceRepository) findSimilarPostgres(ctx context.Context, embedding []float32, limit int) ([]database.StoredFace, error) {
-	// Use transaction to set ef_search for better recall (matching GOB HNSW config)
+// findSimilarPostgres uses PostgreSQL for similarity search with ef_search optimization.
+func (r *FaceRepository) findSimilarPostgres(
+	ctx context.Context, embedding []float32, limit int,
+) ([]database.StoredFace, error) {
+	// Use transaction to set ef_search for better recall (matching GOB HNSW config).
 	tx, err := r.pool.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return nil, fmt.Errorf("begin transaction: %w", err)
 	}
 	defer tx.Rollback()
 
-	// Set ef_search to match GOB HNSW configuration
+	// Set ef_search to match GOB HNSW configuration.
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf("SET LOCAL hnsw.ef_search = %d", database.HNSWEfSearch)); err != nil {
 		return nil, fmt.Errorf("set ef_search: %w", err)
 	}
@@ -279,8 +287,10 @@ func (r *FaceRepository) findSimilarPostgres(ctx context.Context, embedding []fl
 
 // FindSimilarWithDistance finds similar faces and returns distances.
 // Uses in-memory HNSW index if enabled, otherwise falls back to PostgreSQL.
-func (r *FaceRepository) FindSimilarWithDistance(ctx context.Context, embedding []float32, limit int, maxDistance float64) ([]database.StoredFace, []float64, error) {
-	// Use HNSW if enabled
+func (r *FaceRepository) FindSimilarWithDistance(
+	ctx context.Context, embedding []float32, limit int, maxDistance float64,
+) ([]database.StoredFace, []float64, error) {
+	// Use HNSW if enabled.
 	r.hnswMu.RLock()
 	hnswEnabled := r.hnswEnabled && r.hnswIndex != nil
 	r.hnswMu.RUnlock()
@@ -289,12 +299,14 @@ func (r *FaceRepository) FindSimilarWithDistance(ctx context.Context, embedding 
 		return r.findSimilarWithDistanceHNSW(embedding, limit, maxDistance)
 	}
 
-	// Fallback to PostgreSQL with ef_search optimization
+	// Fallback to PostgreSQL with ef_search optimization.
 	return r.findSimilarWithDistancePostgres(ctx, embedding, limit, maxDistance)
 }
 
-// findSimilarWithDistanceHNSW uses the in-memory HNSW index for similarity search
-func (r *FaceRepository) findSimilarWithDistanceHNSW(embedding []float32, limit int, maxDistance float64) ([]database.StoredFace, []float64, error) {
+// findSimilarWithDistanceHNSW uses the in-memory HNSW index for similarity search.
+func (r *FaceRepository) findSimilarWithDistanceHNSW(
+	embedding []float32, limit int, maxDistance float64,
+) ([]database.StoredFace, []float64, error) {
 	r.hnswMu.RLock()
 	defer r.hnswMu.RUnlock()
 
@@ -302,7 +314,7 @@ func (r *FaceRepository) findSimilarWithDistanceHNSW(embedding []float32, limit 
 		return nil, nil, errors.New("HNSW index not initialized")
 	}
 
-	// Request more candidates to ensure we have enough after distance filtering
+	// Request more candidates to ensure we have enough after distance filtering.
 	searchK := limit * database.HNSWSearchMultiplier
 	searchK = max(searchK, 100) // Minimum search size for better recall
 
@@ -311,7 +323,7 @@ func (r *FaceRepository) findSimilarWithDistanceHNSW(embedding []float32, limit 
 		return nil, nil, fmt.Errorf("HNSW search: %w", err)
 	}
 
-	// Filter by distance and collect results
+	// Filter by distance and collect results.
 	results := make([]database.StoredFace, 0, limit)
 	distancesOut := make([]float64, 0, limit)
 
@@ -333,16 +345,18 @@ func (r *FaceRepository) findSimilarWithDistanceHNSW(embedding []float32, limit 
 	return results, distancesOut, nil
 }
 
-// findSimilarWithDistancePostgres uses PostgreSQL for similarity search with ef_search optimization
-func (r *FaceRepository) findSimilarWithDistancePostgres(ctx context.Context, embedding []float32, limit int, maxDistance float64) ([]database.StoredFace, []float64, error) {
-	// Use transaction to set ef_search for better recall (matching GOB HNSW config)
+// findSimilarWithDistancePostgres uses PostgreSQL for similarity search with ef_search optimization.
+func (r *FaceRepository) findSimilarWithDistancePostgres(
+	ctx context.Context, embedding []float32, limit int, maxDistance float64,
+) ([]database.StoredFace, []float64, error) {
+	// Use transaction to set ef_search for better recall (matching GOB HNSW config).
 	tx, err := r.pool.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return nil, nil, fmt.Errorf("begin transaction: %w", err)
 	}
 	defer tx.Rollback()
 
-	// Set ef_search to match GOB HNSW configuration
+	// Set ef_search to match GOB HNSW configuration.
 	if _, err := tx.ExecContext(ctx, fmt.Sprintf("SET LOCAL hnsw.ef_search = %d", database.HNSWEfSearch)); err != nil {
 		return nil, nil, fmt.Errorf("set ef_search: %w", err)
 	}
@@ -421,7 +435,6 @@ func extractNullableFields(face *database.StoredFace) faceNullableFields {
 	return f
 }
 
-// SaveFaces stores multiple faces for a photo (replaces existing faces for that photo)
 // isHNSWEnabled checks whether the HNSW index is active.
 func (r *FaceRepository) isHNSWEnabled() bool {
 	r.hnswMu.RLock()
@@ -429,6 +442,7 @@ func (r *FaceRepository) isHNSWEnabled() bool {
 	return r.hnswEnabled && r.hnswIndex != nil
 }
 
+// SaveFaces stores multiple faces for a photo, replacing any existing faces for that photo.
 func (r *FaceRepository) SaveFaces(ctx context.Context, photoUID string, faces []database.StoredFace) error {
 	tx, err := r.pool.BeginTx(ctx, nil)
 	if err != nil {
@@ -458,7 +472,23 @@ func (r *FaceRepository) SaveFaces(ctx context.Context, photoUID string, faces [
 		return nil
 	}
 
-	// Insert new faces with RETURNING to get IDs for HNSW
+	insertedFaces, err := insertFacesReturningIDs(ctx, tx, photoUID, faces)
+	if err != nil {
+		return err
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit transaction: %w", err)
+	}
+
+	r.updateHNSWFaces(hnswEnabled, oldFaceIDs, insertedFaces)
+	return nil
+}
+
+// insertFacesReturningIDs inserts faces into the database and returns them with assigned IDs.
+func insertFacesReturningIDs(
+	ctx context.Context, tx *sql.Tx, photoUID string, faces []database.StoredFace,
+) ([]database.StoredFace, error) {
 	insertedFaces := make([]database.StoredFace, 0, len(faces))
 
 	for i := range faces {
@@ -490,22 +520,16 @@ func (r *FaceRepository) SaveFaces(ctx context.Context, photoUID string, faces [
 			nf.fileUID,
 		).Scan(&newID)
 		if err != nil {
-			return fmt.Errorf("insert face %d: %w", face.FaceIndex, err)
+			return nil, fmt.Errorf("insert face %d: %w", face.FaceIndex, err)
 		}
 
-		// Store face with its new ID for HNSW
 		newFace := *face
 		newFace.ID = newID
 		newFace.PhotoUID = photoUID
 		insertedFaces = append(insertedFaces, newFace)
 	}
 
-	if err := tx.Commit(); err != nil {
-		return fmt.Errorf("commit transaction: %w", err)
-	}
-
-	r.updateHNSWFaces(hnswEnabled, oldFaceIDs, insertedFaces)
-	return nil
+	return insertedFaces, nil
 }
 
 // updateHNSWFaces removes old face IDs and adds new faces to the HNSW index.
@@ -523,7 +547,7 @@ func (r *FaceRepository) updateHNSWFaces(hnswEnabled bool, oldIDs []int64, newFa
 	r.hnswMu.Unlock()
 }
 
-// MarkFacesProcessed marks a photo as having been processed for face detection
+// MarkFacesProcessed marks a photo as having been processed for face detection.
 func (r *FaceRepository) MarkFacesProcessed(ctx context.Context, photoUID string, faceCount int) error {
 	query := `
 		INSERT INTO faces_processed (photo_uid, face_count)
@@ -539,8 +563,11 @@ func (r *FaceRepository) MarkFacesProcessed(ctx context.Context, photoUID string
 	return nil
 }
 
-// UpdateFaceMarker updates the cached marker data for a specific face
-func (r *FaceRepository) UpdateFaceMarker(ctx context.Context, photoUID string, faceIndex int, markerUID, subjectUID, subjectName string) error {
+// UpdateFaceMarker updates the cached marker data for a specific face.
+func (r *FaceRepository) UpdateFaceMarker(
+	ctx context.Context, photoUID string, faceIndex int,
+	markerUID, subjectUID, subjectName string,
+) error {
 	query := `
 		UPDATE faces SET
 			marker_uid = $1,
@@ -566,8 +593,11 @@ func (r *FaceRepository) UpdateFaceMarker(ctx context.Context, photoUID string, 
 	return nil
 }
 
-// UpdateFacePhotoInfo updates the cached photo dimensions and file info for all faces of a photo
-func (r *FaceRepository) UpdateFacePhotoInfo(ctx context.Context, photoUID string, width, height, orientation int, fileUID string) error {
+// UpdateFacePhotoInfo updates the cached photo dimensions and file info for all faces of a photo.
+func (r *FaceRepository) UpdateFacePhotoInfo(
+	ctx context.Context, photoUID string,
+	width, height, orientation int, fileUID string,
+) error {
 	query := `
 		UPDATE faces SET
 			photo_width = $1,
@@ -583,7 +613,9 @@ func (r *FaceRepository) UpdateFacePhotoInfo(ctx context.Context, photoUID strin
 	return nil
 }
 
-// SaveFacesBatch saves faces for multiple photos in a single transaction
+// SaveFacesBatch saves faces for multiple photos in a single transaction.
+//
+//nolint:funlen // Batch operation with transaction management.
 func (r *FaceRepository) SaveFacesBatch(ctx context.Context, facesByPhoto map[string][]database.StoredFace) error {
 	if len(facesByPhoto) == 0 {
 		return nil
@@ -595,18 +627,18 @@ func (r *FaceRepository) SaveFacesBatch(ctx context.Context, facesByPhoto map[st
 	}
 	defer tx.Rollback()
 
-	// Collect all photo UIDs
+	// Collect all photo UIDs.
 	photoUIDs := make([]string, 0, len(facesByPhoto))
 	for uid := range facesByPhoto {
 		photoUIDs = append(photoUIDs, uid)
 	}
 
-	// Delete existing faces for all photos
+	// Delete existing faces for all photos.
 	if _, err := tx.ExecContext(ctx, "DELETE FROM faces WHERE photo_uid = ANY($1)", pq.Array(photoUIDs)); err != nil {
 		return fmt.Errorf("delete existing faces: %w", err)
 	}
 
-	// Prepare insert statement
+	// Prepare insert statement.
 	stmt, err := tx.PrepareContext(ctx, `
 		INSERT INTO faces (photo_uid, face_index, embedding, bbox, det_score, model, dim,
 		                   marker_uid, subject_uid, subject_name, photo_width, photo_height, orientation, file_uid)
@@ -651,7 +683,7 @@ func (r *FaceRepository) SaveFacesBatch(ctx context.Context, facesByPhoto map[st
 	return nil
 }
 
-// MarkFacesProcessedBatch marks multiple photos as processed in a single transaction
+// MarkFacesProcessedBatch marks multiple photos as processed in a single transaction.
 func (r *FaceRepository) MarkFacesProcessedBatch(ctx context.Context, records []database.FaceProcessedRecord) error {
 	if len(records) == 0 {
 		return nil
@@ -687,7 +719,7 @@ func (r *FaceRepository) MarkFacesProcessedBatch(ctx context.Context, records []
 	return nil
 }
 
-// scanFaceRow scans a single row into a StoredFace, with optional extra scan destinations
+// scanFaceRow scans a single row into a StoredFace, with optional extra scan destinations.
 // appended after the standard 16 face columns (e.g., a distance column).
 func scanFaceRow(scanner interface{ Scan(...any) error }, extraDest ...any) (database.StoredFace, error) {
 	var face database.StoredFace
@@ -773,7 +805,7 @@ func scanFaceWithDistance(rows *sql.Rows) (database.StoredFace, float64, error) 
 	return face, dist, err
 }
 
-// GetAllFaces retrieves all faces from the database
+// GetAllFaces retrieves all faces from the database.
 func (r *FaceRepository) GetAllFaces(ctx context.Context) ([]database.StoredFace, error) {
 	query := `
 		SELECT id, photo_uid, face_index, embedding, bbox, det_score, model, dim, created_at,
@@ -833,7 +865,8 @@ func (r *FaceRepository) tryLoadFallbackFaceIndex(ctx context.Context, indexPath
 		fmt.Printf("Face index: fallback loaded graph is empty (will rebuild)\n")
 		return false
 	}
-	fmt.Println("Loading faces from database (consider running 'Rebuild Index' to create .faces file for faster startup)...")
+	fmt.Println("Loading faces from database " +
+		"(consider running 'Rebuild Index' to create .faces file for faster startup)...")
 	faces, err := r.GetAllFaces(ctx)
 	if err != nil {
 		fmt.Printf("Face index: failed to load faces for fallback: %v (will rebuild)\n", err)
@@ -885,7 +918,7 @@ func (r *FaceRepository) EnableHNSW(ctx context.Context, indexPath string) error
 	return nil
 }
 
-// DisableHNSW disables the in-memory HNSW index, falling back to PostgreSQL queries
+// DisableHNSW disables the in-memory HNSW index, falling back to PostgreSQL queries.
 func (r *FaceRepository) DisableHNSW() {
 	r.hnswMu.Lock()
 	defer r.hnswMu.Unlock()
@@ -893,14 +926,14 @@ func (r *FaceRepository) DisableHNSW() {
 	r.hnswIndex = nil
 }
 
-// IsHNSWEnabled returns whether the in-memory HNSW index is enabled
+// IsHNSWEnabled returns whether the in-memory HNSW index is enabled.
 func (r *FaceRepository) IsHNSWEnabled() bool {
 	r.hnswMu.RLock()
 	defer r.hnswMu.RUnlock()
 	return r.hnswEnabled && r.hnswIndex != nil
 }
 
-// HNSWCount returns the number of faces in the HNSW index
+// HNSWCount returns the number of faces in the HNSW index.
 func (r *FaceRepository) HNSWCount() int {
 	r.hnswMu.RLock()
 	defer r.hnswMu.RUnlock()
@@ -910,7 +943,7 @@ func (r *FaceRepository) HNSWCount() int {
 	return r.hnswIndex.Count()
 }
 
-// RebuildHNSW rebuilds the HNSW index from PostgreSQL data
+// RebuildHNSW rebuilds the HNSW index from PostgreSQL data.
 func (r *FaceRepository) RebuildHNSW(ctx context.Context) error {
 	r.hnswMu.RLock()
 	indexPath := r.hnswIndexPath
@@ -918,7 +951,7 @@ func (r *FaceRepository) RebuildHNSW(ctx context.Context) error {
 	return r.EnableHNSW(ctx, indexPath)
 }
 
-// SaveHNSWIndex saves the current HNSW index to disk (if path configured)
+// SaveHNSWIndex saves the current HNSW index to disk (if path configured).
 func (r *FaceRepository) SaveHNSWIndex() error {
 	r.hnswMu.RLock()
 	defer r.hnswMu.RUnlock()
@@ -935,7 +968,7 @@ func (r *FaceRepository) SaveHNSWIndex() error {
 
 	fmt.Printf("Face index save: saving to %s\n", r.hnswIndexPath)
 
-	// Get current database stats for metadata
+	// Get current database stats for metadata.
 	ctx := context.Background()
 	var faceCount int64
 	var maxFaceID int64
@@ -966,18 +999,18 @@ func (r *FaceRepository) DeleteFacesByPhoto(ctx context.Context, photoUID string
 	}
 	defer tx.Rollback()
 
-	// Get face IDs before deleting (for HNSW cleanup)
+	// Get face IDs before deleting (for HNSW cleanup).
 	faceIDs, err := scanFaceIDs(tx, ctx, photoUID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Delete faces
+	// Delete faces.
 	if _, err := tx.ExecContext(ctx, "DELETE FROM faces WHERE photo_uid = $1", photoUID); err != nil {
 		return nil, fmt.Errorf("delete faces: %w", err)
 	}
 
-	// Delete faces_processed record
+	// Delete faces_processed record.
 	if _, err := tx.ExecContext(ctx, "DELETE FROM faces_processed WHERE photo_uid = $1", photoUID); err != nil {
 		return nil, fmt.Errorf("delete faces_processed: %w", err)
 	}
@@ -986,7 +1019,7 @@ func (r *FaceRepository) DeleteFacesByPhoto(ctx context.Context, photoUID string
 		return nil, fmt.Errorf("commit transaction: %w", err)
 	}
 
-	// Remove from HNSW index
+	// Remove from HNSW index.
 	r.hnswMu.RLock()
 	hnswEnabled := r.hnswEnabled && r.hnswIndex != nil
 	r.hnswMu.RUnlock()
@@ -1023,9 +1056,11 @@ func scanFaceIDs(tx *sql.Tx, ctx context.Context, photoUID string) ([]int64, err
 	return ids, nil
 }
 
-// GetPhotoUIDsWithSubjectName returns photo UIDs (from the given list) that have at least one
+// GetPhotoUIDsWithSubjectName returns photo UIDs (from the given list) that have at least one.
 // face assigned to the given subject name. Names are normalized for comparison.
-func (r *FaceRepository) GetPhotoUIDsWithSubjectName(ctx context.Context, photoUIDs []string, subjectName string) (map[string]bool, error) {
+func (r *FaceRepository) GetPhotoUIDsWithSubjectName(
+	ctx context.Context, photoUIDs []string, subjectName string,
+) (map[string]bool, error) {
 	if len(photoUIDs) == 0 {
 		return make(map[string]bool), nil
 	}
@@ -1058,6 +1093,6 @@ func (r *FaceRepository) GetPhotoUIDsWithSubjectName(ctx context.Context, photoU
 	return result, nil
 }
 
-// Verify interface compliance
+// Verify interface compliance.
 var _ database.FaceReader = (*FaceRepository)(nil)
 var _ database.FaceWriter = (*FaceRepository)(nil)

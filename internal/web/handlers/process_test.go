@@ -13,19 +13,19 @@ import (
 func TestProcessJobManager_GetActiveJob(t *testing.T) {
 	manager := NewProcessJobManager()
 
-	// Initially no active job
+	// Initially no active job.
 	if job := manager.GetActiveJob(); job != nil {
 		t.Error("expected no active job initially")
 	}
 
-	// Set an active job
+	// Set an active job.
 	testJob := &ProcessJob{
 		ID:     "test-job-1",
 		Status: JobStatusRunning,
 	}
 	manager.SetActiveJob(testJob)
 
-	// Should return the active job
+	// Should return the active job.
 	if job := manager.GetActiveJob(); job == nil {
 		t.Error("expected active job to be returned")
 	} else if job.ID != "test-job-1" {
@@ -42,12 +42,12 @@ func TestProcessJobManager_GetJob(t *testing.T) {
 	}
 	manager.SetActiveJob(testJob)
 
-	// Should find the job by ID
+	// Should find the job by ID.
 	if job := manager.GetJob("test-job-2"); job == nil {
 		t.Error("expected to find job by ID")
 	}
 
-	// Should not find non-existent job
+	// Should not find non-existent job.
 	if job := manager.GetJob("non-existent"); job != nil {
 		t.Error("expected nil for non-existent job")
 	}
@@ -62,15 +62,15 @@ func TestProcessJobManager_ClearActiveJob(t *testing.T) {
 	}
 	manager.SetActiveJob(testJob)
 
-	// Verify job is set
+	// Verify job is set.
 	if manager.GetActiveJob() == nil {
 		t.Error("expected active job before clearing")
 	}
 
-	// Clear the job
+	// Clear the job.
 	manager.ClearActiveJob()
 
-	// Verify job is cleared
+	// Verify job is cleared.
 	if manager.GetActiveJob() != nil {
 		t.Error("expected no active job after clearing")
 	}
@@ -82,19 +82,19 @@ func TestProcessJob_Listeners(t *testing.T) {
 		Status: JobStatusRunning,
 	}
 
-	// Add a listener
+	// Add a listener.
 	ch := job.AddListener()
 	if ch == nil {
 		t.Fatal("expected channel from AddListener")
 		return
 	}
 
-	// Send an event
+	// Send an event.
 	go func() {
 		job.SendEvent(JobEvent{Type: "test", Message: "hello"})
 	}()
 
-	// Receive the event
+	// Receive the event.
 	event := <-ch
 	if event.Type != "test" {
 		t.Errorf("expected event type 'test', got '%s'", event.Type)
@@ -103,10 +103,10 @@ func TestProcessJob_Listeners(t *testing.T) {
 		t.Errorf("expected message 'hello', got '%s'", event.Message)
 	}
 
-	// Remove listener
+	// Remove listener.
 	job.RemoveListener(ch)
 
-	// Channel should be closed
+	// Channel should be closed.
 	_, ok := <-ch
 	if ok {
 		t.Error("expected channel to be closed after RemoveListener")
@@ -119,19 +119,19 @@ func TestProcessJob_Cancel(t *testing.T) {
 		Status: JobStatusRunning,
 	}
 
-	// Add a listener to catch the cancelled event
+	// Add a listener to catch the cancelled event.
 	ch := job.AddListener()
 	defer job.RemoveListener(ch)
 
-	// Cancel the job
+	// Cancel the job.
 	job.Cancel()
 
-	// Check status
+	// Check status.
 	if job.Status != JobStatusCancelled {
 		t.Errorf("expected status 'cancelled', got '%s'", job.Status)
 	}
 
-	// Check event
+	// Check event.
 	event := <-ch
 	if event.Type != "cancelled" {
 		t.Errorf("expected event type 'cancelled', got '%s'", event.Type)
@@ -150,8 +150,8 @@ func TestProcessHandler_Start_InvalidJSON(t *testing.T) {
 
 	handler.Start(recorder, req)
 
-	// Should fail because DATABASE_URL is not configured
-	// The handler checks database initialization first
+	// Should fail because DATABASE_URL is not configured.
+	// The handler checks database initialization first.
 	assertStatusCode(t, recorder, http.StatusBadRequest)
 }
 
@@ -160,8 +160,8 @@ func TestProcessHandler_Start_SkipBothOptions(t *testing.T) {
 	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := NewProcessHandler(cfg, sm, nil, nil, nil)
 
-	// This test would need database to be initialized
-	// For now, we test the validation logic by checking the error
+	// This test would need database to be initialized.
+	// For now, we test the validation logic by checking the error.
 	body := bytes.NewBufferString(`{"no_faces": true, "no_embeddings": true}`)
 	req := httptest.NewRequest("POST", "/api/v1/process", body)
 	req.Header.Set("Content-Type", "application/json")
@@ -169,7 +169,7 @@ func TestProcessHandler_Start_SkipBothOptions(t *testing.T) {
 
 	handler.Start(recorder, req)
 
-	// Will fail with DATABASE_URL not configured first
+	// Will fail with DATABASE_URL not configured first.
 	assertStatusCode(t, recorder, http.StatusBadRequest)
 }
 
@@ -208,7 +208,7 @@ func TestProcessHandler_Cancel_Success(t *testing.T) {
 	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := NewProcessHandler(cfg, sm, nil, nil, nil)
 
-	// Create a job manually
+	// Create a job manually.
 	job := &ProcessJob{
 		ID:     "cancel-test-job",
 		Status: JobStatusRunning,
@@ -288,7 +288,7 @@ func TestProcessHandler_SyncCache_NoClient(t *testing.T) {
 
 	handler.SyncCache(recorder, req)
 
-	// Should fail because no PhotoPrism client in context
+	// Should fail because no PhotoPrism client in context.
 	assertStatusCode(t, recorder, http.StatusInternalServerError)
 }
 

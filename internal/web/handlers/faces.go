@@ -1,6 +1,6 @@
 // Package handlers provides HTTP handlers for the web API.
 // This file contains the FacesHandler struct and constructor.
-// Handler methods are organized in separate files:
+// Handler methods are organized in separate files:.
 //   - subjects.go: Subject CRUD operations (ListSubjects, GetSubject, UpdateSubject)
 //   - face_match.go: Face matching and similarity search (Match)
 //   - face_apply.go: Applying face matches (Apply, ComputeFaces)
@@ -18,7 +18,7 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
 
-// FacesHandler handles face-related endpoints
+// FacesHandler handles face-related endpoints.
 type FacesHandler struct {
 	config         *config.Config
 	sessionManager *middleware.SessionManager
@@ -27,17 +27,17 @@ type FacesHandler struct {
 	writerMu       sync.Mutex          // Protects faceWriter
 }
 
-// NewFacesHandler creates a new faces handler
+// NewFacesHandler creates a new faces handler.
 func NewFacesHandler(cfg *config.Config, sm *middleware.SessionManager) *FacesHandler {
 	h := &FacesHandler{
 		config:         cfg,
 		sessionManager: sm,
 	}
-	// Try to get a face reader from PostgreSQL
+	// Try to get a face reader from PostgreSQL.
 	if reader, err := database.GetFaceReader(context.Background()); err == nil {
 		h.faceReader = reader
 	}
-	// Try to get a face writer for cache sync
+	// Try to get a face writer for cache sync.
 	if writer, err := database.GetFaceWriter(context.Background()); err == nil {
 		h.faceWriter = writer
 	}
@@ -50,7 +50,7 @@ func (h *FacesHandler) RefreshReader() {
 	if reader, err := database.GetFaceReader(context.Background()); err == nil {
 		h.faceReader = reader
 	}
-	// Also refresh the writer
+	// Also refresh the writer.
 	h.writerMu.Lock()
 	defer h.writerMu.Unlock()
 	if writer, err := database.GetFaceWriter(context.Background()); err == nil {

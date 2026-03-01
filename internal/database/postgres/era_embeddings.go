@@ -5,21 +5,21 @@ import (
 	"database/sql"
 	"fmt"
 
-	"github.com/pgvector/pgvector-go"
 	"github.com/kozaktomas/photo-sorter/internal/database"
+	"github.com/pgvector/pgvector-go"
 )
 
-// EraEmbeddingRepository provides PostgreSQL-backed era embedding storage
+// EraEmbeddingRepository provides PostgreSQL-backed era embedding storage.
 type EraEmbeddingRepository struct {
 	pool *Pool
 }
 
-// NewEraEmbeddingRepository creates a new PostgreSQL era embedding repository
+// NewEraEmbeddingRepository creates a new PostgreSQL era embedding repository.
 func NewEraEmbeddingRepository(pool *Pool) *EraEmbeddingRepository {
 	return &EraEmbeddingRepository{pool: pool}
 }
 
-// GetEra retrieves an era embedding by slug, returns nil if not found
+// GetEra retrieves an era embedding by slug, returns nil if not found.
 func (r *EraEmbeddingRepository) GetEra(ctx context.Context, eraSlug string) (*database.StoredEraEmbedding, error) {
 	query := `
 		SELECT era_slug, era_name, representative_date, prompt_count, embedding, model, pretrained, dim, created_at
@@ -54,7 +54,7 @@ func (r *EraEmbeddingRepository) GetEra(ctx context.Context, eraSlug string) (*d
 	return &era, nil
 }
 
-// GetAllEras retrieves all era embeddings ordered by representative date
+// GetAllEras retrieves all era embeddings ordered by representative date.
 func (r *EraEmbeddingRepository) GetAllEras(ctx context.Context) ([]database.StoredEraEmbedding, error) {
 	query := `
 		SELECT era_slug, era_name, representative_date, prompt_count, embedding, model, pretrained, dim, created_at
@@ -100,7 +100,7 @@ func (r *EraEmbeddingRepository) GetAllEras(ctx context.Context) ([]database.Sto
 	return eras, nil
 }
 
-// CountEras returns the total number of era embeddings stored
+// CountEras returns the total number of era embeddings stored.
 func (r *EraEmbeddingRepository) CountEras(ctx context.Context) (int, error) {
 	var count int
 	err := r.pool.QueryRow(ctx, "SELECT COUNT(*) FROM era_embeddings").Scan(&count)
@@ -110,7 +110,7 @@ func (r *EraEmbeddingRepository) CountEras(ctx context.Context) (int, error) {
 	return count, nil
 }
 
-// SaveEra stores an era embedding centroid (upsert)
+// SaveEra stores an era embedding centroid (upsert).
 func (r *EraEmbeddingRepository) SaveEra(ctx context.Context, era database.StoredEraEmbedding) error {
 	query := `
 		INSERT INTO era_embeddings (era_slug, era_name, representative_date, prompt_count, embedding, model, pretrained, dim)
@@ -143,7 +143,7 @@ func (r *EraEmbeddingRepository) SaveEra(ctx context.Context, era database.Store
 	return nil
 }
 
-// DeleteEra removes an era embedding by slug
+// DeleteEra removes an era embedding by slug.
 func (r *EraEmbeddingRepository) DeleteEra(ctx context.Context, eraSlug string) error {
 	_, err := r.pool.Exec(ctx, "DELETE FROM era_embeddings WHERE era_slug = $1", eraSlug)
 	if err != nil {
@@ -152,6 +152,6 @@ func (r *EraEmbeddingRepository) DeleteEra(ctx context.Context, eraSlug string) 
 	return nil
 }
 
-// Verify interface compliance
+// Verify interface compliance.
 var _ database.EraEmbeddingReader = (*EraEmbeddingRepository)(nil)
 var _ database.EraEmbeddingWriter = (*EraEmbeddingRepository)(nil)

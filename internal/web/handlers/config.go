@@ -7,32 +7,32 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/database"
 )
 
-// ConfigHandler handles configuration endpoints
+// ConfigHandler handles configuration endpoints.
 type ConfigHandler struct {
 	config *config.Config
 }
 
-// NewConfigHandler creates a new config handler
+// NewConfigHandler creates a new config handler.
 func NewConfigHandler(cfg *config.Config) *ConfigHandler {
 	return &ConfigHandler{
 		config: cfg,
 	}
 }
 
-// ConfigResponse represents the configuration response
+// ConfigResponse represents the configuration response.
 type ConfigResponse struct {
 	Providers          []ProviderInfo `json:"providers"`
 	PhotoPrismDomain   string         `json:"photoprism_domain,omitempty"`
 	EmbeddingsWritable bool           `json:"embeddings_writable"`
 }
 
-// ProviderInfo represents information about an AI provider
+// ProviderInfo represents information about an AI provider.
 type ProviderInfo struct {
 	Name      string `json:"name"`
 	Available bool   `json:"available"`
 }
 
-// Get returns the available configuration
+// Get returns the available configuration.
 func (h *ConfigHandler) Get(w http.ResponseWriter, r *http.Request) {
 	providers := []ProviderInfo{
 		{
@@ -53,7 +53,7 @@ func (h *ConfigHandler) Get(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
-	// Check if PostgreSQL database is configured (always writable)
+	// Check if PostgreSQL database is configured (always writable).
 	embeddingsWritable := database.IsInitialized()
 
 	response := ConfigResponse{

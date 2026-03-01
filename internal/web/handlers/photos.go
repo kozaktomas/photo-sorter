@@ -23,21 +23,21 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
 
-// PhotosHandler handles photo-related endpoints
+// PhotosHandler handles photo-related endpoints.
 type PhotosHandler struct {
 	config          *config.Config
 	sessionManager  *middleware.SessionManager
 	embeddingReader database.EmbeddingReader
 }
 
-// NewPhotosHandler creates a new photos handler
+// NewPhotosHandler creates a new photos handler.
 func NewPhotosHandler(cfg *config.Config, sm *middleware.SessionManager) *PhotosHandler {
 	h := &PhotosHandler{
 		config:         cfg,
 		sessionManager: sm,
 	}
 
-	// Try to get an embedding reader from PostgreSQL
+	// Try to get an embedding reader from PostgreSQL.
 	if reader, err := database.GetEmbeddingReader(context.Background()); err == nil {
 		h.embeddingReader = reader
 	}
@@ -67,7 +67,7 @@ func (h *PhotosHandler) RefreshReader() {
 	}
 }
 
-// buildPhotoQuery constructs a search query from URL query parameters
+// buildPhotoQuery constructs a search query from URL query parameters.
 func buildPhotoQuery(r *http.Request) string {
 	var queryParts []string
 	if query := r.URL.Query().Get("q"); query != "" {
@@ -85,7 +85,7 @@ func buildPhotoQuery(r *http.Request) string {
 	return strings.Join(queryParts, " ")
 }
 
-// List returns all photos with optional filtering and sorting
+// List returns all photos with optional filtering and sorting.
 func (h *PhotosHandler) List(w http.ResponseWriter, r *http.Request) {
 	pp := middleware.MustGetPhotoPrism(r.Context(), w)
 	if pp == nil {
@@ -117,7 +117,7 @@ func (h *PhotosHandler) List(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, response)
 }
 
-// Get returns a single photo
+// Get returns a single photo.
 func (h *PhotosHandler) Get(w http.ResponseWriter, r *http.Request) {
 	uid := chi.URLParam(r, "uid")
 	if uid == "" {
@@ -130,7 +130,7 @@ func (h *PhotosHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Use query to get photo as a typed struct
+	// Use query to get photo as a typed struct.
 	photos, err := pp.GetPhotosWithQuery(1, 0, "uid:"+uid)
 	if err != nil || len(photos) == 0 {
 		respondError(w, http.StatusNotFound, "photo not found")
@@ -140,7 +140,7 @@ func (h *PhotosHandler) Get(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, photoToResponse(photos[0]))
 }
 
-// UpdateRequest represents a photo update request
+// UpdateRequest represents a photo update request.
 type UpdateRequest struct {
 	Title       *string  `json:"title,omitempty"`
 	Description *string  `json:"description,omitempty"`
@@ -151,7 +151,7 @@ type UpdateRequest struct {
 	Private     *bool    `json:"private,omitempty"`
 }
 
-// Update updates a photo
+// Update updates a photo.
 func (h *PhotosHandler) Update(w http.ResponseWriter, r *http.Request) {
 	uid := chi.URLParam(r, "uid")
 	if uid == "" {
@@ -189,7 +189,7 @@ func (h *PhotosHandler) Update(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, photoToResponse(*photo))
 }
 
-// Thumbnail proxies a photo thumbnail
+// Thumbnail proxies a photo thumbnail.
 func (h *PhotosHandler) Thumbnail(w http.ResponseWriter, r *http.Request) {
 	uid := chi.URLParam(r, "uid")
 	size := chi.URLParam(r, "size")
@@ -199,7 +199,7 @@ func (h *PhotosHandler) Thumbnail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Validate size
+	// Validate size.
 	validSizes := map[string]bool{
 		"tile_50": true, "tile_100": true, "left_224": true, "right_224": true,
 		"tile_224": true, "tile_500": true, "fit_720": true, "tile_1080": true,
@@ -216,7 +216,7 @@ func (h *PhotosHandler) Thumbnail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get photo to retrieve the hash
+	// Get photo to retrieve the hash.
 	photos, err := pp.GetPhotosWithQuery(1, 0, "uid:"+uid)
 	if err != nil || len(photos) == 0 {
 		respondError(w, http.StatusNotFound, "photo not found")
@@ -229,7 +229,7 @@ func (h *PhotosHandler) Thumbnail(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get thumbnail
+	// Get thumbnail.
 	data, contentType, err := pp.GetPhotoThumbnail(hash, size)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to get thumbnail")
@@ -247,19 +247,19 @@ func (h *PhotosHandler) Thumbnail(w http.ResponseWriter, r *http.Request) {
 	io.Copy(w, bytes.NewReader(data))
 }
 
-// BatchAddLabelsRequest represents a request to add labels to multiple photos
+// BatchAddLabelsRequest represents a request to add labels to multiple photos.
 type BatchAddLabelsRequest struct {
 	PhotoUIDs []string `json:"photo_uids"`
 	Label     string   `json:"label"`
 }
 
-// BatchAddLabelsResponse represents the response from batch adding labels
+// BatchAddLabelsResponse represents the response from batch adding labels.
 type BatchAddLabelsResponse struct {
 	Updated int      `json:"updated"`
 	Errors  []string `json:"errors,omitempty"`
 }
 
-// BatchAddLabels adds a label to multiple photos
+// BatchAddLabels adds a label to multiple photos.
 func (h *PhotosHandler) BatchAddLabels(w http.ResponseWriter, r *http.Request) {
 	var req BatchAddLabelsRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -305,12 +305,12 @@ func (h *PhotosHandler) BatchAddLabels(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// BatchArchiveRequest represents a request to archive multiple photos
+// BatchArchiveRequest represents a request to archive multiple photos.
 type BatchArchiveRequest struct {
 	PhotoUIDs []string `json:"photo_uids"`
 }
 
-// BatchArchive archives (soft-deletes) multiple photos
+// BatchArchive archives (soft-deletes) multiple photos.
 func (h *PhotosHandler) BatchArchive(w http.ResponseWriter, r *http.Request) {
 	var req BatchArchiveRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -336,21 +336,21 @@ func (h *PhotosHandler) BatchArchive(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]int{"archived": len(req.PhotoUIDs)})
 }
 
-// SimilarRequest represents a similar photos search request
+// SimilarRequest represents a similar photos search request.
 type SimilarRequest struct {
 	PhotoUID  string  `json:"photo_uid"`
 	Limit     int     `json:"limit,omitempty"`
 	Threshold float64 `json:"threshold,omitempty"` // Max cosine distance (lower = more similar)
 }
 
-// SimilarPhotoResult represents a single similar photo result
+// SimilarPhotoResult represents a single similar photo result.
 type SimilarPhotoResult struct {
 	PhotoUID   string  `json:"photo_uid"`
 	Distance   float64 `json:"distance"`   // Cosine distance (0-2, lower = more similar)
 	Similarity float64 `json:"similarity"` // 1 - distance (for easier interpretation)
 }
 
-// SimilarResponse represents the full similar photos response
+// SimilarResponse represents the full similar photos response.
 type SimilarResponse struct {
 	SourcePhotoUID string               `json:"source_photo_uid"`
 	Threshold      float64              `json:"threshold"`
@@ -358,7 +358,7 @@ type SimilarResponse struct {
 	Count          int                  `json:"count"`
 }
 
-// CollectionSimilarRequest represents a request to find similar photos to a collection
+// CollectionSimilarRequest represents a request to find similar photos to a collection.
 type CollectionSimilarRequest struct {
 	SourceType string  `json:"source_type"` // "label" or "album"
 	SourceID   string  `json:"source_id"`   // label name or album UID
@@ -366,7 +366,7 @@ type CollectionSimilarRequest struct {
 	Threshold  float64 `json:"threshold,omitempty"` // Max cosine distance (lower = more similar)
 }
 
-// CollectionSimilarResult represents a single similar photo result with match count
+// CollectionSimilarResult represents a single similar photo result with match count.
 type CollectionSimilarResult struct {
 	PhotoUID   string  `json:"photo_uid"`
 	Distance   float64 `json:"distance"`    // Cosine distance (0-2, lower = more similar)
@@ -374,7 +374,7 @@ type CollectionSimilarResult struct {
 	MatchCount int     `json:"match_count"` // Number of source photos that matched
 }
 
-// CollectionSimilarResponse represents the full collection similar photos response
+// CollectionSimilarResponse represents the full collection similar photos response.
 type CollectionSimilarResponse struct {
 	SourceType           string                    `json:"source_type"`
 	SourceID             string                    `json:"source_id"`
@@ -386,7 +386,7 @@ type CollectionSimilarResponse struct {
 	Count                int                       `json:"count"`
 }
 
-// parseCollectionSimilarRequest parses and validates the request, returning an error message if invalid
+// parseCollectionSimilarRequest parses and validates the request, returning an error message if invalid.
 func parseCollectionSimilarRequest(r *http.Request) (CollectionSimilarRequest, string) {
 	var req CollectionSimilarRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -410,7 +410,7 @@ func parseCollectionSimilarRequest(r *http.Request) (CollectionSimilarRequest, s
 	return req, ""
 }
 
-// fetchSourcePhotoUIDs fetches all photo UIDs matching a query from PhotoPrism
+// fetchSourcePhotoUIDs fetches all photo UIDs matching a query from PhotoPrism.
 func fetchSourcePhotoUIDs(pp *photoprism.PhotoPrism, query string) (map[string]bool, error) {
 	sourcePhotoUIDs := make(map[string]bool)
 	offset := 0
@@ -432,15 +432,20 @@ func fetchSourcePhotoUIDs(pp *photoprism.PhotoPrism, query string) (map[string]b
 	return sourcePhotoUIDs, nil
 }
 
-// collectionMatchCandidate tracks similarity match data for a candidate photo
+// collectionMatchCandidate tracks similarity match data for a candidate photo.
 type collectionMatchCandidate struct {
 	PhotoUID   string
 	Distance   float64
 	MatchCount int
 }
 
-// searchCollectionSimilar searches for similar photos across all source embeddings
-func searchCollectionSimilar(ctx context.Context, embRepo database.EmbeddingReader, sourcePhotoUIDs map[string]bool, limit int, threshold float64) (map[string]*collectionMatchCandidate, int) {
+// searchCollectionSimilar searches for similar photos across all source embeddings.
+//
+//nolint:gocognit // Collection similarity search with deduplication.
+func searchCollectionSimilar(
+	ctx context.Context, embRepo database.EmbeddingReader,
+	sourcePhotoUIDs map[string]bool, limit int, threshold float64,
+) (map[string]*collectionMatchCandidate, int) {
 	candidateMap := make(map[string]*collectionMatchCandidate)
 	sourceEmbeddingCount := 0
 
@@ -475,8 +480,11 @@ func searchCollectionSimilar(ctx context.Context, embRepo database.EmbeddingRead
 	return candidateMap, sourceEmbeddingCount
 }
 
-// filterAndSortCollectionResults filters by min match count, sorts, and applies limit
-func filterAndSortCollectionResults(candidateMap map[string]*collectionMatchCandidate, minMatchCount, limit int) []CollectionSimilarResult {
+// filterAndSortCollectionResults filters by min match count, sorts, and applies limit.
+func filterAndSortCollectionResults(
+	candidateMap map[string]*collectionMatchCandidate,
+	minMatchCount, limit int,
+) []CollectionSimilarResult {
 	results := make([]CollectionSimilarResult, 0, len(candidateMap))
 	for _, candidate := range candidateMap {
 		if candidate.MatchCount >= minMatchCount {
@@ -502,7 +510,7 @@ func filterAndSortCollectionResults(candidateMap map[string]*collectionMatchCand
 	return results
 }
 
-// FindSimilarToCollection finds photos similar to all photos in a label or album
+// FindSimilarToCollection finds photos similar to all photos in a label or album.
 func (h *PhotosHandler) FindSimilarToCollection(w http.ResponseWriter, r *http.Request) {
 	req, errMsg := parseCollectionSimilarRequest(r)
 	if errMsg != "" {
@@ -558,7 +566,7 @@ func (h *PhotosHandler) FindSimilarToCollection(w http.ResponseWriter, r *http.R
 	})
 }
 
-// parseSimilarRequest parses and validates the similar photos request
+// parseSimilarRequest parses and validates the similar photos request.
 func parseSimilarRequest(r *http.Request) (SimilarRequest, string) {
 	var req SimilarRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -576,7 +584,7 @@ func parseSimilarRequest(r *http.Request) (SimilarRequest, string) {
 	return req, ""
 }
 
-// FindSimilar finds similar photos based on image embeddings
+// FindSimilar finds similar photos based on image embeddings.
 func (h *PhotosHandler) FindSimilar(w http.ResponseWriter, r *http.Request) {
 	req, errMsg := parseSimilarRequest(r)
 	if errMsg != "" {
@@ -626,14 +634,14 @@ func (h *PhotosHandler) FindSimilar(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// TextSearchRequest represents a text-to-image search request
+// TextSearchRequest represents a text-to-image search request.
 type TextSearchRequest struct {
 	Text      string  `json:"text"`
 	Limit     int     `json:"limit,omitempty"`
 	Threshold float64 `json:"threshold,omitempty"` // Max cosine distance (lower = more similar)
 }
 
-// TextSearchResponse represents the text search results
+// TextSearchResponse represents the text search results.
 type TextSearchResponse struct {
 	Query            string               `json:"query"`
 	TranslatedQuery  string               `json:"translated_query,omitempty"`
@@ -643,14 +651,14 @@ type TextSearchResponse struct {
 	Count            int                  `json:"count"`
 }
 
-// translateQueryResult holds the result of query translation
+// translateQueryResult holds the result of query translation.
 type translateQueryResult struct {
 	queryText       string
 	translatedQuery string
 	translateCost   float64
 }
 
-// translateQueryForCLIP optionally translates the query text to CLIP-optimized English
+// translateQueryForCLIP optionally translates the query text to CLIP-optimized English.
 func translateQueryForCLIP(ctx context.Context, openAIToken, text string) translateQueryResult {
 	result := translateQueryResult{queryText: text}
 	if openAIToken == "" {
@@ -665,7 +673,7 @@ func translateQueryForCLIP(ctx context.Context, openAIToken, text string) transl
 	return result
 }
 
-// SearchByText finds photos matching a text query using CLIP text embeddings
+// SearchByText finds photos matching a text query using CLIP text embeddings.
 func (h *PhotosHandler) SearchByText(w http.ResponseWriter, r *http.Request) {
 	var req TextSearchRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -724,24 +732,44 @@ func (h *PhotosHandler) SearchByText(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// EraMatch represents a single era match result
+// EraMatch represents a single era match result.
 type EraMatch struct {
 	EraSlug            string  `json:"era_slug"`
 	EraName            string  `json:"era_name"`
 	RepresentativeDate string  `json:"representative_date"`
-	Similarity         float64 `json:"similarity"`  // 0-1 (cosine similarity)
-	Confidence         float64 `json:"confidence"`   // 0-100 percentage
+	Similarity         float64 `json:"similarity"` // 0-1 (cosine similarity)
+	Confidence         float64 `json:"confidence"` // 0-100 percentage
 }
 
-// EraEstimateResponse represents the era estimation result for a photo
+// EraEstimateResponse represents the era estimation result for a photo.
 type EraEstimateResponse struct {
-	PhotoUID   string    `json:"photo_uid"`
-	BestMatch  *EraMatch `json:"best_match"`
+	PhotoUID   string     `json:"photo_uid"`
+	BestMatch  *EraMatch  `json:"best_match"`
 	TopMatches []EraMatch `json:"top_matches"`
 }
 
-// EstimateEra estimates the era of a photo by comparing its CLIP image embedding
-// against pre-computed era text embedding centroids
+func computeEraMatches(photoEmb []float32, eras []database.StoredEraEmbedding) []EraMatch {
+	matches := make([]EraMatch, 0, len(eras))
+	for i := range eras {
+		era := &eras[i]
+		sim := fingerprint.CosineSimilarity(photoEmb, era.Embedding)
+		confidence := math.Max(0, math.Min(100, sim*100))
+		matches = append(matches, EraMatch{
+			EraSlug:            era.EraSlug,
+			EraName:            era.EraName,
+			RepresentativeDate: era.RepresentativeDate,
+			Similarity:         sim,
+			Confidence:         confidence,
+		})
+	}
+	sort.Slice(matches, func(i, j int) bool {
+		return matches[i].Similarity > matches[j].Similarity
+	})
+	return matches
+}
+
+// EstimateEra estimates the era of a photo by comparing its CLIP image embedding.
+// against pre-computed era text embedding centroids.
 func (h *PhotosHandler) EstimateEra(w http.ResponseWriter, r *http.Request) {
 	uid := chi.URLParam(r, "uid")
 	if uid == "" {
@@ -756,7 +784,7 @@ func (h *PhotosHandler) EstimateEra(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get the photo's image embedding
+	// Get the photo's image embedding.
 	photoEmb, err := embRepo.Get(ctx, uid)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to get embedding")
@@ -767,7 +795,7 @@ func (h *PhotosHandler) EstimateEra(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get all era centroids
+	// Get all era centroids.
 	eraReader, err := database.GetEraEmbeddingReader(ctx)
 	if err != nil {
 		respondError(w, http.StatusServiceUnavailable, "era embeddings not available")
@@ -789,25 +817,7 @@ func (h *PhotosHandler) EstimateEra(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Compute cosine similarity for each era
-	matches := make([]EraMatch, 0, len(eras))
-	for i := range eras {
-		era := &eras[i]
-		sim := fingerprint.CosineSimilarity(photoEmb.Embedding, era.Embedding)
-		confidence := math.Max(0, math.Min(100, sim*100))
-		matches = append(matches, EraMatch{
-			EraSlug:            era.EraSlug,
-			EraName:            era.EraName,
-			RepresentativeDate: era.RepresentativeDate,
-			Similarity:         sim,
-			Confidence:         confidence,
-		})
-	}
-
-	// Sort by similarity descending
-	sort.Slice(matches, func(i, j int) bool {
-		return matches[i].Similarity > matches[j].Similarity
-	})
+	matches := computeEraMatches(photoEmb.Embedding, eras)
 
 	respondJSON(w, http.StatusOK, EraEstimateResponse{
 		PhotoUID:   uid,
@@ -816,20 +826,20 @@ func (h *PhotosHandler) EstimateEra(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// BatchEditRequest represents a request to edit multiple photos
+// BatchEditRequest represents a request to edit multiple photos.
 type BatchEditRequest struct {
 	PhotoUIDs []string `json:"photo_uids"`
 	Favorite  *bool    `json:"favorite,omitempty"`
 	Private   *bool    `json:"private,omitempty"`
 }
 
-// BatchEditResponse represents the response from batch editing photos
+// BatchEditResponse represents the response from batch editing photos.
 type BatchEditResponse struct {
 	Updated int      `json:"updated"`
 	Errors  []string `json:"errors,omitempty"`
 }
 
-// BatchEdit edits multiple photos at once (favorite, private)
+// BatchEdit edits multiple photos at once (favorite, private).
 func (h *PhotosHandler) BatchEdit(w http.ResponseWriter, r *http.Request) {
 	var req BatchEditRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -874,27 +884,27 @@ func (h *PhotosHandler) BatchEdit(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// DuplicatesRequest represents a request to find duplicate photos
+// DuplicatesRequest represents a request to find duplicate photos.
 type DuplicatesRequest struct {
 	AlbumUID  string  `json:"album_uid,omitempty"`
 	Threshold float64 `json:"threshold,omitempty"` // Max cosine distance
 	Limit     int     `json:"limit,omitempty"`     // Max number of groups to return
 }
 
-// DuplicatePhoto represents a single photo in a duplicate group
+// DuplicatePhoto represents a single photo in a duplicate group.
 type DuplicatePhoto struct {
 	PhotoUID string  `json:"photo_uid"`
 	Distance float64 `json:"distance"` // Distance from group representative
 }
 
-// DuplicateGroup represents a group of similar/duplicate photos
+// DuplicateGroup represents a group of similar/duplicate photos.
 type DuplicateGroup struct {
 	Photos      []DuplicatePhoto `json:"photos"`
-	AvgDistance  float64          `json:"avg_distance"`
+	AvgDistance float64          `json:"avg_distance"`
 	PhotoCount  int              `json:"photo_count"`
 }
 
-// DuplicatesResponse represents the full duplicates response
+// DuplicatesResponse represents the full duplicates response.
 type DuplicatesResponse struct {
 	TotalPhotosScanned int              `json:"total_photos_scanned"`
 	DuplicateGroups    []DuplicateGroup `json:"duplicate_groups"`
@@ -902,7 +912,7 @@ type DuplicatesResponse struct {
 	TotalDuplicates    int              `json:"total_duplicates"`
 }
 
-// duplicateUnionFind implements union-find for grouping duplicate photos
+// duplicateUnionFind implements union-find for grouping duplicate photos.
 type duplicateUnionFind struct {
 	parent        map[string]string
 	rank          map[string]int
@@ -943,8 +953,11 @@ func (uf *duplicateUnionFind) union(x, y string, distance float64) {
 	uf.pairDistances[px] = append(uf.pairDistances[px], distance)
 }
 
-// fetchDuplicatePhotoUIDs retrieves photo UIDs to scan, either from an album or from all embeddings
-func fetchDuplicatePhotoUIDs(ctx context.Context, r *http.Request, w http.ResponseWriter, albumUID string, embRepo database.EmbeddingReader) ([]string, bool) {
+// fetchDuplicatePhotoUIDs retrieves photo UIDs to scan, either from an album or from all embeddings.
+func fetchDuplicatePhotoUIDs(
+	ctx context.Context, r *http.Request, w http.ResponseWriter,
+	albumUID string, embRepo database.EmbeddingReader,
+) ([]string, bool) {
 	if albumUID != "" {
 		pp := middleware.MustGetPhotoPrism(r.Context(), w)
 		if pp == nil {
@@ -977,8 +990,12 @@ func fetchDuplicatePhotoUIDs(ctx context.Context, r *http.Request, w http.Respon
 	return photoUIDs, true
 }
 
-// populateUnionFind searches for neighbors for each photo and unions them into the UF structure
-func populateUnionFind(ctx context.Context, embRepo database.EmbeddingReader, photoUIDs []string, uidSet map[string]bool, threshold float64, uf *duplicateUnionFind) {
+// populateUnionFind searches for neighbors for each photo and unions them into the UF structure.
+func populateUnionFind(
+	ctx context.Context, embRepo database.EmbeddingReader,
+	photoUIDs []string, uidSet map[string]bool,
+	threshold float64, uf *duplicateUnionFind,
+) {
 	for _, uid := range photoUIDs {
 		emb, err := embRepo.Get(ctx, uid)
 		if err != nil || emb == nil {
@@ -996,7 +1013,7 @@ func populateUnionFind(ctx context.Context, embRepo database.EmbeddingReader, ph
 	}
 }
 
-// extractDuplicateGroups extracts groups of size >= 2 from the union-find structure
+// extractDuplicateGroups extracts groups of size >= 2 from the union-find structure.
 func extractDuplicateGroups(uf *duplicateUnionFind, photoUIDs []string) ([]DuplicateGroup, int) {
 	groups := make(map[string][]string)
 	for _, uid := range photoUIDs {
@@ -1032,8 +1049,11 @@ func extractDuplicateGroups(uf *duplicateUnionFind, photoUIDs []string) ([]Dupli
 	return resultGroups, totalDuplicates
 }
 
-// buildDuplicateGroups clusters photos into duplicate groups using union-find
-func buildDuplicateGroups(ctx context.Context, embRepo database.EmbeddingReader, photoUIDs []string, threshold float64) ([]DuplicateGroup, int) {
+// buildDuplicateGroups clusters photos into duplicate groups using union-find.
+func buildDuplicateGroups(
+	ctx context.Context, embRepo database.EmbeddingReader,
+	photoUIDs []string, threshold float64,
+) ([]DuplicateGroup, int) {
 	uidSet := make(map[string]bool, len(photoUIDs))
 	for _, uid := range photoUIDs {
 		uidSet[uid] = true
@@ -1044,7 +1064,7 @@ func buildDuplicateGroups(ctx context.Context, embRepo database.EmbeddingReader,
 	return extractDuplicateGroups(uf, photoUIDs)
 }
 
-// averageDistance computes the mean of a float64 slice
+// averageDistance computes the mean of a float64 slice.
 func averageDistance(distances []float64) float64 {
 	if len(distances) == 0 {
 		return 0
@@ -1056,7 +1076,7 @@ func averageDistance(distances []float64) float64 {
 	return sum / float64(len(distances))
 }
 
-// FindDuplicates finds near-duplicate photos using CLIP embedding similarity
+// FindDuplicates finds near-duplicate photos using CLIP embedding similarity.
 func (h *PhotosHandler) FindDuplicates(w http.ResponseWriter, r *http.Request) {
 	var req DuplicatesRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -1103,40 +1123,40 @@ func (h *PhotosHandler) FindDuplicates(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// SuggestAlbumsRequest represents a request to find photos missing from existing albums
+// SuggestAlbumsRequest represents a request to find photos missing from existing albums.
 type SuggestAlbumsRequest struct {
 	Threshold float64 `json:"threshold,omitempty"` // Min cosine similarity (0-1)
 	TopK      int     `json:"top_k,omitempty"`     // Max photos suggested per album
 }
 
-// AlbumPhotoSuggestion represents a single photo's suggestion for an album
+// AlbumPhotoSuggestion represents a single photo's suggestion for an album.
 type AlbumPhotoSuggestion struct {
 	PhotoUID   string  `json:"photo_uid"`
 	Similarity float64 `json:"similarity"`
 }
 
-// AlbumSuggestion represents a suggested album with matching photos
+// AlbumSuggestion represents a suggested album with matching photos.
 type AlbumSuggestion struct {
 	AlbumUID   string                 `json:"album_uid"`
 	AlbumTitle string                 `json:"album_title"`
 	Photos     []AlbumPhotoSuggestion `json:"photos"`
 }
 
-// SuggestAlbumsResponse represents the full album suggestion response
+// SuggestAlbumsResponse represents the full album suggestion response.
 type SuggestAlbumsResponse struct {
-	AlbumsAnalyzed  int               `json:"albums_analyzed"`
-	PhotosAnalyzed  int               `json:"photos_analyzed"`
-	Skipped         int               `json:"skipped"` // Albums skipped (no embeddings)
-	Suggestions     []AlbumSuggestion `json:"suggestions"`
+	AlbumsAnalyzed int               `json:"albums_analyzed"`
+	PhotosAnalyzed int               `json:"photos_analyzed"`
+	Skipped        int               `json:"skipped"` // Albums skipped (no embeddings)
+	Suggestions    []AlbumSuggestion `json:"suggestions"`
 }
 
-// suggestAlbumResult holds the result of processing a single album for suggestions
+// suggestAlbumResult holds the result of processing a single album for suggestions.
 type suggestAlbumResult struct {
 	suggestion *AlbumSuggestion
 	skipped    bool
 }
 
-// fetchAlbumMemberSet fetches all photo UIDs in an album via paginated API calls
+// fetchAlbumMemberSet fetches all photo UIDs in an album via paginated API calls.
 func fetchAlbumMemberSet(pp *photoprism.PhotoPrism, albumUID string) (map[string]bool, error) {
 	albumMemberSet := make(map[string]bool)
 	offset := 0
@@ -1157,8 +1177,10 @@ func fetchAlbumMemberSet(pp *photoprism.PhotoPrism, albumUID string) (map[string
 	return albumMemberSet, nil
 }
 
-// collectAlbumEmbeddings fetches embeddings for all photos in the member set
-func collectAlbumEmbeddings(ctx context.Context, embRepo database.EmbeddingReader, memberSet map[string]bool) [][]float32 {
+// collectAlbumEmbeddings fetches embeddings for all photos in the member set.
+func collectAlbumEmbeddings(
+	ctx context.Context, embRepo database.EmbeddingReader, memberSet map[string]bool,
+) [][]float32 {
 	var embeddings [][]float32
 	for uid := range memberSet {
 		emb, err := embRepo.Get(ctx, uid)
@@ -1170,8 +1192,11 @@ func collectAlbumEmbeddings(ctx context.Context, embRepo database.EmbeddingReade
 	return embeddings
 }
 
-// filterSuggestedPhotos filters out album members and returns non-member photos as suggestions
-func filterSuggestedPhotos(similar []database.StoredEmbedding, distances []float64, albumMemberSet map[string]bool, topK int) []AlbumPhotoSuggestion {
+// filterSuggestedPhotos filters out album members and returns non-member photos as suggestions.
+func filterSuggestedPhotos(
+	similar []database.StoredEmbedding, distances []float64,
+	albumMemberSet map[string]bool, topK int,
+) []AlbumPhotoSuggestion {
 	var photos []AlbumPhotoSuggestion
 	for i, emb := range similar {
 		if albumMemberSet[emb.PhotoUID] {
@@ -1187,8 +1212,12 @@ func filterSuggestedPhotos(similar []database.StoredEmbedding, distances []float
 	return photos
 }
 
-// processAlbumForSuggestions analyzes a single album and returns suggestions for missing photos
-func processAlbumForSuggestions(ctx context.Context, pp *photoprism.PhotoPrism, embRepo database.EmbeddingReader, album photoprism.Album, topK int, maxDistance float64) suggestAlbumResult {
+// processAlbumForSuggestions analyzes a single album and returns suggestions for missing photos.
+func processAlbumForSuggestions(
+	ctx context.Context, pp *photoprism.PhotoPrism,
+	embRepo database.EmbeddingReader, album photoprism.Album,
+	topK int, maxDistance float64,
+) suggestAlbumResult {
 	albumMemberSet, err := fetchAlbumMemberSet(pp, album.UID)
 	if err != nil || len(albumMemberSet) < constants.MinAlbumPhotosForCentroid {
 		return suggestAlbumResult{}
@@ -1219,8 +1248,12 @@ func processAlbumForSuggestions(ctx context.Context, pp *photoprism.PhotoPrism, 
 	}}
 }
 
-// processAlbumsInParallel processes candidate albums concurrently and returns suggestions and skip count
-func processAlbumsInParallel(ctx context.Context, pp *photoprism.PhotoPrism, embRepo database.EmbeddingReader, candidateAlbums []photoprism.Album, topK int, maxDistance float64) ([]AlbumSuggestion, int) {
+// processAlbumsInParallel processes candidate albums concurrently and returns suggestions and skip count.
+func processAlbumsInParallel(
+	ctx context.Context, pp *photoprism.PhotoPrism,
+	embRepo database.EmbeddingReader, candidateAlbums []photoprism.Album,
+	topK int, maxDistance float64,
+) ([]AlbumSuggestion, int) {
 	var mu sync.Mutex
 	var suggestions []AlbumSuggestion
 	skipped := 0
@@ -1253,7 +1286,7 @@ func processAlbumsInParallel(ctx context.Context, pp *photoprism.PhotoPrism, emb
 	return suggestions, skipped
 }
 
-// countUniqueSuggestedPhotos counts unique photos across all suggestions
+// countUniqueSuggestedPhotos counts unique photos across all suggestions.
 func countUniqueSuggestedPhotos(suggestions []AlbumSuggestion) int {
 	uniquePhotos := make(map[string]bool)
 	for _, s := range suggestions {
@@ -1264,7 +1297,7 @@ func countUniqueSuggestedPhotos(suggestions []AlbumSuggestion) int {
 	return len(uniquePhotos)
 }
 
-// SuggestAlbums finds photos that belong in existing albums but aren't there yet (album completion)
+// SuggestAlbums finds photos that belong in existing albums but aren't there yet (album completion).
 func (h *PhotosHandler) SuggestAlbums(w http.ResponseWriter, r *http.Request) {
 	var req SuggestAlbumsRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -1313,7 +1346,7 @@ func (h *PhotosHandler) SuggestAlbums(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// computeCentroid computes the mean of a set of embeddings and L2-normalizes it
+// computeCentroid computes the mean of a set of embeddings and L2-normalizes it.
 func computeCentroid(embeddings [][]float32) []float32 {
 	if len(embeddings) == 0 {
 		return nil
@@ -1329,7 +1362,7 @@ func computeCentroid(embeddings [][]float32) []float32 {
 	for i := range centroid {
 		centroid[i] /= n
 	}
-	// L2 normalize
+	// L2 normalize.
 	var norm float64
 	for _, v := range centroid {
 		norm += float64(v) * float64(v)
@@ -1342,4 +1375,3 @@ func computeCentroid(embeddings [][]float32) []float32 {
 	}
 	return centroid
 }
-
