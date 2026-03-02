@@ -116,6 +116,8 @@ Detailed view of a single photo with face management capabilities.
 - **Add to Book dropdown** - Click "Book" in the header to open a two-step picker (book → section) to quickly add the photo to a book section without leaving the page. Shows success/error feedback and auto-closes
 - **Embeddings status banner** - Automatically checks if embeddings have been calculated for the photo on page load. Shows a yellow warning banner with a "Calculate Embeddings" button if not yet processed
 - **Face detection and assignment** - Load faces to see detected faces with bounding boxes, assign people via suggestions or manual input
+- **Fullscreen mode** - Press `F` to hide all chrome (header, sidebar, status banner, app navigation) and display the photo at maximum size using the full viewport. Press `F` again or `Escape` to return to normal view. Navigation arrows and keyboard shortcuts (`←`/`→`, `M`) remain functional in fullscreen
+- **Toggle face markings** - Press `M` to show/hide face bounding box overlays on the photo
 
 **Photo Navigation:**
 When accessing a photo from an album, label, or the Photos page, navigation controls are available:
@@ -556,6 +558,9 @@ Find photos that belong in existing albums but aren't there yet by searching the
 
 ### Photo Detail Page
 - `←` / `→` - Navigate to previous/next photo (when accessed from album, label, or Photos page)
+- `M` - Toggle face marking bounding boxes
+- `F` - Toggle fullscreen mode (hides all chrome, photo fills viewport)
+- `Escape` - Exit fullscreen mode
 
 ### Photo Detail Modal
 - `←` / `→` - Navigate between photos

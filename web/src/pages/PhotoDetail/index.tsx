@@ -78,6 +78,8 @@ export function PhotoDetailPage() {
 
   const [bookRefreshKey, setBookRefreshKey] = useState(0);
   const handleBookAdded = useCallback(() => setBookRefreshKey((k) => k + 1), []);
+  const [markingsVisible, setMarkingsVisible] = useState(true);
+  const [fullscreen, setFullscreen] = useState(false);
 
   // Keyboard navigation
   useEffect(() => {
@@ -97,6 +99,14 @@ export function PhotoDetailPage() {
       } else if (e.key === 'ArrowRight' && hasNext) {
         e.preventDefault();
         goToNext();
+      } else if (e.key === 'm' || e.key === 'M') {
+        e.preventDefault();
+        setMarkingsVisible((v) => !v);
+      } else if (e.key === 'f' || e.key === 'F') {
+        e.preventDefault();
+        setFullscreen((v) => !v);
+      } else if (e.key === 'Escape') {
+        setFullscreen(false);
       }
     };
 
@@ -152,11 +162,11 @@ export function PhotoDetailPage() {
   }
 
   return (
-    <div className="h-full flex flex-col">
+    <div className={`${fullscreen ? 'fixed inset-0 z-50 bg-slate-950' : 'h-full'} flex flex-col`}>
       {/* Accent line */}
-      <div className={`h-0.5 ${colorMap.indigo.gradient} shrink-0`} />
+      {!fullscreen && <div className={`h-0.5 ${colorMap.indigo.gradient} shrink-0`} />}
       {/* Header */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-slate-700 shrink-0">
+      {!fullscreen && <div className="flex items-center justify-between px-6 py-4 border-b border-slate-700 shrink-0">
         <div className="flex items-center gap-4">
           <Button variant="ghost" size="sm" onClick={() => navigate('/photos')}>
             <ArrowLeft className="h-4 w-4 mr-1" />
@@ -197,14 +207,14 @@ export function PhotoDetailPage() {
             {t('pages:photoDetail.faces')}
           </Button>
         </div>
-      </div>
+      </div>}
 
       {/* Embeddings status banner */}
-      <EmbeddingsStatus
+      {!fullscreen && <EmbeddingsStatus
         status={embeddingsStatus}
         onCompute={computeFacesForPhoto}
         isComputing={isComputing}
-      />
+      />}
 
       {/* Content */}
       <div className="flex-1 flex overflow-hidden">
@@ -220,10 +230,12 @@ export function PhotoDetailPage() {
           onNext={goToNext}
           currentIndex={currentIndex}
           totalPhotos={totalPhotos}
+          markingsVisible={markingsVisible}
+          fullscreen={fullscreen}
         />
 
         {/* Right: Face details and suggestions */}
-        <div className="w-80 border-l border-slate-700 flex flex-col overflow-hidden shrink-0">
+        {!fullscreen && <div className="w-80 border-l border-slate-700 flex flex-col overflow-hidden shrink-0">
           {/* Header */}
           <div className="p-4 border-b border-slate-700 shrink-0">
             <div className="flex items-center justify-between">
@@ -338,7 +350,7 @@ export function PhotoDetailPage() {
               />
             </>
           )}
-        </div>
+        </div>}
       </div>
     </div>
   );

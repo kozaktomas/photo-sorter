@@ -15,9 +15,11 @@ interface PhotoDisplayProps {
   onNext?: () => void;
   currentIndex?: number;
   totalPhotos?: number;
+  markingsVisible?: boolean;
+  fullscreen?: boolean;
 }
 
-export function PhotoDisplay({ photo, faces, selectedFaceIndex, onFaceSelect, hasPrev, hasNext, onPrev, onNext, currentIndex, totalPhotos }: PhotoDisplayProps) {
+export function PhotoDisplay({ photo, faces, selectedFaceIndex, onFaceSelect, hasPrev, hasNext, onPrev, onNext, currentIndex, totalPhotos, markingsVisible = true, fullscreen = false }: PhotoDisplayProps) {
   const [imageLoaded, setImageLoaded] = useState(false);
 
   // Reset imageLoaded when photo changes so face boxes don't persist
@@ -29,7 +31,7 @@ export function PhotoDisplay({ photo, faces, selectedFaceIndex, onFaceSelect, ha
   const showCounter = totalPhotos !== undefined && totalPhotos > 0 && currentIndex !== undefined && currentIndex >= 0;
 
   return (
-    <div className="flex-1 flex items-center justify-center p-6 bg-slate-950/50 overflow-hidden relative group">
+    <div className={`flex-1 flex items-center justify-center ${fullscreen ? 'p-0' : 'p-6'} ${fullscreen ? 'bg-slate-950' : 'bg-slate-950/50'} overflow-hidden relative group`}>
       {/* Left navigation arrow */}
       {showNavigation && (
         <button
@@ -73,12 +75,12 @@ export function PhotoDisplay({ photo, faces, selectedFaceIndex, onFaceSelect, ha
         <img
           src={getThumbnailUrl(photo.uid, 'fit_1920')}
           alt={photo.title || photo.file_name}
-          className="max-h-[calc(100vh-12rem)] max-w-full h-auto rounded-lg"
+          className={`${fullscreen ? 'max-h-[100vh] max-w-[100vw]' : 'max-h-[calc(100vh-12rem)] max-w-full'} h-auto ${fullscreen ? '' : 'rounded-lg'}`}
           onLoad={() => setImageLoaded(true)}
         />
 
         {/* Face bounding boxes */}
-        {imageLoaded && faces?.map((face, index) => (
+        {markingsVisible && imageLoaded && faces?.map((face, index) => (
           <div
             key={face.face_index}
             className={`absolute border-2 cursor-pointer transition-all ${

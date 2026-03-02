@@ -77,4 +77,24 @@ fi
 echo "==> Starting photo-sorter on port 8085..."
 echo "==> Logs: tail -f $LOGFILE"
 set -a && source "$SCRIPT_DIR/.env.dev" && set +a
-exec "$SCRIPT_DIR/photo-sorter" serve 2>&1 | tee "$LOGFILE"
+"$SCRIPT_DIR/photo-sorter" serve > "$LOGFILE" 2>&1 &
+SERVE_PID=$!
+
+# Wait for server to become healthy (up to 30s)
+for i in $(seq 1 60); do
+  if curl -s -o /dev/null -w '' http://localhost:8085/api/v1/health 2>/dev/null; then
+    echo "==> Server ready (PID $SERVE_PID)"
+    exit 0
+  fi
+  # Check if process died
+  if ! kill -0 "$SERVE_PID" 2>/dev/null; then
+    echo "==> Server failed to start. Last logs:"
+    tail -20 "$LOGFILE"
+    exit 1
+  fi
+  sleep 0.5
+done
+
+echo "==> Timed out waiting for server. Last logs:"
+tail -20 "$LOGFILE"
+exit 1
