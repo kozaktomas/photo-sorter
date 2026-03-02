@@ -102,6 +102,9 @@ export function PhotoDetailPage() {
       } else if (e.key === 'm' || e.key === 'M') {
         e.preventDefault();
         setMarkingsVisible((v) => !v);
+        if (!facesLoaded && !facesLoading) {
+          void loadFaces();
+        }
       } else if (e.key === 'f' || e.key === 'F') {
         e.preventDefault();
         setFullscreen((v) => !v);
@@ -112,7 +115,7 @@ export function PhotoDetailPage() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [hasPrev, hasNext, goToPrev, goToNext]);
+  }, [hasPrev, hasNext, goToPrev, goToNext, facesLoaded, facesLoading, loadFaces]);
 
   // Auto-select first unassigned face when faces are loaded
   useEffect(() => {
