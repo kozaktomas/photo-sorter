@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -8,7 +9,10 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
 	"github.com/kozaktomas/photo-sorter/internal/config"
 	"github.com/kozaktomas/photo-sorter/internal/constants"
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
@@ -18,13 +22,17 @@ import (
 type UploadHandler struct {
 	config         *config.Config
 	sessionManager *middleware.SessionManager
+	jobManager     *UploadJobManager
+	processHandler *ProcessHandler
 }
 
 // NewUploadHandler creates a new upload handler.
-func NewUploadHandler(cfg *config.Config, sm *middleware.SessionManager) *UploadHandler {
+func NewUploadHandler(cfg *config.Config, sm *middleware.SessionManager, ph *ProcessHandler) *UploadHandler {
 	return &UploadHandler{
 		config:         cfg,
 		sessionManager: sm,
+		jobManager:     NewUploadJobManager(),
+		processHandler: ph,
 	}
 }
 
@@ -113,4 +121,123 @@ func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		"uploaded": len(filePaths),
 		"album":    albumUID,
 	})
+}
+
+// parseUploadJobOptions extracts job configuration from form fields.
+func parseUploadJobOptions(r *http.Request) (*UploadJobOptions, error) {
+	var albumUIDs []string
+	if raw := r.FormValue("album_uids"); raw != "" {
+		if err := json.Unmarshal([]byte(raw), &albumUIDs); err != nil {
+			return nil, errors.New("invalid album_uids format")
+		}
+	}
+	if len(albumUIDs) == 0 {
+		return nil, errors.New("at least one album is required")
+	}
+
+	var labels []string
+	if raw := r.FormValue("labels"); raw != "" {
+		if err := json.Unmarshal([]byte(raw), &labels); err != nil {
+			return nil, errors.New("invalid labels format")
+		}
+	}
+
+	return &UploadJobOptions{
+		AlbumUIDs:     albumUIDs,
+		Labels:        labels,
+		BookSectionID: r.FormValue("book_section_id"),
+		AutoProcess:   r.FormValue("auto_process") != "false",
+		FileCount:     len(r.MultipartForm.File["files"]),
+	}, nil
+}
+
+// StartJob starts a background upload job.
+func (h *UploadHandler) StartJob(w http.ResponseWriter, r *http.Request) {
+	if active := h.jobManager.GetActiveJob(); active != nil {
+		if active.Status == JobStatusRunning || active.Status == JobStatusPending {
+			respondError(w, http.StatusConflict, "an upload job is already running")
+			return
+		}
+	}
+
+	if err := r.ParseMultipartForm(constants.MaxUploadJobSize); err != nil {
+		respondError(w, http.StatusBadRequest, "failed to parse multipart form")
+		return
+	}
+
+	files := r.MultipartForm.File["files"]
+	if len(files) == 0 {
+		respondError(w, http.StatusBadRequest, "no files provided")
+		return
+	}
+
+	opts, err := parseUploadJobOptions(r)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	tempDir, err := os.MkdirTemp("", "photo-sorter-upload-job-*")
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to create temp directory")
+		return
+	}
+
+	if _, err := saveUploadedFiles(files, tempDir); err != nil {
+		os.RemoveAll(tempDir)
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+
+	session := middleware.GetSessionFromContext(r.Context())
+
+	jobID := uuid.New().String()
+	job := &UploadJob{
+		ID:        jobID,
+		Status:    JobStatusPending,
+		StartedAt: time.Now(),
+		Options:   *opts,
+	}
+
+	h.jobManager.SetActiveJob(job)
+	go h.runUploadJob(job, session, tempDir)
+
+	respondJSON(w, http.StatusAccepted, map[string]string{
+		"job_id": jobID,
+		"status": string(JobStatusPending),
+	})
+}
+
+// GetJobEvents streams upload job events via SSE.
+func (h *UploadHandler) GetJobEvents(w http.ResponseWriter, r *http.Request) {
+	streamSSEEvents(w, r,
+		func(id string) SSEJob {
+			job := h.jobManager.GetJob(id)
+			if job == nil {
+				return nil
+			}
+			return job
+		},
+		func(job SSEJob) any {
+			return job
+		},
+	)
+}
+
+// CancelJob cancels an upload job.
+func (h *UploadHandler) CancelJob(w http.ResponseWriter, r *http.Request) {
+	jobID := chi.URLParam(r, "jobId")
+	if jobID == "" {
+		respondError(w, http.StatusBadRequest, "missing job ID")
+		return
+	}
+
+	job := h.jobManager.GetJob(jobID)
+	if job == nil {
+		respondError(w, http.StatusNotFound, "job not found")
+		return
+	}
+
+	job.Cancel()
+	respondJSON(w, http.StatusOK, map[string]bool{"cancelled": true})
 }

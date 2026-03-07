@@ -1194,6 +1194,69 @@ POST /upload
 }
 ```
 
+### Start Upload Job
+
+Start a background upload job with progress tracking via SSE.
+
+```
+POST /upload/job
+```
+
+**Content-Type:** `multipart/form-data`
+
+**Form Fields:**
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `files` | file[] | Yes | Photo files to upload |
+| `album_uids` | string (JSON array) | Yes | Target album UIDs (first is primary) |
+| `labels` | string (JSON array) | No | Labels to apply to new photos |
+| `book_section_id` | string | No | Book section ID to add photos to |
+| `auto_process` | string | No | "false" to skip embeddings/faces (default: true) |
+
+**Response (202):**
+```json
+{
+  "job_id": "b2f806a0-2e10-4062-8b3c-b5f7b946fb18",
+  "status": "pending"
+}
+```
+
+### Get Upload Job Events
+
+Stream upload job progress via Server-Sent Events.
+
+```
+GET /upload/{jobId}/events
+```
+
+**SSE Event Types:**
+| Event | Data | Description |
+|-------|------|-------------|
+| `started` | - | Job started |
+| `upload_progress` | `{current, total, filename}` | Per-file upload progress |
+| `processing_upload` | - | PhotoPrism processing phase |
+| `detecting_photos` | - | Detecting new photos via album diff |
+| `applying_labels` | `{current, total}` | Applying labels to new photos |
+| `applying_albums` | - | Adding to additional albums |
+| `adding_to_book` | - | Adding to book section |
+| `process_progress` | `{processed, total}` | Embeddings/faces progress |
+| `completed` | `UploadJobResult` | Job completed successfully |
+| `job_error` | `{message}` | Job failed |
+| `cancelled` | - | Job was cancelled |
+
+### Cancel Upload Job
+
+```
+DELETE /upload/{jobId}
+```
+
+**Response (200):**
+```json
+{
+  "cancelled": true
+}
+```
+
 ---
 
 ## Configuration

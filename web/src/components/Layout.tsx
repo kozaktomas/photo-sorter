@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { FolderOpen, Tags, Sparkles, Home, Users, Images, Camera, Maximize2, AlertTriangle, Type, ShieldCheck, Cpu, ChevronDown, LogOut, Copy, FolderSearch, BookOpen } from 'lucide-react';
+import { FolderOpen, Tags, Sparkles, Home, Users, Images, Camera, Maximize2, AlertTriangle, Type, ShieldCheck, Cpu, ChevronDown, LogOut, Copy, FolderSearch, BookOpen, Upload } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { getPageConfigForPath, colorMap } from '../constants/pageConfig';
@@ -155,6 +155,7 @@ export function Layout({ children }: LayoutProps) {
         { path: '/duplicates', icon: Copy, label: t('nav.duplicates') },
         { path: '/suggest-albums', icon: FolderSearch, label: t('nav.suggestAlbums') },
         { path: '/books', icon: BookOpen, label: t('nav.books') },
+        { path: '/upload', icon: Upload, label: t('nav.upload') },
         { path: '/process', icon: Cpu, label: t('nav.process') },
       ],
     },

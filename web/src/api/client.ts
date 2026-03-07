@@ -699,6 +699,57 @@ export async function clearSlot(pageId: string, slotIndex: number): Promise<void
   await request(`/pages/${pageId}/slots/${slotIndex}`, { method: 'DELETE' });
 }
 
+// Upload Job
+export async function startUploadJob(
+  files: File[],
+  config: {
+    album_uids: string[];
+    labels?: string[];
+    book_section_id?: string;
+    auto_process?: boolean;
+  }
+): Promise<{ job_id: string }> {
+  const formData = new FormData();
+  for (const file of files) {
+    formData.append('files', file);
+  }
+  formData.append('album_uids', JSON.stringify(config.album_uids));
+  if (config.labels && config.labels.length > 0) {
+    formData.append('labels', JSON.stringify(config.labels));
+  }
+  if (config.book_section_id) {
+    formData.append('book_section_id', config.book_section_id);
+  }
+  if (config.auto_process === false) {
+    formData.append('auto_process', 'false');
+  }
+
+  const response = await fetch(`${API_BASE}/upload/job`, {
+    method: 'POST',
+    body: formData,
+    credentials: 'include',
+  });
+
+  if (!response.ok) {
+    const errorData = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+    if (response.status === 401) {
+      window.dispatchEvent(new CustomEvent(AUTH_ERROR_EVENT));
+    }
+    const errorMessage = typeof errorData.error === 'string' ? errorData.error : 'Upload failed';
+    throw new ApiError(response.status, errorMessage);
+  }
+
+  return response.json() as Promise<{ job_id: string }>;
+}
+
+export async function cancelUploadJob(
+  jobId: string
+): Promise<{ cancelled: boolean }> {
+  return request<{ cancelled: boolean }>(`/upload/${jobId}`, {
+    method: 'DELETE',
+  });
+}
+
 // PDF Export
 export async function exportBookPDF(bookId: string): Promise<void> {
   const response = await fetch(`${API_BASE}/books/${bookId}/export-pdf`, {

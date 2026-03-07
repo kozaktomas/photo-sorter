@@ -61,7 +61,7 @@ export function useSSE(url: string | null, options: SSEOptions = {}) {
 
     // Add listeners for specific event types
     // Note: 'error' is excluded because it conflicts with native EventSource error event
-    ['status', 'started', 'progress', 'photos_counted', 'filtering_done', 'completed', 'job_error', 'cancelled'].forEach((type) => {
+    ['status', 'started', 'progress', 'photos_counted', 'filtering_done', 'completed', 'job_error', 'cancelled', 'upload_progress', 'processing_upload', 'detecting_photos', 'applying_labels', 'applying_albums', 'adding_to_book', 'process_progress'].forEach((type) => {
       eventSource.addEventListener(type, (event) => {
         const rawData = String(event.data);
         try {

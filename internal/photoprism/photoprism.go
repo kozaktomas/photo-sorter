@@ -157,13 +157,13 @@ func NewPhotoPrismWithCapture(rawURL, username, password, captureDir string) (*P
 }
 
 // NewPhotoPrismFromToken creates a new PhotoPrism client from existing tokens.
-func NewPhotoPrismFromToken(rawURL, token, downloadToken string) (*PhotoPrism, error) {
+func NewPhotoPrismFromToken(rawURL, token, downloadToken, userUID string) (*PhotoPrism, error) {
 	apiURL := rawURL + "/api/v1"
 	parsed, err := url.Parse(apiURL)
 	if err != nil {
 		return nil, fmt.Errorf("invalid PhotoPrism URL: %w", err)
 	}
-	return &PhotoPrism{Url: apiURL, parsedURL: parsed, token: token, downloadToken: downloadToken}, nil
+	return &PhotoPrism{Url: apiURL, parsedURL: parsed, token: token, downloadToken: downloadToken, userUID: userUID}, nil
 }
 
 func (pp *PhotoPrism) auth(username, password string) error {

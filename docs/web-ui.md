@@ -55,7 +55,7 @@ The header navigation groups items to reduce clutter:
 - **Primary** (always visible): Dashboard, Albums, Photos, Labels
 - **AI** dropdown: Analyze, Text Search
 - **Faces** dropdown: Faces, Recognition, Outliers
-- **Tools** dropdown: Similar, Expand, Duplicates, Album Completion, Photo Book, Process
+- **Tools** dropdown: Similar, Expand, Duplicates, Album Completion, Photo Book, Upload, Process
 
 Dropdown buttons highlight when one of their child pages is active. Dropdowns close when clicking outside.
 
@@ -486,6 +486,33 @@ Press `K` or click the wand button to cycle through effects. The active effect n
 - `F` - Toggle fullscreen
 - `Escape` - Exit slideshow (returns to previous page)
 
+### Upload (`/upload`)
+
+Upload photos to PhotoPrism with optional labels, multi-album assignment, book section placement, and auto-processing.
+
+**Configuration (left card):**
+- **Drag & Drop Zone** - Drag files or click to browse. Supports JPG, PNG, GIF, HEIC, WebP, TIFF, RAW formats. Files are validated by MIME type and extension, deduplicated by name+size
+- **Album Selection** - Checkbox list with search filter. At least one album required. First album is the primary upload target; additional albums receive the photos after upload
+- **Labels** - Tag input with autocomplete from existing labels. Press Enter to add custom labels
+- **Book Section** - Optional cascading dropdowns: select a book, then a section. Photos are added to the section after upload
+- **Auto-process** - Checkbox (default: on). When enabled, computes CLIP embeddings and detects faces for uploaded photos
+
+**Progress (right card):**
+- Real-time progress via SSE with phase indicators:
+  - Uploading (per-file progress with filename)
+  - Processing in PhotoPrism
+  - Detecting new photos (before/after album diff)
+  - Applying labels, albums, book section
+  - Computing embeddings & faces (if auto-process enabled)
+- Cancel button during upload
+- Results summary: uploaded count, new photos, existing (duplicates), labels applied, albums added, book section added
+- Thumbnail grid of new photos linking to Photo Detail
+
+**Backend:**
+- Files uploaded one-by-one to PhotoPrism for per-file progress
+- New photos detected via before/after album UID diffing
+- Only one upload job runs at a time
+
 ### Photo Book (`/books`)
 
 Plan and organize photos into a printed landscape photo book with PDF export.
@@ -620,6 +647,9 @@ The Web UI communicates with these backend endpoints:
 | POST | `/api/v1/photos/:uid/faces/compute` | Compute face embeddings for a photo |
 | GET | `/api/v1/photos/:uid/estimate-era` | Estimate photo era from CLIP embeddings |
 | POST | `/api/v1/albums/:uid/photos` | Add photos to album |
+| POST | `/api/v1/upload/job` | Start background upload job |
+| GET | `/api/v1/upload/:jobId/events` | SSE stream for upload job |
+| DELETE | `/api/v1/upload/:jobId` | Cancel upload job |
 | POST | `/api/v1/process` | Start photo processing job |
 | GET | `/api/v1/process/:jobId/events` | SSE stream for process job |
 | DELETE | `/api/v1/process/:jobId` | Cancel process job |
@@ -746,6 +776,10 @@ web/src/
 │   │   ├── hooks/useSlideshowPhotos.ts
 │   │   ├── effectConfigs.ts
 │   │   ├── SlideshowControls.tsx
+│   │   └── index.tsx
+│   ├── Upload/              # Photo upload
+│   │   ├── hooks/useUploadJob.ts
+│   │   ├── DropZone.tsx
 │   │   └── index.tsx
 │   ├── Books/               # Photo books list
 │   │   └── index.tsx

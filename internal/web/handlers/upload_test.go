@@ -42,7 +42,7 @@ func TestUploadHandler_Upload_Success(t *testing.T) {
 	cfg := testConfig()
 	cfg.PhotoPrism.URL = server.URL
 	sm := middleware.NewSessionManager("test-secret", nil)
-	handler := NewUploadHandler(cfg, sm)
+	handler := NewUploadHandler(cfg, sm, nil)
 
 	// Create a temp file to upload.
 	tempDir := t.TempDir()
@@ -95,7 +95,7 @@ func TestUploadHandler_Upload_MissingAlbumUID(t *testing.T) {
 
 	cfg := testConfig()
 	sm := middleware.NewSessionManager("test-secret", nil)
-	handler := NewUploadHandler(cfg, sm)
+	handler := NewUploadHandler(cfg, sm, nil)
 
 	// Create multipart request without album_uid.
 	body := &bytes.Buffer{}
@@ -127,7 +127,7 @@ func TestUploadHandler_Upload_NoFiles(t *testing.T) {
 
 	cfg := testConfig()
 	sm := middleware.NewSessionManager("test-secret", nil)
-	handler := NewUploadHandler(cfg, sm)
+	handler := NewUploadHandler(cfg, sm, nil)
 
 	// Create multipart request with album_uid but no files.
 	body := &bytes.Buffer{}
@@ -151,7 +151,7 @@ func TestUploadHandler_Upload_NoFiles(t *testing.T) {
 func TestUploadHandler_Upload_InvalidMultipart(t *testing.T) {
 	cfg := testConfig()
 	sm := middleware.NewSessionManager("test-secret", nil)
-	handler := NewUploadHandler(cfg, sm)
+	handler := NewUploadHandler(cfg, sm, nil)
 
 	// Send non-multipart request.
 	req := httptest.NewRequest("POST", "/api/v1/upload", bytes.NewBufferString("not multipart"))
@@ -168,7 +168,7 @@ func TestUploadHandler_Upload_InvalidMultipart(t *testing.T) {
 func TestUploadHandler_Upload_NoPhotoPrismClient(t *testing.T) {
 	cfg := testConfig()
 	sm := middleware.NewSessionManager("test-secret", nil)
-	handler := NewUploadHandler(cfg, sm)
+	handler := NewUploadHandler(cfg, sm, nil)
 
 	// Create valid multipart request but without PhotoPrism client.
 	body := &bytes.Buffer{}
@@ -208,7 +208,7 @@ func TestUploadHandler_Upload_MultipleFiles(t *testing.T) {
 	cfg := testConfig()
 	cfg.PhotoPrism.URL = server.URL
 	sm := middleware.NewSessionManager("test-secret", nil)
-	handler := NewUploadHandler(cfg, sm)
+	handler := NewUploadHandler(cfg, sm, nil)
 
 	// Create multipart request with multiple files.
 	body := &bytes.Buffer{}
@@ -252,7 +252,7 @@ func TestUploadHandler_Upload_EmptyAlbumUID(t *testing.T) {
 
 	cfg := testConfig()
 	sm := middleware.NewSessionManager("test-secret", nil)
-	handler := NewUploadHandler(cfg, sm)
+	handler := NewUploadHandler(cfg, sm, nil)
 
 	body := &bytes.Buffer{}
 	writer := multipart.NewWriter(body)
@@ -278,7 +278,7 @@ func TestNewUploadHandler(t *testing.T) {
 	cfg := testConfig()
 	sm := middleware.NewSessionManager("test-secret", nil)
 
-	handler := NewUploadHandler(cfg, sm)
+	handler := NewUploadHandler(cfg, sm, nil)
 
 	if handler == nil {
 		t.Fatal("expected non-nil handler")

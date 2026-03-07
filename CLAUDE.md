@@ -407,6 +407,9 @@ Session cookies use `HttpOnly`, `SameSite=Strict`, and auto-detect `Secure` flag
 - `GET /api/v1/sort/{jobId}/events` - SSE stream for job progress
 - `DELETE /api/v1/sort/{jobId}` - Cancel sort job
 - `POST /api/v1/upload` - Upload photos (multipart)
+- `POST /api/v1/upload/job` - Start background upload job (multipart with config)
+- `GET /api/v1/upload/{jobId}/events` - SSE stream for upload job progress
+- `DELETE /api/v1/upload/{jobId}` - Cancel upload job
 - `GET /api/v1/config` - Get available providers
 - `GET /api/v1/stats` - Get processing statistics
 - `GET /api/v1/subjects` - List subjects (people)
@@ -520,6 +523,7 @@ web/src/
 │   │   └── PhotoActionOverlay.tsx, PhotoInfoOverlay.tsx
 │   ├── Slideshow/             # Photo slideshow (hooks/useSlideshow.ts, useSlideshowPhotos.ts)
 │   ├── SuggestAlbums/         # Album completion
+│   ├── Upload/                # Photo upload (hooks/useUploadJob.ts, DropZone.tsx)
 │   └── Help/                  # Help screenshot assets (cs/, en/)
 └── types/
     ├── events.ts              # Typed SSE events (discriminated unions)
@@ -536,7 +540,7 @@ web/src/
 ```
 internal/web/handlers/
 ├── auth.go, albums.go, labels.go, photos.go   # Core CRUD
-├── sort.go, upload.go, process.go              # Jobs
+├── sort.go, upload.go, upload_job.go, process.go # Jobs
 ├── config.go, stats.go, sse.go, common.go      # Utilities
 ├── subjects.go                                 # Subject CRUD
 ├── faces.go                                    # FacesHandler struct

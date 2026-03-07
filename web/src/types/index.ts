@@ -476,4 +476,14 @@ export interface PhotoBookMembership {
 
 export type PageFormat = '4_landscape' | '2l_1p' | '1p_2l' | '2_portrait' | '1_fullscreen';
 
+// Upload job types
+export interface UploadJobResult {
+  uploaded: number;
+  new_photo_uids: string[];
+  existing_count: number;
+  labels_applied: number;
+  albums_applied: number;
+  book_added: number;
+}
+
 export { pageFormatSlotCount, pageFormatLabelKey } from '../utils/pageFormats';

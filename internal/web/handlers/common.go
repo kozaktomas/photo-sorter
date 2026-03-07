@@ -38,7 +38,9 @@ func respondError(w http.ResponseWriter, status int, message string) {
 // This allows the API to work both with and without user sessions.
 func getPhotoPrismClient(cfg *config.Config, session *middleware.Session) (*photoprism.PhotoPrism, error) {
 	if session != nil && session.Token != "" {
-		pp, err := photoprism.NewPhotoPrismFromToken(cfg.PhotoPrism.URL, session.Token, session.DownloadToken)
+		pp, err := photoprism.NewPhotoPrismFromToken(
+			cfg.PhotoPrism.URL, session.Token, session.DownloadToken, session.UserUID,
+		)
 		if err != nil {
 			return nil, fmt.Errorf("creating PhotoPrism client from token: %w", err)
 		}

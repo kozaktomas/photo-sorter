@@ -19,11 +19,11 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 	labelsHandler := handlers.NewLabelsHandler(s.config, sessionManager)
 	photosHandler := handlers.NewPhotosHandler(s.config, sessionManager)
 	sortHandler := handlers.NewSortHandler(s.config, sessionManager, s.jobManager)
-	uploadHandler := handlers.NewUploadHandler(s.config, sessionManager)
 	configHandler := handlers.NewConfigHandler(s.config)
 	facesHandler := handlers.NewFacesHandler(s.config, sessionManager)
 	statsHandler := handlers.NewStatsHandler(s.config, sessionManager)
 	processHandler := handlers.NewProcessHandler(s.config, sessionManager, facesHandler, photosHandler, statsHandler)
+	uploadHandler := handlers.NewUploadHandler(s.config, sessionManager, processHandler)
 	booksHandler := handlers.NewBooksHandler(s.config, sessionManager)
 
 	// Health check (no auth required).
@@ -82,6 +82,9 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 
 			// Upload.
 			r.Post("/upload", uploadHandler.Upload)
+			r.Post("/upload/job", uploadHandler.StartJob)
+			r.Get("/upload/{jobId}/events", uploadHandler.GetJobEvents)
+			r.Delete("/upload/{jobId}", uploadHandler.CancelJob)
 
 			// Config.
 			r.Get("/config", configHandler.Get)

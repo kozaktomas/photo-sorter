@@ -26,6 +26,7 @@ type Session struct {
 	ID            string    `json:"id"`
 	Token         string    `json:"token"`          // PhotoPrism access token
 	DownloadToken string    `json:"download_token"` // PhotoPrism download token
+	UserUID       string    `json:"user_uid"`       // PhotoPrism user UID (for uploads)
 	CreatedAt     time.Time `json:"created_at"`
 	ExpiresAt     time.Time `json:"expires_at"`
 }
@@ -109,7 +110,7 @@ func (sm *SessionManager) Stop() {
 }
 
 // CreateSession creates a new session for a user.
-func (sm *SessionManager) CreateSession(token, downloadToken string) (*Session, error) {
+func (sm *SessionManager) CreateSession(token, downloadToken, userUID string) (*Session, error) {
 	// Generate session ID.
 	idBytes := make([]byte, 32)
 	if _, err := rand.Read(idBytes); err != nil {
@@ -122,6 +123,7 @@ func (sm *SessionManager) CreateSession(token, downloadToken string) (*Session, 
 		ID:            sessionID,
 		Token:         token,
 		DownloadToken: downloadToken,
+		UserUID:       userUID,
 		CreatedAt:     now,
 		ExpiresAt:     now.Add(sessionDuration),
 	}

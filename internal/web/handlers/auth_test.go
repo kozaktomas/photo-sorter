@@ -142,7 +142,7 @@ func TestAuthHandler_Logout_Success(t *testing.T) {
 	handler := NewAuthHandler(cfg, sm)
 
 	// Create a session first.
-	session, _ := sm.CreateSession("test-token", "test-download-token")
+	session, _ := sm.CreateSession("test-token", "test-download-token", "test-user-uid")
 
 	req := httptest.NewRequest("POST", "/api/v1/auth/logout", nil)
 	// Add session cookie.
@@ -196,7 +196,7 @@ func TestAuthHandler_Status_Authenticated(t *testing.T) {
 	handler := NewAuthHandler(cfg, sm)
 
 	// Create a session.
-	session, _ := sm.CreateSession("test-token", "test-download-token")
+	session, _ := sm.CreateSession("test-token", "test-download-token", "test-user-uid")
 
 	req := httptest.NewRequest("GET", "/api/v1/auth/status", nil)
 	// Add session cookie.

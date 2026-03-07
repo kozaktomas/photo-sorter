@@ -50,4 +50,10 @@ const (
 const (
 	// MaxUploadSize is the maximum file upload size in bytes (100MB).
 	MaxUploadSize = 100 << 20
+
+	// MaxUploadJobSize is the maximum total upload size for batch upload jobs (500MB).
+	MaxUploadJobSize = 500 << 20
+
+	// UploadProcessConcurrency is the number of parallel workers for upload processing.
+	UploadProcessConcurrency = 8
 )

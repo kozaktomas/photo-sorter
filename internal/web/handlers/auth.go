@@ -76,7 +76,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Create session.
-	session, err := h.sessionManager.CreateSession(client.token, client.downloadToken)
+	session, err := h.sessionManager.CreateSession(client.token, client.downloadToken, client.userUID)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to create session")
 		return
@@ -132,6 +132,7 @@ func (h *AuthHandler) Status(w http.ResponseWriter, r *http.Request) {
 type authClient struct {
 	token         string
 	downloadToken string
+	userUID       string
 }
 
 func (c *authClient) auth(url, username, password string) error {
@@ -167,6 +168,10 @@ func (c *authClient) auth(url, username, password string) error {
 		return fmt.Errorf("authentication failed with status %d", resp.StatusCode)
 	}
 
+	return c.parseAuthResponse(body)
+}
+
+func (c *authClient) parseAuthResponse(body []byte) error {
 	var raw map[string]json.RawMessage
 	if err := json.Unmarshal(body, &raw); err != nil {
 		return fmt.Errorf("could not unmarshal response: %w", err)
@@ -184,8 +189,18 @@ func (c *authClient) auth(url, username, password string) error {
 		return fmt.Errorf("could not read config: %w", err)
 	}
 
+	var user struct {
+		UID string `json:"uid"`
+	}
+	if rawUser, ok := raw["user"]; ok {
+		if err := json.Unmarshal(rawUser, &user); err != nil {
+			return fmt.Errorf("could not read user: %w", err)
+		}
+	}
+
 	c.token = token
 	c.downloadToken = cfg.DownloadToken
+	c.userUID = user.UID
 
 	return nil
 }

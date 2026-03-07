@@ -22,7 +22,7 @@ func TestNewSessionManager(t *testing.T) {
 func TestSessionManager_CreateSession(t *testing.T) {
 	sm := NewSessionManager("test-secret", nil)
 
-	session, err := sm.CreateSession("token123", "download456")
+	session, err := sm.CreateSession("token123", "download456", "user123")
 	if err != nil {
 		t.Fatalf("CreateSession() error = %v", err)
 	}
@@ -44,7 +44,7 @@ func TestSessionManager_CreateSession(t *testing.T) {
 func TestSessionManager_GetSession(t *testing.T) {
 	sm := NewSessionManager("test-secret", nil)
 
-	session, _ := sm.CreateSession("token123", "download456")
+	session, _ := sm.CreateSession("token123", "download456", "user123")
 
 	// Get existing session.
 	retrieved := sm.GetSession(session.ID)
@@ -66,7 +66,7 @@ func TestSessionManager_GetSession(t *testing.T) {
 func TestSessionManager_DeleteSession(t *testing.T) {
 	sm := NewSessionManager("test-secret", nil)
 
-	session, _ := sm.CreateSession("token123", "download456")
+	session, _ := sm.CreateSession("token123", "download456", "user123")
 
 	// Delete the session.
 	sm.DeleteSession(session.ID)
@@ -80,7 +80,7 @@ func TestSessionManager_DeleteSession(t *testing.T) {
 
 func TestSessionManager_SetAndGetSessionCookie(t *testing.T) {
 	sm := NewSessionManager("test-secret", nil)
-	session, _ := sm.CreateSession("token123", "download456")
+	session, _ := sm.CreateSession("token123", "download456", "user123")
 
 	// Create a test response to capture the cookie.
 	w := httptest.NewRecorder()
@@ -138,7 +138,7 @@ func TestSessionManager_InvalidCookie(t *testing.T) {
 
 func TestSessionManager_BearerAuth(t *testing.T) {
 	sm := NewSessionManager("test-secret", nil)
-	session, _ := sm.CreateSession("token123", "download456")
+	session, _ := sm.CreateSession("token123", "download456", "user123")
 
 	// Request with Bearer token.
 	req := httptest.NewRequest("GET", "/", nil)
@@ -156,7 +156,7 @@ func TestSessionManager_BearerAuth(t *testing.T) {
 
 func TestRequireAuth(t *testing.T) {
 	sm := NewSessionManager("test-secret", nil)
-	session, _ := sm.CreateSession("token123", "download456")
+	session, _ := sm.CreateSession("token123", "download456", "user123")
 
 	handlerCalled := false
 	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

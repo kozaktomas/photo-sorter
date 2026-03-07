@@ -22,7 +22,9 @@ func WithPhotoPrismClient(cfg *config.Config) func(http.Handler) http.Handler {
 				return
 			}
 
-			pp, err := photoprism.NewPhotoPrismFromToken(cfg.PhotoPrism.URL, session.Token, session.DownloadToken)
+			pp, err := photoprism.NewPhotoPrismFromToken(
+				cfg.PhotoPrism.URL, session.Token, session.DownloadToken, session.UserUID,
+			)
 			if err != nil {
 				http.Error(w, `{"error": "failed to connect to PhotoPrism"}`, http.StatusInternalServerError)
 				return

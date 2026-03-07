@@ -22,6 +22,7 @@ import { SlideshowPage } from './pages/Slideshow/index';
 import { SubjectDetailPage } from './pages/SubjectDetail';
 import { BooksPage } from './pages/Books/index';
 import { BookEditorPage } from './pages/BookEditor/index';
+import { UploadPage } from './pages/Upload/index';
 import { LoginPage } from './pages/Login';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 
@@ -254,6 +255,16 @@ function AppRoutes() {
           <ProtectedRoute>
             <Layout>
               <BookEditorPage />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/upload"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <UploadPage />
             </Layout>
           </ProtectedRoute>
         }
