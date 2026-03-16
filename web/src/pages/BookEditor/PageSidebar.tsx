@@ -100,7 +100,32 @@ export function PageSidebar({ bookId, pages, chapters, sections, selectedId, onS
   const { t } = useTranslation('pages');
   const [newFormat, setNewFormat] = useState<PageFormat>('4_landscape');
   const [newSectionId, setNewSectionId] = useState('');
-  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+  const storageKey = `page-sidebar-collapsed:${bookId}`;
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>(() => {
+    try {
+      const stored = localStorage.getItem(storageKey);
+      return stored ? JSON.parse(stored) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  // Persist collapse state to localStorage
+  useEffect(() => {
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(collapsedSections));
+    } catch { /* quota exceeded or private browsing */ }
+  }, [collapsedSections, storageKey]);
+
+  // Reset state when switching books
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(storageKey);
+      setCollapsedSections(stored ? JSON.parse(stored) : {});
+    } catch {
+      setCollapsedSections({});
+    }
+  }, [storageKey]);
 
   // Build chapter lookup for section display titles
   const chapterMap = useMemo(() => {

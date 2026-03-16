@@ -2,7 +2,7 @@
 
 - [x] Convert Photo Detail and Similar Photos buttons to proper `<a>` links for native new-tab behavior
 - [x] Show chapter name in section headers with `|` delimiter (e.g. "Chapter | Section Title")
-- [ ] Persist section collapse state in PageSidebar to localStorage
+- [x] Persist section collapse state in PageSidebar to localStorage
 - [ ] Fix E/D keyboard shortcuts on Pages tab to navigate between sections
 - [ ] Show section photo placement stats in SectionSidebar (placed/total) ([spec](docs/specs/section-placement-stats.md))
 - [ ] Add quick page creation (+) button with format picker next to section names in PageSidebar ([spec](docs/specs/quick-add-page.md))
