@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import { Copy, ExternalLink, Search, Check, Loader2, X, Eye, Star } from 'lucide-react';
 import { getThumbnailUrl } from '../api/client';
 import { copyToClipboard } from '../utils/clipboard';
@@ -49,7 +49,6 @@ export function PhotoCard({
   badge,
   aspectRatio = 'square',
 }: PhotoCardProps) {
-  const navigate = useNavigate();
   const [isApproving, setIsApproving] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -65,24 +64,6 @@ export function PhotoCard({
     if (photoprismDomain) {
       const url = `${photoprismDomain}/library/browse?view=cards&order=oldest&q=uid:${photoUid}`;
       window.open(url, '_blank');
-    }
-  };
-
-  const handleOpenDetail = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (e.metaKey || e.ctrlKey) {
-      window.open(`/photos/${photoUid}`, '_blank');
-    } else {
-      void navigate(`/photos/${photoUid}`);
-    }
-  };
-
-  const handleFindSimilar = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (e.metaKey || e.ctrlKey) {
-      window.open(`/similar?photo=${photoUid}`, '_blank');
-    } else {
-      void navigate(`/similar?photo=${photoUid}`);
     }
   };
 
@@ -198,24 +179,26 @@ export function PhotoCard({
           {/* Action buttons - always visible on hover */}
           <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
             {/* Detail page */}
-            <button
-              onClick={handleOpenDetail}
+            <Link
+              to={`/photos/${photoUid}`}
+              onClick={e => e.stopPropagation()}
               className="p-1.5 bg-black/60 rounded text-white hover:bg-black/80 transition-colors"
               title="View details"
               aria-label="View details"
             >
               <Eye className="h-3 w-3" />
-            </button>
+            </Link>
 
             {/* Find similar */}
-            <button
-              onClick={handleFindSimilar}
+            <Link
+              to={`/similar?photo=${photoUid}`}
+              onClick={e => e.stopPropagation()}
               className="p-1.5 bg-black/60 rounded text-white hover:bg-black/80 transition-colors"
               title="Find similar"
               aria-label="Find similar"
             >
               <Search className="h-3 w-3" />
-            </button>
+            </Link>
 
             {/* Copy ID */}
             <button
@@ -308,16 +291,6 @@ export function PhotoCardLink({
     }
   };
 
-  const handleFindSimilar = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.metaKey || e.ctrlKey) {
-      window.open(`/similar?photo=${photoUid}`, '_blank');
-    } else {
-      window.location.href = `/similar?photo=${photoUid}`;
-    }
-  };
-
   return (
     <Link
       to={`/photos/${photoUid}`}
@@ -339,14 +312,15 @@ export function PhotoCardLink({
       <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/80 to-transparent p-2 opacity-0 group-hover:opacity-100 transition-opacity">
         <div className="flex items-center justify-end gap-1">
           {/* Find similar */}
-          <button
-            onClick={handleFindSimilar}
+          <a
+            href={`/similar?photo=${photoUid}`}
+            onClick={e => e.stopPropagation()}
             className="p-1.5 bg-black/60 rounded text-white hover:bg-black/80 transition-colors"
             title="Find similar"
             aria-label="Find similar"
           >
             <Search className="h-3 w-3" />
-          </button>
+          </a>
 
           {/* Copy ID */}
           <button
