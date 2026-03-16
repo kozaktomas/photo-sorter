@@ -807,6 +807,7 @@ export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRe
         <PageSidebar
           bookId={book.id}
           pages={book.pages}
+          chapters={book.chapters}
           sections={book.sections}
           selectedId={selectedId}
           onSelect={setSelectedId}
@@ -830,6 +831,7 @@ export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRe
         <PageSidebar
           bookId={book.id}
           pages={book.pages}
+          chapters={book.chapters}
           sections={book.sections}
           selectedId={selectedId}
           onSelect={setSelectedId}

@@ -1,7 +1,7 @@
 # Photo Book Editor Improvements
 
 - [x] Convert Photo Detail and Similar Photos buttons to proper `<a>` links for native new-tab behavior
-- [ ] Show chapter name in section headers with `|` delimiter (e.g. "Chapter | Section Title")
+- [x] Show chapter name in section headers with `|` delimiter (e.g. "Chapter | Section Title")
 - [ ] Persist section collapse state in PageSidebar to localStorage
 - [ ] Fix E/D keyboard shortcuts on Pages tab to navigate between sections
 - [ ] Show section photo placement stats in SectionSidebar (placed/total) ([spec](docs/specs/section-placement-stats.md))

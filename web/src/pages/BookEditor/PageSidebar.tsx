@@ -9,12 +9,13 @@ import {
 import { useDndContext } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { createPage, deletePage } from '../../api/client';
-import type { BookPage, BookSection, PageFormat } from '../../types';
+import type { BookChapter, BookPage, BookSection, PageFormat } from '../../types';
 import { pageFormatLabelKey, pageFormatSlotCount } from '../../types';
 
 interface Props {
   bookId: string;
   pages: BookPage[];
+  chapters: BookChapter[];
   sections: BookSection[];
   selectedId: string | null;
   onSelect: (id: string) => void;
@@ -95,11 +96,23 @@ interface SectionGroup {
   globalIndices: number[];
 }
 
-export function PageSidebar({ bookId, pages, sections, selectedId, onSelect, onRefresh, isPhotoDragActive }: Props) {
+export function PageSidebar({ bookId, pages, chapters, sections, selectedId, onSelect, onRefresh, isPhotoDragActive }: Props) {
   const { t } = useTranslation('pages');
   const [newFormat, setNewFormat] = useState<PageFormat>('4_landscape');
   const [newSectionId, setNewSectionId] = useState('');
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+
+  // Build chapter lookup for section display titles
+  const chapterMap = useMemo(() => {
+    const map: Record<string, string> = {};
+    chapters.forEach(ch => { map[ch.id] = ch.title; });
+    return map;
+  }, [chapters]);
+
+  const sectionDisplayTitle = (section: BookSection) => {
+    const chapterTitle = section.chapter_id ? chapterMap[section.chapter_id] : undefined;
+    return chapterTitle ? `${chapterTitle} | ${section.title}` : section.title;
+  };
 
   // Compute global page number map and section groups
   // Pages are numbered sequentially (1..n) based on visual display order:
@@ -184,7 +197,7 @@ export function PageSidebar({ bookId, pages, sections, selectedId, onSelect, onR
                 : <ChevronDown className="h-3.5 w-3.5 text-slate-500 shrink-0" />
               }
               <span className="text-xs font-medium text-rose-400 truncate flex-1">
-                {group.section.title}
+                {sectionDisplayTitle(group.section)}
               </span>
               <span className="text-xs text-slate-500 shrink-0">
                 {t('books.editor.sectionPageCount', { count: group.pages.length })}
@@ -232,7 +245,7 @@ export function PageSidebar({ bookId, pages, sections, selectedId, onSelect, onR
         >
           <option value="" disabled>{t('books.editor.selectSection')}</option>
           {sections.map(s => (
-            <option key={s.id} value={s.id}>{s.title}</option>
+            <option key={s.id} value={s.id}>{sectionDisplayTitle(s)}</option>
           ))}
         </select>
         <button

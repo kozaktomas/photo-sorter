@@ -149,12 +149,17 @@ export function PreviewTab({ book, sectionPhotos, loadSectionPhotos, initialPage
     return map;
   }, [sectionPhotos]);
 
-  // Group pages by section for display
+  // Group pages by section for display (with chapter prefix)
   const sectionMap = useMemo(() => {
+    const chapterMap: Record<string, string> = {};
+    book.chapters.forEach(ch => { chapterMap[ch.id] = ch.title; });
     const map: Record<string, string> = {};
-    book.sections.forEach(s => { map[s.id] = s.title; });
+    book.sections.forEach(s => {
+      const chapterTitle = s.chapter_id ? chapterMap[s.chapter_id] : undefined;
+      map[s.id] = chapterTitle ? `${chapterTitle} | ${s.title}` : s.title;
+    });
     return map;
-  }, [book.sections]);
+  }, [book.sections, book.chapters]);
 
   // Order pages section-by-section for consistent numbering (1..n)
   const orderedPages = useMemo(() => {
