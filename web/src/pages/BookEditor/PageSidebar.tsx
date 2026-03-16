@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { GripVertical, Plus, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
 import {
@@ -90,6 +90,82 @@ function SortablePageItem({ page, globalIndex, isSelected, onSelect, onDelete, i
   );
 }
 
+const PAGE_FORMATS: PageFormat[] = ['4_landscape', '2l_1p', '1p_2l', '2_portrait', '1_fullscreen'];
+const FORMAT_LABEL_KEYS: Record<PageFormat, string> = {
+  '4_landscape': 'books.editor.format4Landscape',
+  '2l_1p': 'books.editor.format2l1p',
+  '1p_2l': 'books.editor.format1p2l',
+  '2_portrait': 'books.editor.format2Portrait',
+  '1_fullscreen': 'books.editor.format1Fullscreen',
+};
+
+function QuickAddButton({ bookId, sectionId, openSectionId, onToggle, onCreated }: {
+  bookId: string;
+  sectionId: string;
+  openSectionId: string | null;
+  onToggle: (id: string | null) => void;
+  onCreated: (pageId: string) => void;
+}) {
+  const { t } = useTranslation('pages');
+  const popoverRef = useRef<HTMLDivElement>(null);
+  const isOpen = openSectionId === sectionId;
+
+  // Close on outside click
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (popoverRef.current && !popoverRef.current.contains(e.target as Node)) {
+        onToggle(null);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [isOpen, onToggle]);
+
+  // Close on Escape
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onToggle(null);
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [isOpen, onToggle]);
+
+  const handleSelect = async (format: PageFormat) => {
+    onToggle(null);
+    try {
+      const page = await createPage(bookId, format, sectionId);
+      onCreated(page.id);
+    } catch { /* silent */ }
+  };
+
+  return (
+    <div className="relative" ref={popoverRef}>
+      <button
+        onClick={(e) => { e.stopPropagation(); onToggle(isOpen ? null : sectionId); }}
+        className="text-slate-500 hover:text-rose-400 transition-colors shrink-0"
+        title={t('books.editor.addPage')}
+      >
+        <Plus className="h-4 w-4" />
+      </button>
+      {isOpen && (
+        <div className="absolute left-0 top-full mt-1 z-50 bg-slate-800 border border-slate-600 rounded-md shadow-lg py-1 min-w-[180px]">
+          {PAGE_FORMATS.map(format => (
+            <button
+              key={format}
+              onClick={(e) => { e.stopPropagation(); void handleSelect(format); }}
+              className="w-full text-left px-3 py-1.5 text-sm text-slate-300 hover:bg-slate-700 hover:text-white transition-colors"
+            >
+              {t(FORMAT_LABEL_KEYS[format])}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface SectionGroup {
   section: BookSection;
   pages: BookPage[];
@@ -100,11 +176,17 @@ export function PageSidebar({ bookId, pages, chapters, sections, selectedId, onS
   const { t } = useTranslation('pages');
   const [newFormat, setNewFormat] = useState<PageFormat>('4_landscape');
   const [newSectionId, setNewSectionId] = useState('');
+  const [openQuickAdd, setOpenQuickAdd] = useState<string | null>(null);
+  const handleQuickAddToggle = useCallback((id: string | null) => setOpenQuickAdd(id), []);
+  const handleQuickAddCreated = useCallback((pageId: string) => {
+    onRefresh();
+    onSelect(pageId);
+  }, [onRefresh, onSelect]);
   const storageKey = `page-sidebar-collapsed:${bookId}`;
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>(() => {
     try {
       const stored = localStorage.getItem(storageKey);
-      return stored ? JSON.parse(stored) : {};
+      return stored ? JSON.parse(stored) as Record<string, boolean> : {};
     } catch {
       return {};
     }
@@ -121,7 +203,7 @@ export function PageSidebar({ bookId, pages, chapters, sections, selectedId, onS
   useEffect(() => {
     try {
       const stored = localStorage.getItem(storageKey);
-      setCollapsedSections(stored ? JSON.parse(stored) : {});
+      setCollapsedSections(stored ? JSON.parse(stored) as Record<string, boolean> : {});
     } catch {
       setCollapsedSections({});
     }
@@ -213,9 +295,9 @@ export function PageSidebar({ bookId, pages, chapters, sections, selectedId, onS
         return (
           <div key={sectionId}>
             {/* Section header */}
-            <button
+            <div
               onClick={() => toggleSection(sectionId)}
-              className="w-full flex items-center gap-1.5 px-1 py-1.5 text-left group"
+              className="w-full flex items-center gap-1.5 px-1 py-1.5 text-left group cursor-pointer"
             >
               {isCollapsed
                 ? <ChevronRight className="h-3.5 w-3.5 text-slate-500 shrink-0" />
@@ -224,10 +306,19 @@ export function PageSidebar({ bookId, pages, chapters, sections, selectedId, onS
               <span className="text-xs font-medium text-rose-400 truncate flex-1">
                 {sectionDisplayTitle(group.section)}
               </span>
+              {sectionId !== '__unassigned__' && (
+                <QuickAddButton
+                  bookId={bookId}
+                  sectionId={sectionId}
+                  openSectionId={openQuickAdd}
+                  onToggle={handleQuickAddToggle}
+                  onCreated={handleQuickAddCreated}
+                />
+              )}
               <span className="text-xs text-slate-500 shrink-0">
                 {t('books.editor.sectionPageCount', { count: group.pages.length })}
               </span>
-            </button>
+            </div>
 
             {/* Pages (collapsible) */}
             {!isCollapsed && (
