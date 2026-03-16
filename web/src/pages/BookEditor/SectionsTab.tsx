@@ -49,6 +49,7 @@ export function SectionsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh 
           bookId={book.id}
           chapters={book.chapters || []}
           sections={book.sections}
+          pages={book.pages || []}
           selectedId={selectedId}
           onSelect={setSelectedId}
           onRefresh={onRefresh}

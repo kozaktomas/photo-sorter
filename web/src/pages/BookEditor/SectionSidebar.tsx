@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { GripVertical, Plus, Trash2, Image, Pencil, Check, X, ChevronDown, ChevronRight, BookOpen } from 'lucide-react';
 import {
@@ -23,18 +23,19 @@ import {
   createSection, deleteSection, reorderSections, updateSection,
   createChapter, updateChapter, deleteChapter, reorderChapters,
 } from '../../api/client';
-import type { BookSection, BookChapter } from '../../types';
+import type { BookSection, BookChapter, BookPage } from '../../types';
 
 interface Props {
   bookId: string;
   chapters: BookChapter[];
   sections: BookSection[];
+  pages: BookPage[];
   selectedId: string | null;
   onSelect: (id: string) => void;
   onRefresh: () => void;
 }
 
-function SortableItem({ section, isSelected, onSelect, onDelete, onRename, onMoveToChapter, chapters }: {
+function SortableItem({ section, isSelected, onSelect, onDelete, onRename, onMoveToChapter, chapters, placedCount }: {
   section: BookSection;
   isSelected: boolean;
   onSelect: () => void;
@@ -42,6 +43,7 @@ function SortableItem({ section, isSelected, onSelect, onDelete, onRename, onMov
   onRename: (title: string) => void;
   onMoveToChapter: (chapterId: string) => void;
   chapters: BookChapter[];
+  placedCount: number;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: `section-${section.id}` });
   const style = { transform: CSS.Transform.toString(transform), transition };
@@ -113,6 +115,11 @@ function SortableItem({ section, isSelected, onSelect, onDelete, onRename, onMov
         <div className="text-xs text-slate-500 flex items-center gap-1">
           <Image className="h-3 w-3" />
           {section.photo_count}
+          {section.photo_count > 0 && (
+            <span className={placedCount >= section.photo_count ? 'text-emerald-500' : ''}>
+              ({placedCount}/{section.photo_count})
+            </span>
+          )}
           {chapters.length > 0 && (
             <select
               value={section.chapter_id || ''}
@@ -250,8 +257,24 @@ function AddInput({ placeholder, onAdd }: { placeholder: string; onAdd: (title: 
   );
 }
 
-export function SectionSidebar({ bookId, chapters, sections, selectedId, onSelect, onRefresh }: Props) {
+export function SectionSidebar({ bookId, chapters, sections, pages, selectedId, onSelect, onRefresh }: Props) {
   const { t } = useTranslation('pages');
+
+  // Compute placed photo counts per section
+  const placedBySection = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const section of sections) {
+      const sectionPages = pages.filter(p => p.section_id === section.id);
+      const uniqueUids = new Set<string>();
+      for (const page of sectionPages) {
+        for (const slot of page.slots) {
+          if (slot.photo_uid) uniqueUids.add(slot.photo_uid);
+        }
+      }
+      map.set(section.id, uniqueUids.size);
+    }
+    return map;
+  }, [sections, pages]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -411,6 +434,7 @@ export function SectionSidebar({ bookId, chapters, sections, selectedId, onSelec
           onRename={(title) => handleRenameSection(section.id, title)}
           onMoveToChapter={(chapterId) => handleMoveToChapter(section.id, chapterId)}
           chapters={chapters}
+          placedCount={placedBySection.get(section.id) || 0}
         />
       ))}
     </SortableContext>

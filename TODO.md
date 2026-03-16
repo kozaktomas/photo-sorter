@@ -4,7 +4,7 @@
 - [x] Show chapter name in section headers with `|` delimiter (e.g. "Chapter | Section Title")
 - [x] Persist section collapse state in PageSidebar to localStorage
 - [x] Fix E/D keyboard shortcuts on Pages tab to navigate between sections
-- [ ] Show section photo placement stats in SectionSidebar (placed/total) ([spec](docs/specs/section-placement-stats.md))
+- [x] Show section photo placement stats in SectionSidebar (placed/total) ([spec](docs/specs/section-placement-stats.md))
 - [ ] Add quick page creation (+) button with format picker next to section names in PageSidebar ([spec](docs/specs/quick-add-page.md))
 - [ ] Replace "Page N" labels with thumbnail previews in PageSidebar ([spec](docs/specs/page-thumbnail-previews.md))
 - [ ] Add cross-section duplicate finder tab to book editor ([spec](docs/specs/cross-section-duplicates.md))
