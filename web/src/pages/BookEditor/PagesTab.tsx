@@ -2,11 +2,12 @@ import { useState, useEffect, useCallback, useMemo, useRef, type Dispatch, type 
 import { useTranslation } from 'react-i18next';
 import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, pointerWithin, useSensor, useSensors, type DragEndEvent, type DragStartEvent, type Modifier } from '@dnd-kit/core';
 import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
-import { Type, Heading1, Heading2, Bold, Italic, List, ListOrdered } from 'lucide-react';
+import { Type, Heading1, Heading2, Bold, Italic, List, ListOrdered, LayoutGrid } from 'lucide-react';
 import { assignSlot, assignTextSlot, clearSlot, swapSlots, updatePage, updateSlotCrop, reorderPages, getThumbnailUrl } from '../../api/client';
 import { MarkdownContent } from '../../utils/markdown';
 import { useBookKeyboardNav } from '../../hooks/useBookKeyboardNav';
 import { PageSidebar } from './PageSidebar';
+import { PageMinimap } from './PageMinimap';
 import { PageTemplate } from './PageTemplate';
 import { UnassignedPool } from './UnassignedPool';
 import { PhotoDescriptionDialog } from './PhotoDescriptionDialog';
@@ -438,12 +439,22 @@ export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRe
   const [editingPhoto, setEditingPhoto] = useState<{ sectionId: string; photoUid: string } | null>(null);
   const [editingTextSlot, setEditingTextSlot] = useState<{ slotIndex: number; text: string } | null>(null);
   const [editingCrop, setEditingCrop] = useState<{ slotIndex: number; photoUid: string; cropX: number; cropY: number; cropScale: number; format: PageFormat; splitPosition?: number | null } | null>(null);
+  const [minimapOpen, setMinimapOpen] = useState(() => {
+    try { return localStorage.getItem(`book-minimap-${book.id}`) === 'true'; } catch { return false; }
+  });
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
   const selectedPage = book.pages.find(p => p.id === selectedId);
+
+  // Persist minimap state
+  useEffect(() => {
+    try { localStorage.setItem(`book-minimap-${book.id}`, String(minimapOpen)); } catch { /* silent */ }
+  }, [minimapOpen, book.id]);
+
+  const toggleMinimap = useCallback(() => setMinimapOpen(v => !v), []);
 
   // Keyboard navigation: W/S = prev/next page, E/D = prev/next section
   useBookKeyboardNav({
@@ -824,6 +835,20 @@ export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRe
 
   return (
     <DndContext sensors={sensors} collisionDetection={pointerWithin} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
+      <div className="mb-2 flex items-center gap-2">
+        <button
+          onClick={toggleMinimap}
+          className={`p-1.5 rounded transition-colors ${minimapOpen ? 'bg-slate-700 text-white' : 'text-slate-400 hover:text-white hover:bg-slate-800'}`}
+          title={t('books.editor.minimapToggle')}
+        >
+          <LayoutGrid className="h-4 w-4" />
+        </button>
+      </div>
+      {minimapOpen && book.pages.length > 0 && (
+        <div className="mb-3">
+          <PageMinimap book={book} selectedId={selectedId} onSelect={setSelectedId} />
+        </div>
+      )}
       <div className="flex gap-4">
         <PageSidebar
           bookId={book.id}

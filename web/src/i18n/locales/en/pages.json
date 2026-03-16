@@ -460,7 +460,8 @@
       "duplicatesEmpty": "No duplicate photos found across sections",
       "duplicatesCount_one": "Found {{count}} photo in multiple sections",
       "duplicatesCount_other": "Found {{count}} photos in multiple sections",
-      "duplicatesRemove": "Remove from section"
+      "duplicatesRemove": "Remove from section",
+      "minimapToggle": "Page overview"
     }
   },
   "suggestAlbums": {

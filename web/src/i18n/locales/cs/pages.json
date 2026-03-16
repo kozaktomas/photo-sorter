@@ -449,7 +449,8 @@
       "duplicatesCount_one": "Nalezena {{count}} fotka ve více sekcích",
       "duplicatesCount_few": "Nalezeny {{count}} fotky ve více sekcích",
       "duplicatesCount_other": "Nalezeno {{count}} fotek ve více sekcích",
-      "duplicatesRemove": "Odebrat ze sekce"
+      "duplicatesRemove": "Odebrat ze sekce",
+      "minimapToggle": "Přehled stránek"
     }
   },
   "suggestAlbums": {
