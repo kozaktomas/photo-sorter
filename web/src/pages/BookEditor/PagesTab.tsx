@@ -445,17 +445,14 @@ export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRe
 
   const selectedPage = book.pages.find(p => p.id === selectedId);
 
-  // Keyboard navigation: W/S = prev/next page, E/D = prev/next chapter
+  // Keyboard navigation: W/S = prev/next page, E/D = prev/next section
   useBookKeyboardNav({
     items: book.pages,
     selectedId,
     onSelect: setSelectedId,
     getId: page => page.id,
-    getChapterId: page => {
-      const section = book.sections.find(s => s.id === page.section_id);
-      return section?.chapter_id || '';
-    },
-    chapters: book.chapters || [],
+    getChapterId: page => page.section_id || '',
+    chapters: book.sections.map(s => ({ id: s.id })),
     enabled: !editingPhoto && !editingTextSlot && !editingCrop,
   });
 
