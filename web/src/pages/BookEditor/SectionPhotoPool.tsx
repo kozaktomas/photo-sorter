@@ -1,10 +1,58 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus, Trash2, CheckSquare, Square } from 'lucide-react';
+import { useDraggable } from '@dnd-kit/core';
 import { removeSectionPhotos, updateSectionPhoto, getPhoto, addSectionPhotos, getThumbnailUrl } from '../../api/client';
 import { PhotoActionOverlay } from './PhotoActionOverlay';
 import { PhotoBrowserModal } from './PhotoBrowserModal';
 import type { SectionPhoto } from '../../types';
+
+function DraggablePhoto({ photo, sectionId, selected, onToggleSelect, children }: {
+  photo: SectionPhoto;
+  sectionId: string;
+  selected: Set<string>;
+  onToggleSelect: () => void;
+  children: React.ReactNode;
+}) {
+  const isInSelection = selected.has(photo.photo_uid);
+  const { attributes, listeners, setNodeRef, isDragging } = useDraggable({
+    id: `photo-${photo.photo_uid}`,
+    data: {
+      type: 'photo',
+      photoUid: photo.photo_uid,
+      sourceSectionId: sectionId,
+      selectedUids: isInSelection && selected.size > 1 ? Array.from(selected) : [photo.photo_uid],
+    },
+  });
+
+  return (
+    <div className={`bg-slate-800 border border-slate-700 rounded-lg overflow-hidden ${isDragging ? 'opacity-30' : ''}`}>
+      <div
+        ref={setNodeRef}
+        {...attributes}
+        {...listeners}
+        className="group relative cursor-pointer"
+        onClick={onToggleSelect}
+      >
+        <img
+          src={getThumbnailUrl(photo.photo_uid, 'tile_224')}
+          alt=""
+          className="w-full aspect-square object-cover"
+          loading="lazy"
+        />
+        <div className="absolute top-1.5 left-1.5">
+          {selected.has(photo.photo_uid) ? (
+            <CheckSquare className="h-5 w-5 text-rose-400" />
+          ) : (
+            <Square className="h-5 w-5 text-white/50" />
+          )}
+        </div>
+        <PhotoActionOverlay photoUid={photo.photo_uid} />
+      </div>
+      {children}
+    </div>
+  );
+}
 
 interface Props {
   sectionId: string;
@@ -24,6 +72,11 @@ export function SectionPhotoPool({ sectionId, photos, onRefresh, onReloadPhotos 
   const [addByIdValue, setAddByIdValue] = useState('');
   const [addByIdError, setAddByIdError] = useState('');
   const [addByIdLoading, setAddByIdLoading] = useState(false);
+
+  // Clear selection when switching sections
+  useEffect(() => {
+    setSelected(new Set());
+  }, [sectionId]);
 
   const toggleSelect = useCallback((uid: string) => {
     setSelected(prev => {
@@ -182,23 +235,13 @@ export function SectionPhotoPool({ sectionId, photos, onRefresh, onReloadPhotos 
 
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
         {photos.map((photo) => (
-          <div key={photo.photo_uid} className="bg-slate-800 border border-slate-700 rounded-lg overflow-hidden">
-            <div className="group relative cursor-pointer" onClick={() => toggleSelect(photo.photo_uid)}>
-              <img
-                src={getThumbnailUrl(photo.photo_uid, 'tile_224')}
-                alt=""
-                className="w-full aspect-square object-cover"
-                loading="lazy"
-              />
-              <div className="absolute top-1.5 left-1.5">
-                {selected.has(photo.photo_uid) ? (
-                  <CheckSquare className="h-5 w-5 text-rose-400" />
-                ) : (
-                  <Square className="h-5 w-5 text-white/50" />
-                )}
-              </div>
-              <PhotoActionOverlay photoUid={photo.photo_uid} />
-            </div>
+          <DraggablePhoto
+            key={photo.photo_uid}
+            photo={photo}
+            sectionId={sectionId}
+            selected={selected}
+            onToggleSelect={() => toggleSelect(photo.photo_uid)}
+          >
             <div className="p-2 space-y-1">
               {/* Description */}
               {editingDesc === photo.photo_uid ? (
@@ -243,7 +286,7 @@ export function SectionPhotoPool({ sectionId, photos, onRefresh, onReloadPhotos 
                 </div>
               )}
             </div>
-          </div>
+          </DraggablePhoto>
         ))}
       </div>
 

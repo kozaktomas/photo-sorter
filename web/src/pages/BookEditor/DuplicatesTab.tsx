@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X, Loader2 } from 'lucide-react';
 import { getThumbnailUrl, removeSectionPhotos } from '../../api/client';
-import { BookDetail, SectionPhoto } from '../../types';
+import type { BookDetail, SectionPhoto } from '../../types';
 
 interface DuplicatesTabProps {
   book: BookDetail;

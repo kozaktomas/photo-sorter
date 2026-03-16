@@ -9,5 +9,5 @@
 - [x] Replace "Page N" labels with thumbnail previews in PageSidebar ([spec](docs/specs/page-thumbnail-previews.md))
 - [x] Add cross-section duplicate finder tab to book editor ([spec](docs/specs/cross-section-duplicates.md))
 - [x] Add page minimap/overview panel to Pages tab ([spec](docs/specs/page-minimap.md))
-- [ ] Enable drag-and-drop of photos between sections in Sections tab ([spec](docs/specs/drag-photos-between-sections.md))
+- [x] Enable drag-and-drop of photos between sections in Sections tab ([spec](docs/specs/drag-photos-between-sections.md))
 - [ ] Add undo/redo for page slot assignments with Ctrl+Z / Ctrl+Shift+Z ([spec](docs/specs/undo-redo-slots.md))
