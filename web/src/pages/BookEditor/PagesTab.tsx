@@ -6,6 +6,7 @@ import { Type, Heading1, Heading2, Bold, Italic, List, ListOrdered, LayoutGrid }
 import { assignSlot, assignTextSlot, clearSlot, swapSlots, updatePage, updateSlotCrop, reorderPages, getThumbnailUrl } from '../../api/client';
 import { MarkdownContent } from '../../utils/markdown';
 import { useBookKeyboardNav } from '../../hooks/useBookKeyboardNav';
+import { useUndoRedo, type SlotContent, type UndoEntry } from './hooks/useUndoRedo';
 import { PageSidebar } from './PageSidebar';
 import { PageMinimap } from './PageMinimap';
 import { PageTemplate } from './PageTemplate';
@@ -427,6 +428,12 @@ function CropDialog({ photoUid, cropX, cropY, cropScale: initialScale, format, s
   );
 }
 
+function getSlotContent(book: BookDetail, pageId: string, slotIndex: number): SlotContent {
+  const page = book.pages.find(p => p.id === pageId);
+  const slot = page?.slots.find(s => s.slot_index === slotIndex);
+  return { photoUid: slot?.photo_uid || '', textContent: slot?.text_content || '' };
+}
+
 export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRefresh, initialPageId, onPageSelect }: Props) {
   const { t } = useTranslation('pages');
   const defaultPageId = initialPageId && book.pages.find(p => p.id === initialPageId)
@@ -446,6 +453,8 @@ export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRe
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
+
+  const { push: pushUndo } = useUndoRedo(onRefresh, !editingPhoto && !editingTextSlot && !editingCrop);
 
   const selectedPage = book.pages.find(p => p.id === selectedId);
 
@@ -609,10 +618,14 @@ export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRe
       });
 
       try {
+        const undoEntry: UndoEntry = [];
         if (isFromSlot) {
+          undoEntry.push({ type: 'clear', pageId: sourcePageId, slotIndex: sourceSlotIndex, prev: getSlotContent(book, sourcePageId, sourceSlotIndex) });
           await clearSlot(sourcePageId, sourceSlotIndex);
         }
+        undoEntry.push({ type: 'assign', pageId: targetPageId, slotIndex: emptySlotIndex, prev: { photoUid: '', textContent: '' }, next: { photoUid, textContent: '' } });
         await assignSlot(targetPageId, emptySlotIndex, photoUid);
+        pushUndo(undoEntry);
         onRefresh();
       } catch {
         onRefresh();
@@ -683,10 +696,17 @@ export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRe
       return { ...prev, pages };
     });
 
+    // Capture prev content before API calls for undo tracking
+    const prevSource = isFromSlot ? getSlotContent(book, sourcePageId, sourceSlotIndex) : { photoUid: '', textContent: '' };
+    const prevTarget = getSlotContent(book, targetPageId, targetSlotIndex);
+
     try {
+      let undoEntry: UndoEntry;
+
       if (isFromSlot && targetHasContent && sourcePageId === targetPageId) {
         // Swap: both slots on the same page — atomic swap
         await swapSlots(sourcePageId, sourceSlotIndex, targetSlotIndex);
+        undoEntry = [{ type: 'swap', pageId: sourcePageId, slotIndexA: sourceSlotIndex, slotIndexB: targetSlotIndex }];
       } else if (isFromSlot && targetHasContent) {
         // Swap across pages — assign each to the other's slot
         const assignments: Promise<void>[] = [];
@@ -701,6 +721,10 @@ export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRe
           assignments.push(assignTextSlot(sourcePageId, sourceSlotIndex, targetTextContent));
         }
         await Promise.all(assignments);
+        undoEntry = [
+          { type: 'assign', pageId: targetPageId, slotIndex: targetSlotIndex, prev: prevTarget, next: prevSource },
+          { type: 'assign', pageId: sourcePageId, slotIndex: sourceSlotIndex, prev: prevSource, next: prevTarget },
+        ];
       } else if (isFromSlot) {
         // Move: source slot has content, target is empty — clear old first to avoid unique constraint
         await clearSlot(sourcePageId, sourceSlotIndex);
@@ -709,26 +733,36 @@ export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRe
         } else if (dragTextContent) {
           await assignTextSlot(targetPageId, targetSlotIndex, dragTextContent);
         }
+        undoEntry = [
+          { type: 'clear', pageId: sourcePageId, slotIndex: sourceSlotIndex, prev: prevSource },
+          { type: 'assign', pageId: targetPageId, slotIndex: targetSlotIndex, prev: { photoUid: '', textContent: '' }, next: prevSource },
+        ];
       } else {
         // From unassigned pool — just assign
         if (photoUid) {
           await assignSlot(targetPageId, targetSlotIndex, photoUid);
         }
+        undoEntry = [
+          { type: 'assign', pageId: targetPageId, slotIndex: targetSlotIndex, prev: prevTarget, next: { photoUid: photoUid || '', textContent: '' } },
+        ];
       }
+      pushUndo(undoEntry);
       onRefresh();
     } catch {
       // Revert on error
       onRefresh();
     }
-  }, [book, selectedPage, setBook, onRefresh]);
+  }, [book, selectedPage, setBook, onRefresh, pushUndo]);
 
   const handleClearSlot = useCallback(async (slotIndex: number) => {
     if (!selectedPage) return;
+    const prev = getSlotContent(book, selectedPage.id, slotIndex);
     try {
       await clearSlot(selectedPage.id, slotIndex);
+      pushUndo([{ type: 'clear', pageId: selectedPage.id, slotIndex, prev }]);
       onRefresh();
     } catch { /* silent */ }
-  }, [selectedPage, onRefresh]);
+  }, [selectedPage, book, pushUndo, onRefresh]);
 
   const handleEditDescription = useCallback((photoUid: string) => {
     if (!selectedPage?.section_id) return;
@@ -778,12 +812,14 @@ export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRe
 
   const handleSaveText = useCallback(async (text: string) => {
     if (!selectedPage || editingTextSlot === null) return;
+    const prev = getSlotContent(book, selectedPage.id, editingTextSlot.slotIndex);
     try {
       await assignTextSlot(selectedPage.id, editingTextSlot.slotIndex, text);
+      pushUndo([{ type: 'assign', pageId: selectedPage.id, slotIndex: editingTextSlot.slotIndex, prev, next: { photoUid: '', textContent: text } }]);
       onRefresh();
     } catch { /* silent */ }
     setEditingTextSlot(null);
-  }, [selectedPage, editingTextSlot, onRefresh]);
+  }, [selectedPage, editingTextSlot, book, pushUndo, onRefresh]);
 
   const handleEditCrop = useCallback((slotIndex: number) => {
     if (!selectedPage) return;

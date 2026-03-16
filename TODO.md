@@ -10,4 +10,4 @@
 - [x] Add cross-section duplicate finder tab to book editor ([spec](docs/specs/cross-section-duplicates.md))
 - [x] Add page minimap/overview panel to Pages tab ([spec](docs/specs/page-minimap.md))
 - [x] Enable drag-and-drop of photos between sections in Sections tab ([spec](docs/specs/drag-photos-between-sections.md))
-- [ ] Add undo/redo for page slot assignments with Ctrl+Z / Ctrl+Shift+Z ([spec](docs/specs/undo-redo-slots.md))
+- [x] Add undo/redo for page slot assignments with Ctrl+Z / Ctrl+Shift+Z ([spec](docs/specs/undo-redo-slots.md))
