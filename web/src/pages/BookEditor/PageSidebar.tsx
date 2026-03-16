@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { GripVertical, Plus, Trash2, ChevronDown, ChevronRight } from 'lucide-react';
+import { GripVertical, Plus, Trash2, ChevronDown, ChevronRight, Type } from 'lucide-react';
 import {
   SortableContext,
   useSortable,
@@ -8,7 +8,7 @@ import {
 } from '@dnd-kit/sortable';
 import { useDndContext } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import { createPage, deletePage } from '../../api/client';
+import { createPage, deletePage, getThumbnailUrl } from '../../api/client';
 import type { BookChapter, BookPage, BookSection, PageFormat } from '../../types';
 import { pageFormatLabelKey, pageFormatSlotCount } from '../../types';
 
@@ -21,6 +21,29 @@ interface Props {
   onSelect: (id: string) => void;
   onRefresh: () => void;
   isPhotoDragActive?: boolean;
+}
+
+function SlotThumbnail({ slot }: { slot?: { photo_uid: string; text_content: string } }) {
+  if (slot?.photo_uid) {
+    return (
+      <img
+        src={getThumbnailUrl(slot.photo_uid, 'tile_50')}
+        className="w-5 h-5 rounded-sm object-cover bg-slate-700"
+        loading="lazy"
+        onError={(e) => { (e.target as HTMLImageElement).style.visibility = 'hidden'; }}
+      />
+    );
+  }
+  if (slot?.text_content) {
+    return (
+      <div className="w-5 h-5 rounded-sm bg-slate-600 flex items-center justify-center">
+        <Type className="w-3 h-3 text-slate-400" />
+      </div>
+    );
+  }
+  return (
+    <div className="w-5 h-5 rounded-sm border border-dashed border-slate-600" />
+  );
 }
 
 function SortablePageItem({ page, globalIndex, isSelected, onSelect, onDelete, isPhotoDragActive }: {
@@ -62,27 +85,31 @@ function SortablePageItem({ page, globalIndex, isSelected, onSelect, onDelete, i
     boxClass = 'bg-slate-800 border border-slate-700 hover:border-slate-600';
   }
 
+  // Build slot array padded to totalSlots
+  const slots = Array.from({ length: totalSlots }, (_, i) =>
+    page.slots.find(s => s.slot_index === i)
+  );
+
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className={`flex items-center gap-2 p-2 rounded-md cursor-pointer transition-colors ${boxClass}`}
+      className={`flex items-center gap-1.5 p-1.5 rounded-md cursor-pointer transition-colors ${boxClass}`}
       onClick={onSelect}
+      title={`${t(pageFormatLabelKey(page.format))} · ${filledSlots}/${totalSlots}`}
     >
-      <button {...attributes} {...listeners} className="text-slate-500 hover:text-slate-300 cursor-grab">
+      <button {...attributes} {...listeners} className="text-slate-500 hover:text-slate-300 cursor-grab shrink-0">
         <GripVertical className="h-4 w-4" />
       </button>
-      <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium text-white">
-          {t('books.editor.pageNumber', { number: globalIndex + 1 })}
-        </div>
-        <div className={`text-xs ${isComplete ? 'text-emerald-400' : 'text-slate-500'}`}>
-          {t(pageFormatLabelKey(page.format))} · {filledSlots}/{totalSlots}
-        </div>
+      <span className="text-xs font-medium text-slate-400 w-4 text-center shrink-0">{globalIndex + 1}</span>
+      <div className="flex items-center gap-[3px] flex-1 min-w-0">
+        {slots.map((slot, i) => (
+          <SlotThumbnail key={i} slot={slot} />
+        ))}
       </div>
       <button
         onClick={(e) => { e.stopPropagation(); onDelete(); }}
-        className="text-slate-500 hover:text-red-400 p-0.5"
+        className="text-slate-500 hover:text-red-400 p-0.5 shrink-0"
       >
         <Trash2 className="h-3.5 w-3.5" />
       </button>
