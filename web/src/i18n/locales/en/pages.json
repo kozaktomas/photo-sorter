@@ -454,7 +454,13 @@
       "chapterTitle": "Chapter title...",
       "noChapter": "Uncategorized",
       "deleteChapter": "Delete Chapter",
-      "deleteChapterConfirm": "Delete this chapter? Sections will be unassigned."
+      "deleteChapterConfirm": "Delete this chapter? Sections will be unassigned.",
+      "duplicatesTab": "Duplicates",
+      "duplicatesLoading": "Loading section photos...",
+      "duplicatesEmpty": "No duplicate photos found across sections",
+      "duplicatesCount_one": "Found {{count}} photo in multiple sections",
+      "duplicatesCount_other": "Found {{count}} photos in multiple sections",
+      "duplicatesRemove": "Remove from section"
     }
   },
   "suggestAlbums": {

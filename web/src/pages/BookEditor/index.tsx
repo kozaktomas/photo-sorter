@@ -9,10 +9,11 @@ import { useBookData } from './hooks/useBookData';
 import { SectionsTab } from './SectionsTab';
 import { PagesTab } from './PagesTab';
 import { PreviewTab } from './PreviewTab';
+import { DuplicatesTab } from './DuplicatesTab';
 
-type Tab = 'sections' | 'pages' | 'preview';
+type Tab = 'sections' | 'pages' | 'preview' | 'duplicates';
 
-const VALID_TABS: Tab[] = ['sections', 'pages', 'preview'];
+const VALID_TABS: Tab[] = ['sections', 'pages', 'preview', 'duplicates'];
 
 function isValidTab(value: string | null): value is Tab {
   return value !== null && VALID_TABS.includes(value as Tab);
@@ -100,6 +101,7 @@ export function BookEditorPage() {
     { key: 'pages', label: t('books.editor.pagesTab') },
     { key: 'sections', label: t('books.editor.sectionsTab') },
     { key: 'preview', label: t('books.editor.previewTab') },
+    { key: 'duplicates', label: t('books.editor.duplicatesTab') },
   ];
 
   return (
@@ -198,6 +200,14 @@ export function BookEditorPage() {
             )}
             {activeTab === 'preview' && (
               <PreviewTab book={book} sectionPhotos={sectionPhotos} loadSectionPhotos={loadSectionPhotos} initialPageId={pageParam} />
+            )}
+            {activeTab === 'duplicates' && (
+              <DuplicatesTab
+                book={book}
+                sectionPhotos={sectionPhotos}
+                loadSectionPhotos={loadSectionPhotos}
+                onRefresh={refresh}
+              />
             )}
           </>
         )}

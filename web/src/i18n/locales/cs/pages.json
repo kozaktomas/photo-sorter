@@ -442,7 +442,14 @@
       "chapterTitle": "Název kapitoly...",
       "noChapter": "Nezařazené",
       "deleteChapter": "Smazat kapitolu",
-      "deleteChapterConfirm": "Smazat tuto kapitolu? Sekce budou odřazeny."
+      "deleteChapterConfirm": "Smazat tuto kapitolu? Sekce budou odřazeny.",
+      "duplicatesTab": "Duplikáty",
+      "duplicatesLoading": "Načítám fotky sekcí...",
+      "duplicatesEmpty": "Žádné duplicitní fotky napříč sekcemi",
+      "duplicatesCount_one": "Nalezena {{count}} fotka ve více sekcích",
+      "duplicatesCount_few": "Nalezeny {{count}} fotky ve více sekcích",
+      "duplicatesCount_other": "Nalezeno {{count}} fotek ve více sekcích",
+      "duplicatesRemove": "Odebrat ze sekce"
     }
   },
   "suggestAlbums": {
