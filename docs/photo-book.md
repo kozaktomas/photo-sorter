@@ -334,7 +334,16 @@ Text slots support Markdown formatting with auto-detected rendering types:
 | `- item` | Bulleted list |
 | `1. item` | Numbered list |
 | `> quote` | Blockquote (italic) |
+| `\| A \| B \|` | Table (GFM pipe syntax) |
 | Blank line | Paragraph break |
+
+**Table column widths**: Add percentages to the separator row to control column widths in PDF output:
+```
+| Name | Age |
+|--- 60% ---|--- 40% ---|
+| Alice | 30 |
+```
+Without percentages, columns are equal-width. Uses `tabularx` with `X` columns in LaTeX.
 
 **Text type auto-detection** (`DetectTextType`):
 - **T1 (explanation)**: Default — 5% gray fill, 10/13pt body, headings via markdown

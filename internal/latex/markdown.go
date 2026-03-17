@@ -1,7 +1,9 @@
 package latex
 
 import (
+	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 )
 
@@ -25,7 +27,7 @@ var (
 //   - blank line      → \par\vspace{4mm}
 //   - plain text      → escaped text (backward compatible)
 //
-//nolint:funlen // Sequential markdown transformation pipeline.
+//nolint:funlen,gocognit,cyclop // Sequential markdown transformation pipeline.
 func MarkdownToLatex(md string) string {
 	lines := strings.Split(md, "\n")
 	var out []string
@@ -81,6 +83,14 @@ func MarkdownToLatex(md string) string {
 			out = append(out, `\begin{quote}\itshape`)
 			out = append(out, quoteLines...)
 			out = append(out, `\end{quote}`)
+			i = newI
+			continue
+		}
+
+		// Table.
+		if isTableLine(trimmed) && i+1 < len(lines) && isTableSeparator(strings.TrimSpace(lines[i+1])) {
+			tableLines, newI := collectTable(lines, i)
+			out = append(out, tableLines...)
 			i = newI
 			continue
 		}
@@ -177,6 +187,118 @@ func isBlockquoteLine(s string) bool {
 
 func stripBlockquoteMarker(s string) string {
 	return blockquoteRe.ReplaceAllString(s, "")
+}
+
+var tableSepRe = regexp.MustCompile(`^\|[\s:%0-9-]+(\|[\s:%0-9-]+)*\|$`)
+var pctRe = regexp.MustCompile(`([0-9]+)%`)
+
+func isTableLine(s string) bool {
+	return strings.HasPrefix(s, "|") && strings.HasSuffix(s, "|") && strings.Count(s, "|") >= 2
+}
+
+func isTableSeparator(s string) bool {
+	return tableSepRe.MatchString(s)
+}
+
+// parseColumnWidths extracts percentage widths from a separator row.
+// Returns nil if no percentages are found. E.g. "|--- 60%---|--- 40%---|" → [60, 40].
+func parseColumnWidths(separator string) []int {
+	cells := parseTableCells(separator)
+	widths := make([]int, len(cells))
+	found := false
+	for i, cell := range cells {
+		if m := pctRe.FindStringSubmatch(cell); m != nil {
+			w, _ := strconv.Atoi(m[1])
+			widths[i] = w
+			found = true
+		}
+	}
+	if !found {
+		return nil
+	}
+	return widths
+}
+
+// buildColSpec builds a tabularx column spec from optional percentage widths.
+func buildColSpec(numCols int, widths []int) string {
+	if widths == nil {
+		return fmt.Sprintf(`|*{%d}{X|}`, numCols)
+	}
+	// Compute hsize multipliers: multiplier = pct * numCols / 100.
+	var parts []string
+	for i := range numCols {
+		pct := 100 / numCols // default: equal
+		if i < len(widths) && widths[i] > 0 {
+			pct = widths[i]
+		}
+		multiplier := float64(pct) * float64(numCols) / 100.0
+		parts = append(parts, fmt.Sprintf(`>{\hsize=%.2f\hsize}X`, multiplier))
+	}
+	return "|" + strings.Join(parts, "|") + "|"
+}
+
+// parseTableCells splits a table row into cells, trimming whitespace.
+func parseTableCells(line string) []string {
+	// Strip leading/trailing whitespace and pipes.
+	line = strings.TrimSpace(line)
+	line = strings.TrimPrefix(line, "|")
+	line = strings.TrimSuffix(line, "|")
+	parts := strings.Split(line, "|")
+	cells := make([]string, len(parts))
+	for i, p := range parts {
+		cells[i] = strings.TrimSpace(p)
+	}
+	return cells
+}
+
+// collectTable consumes a GFM pipe table and returns LaTeX tabularx lines.
+func collectTable(lines []string, start int) ([]string, int) {
+	i := start
+	headerCells := parseTableCells(lines[i])
+	numCols := len(headerCells)
+	i++ // skip header row
+	widths := parseColumnWidths(lines[i])
+	i++ // skip separator row
+
+	// Format header cells.
+	for j, cell := range headerCells {
+		cell = inlineFormat(latexEscapeRaw(cell))
+		cell = czechTypography(cell)
+		headerCells[j] = `\textbf{` + cell + `}`
+	}
+
+	colSpec := buildColSpec(numCols, widths)
+
+	out := []string{
+		`\begin{tabularx}{\linewidth}{` + colSpec + `}`,
+		`\hline`,
+		strings.Join(headerCells, " & ") + ` \\`,
+		`\hline`,
+	}
+
+	// Data rows.
+	for i < len(lines) {
+		trimmed := strings.TrimSpace(lines[i])
+		if !isTableLine(trimmed) {
+			break
+		}
+		cells := parseTableCells(trimmed)
+		// Pad or truncate to match header column count.
+		for len(cells) < numCols {
+			cells = append(cells, "")
+		}
+		cells = cells[:numCols]
+		for j, cell := range cells {
+			cell = inlineFormat(latexEscapeRaw(cell))
+			cell = czechTypography(cell)
+			cells[j] = cell
+		}
+		out = append(out, strings.Join(cells, " & ")+` \\`)
+		i++
+	}
+
+	out = append(out, `\hline`, `\end{tabularx}`)
+	return out, i
 }
 
 // DetectTextType auto-detects the text slot type from markdown content.

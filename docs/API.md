@@ -1844,6 +1844,8 @@ PUT /pages/{id}/slots/{index}
 }
 ```
 
+Supports GFM markdown: headings, bold, italic, lists, blockquotes, and tables. Tables use pipe syntax with optional column width percentages in the separator row (e.g., `|--- 60% ---|--- 40% ---|`).
+
 #### Update Slot Crop Position
 
 ```
@@ -1913,7 +1915,7 @@ Generates and downloads a print-ready A4 landscape PDF of the book. Features inc
 - Adjustable column split for mixed landscape/portrait formats
 - Per-photo crop control for fine-tuned framing
 - Section divider pages (24pt bold centered title)
-- Text slots with auto-detected types (T1 explanation, T2 fact box, T3 oral history)
+- Text slots with auto-detected types (T1 explanation, T2 fact box, T3 oral history) and GFM table support
 - Czech typography via polyglossia + EBGaramond font
 - Effective DPI computation for print quality analysis
 

@@ -210,6 +210,91 @@ func TestMarkdownToLatex_BlockquoteWithInlineFormatting(t *testing.T) {
 	}
 }
 
+func TestMarkdownToLatex_Table(t *testing.T) {
+	input := "| Name | Age |\n| --- | --- |\n| Alice | 30 |\n| Bob | 25 |"
+	got := MarkdownToLatex(input)
+	if !strings.Contains(got, `\begin{tabularx}{\linewidth}{|*{2}{X|}}`) {
+		t.Errorf("expected tabularx with 2 columns, got %q", got)
+	}
+	if !strings.Contains(got, `\textbf{Name}`) {
+		t.Errorf("expected bold header Name, got %q", got)
+	}
+	if !strings.Contains(got, `\textbf{Age}`) {
+		t.Errorf("expected bold header Age, got %q", got)
+	}
+	if !strings.Contains(got, `Alice & 30`) {
+		t.Errorf("expected data row Alice & 30, got %q", got)
+	}
+	if !strings.Contains(got, `Bob & 25`) {
+		t.Errorf("expected data row Bob & 25, got %q", got)
+	}
+	if !strings.Contains(got, `\end{tabularx}`) {
+		t.Errorf("expected \\end{tabularx}, got %q", got)
+	}
+}
+
+func TestMarkdownToLatex_TableWithFormatting(t *testing.T) {
+	input := "| Item | Note |\n| --- | --- |\n| **bold** | *italic* |"
+	got := MarkdownToLatex(input)
+	if !strings.Contains(got, `\textbf{bold}`) {
+		t.Errorf("expected bold in cell, got %q", got)
+	}
+	if !strings.Contains(got, `\textit{italic}`) {
+		t.Errorf("expected italic in cell, got %q", got)
+	}
+}
+
+func TestMarkdownToLatex_TableWithSpecialChars(t *testing.T) {
+	input := "| Key | Value |\n| --- | --- |\n| Price & tax | 100% |"
+	got := MarkdownToLatex(input)
+	if !strings.Contains(got, `Price \& tax`) {
+		t.Errorf("expected escaped & in cell, got %q", got)
+	}
+	if !strings.Contains(got, `100\%`) {
+		t.Errorf("expected escaped %% in cell, got %q", got)
+	}
+}
+
+func TestMarkdownToLatex_TableWithColumnWidths(t *testing.T) {
+	input := "| Name | Age |\n|--- 60%---|--- 40%---|\n| Alice | 30 |"
+	got := MarkdownToLatex(input)
+	if !strings.Contains(got, `\hsize=1.20\hsize`) {
+		t.Errorf("expected 60%% column (1.20 multiplier), got %q", got)
+	}
+	if !strings.Contains(got, `\hsize=0.80\hsize`) {
+		t.Errorf("expected 40%% column (0.80 multiplier), got %q", got)
+	}
+	if !strings.Contains(got, `Alice & 30`) {
+		t.Errorf("expected data row, got %q", got)
+	}
+}
+
+func TestMarkdownToLatex_TableWithPartialWidths(t *testing.T) {
+	// Only first column has a percentage; second defaults to equal share.
+	input := "| Name | Age |\n|--- 70%---|------|\n| Alice | 30 |"
+	got := MarkdownToLatex(input)
+	if !strings.Contains(got, `\hsize=1.40\hsize`) {
+		t.Errorf("expected 70%% column (1.40 multiplier), got %q", got)
+	}
+	if !strings.Contains(got, `\hsize=1.00\hsize`) {
+		t.Errorf("expected default 50%% column (1.00 multiplier), got %q", got)
+	}
+}
+
+func TestMarkdownToLatex_TableInMixedContent(t *testing.T) {
+	input := "# Title\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n\nSome text after"
+	got := MarkdownToLatex(input)
+	if !strings.Contains(got, `{\Large\bfseries Title}`) {
+		t.Errorf("expected heading before table, got %q", got)
+	}
+	if !strings.Contains(got, `\begin{tabularx}`) {
+		t.Errorf("expected table, got %q", got)
+	}
+	if !strings.Contains(got, "Some text after") {
+		t.Errorf("expected text after table, got %q", got)
+	}
+}
+
 func TestDetectTextType_T1_PlainText(t *testing.T) {
 	if got := DetectTextType("Just some text"); got != "T1" {
 		t.Errorf("expected T1 for plain text, got %q", got)
