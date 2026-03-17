@@ -514,11 +514,11 @@ web/src/
 │   ├── Duplicates/            # Near-duplicate detection
 │   ├── Compare/               # Side-by-side comparison (hooks/useCompareState.ts)
 │   ├── Books/                 # Photo books list
-│   ├── BookEditor/            # Book editor (sections, pages, preview)
-│   │   ├── hooks/useBookData.ts
+│   ├── BookEditor/            # Book editor (sections, pages, preview, duplicates)
+│   │   ├── hooks/useBookData.ts, hooks/useUndoRedo.ts
 │   │   ├── SectionsTab.tsx, SectionSidebar.tsx, SectionPhotoPool.tsx
-│   │   ├── PagesTab.tsx, PageSidebar.tsx, PageTemplate.tsx, PageSlot.tsx
-│   │   ├── UnassignedPool.tsx, PreviewTab.tsx
+│   │   ├── PagesTab.tsx, PageSidebar.tsx, PageMinimap.tsx, PageTemplate.tsx, PageSlot.tsx
+│   │   ├── UnassignedPool.tsx, PreviewTab.tsx, DuplicatesTab.tsx
 │   │   ├── PhotoBrowserModal.tsx, PhotoDescriptionDialog.tsx
 │   │   └── PhotoActionOverlay.tsx, PhotoInfoOverlay.tsx
 │   ├── Slideshow/             # Photo slideshow (hooks/useSlideshow.ts, useSlideshowPhotos.ts)

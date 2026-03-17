@@ -525,22 +525,25 @@ Plan and organize photos into a printed landscape photo book with PDF export.
 
 ### Book Editor (`/books/:id`)
 
-Three-tab editor for organizing a photo book.
+Four-tab editor for organizing a photo book.
 
 **Sections Tab:**
-- **Section Sidebar** - Sortable list of sections with optional chapter grouping (drag to reorder). Create and delete sections and chapters
-  - **Chapters** (optional) - Add chapters to group sections. Chapters are collapsible with a chevron toggle. Drag-and-drop reordering for both chapters and sections. Inline chapter title editing. Delete chapter confirmation dialog. Uncategorized sections appear at the top when chapters exist
+- **Section Sidebar** - Sortable list of sections with optional chapter grouping (drag to reorder). Create and delete sections and chapters. Shows placement stats (placed/total) per section — green when all photos are placed
+  - **Chapters** (optional) - Add chapters to group sections. Chapters are collapsible with a chevron toggle. Drag-and-drop reordering for both chapters and sections. Inline chapter title editing. Delete chapter confirmation dialog. Uncategorized sections appear at the top when chapters exist. Chapter name shown in section headers with `|` delimiter
   - **Move to Chapter** - Use the dropdown selector on a section to assign it to a chapter
 - **Photo Pool** - Grid of photos in the selected section with thumbnails
+- **Drag-and-Drop Between Sections** - Select photos and drag them to a different section in the sidebar. Multi-photo dragging supported. Visual feedback shows rose border on drop target and count badge on drag overlay. Target sections without empty capacity are visually dimmed
 - **Add by Photo ID** - Inline text input to quickly add a photo by pasting its UID (validates existence, checks for duplicates)
 - **Description Editing** - Click a photo description to edit it inline (textarea)
 - **Bulk Selection** - Select multiple photos for batch removal
 - **Photo Browser Modal** - Full-screen modal to browse the entire library, search, and add photos to a section. Album and label filters use autocomplete comboboxes. Already-added photos are grayed out
 
 **Pages Tab:**
-- **Page Sidebar** - Pages grouped by section with collapsible headers. Each section header shows the section title and page count, with a chevron toggle to collapse/expand. Pages are sortable within a section (drag to reorder); cross-section drag is blocked. Global page numbering (Page 1, 2, 3...) is preserved across sections. Creating a new page auto-expands the target section if collapsed. Create pages with format selector and section assignment
+- **Page Sidebar** - Pages grouped by section with collapsible headers (collapse state persisted to localStorage). Each section header shows the section title and page count, with a chevron toggle to collapse/expand. Quick-add button (+) next to each section opens a format picker popover for fast page creation. Pages show thumbnail previews of their slots (mini grid matching the page format) instead of plain "Page N" labels. Completed pages have green highlight; partially filled pages have rose highlight. Pages are sortable within a section (drag to reorder); cross-section drag is blocked. Global page numbering (1, 2, 3...) is preserved across sections. Creating a new page auto-expands the target section if collapsed. Create pages with format selector and section assignment
+- **Page Minimap** - Compact visual overview of all pages grouped by section. Shows mini layout renderers matching each format, with rose ring on selected page, green ring on fully filled pages, and amber dot on partially filled ones. Slot thumbnails preview assigned photos, text icons for text slots, and dashed borders for empty slots. Limited to 200px height with scrolling
 - **Page Template** - Visual CSS grid representation of the page layout with droppable slots
 - **Drag-and-Drop** - Drag photos from the unassigned pool into page slots
+- **Undo/Redo** - Ctrl+Z to undo and Ctrl+Shift+Z (or Ctrl+Y) to redo slot assignments. Tracks assign, clear, and swap operations with up to 50 entries per stack
 - **Unassigned Pool** - Photos in the page's section not yet assigned to any page slot
 
 **Page Formats:**
@@ -559,6 +562,13 @@ Three-tab editor for organizing a photo book.
 - Page numbers computed from sort order
 - Photos rendered at reasonable size with descriptions
 - Empty slots shown as gray placeholders
+
+**Duplicates Tab:**
+- Cross-section duplicate finder that identifies photos appearing in 2+ sections
+- Loads all section photos on mount and scans for duplicates
+- Shows photo thumbnail, list of sections containing the photo, and one-click remove button per section
+- Counter displays total number of duplicate entries found
+- Empty state when no duplicates exist
 
 **Dependencies:** Uses `@dnd-kit/core`, `@dnd-kit/sortable`, `@dnd-kit/utilities` for drag-and-drop.
 
@@ -596,6 +606,8 @@ Find photos that belong in existing albums but aren't there yet by searching the
 ### Book Editor — Pages Tab
 - `W` / `S` - Navigate to previous / next page
 - `E` / `D` - Jump to first page of previous / next chapter
+- `Ctrl+Z` - Undo last slot assignment (assign, clear, or swap)
+- `Ctrl+Shift+Z` / `Ctrl+Y` - Redo last undone slot assignment
 - Disabled when a dialog is open (photo description, text slot, crop)
 
 ### Book Editor — Sections Tab
@@ -783,20 +795,24 @@ web/src/
 │   │   └── index.tsx
 │   ├── Books/               # Photo books list
 │   │   └── index.tsx
-│   ├── BookEditor/           # Book editor (sections, pages, preview)
+│   ├── BookEditor/           # Book editor (sections, pages, preview, duplicates)
 │   │   ├── hooks/useBookData.ts
-│   │   ├── SectionsTab.tsx
-│   │   ├── SectionSidebar.tsx
+│   │   ├── hooks/useUndoRedo.ts  # Undo/redo for slot assignments
+│   │   ├── SectionsTab.tsx       # Sections with cross-section drag-and-drop
+│   │   ├── SectionSidebar.tsx    # Section list with placement stats
 │   │   ├── SectionPhotoPool.tsx
 │   │   ├── PhotoBrowserModal.tsx
 │   │   ├── PhotoDescriptionDialog.tsx
 │   │   ├── PhotoActionOverlay.tsx
-│   │   ├── PagesTab.tsx
-│   │   ├── PageSidebar.tsx
+│   │   ├── PhotoInfoOverlay.tsx
+│   │   ├── PagesTab.tsx          # Pages with minimap and undo/redo
+│   │   ├── PageSidebar.tsx       # Thumbnail previews, quick-add button
+│   │   ├── PageMinimap.tsx       # Compact page overview panel
 │   │   ├── PageTemplate.tsx
 │   │   ├── PageSlot.tsx
 │   │   ├── UnassignedPool.tsx
 │   │   ├── PreviewTab.tsx
+│   │   ├── DuplicatesTab.tsx     # Cross-section duplicate finder
 │   │   └── index.tsx
 │   └── SuggestAlbums/       # Album completion
 │       └── index.tsx

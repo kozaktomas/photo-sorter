@@ -487,21 +487,25 @@ Returns `application/pdf` with `Content-Disposition: attachment`.
 | File | Description |
 |------|-------------|
 | `web/src/pages/Books/index.tsx` | Books list page — card grid, create, delete |
-| `web/src/pages/BookEditor/index.tsx` | Editor shell — tabs (Sections, Pages, Preview), title editing |
+| `web/src/pages/BookEditor/index.tsx` | Editor shell — tabs (Sections, Pages, Preview, Duplicates), title editing |
 | `web/src/pages/BookEditor/hooks/useBookData.ts` | Book data fetching and section photo loading |
+| `web/src/pages/BookEditor/hooks/useUndoRedo.ts` | Undo/redo stack for slot assignments (assign, clear, swap) |
 | `web/src/hooks/useBookKeyboardNav.ts` | Shared keyboard navigation hook (W/S prev/next, E/D chapter jump) |
-| `web/src/pages/BookEditor/SectionsTab.tsx` | Sections tab — sidebar + photo pool layout |
-| `web/src/pages/BookEditor/SectionSidebar.tsx` | Sortable chapter and section list (drag to reorder), chapter grouping |
+| `web/src/pages/BookEditor/SectionsTab.tsx` | Sections tab — sidebar + photo pool + cross-section drag-and-drop |
+| `web/src/pages/BookEditor/SectionSidebar.tsx` | Sortable chapter and section list, placement stats (placed/total) |
 | `web/src/pages/BookEditor/SectionPhotoPool.tsx` | Photo grid with selection, add by ID, inline description + note editing |
 | `web/src/pages/BookEditor/PhotoBrowserModal.tsx` | Full-screen modal to browse library and add photos |
-| `web/src/pages/BookEditor/PagesTab.tsx` | Pages tab — DndContext for drag-to-slot |
-| `web/src/pages/BookEditor/PageSidebar.tsx` | Pages grouped by section with collapsible headers, sortable within section |
+| `web/src/pages/BookEditor/PagesTab.tsx` | Pages tab — DndContext for drag-to-slot, minimap, undo/redo |
+| `web/src/pages/BookEditor/PageSidebar.tsx` | Thumbnail previews, quick-add (+) button, collapsible sections (persisted) |
+| `web/src/pages/BookEditor/PageMinimap.tsx` | Compact visual overview of all pages grouped by section |
 | `web/src/pages/BookEditor/PageTemplate.tsx` | CSS grid page layout with droppable slots |
 | `web/src/pages/BookEditor/PageSlot.tsx` | Individual slot component (both draggable and droppable) |
 | `web/src/pages/BookEditor/UnassignedPool.tsx` | Draggable photos with L/P orientation badges, description/note icons |
 | `web/src/pages/BookEditor/PhotoDescriptionDialog.tsx` | Modal dialog for editing photo description + creator note |
 | `web/src/pages/BookEditor/PhotoActionOverlay.tsx` | Hover overlay with View Detail, Find Similar, Copy ID actions |
+| `web/src/pages/BookEditor/PhotoInfoOverlay.tsx` | Photo info overlay component |
 | `web/src/pages/BookEditor/PreviewTab.tsx` | Read-only scrollable book preview with page descriptions |
+| `web/src/pages/BookEditor/DuplicatesTab.tsx` | Cross-section duplicate finder with one-click removal |
 | `web/src/pages/PhotoDetail/AddToBookDropdown.tsx` | Two-step picker (book → section) for adding photo to a book |
 | `web/src/pages/PhotoDetail/BookMembership.tsx` | Sidebar panel showing which books/sections a photo belongs to |
 
@@ -513,9 +517,9 @@ Returns `application/pdf` with `Content-Disposition: attachment`.
 
 ### Drag-and-Drop Behavior
 
-**Sections Tab**: Chapters and sections are reorderable via `@dnd-kit/sortable`. On drag-end, calls `reorderChapters()` or `reorderSections()`. Sections can be assigned to chapters via a dropdown selector.
+**Sections Tab**: Chapters and sections are reorderable via `@dnd-kit/sortable`. On drag-end, calls `reorderChapters()` or `reorderSections()`. Sections can be assigned to chapters via a dropdown selector. Photos can be dragged between sections — select photos, drag to a target section in the sidebar, and drop to move them. Multi-photo dragging shows a count badge on the drag overlay. Custom collision detection differentiates photo drags (snap to sections) from sortable drags (chapters/sections). Section sidebar shows placement stats (placed/total photos) with green highlight when complete.
 
-**Pages Tab**: Pages are grouped by section in the sidebar with collapsible headers showing section title and page count. Pages are reorderable via `@dnd-kit/sortable` within the same section; cross-section drag is blocked. Global page numbering (Page 1, 2, 3...) is maintained across all sections. Creating a new page auto-expands the target section if collapsed. Photo assignment uses `@dnd-kit/core`:
+**Pages Tab**: Pages are grouped by section in the sidebar with collapsible headers (collapse state persisted to localStorage) showing section title and page count. Each page shows thumbnail previews of its slots in a mini grid matching the page format. A quick-add (+) button next to each section header opens a format picker popover for fast page creation. Completed pages have green highlight; partially filled pages have rose highlight. A minimap panel provides a compact visual overview of all pages grouped by section with color-coded completion indicators. Pages are reorderable via `@dnd-kit/sortable` within the same section; cross-section drag is blocked. Global page numbering (1, 2, 3...) is maintained across all sections. Creating a new page auto-expands the target section if collapsed. Undo/redo (Ctrl+Z / Ctrl+Shift+Z) tracks slot assignments with up to 50 entries per stack. Photo assignment uses `@dnd-kit/core`:
 - Drag from unassigned pool → drop on slot: assigns photo
 - Drag assigned photo → drop on empty slot: moves photo (clears old slot first)
 - Drag assigned photo → drop on another assigned photo: swaps both photos atomically
