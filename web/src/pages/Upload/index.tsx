@@ -192,7 +192,7 @@ export function UploadPage() {
 
   // Load albums + labels + books
   useEffect(() => {
-    Promise.all([
+    void Promise.all([
       getAlbums({ count: 1000, order: 'name' }),
       getLabels({ count: 5000, all: true }),
       getBooks(),
@@ -210,7 +210,7 @@ export function UploadPage() {
       setSelectedSectionId('');
       return;
     }
-    getBook(selectedBookId).then(setBookDetail);
+    void getBook(selectedBookId).then(setBookDetail);
   }, [selectedBookId]);
 
   const toggleAlbum = useCallback((uid: string) => {

@@ -81,7 +81,7 @@ export function useUploadJob() {
           setState(prev => ({
             ...prev,
             phase: 'labels',
-            progress: { current: Number(data.current ?? 0), total: data.total ?? 0 },
+            progress: { current: data.current ?? 0, total: data.total ?? 0 },
           }));
         }
         break;
@@ -101,7 +101,7 @@ export function useUploadJob() {
           setState(prev => ({
             ...prev,
             phase: 'embeddings',
-            progress: { current: Number(data.processed ?? 0), total: data.total ?? 0 },
+            progress: { current: data.processed ?? 0, total: data.total ?? 0 },
           }));
         }
         break;

@@ -15,7 +15,7 @@ const ACCEPTED_EXTENSIONS = new Set([
 
 function isAcceptedFile(file: File): boolean {
   if (ACCEPTED_TYPES.has(file.type)) return true;
-  const ext = '.' + file.name.split('.').pop()?.toLowerCase();
+  const ext = '.' + (file.name.split('.').pop()?.toLowerCase() ?? '');
   return ACCEPTED_EXTENSIONS.has(ext);
 }
 
