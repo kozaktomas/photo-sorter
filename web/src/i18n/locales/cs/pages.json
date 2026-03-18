@@ -451,7 +451,17 @@
       "duplicatesCount_other": "Nalezeno {{count}} fotek ve více sekcích",
       "duplicatesRemove": "Odebrat ze sekce",
       "minimapToggle": "Přehled stránek",
-      "dpiLabel": "Efektivní tiskové rozlišení"
+      "dpiLabel": "Efektivní tiskové rozlišení",
+      "statsToggle": "Statistiky knihy",
+      "stats": {
+        "pages": "Stránky",
+        "photosPlaced": "Umístěné fotky",
+        "photosUnassigned": "Neumístěné fotky",
+        "slotsFilled": "Zaplněné sloty",
+        "formats": "Rozložení formátů",
+        "sections": "Sekce",
+        "empty": "prázdné"
+      }
     }
   },
   "suggestAlbums": {

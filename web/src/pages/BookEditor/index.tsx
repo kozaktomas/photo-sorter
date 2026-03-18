@@ -1,11 +1,12 @@
 import { useState, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { BookOpen, ArrowLeft, Pencil, Trash2, Check, X, Download } from 'lucide-react';
+import { BookOpen, ArrowLeft, Pencil, Trash2, Check, X, Download, BarChart3 } from 'lucide-react';
 import { updateBook, deleteBook, exportBookPDF } from '../../api/client';
 import { LoadingState } from '../../components/LoadingState';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useBookData } from './hooks/useBookData';
+import { BookStatsPanel } from './BookStatsPanel';
 import { SectionsTab } from './SectionsTab';
 import { PagesTab } from './PagesTab';
 import { PreviewTab } from './PreviewTab';
@@ -57,6 +58,17 @@ export function BookEditorPage() {
   const [editTitle, setEditTitle] = useState('');
   const [exporting, setExporting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [showStats, setShowStats] = useState(() => {
+    try { return localStorage.getItem(`book-stats-${id}`) === 'true'; } catch { return false; }
+  });
+
+  const toggleStats = useCallback(() => {
+    setShowStats(prev => {
+      const next = !prev;
+      try { localStorage.setItem(`book-stats-${id}`, String(next)); } catch { /* ignore */ }
+      return next;
+    });
+  }, [id]);
 
   const handleStartEdit = () => {
     if (book) {
@@ -145,6 +157,13 @@ export function BookEditorPage() {
                 {!editing && (
                   <>
                     <button
+                      onClick={toggleStats}
+                      className={`p-1 transition-colors ${showStats ? 'text-rose-400' : 'text-slate-400 hover:text-white'}`}
+                      title={t('books.editor.statsToggle')}
+                    >
+                      <BarChart3 className="h-4 w-4" />
+                    </button>
+                    <button
                       onClick={() => void handleExportPDF()}
                       disabled={exporting || !book.pages?.length}
                       className="text-slate-400 hover:text-white p-1 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
@@ -178,6 +197,8 @@ export function BookEditorPage() {
                 </button>
               ))}
             </div>
+
+            {showStats && <BookStatsPanel book={book} sectionPhotos={sectionPhotos} />}
 
             {activeTab === 'sections' && (
               <SectionsTab

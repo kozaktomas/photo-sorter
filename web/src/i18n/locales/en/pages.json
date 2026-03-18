@@ -462,7 +462,17 @@
       "duplicatesCount_other": "Found {{count}} photos in multiple sections",
       "duplicatesRemove": "Remove from section",
       "minimapToggle": "Page overview",
-      "dpiLabel": "Effective print resolution"
+      "dpiLabel": "Effective print resolution",
+      "statsToggle": "Book statistics",
+      "stats": {
+        "pages": "Pages",
+        "photosPlaced": "Photos placed",
+        "photosUnassigned": "Photos unassigned",
+        "slotsFilled": "Slots filled",
+        "formats": "Format distribution",
+        "sections": "Sections",
+        "empty": "empty"
+      }
     }
   },
   "suggestAlbums": {

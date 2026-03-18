@@ -527,6 +527,13 @@ Plan and organize photos into a printed landscape photo book with PDF export.
 
 Four-tab editor for organizing a photo book.
 
+**Statistics Panel:**
+- Toggle via BarChart3 icon in the editor header (next to Export/Delete buttons)
+- Shows key metrics: total pages, photos placed, photos unassigned, slots filled (with fill percentage), format distribution, and section count (with empty section count)
+- Fill rate uses color coding: green >= 80%, amber >= 50%, red < 50%
+- All data computed client-side from existing book and sectionPhotos state
+- Toggle state persisted to localStorage per book
+
 **Sections Tab:**
 - **Section Sidebar** - Sortable list of sections with optional chapter grouping (drag to reorder). Create and delete sections and chapters. Shows placement stats (placed/total) per section — green when all photos are placed
   - **Chapters** (optional) - Add chapters to group sections. Chapters are collapsible with a chevron toggle. Drag-and-drop reordering for both chapters and sections. Inline chapter title editing. Delete chapter confirmation dialog. Uncategorized sections appear at the top when chapters exist. Chapter name shown in section headers with `|` delimiter
