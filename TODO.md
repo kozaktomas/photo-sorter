@@ -19,4 +19,4 @@
 - [x] Add auto-layout backend endpoint to generate pages from section photos ([spec](docs/specs/auto-layout-backend.md))
 - [x] Add auto-layout UI button in Pages tab ([spec](docs/specs/auto-layout-frontend.md))
 - [x] Add preflight check backend endpoint for book export validation ([spec](docs/specs/preflight-backend.md))
-- [ ] Add preflight check modal before PDF export ([spec](docs/specs/preflight-modal.md))
+- [x] Add preflight check modal before PDF export ([spec](docs/specs/preflight-modal.md))

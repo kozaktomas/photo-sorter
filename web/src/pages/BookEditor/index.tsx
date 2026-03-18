@@ -2,7 +2,8 @@ import { useState, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { BookOpen, ArrowLeft, Pencil, Trash2, Check, X, Download, BarChart3 } from 'lucide-react';
-import { updateBook, deleteBook, exportBookPDF } from '../../api/client';
+import { updateBook, deleteBook, exportBookPDF, preflightBook } from '../../api/client';
+import type { PreflightResponse } from '../../types';
 import { LoadingState } from '../../components/LoadingState';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useBookData } from './hooks/useBookData';
@@ -11,6 +12,7 @@ import { SectionsTab } from './SectionsTab';
 import { PagesTab } from './PagesTab';
 import { PreviewTab } from './PreviewTab';
 import { DuplicatesTab } from './DuplicatesTab';
+import { PreflightModal } from './PreflightModal';
 
 type Tab = 'sections' | 'pages' | 'preview' | 'duplicates';
 
@@ -58,6 +60,9 @@ export function BookEditorPage() {
   const [editTitle, setEditTitle] = useState('');
   const [exporting, setExporting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [preflightData, setPreflightData] = useState<PreflightResponse | null>(null);
+  const [preflightLoading, setPreflightLoading] = useState(false);
+  const [showPreflight, setShowPreflight] = useState(false);
   const [showStats, setShowStats] = useState(() => {
     try { return localStorage.getItem(`book-stats-${id}`) === 'true'; } catch { return false; }
   });
@@ -102,11 +107,45 @@ export function BookEditorPage() {
 
   const handleExportPDF = async () => {
     if (!book || exporting) return;
+    setPreflightLoading(true);
+    setShowPreflight(true);
+    try {
+      const result = await preflightBook(book.id);
+      setPreflightData(result);
+      if (result.ok) {
+        // No issues — export directly
+        setShowPreflight(false);
+        setPreflightData(null);
+        await doExport();
+      }
+    } catch (e) {
+      console.error('Preflight failed:', e);
+      setShowPreflight(false);
+    }
+    setPreflightLoading(false);
+  };
+
+  const doExport = async () => {
+    if (!book || exporting) return;
+    setShowPreflight(false);
+    setPreflightData(null);
     setExporting(true);
     try {
       await exportBookPDF(book.id);
     } catch (e) { console.error('Failed to export PDF:', e); }
     setExporting(false);
+  };
+
+  const handleGoToPage = (pageNumber: number) => {
+    if (!book) return;
+    // Find the page by its display number (1-based sort order)
+    const page = book.pages?.[pageNumber - 1];
+    if (page) {
+      setShowPreflight(false);
+      setPreflightData(null);
+      handleTabChange('pages');
+      handlePageSelect(page.id);
+    }
   };
 
   const tabs: { key: Tab; label: string }[] = [
@@ -243,6 +282,16 @@ export function BookEditorPage() {
         onConfirm={confirmDelete}
         onCancel={() => setShowDeleteConfirm(false)}
       />
+
+      {showPreflight && (
+        <PreflightModal
+          data={preflightData ?? { ok: true, errors: [], warnings: [], info: [], summary: { total_pages: 0, total_photos: 0, filled_slots: 0, total_slots: 0 } }}
+          loading={preflightLoading}
+          onExport={() => void doExport()}
+          onClose={() => { setShowPreflight(false); setPreflightData(null); }}
+          onGoToPage={handleGoToPage}
+        />
+      )}
     </div>
   );
 }

@@ -30,6 +30,7 @@ import type {
   BookPage,
   PageFormat,
   PhotoBookMembership,
+  PreflightResponse,
 } from '../types';
 
 const API_BASE = '/api/v1';
@@ -755,6 +756,11 @@ export async function autoLayoutSection(bookId: string, sectionId: string): Prom
   return request<{ pages_created: number; photos_placed: number; pages: BookPage[] }>(`/books/${bookId}/sections/${sectionId}/auto-layout`, {
     method: 'POST',
   });
+}
+
+// Preflight check
+export async function preflightBook(bookId: string): Promise<PreflightResponse> {
+  return request<PreflightResponse>(`/books/${bookId}/preflight`);
 }
 
 // PDF Export

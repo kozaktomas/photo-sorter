@@ -486,4 +486,30 @@ export interface UploadJobResult {
   book_added: number;
 }
 
+// Preflight check types
+export interface PreflightIssue {
+  type: string;
+  page_number?: number;
+  section?: string;
+  slot_index?: number;
+  photo_uid?: string;
+  dpi?: number;
+  count?: number;
+}
+
+export interface PreflightSummary {
+  total_pages: number;
+  total_photos: number;
+  filled_slots: number;
+  total_slots: number;
+}
+
+export interface PreflightResponse {
+  ok: boolean;
+  errors: PreflightIssue[];
+  warnings: PreflightIssue[];
+  info: PreflightIssue[];
+  summary: PreflightSummary;
+}
+
 export { pageFormatSlotCount, pageFormatLabelKey } from '../utils/pageFormats';

@@ -471,6 +471,28 @@
         "formats": "Rozložení formátů",
         "sections": "Sekce",
         "empty": "prázdné"
+      },
+      "preflight": {
+        "title": "Kontrola před exportem",
+        "checking": "Kontroluji...",
+        "errors": "Chyby",
+        "warnings": "Varování",
+        "info": "Informace",
+        "emptySlot": "Stránka {{page}}, slot {{slot}}: prázdný",
+        "lowDpi": "Stránka {{page}}, slot {{slot}}: fotka {{photo}} — {{dpi}} DPI",
+        "emptySection": "Sekce \"{{section}}\" nemá žádné stránky",
+        "unplacedPhotos": "{{count}} neumístěných fotek v \"{{section}}\"",
+        "missingCaptions": "{{count}} fotek bez popisků",
+        "goToPage": "Přejít na stránku",
+        "exportAnyway": "Přesto exportovat",
+        "cancel": "Zrušit",
+        "summaryPages_one": "{{count}} stránka",
+        "summaryPages_few": "{{count}} stránky",
+        "summaryPages_other": "{{count}} stránek",
+        "summaryPhotos_one": "{{count}} fotka",
+        "summaryPhotos_few": "{{count}} fotky",
+        "summaryPhotos_other": "{{count}} fotek",
+        "summarySlots": "{{filled}}/{{total}} slotů zaplněno"
       }
     }
   },

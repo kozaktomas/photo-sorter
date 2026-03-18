@@ -482,6 +482,26 @@
         "formats": "Format distribution",
         "sections": "Sections",
         "empty": "empty"
+      },
+      "preflight": {
+        "title": "Export Preflight Check",
+        "checking": "Checking...",
+        "errors": "Errors",
+        "warnings": "Warnings",
+        "info": "Info",
+        "emptySlot": "Page {{page}}, slot {{slot}}: empty",
+        "lowDpi": "Page {{page}}, slot {{slot}}: photo {{photo}} — {{dpi}} DPI",
+        "emptySection": "Section \"{{section}}\" has no pages",
+        "unplacedPhotos": "{{count}} unplaced photos in \"{{section}}\"",
+        "missingCaptions": "{{count}} photos without captions",
+        "goToPage": "Go to page",
+        "exportAnyway": "Export anyway",
+        "cancel": "Cancel",
+        "summaryPages_one": "{{count}} page",
+        "summaryPages_other": "{{count}} pages",
+        "summaryPhotos_one": "{{count}} photo",
+        "summaryPhotos_other": "{{count}} photos",
+        "summarySlots": "{{filled}}/{{total}} slots filled"
       }
     }
   },
