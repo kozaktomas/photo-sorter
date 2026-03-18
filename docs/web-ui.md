@@ -545,6 +545,7 @@ Four-tab editor for organizing a photo book.
 - **Drag-and-Drop** - Drag photos from the unassigned pool into page slots
 - **Undo/Redo** - Ctrl+Z to undo and Ctrl+Shift+Z (or Ctrl+Y) to redo slot assignments. Tracks assign, clear, and swap operations with up to 50 entries per stack
 - **Unassigned Pool** - Photos in the page's section not yet assigned to any page slot
+- **Text Slots** - Click "Add text" on empty slots to place markdown content instead of photos. Supports headings, bold, italic, lists, blockquotes, and GFM tables (pipe syntax with optional column width percentages). Preview renders via marked.js + DOMPurify
 
 **Page Formats:**
 

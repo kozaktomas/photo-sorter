@@ -269,6 +269,7 @@ photo-sorter/
 │   ├── database/           # PostgreSQL+pgvector storage backend
 │   ├── facematch/          # Face matching utilities (IoU, bbox conversion)
 │   ├── fingerprint/        # Perceptual hashing and embeddings
+│   ├── latex/              # PDF export via LaTeX
 │   ├── photoprism/         # PhotoPrism REST API client
 │   ├── sorter/             # Photo analysis orchestration
 │   └── web/                # Web server and API handlers

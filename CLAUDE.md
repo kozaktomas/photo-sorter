@@ -136,6 +136,7 @@ This is a CLI tool that sorts photos in PhotoPrism using AI providers. Built wit
 - **internal/database/** - PostgreSQL storage with pgvector for embeddings and faces data
 - **internal/facematch/** - Face matching utilities (IoU computation, bbox conversion, name normalization, marker matching)
 - **internal/constants/** - Shared constants (page sizes, thresholds, concurrency, upload limits)
+- **internal/latex/** - PDF export via LaTeX (markdown-to-LaTeX, layout validation, 12-column grid, templates)
 - **internal/web/** - Web server with Chi router, REST API handlers, and SSE for real-time updates
 - **web/** - React + TypeScript + TailwindCSS frontend (built with Vite, i18n with Czech + English)
 
@@ -292,10 +293,10 @@ internal/database/
     ├── era_embeddings.go  # EraEmbeddingReader/Writer implementation
     ├── books.go        # BookRepository (BookReader/BookWriter)
     ├── sessions.go     # Session persistence for web auth
-    └── migrations/     # SQL migrations 001-011 (embedded)
+    └── migrations/     # SQL migrations 001-016 (embedded)
 ```
 
-**Tables:** `embeddings` (768-dim CLIP), `faces` (512-dim ResNet100 with cached PhotoPrism marker data), `era_embeddings` (768-dim CLIP text centroids), `faces_processed` (tracking), `sessions`, `photo_books`, `book_chapters`, `book_sections` (with optional `chapter_id`), `section_photos`, `book_pages` (with `split_position` for adjustable column splits in mixed formats), `page_slots` (with `text_content` for text-only slots, `crop_x`/`crop_y`/`crop_scale` for per-photo crop control, mutually exclusive with `photo_uid`).
+**Tables:** `embeddings` (768-dim CLIP), `faces` (512-dim ResNet100 with cached PhotoPrism marker data), `era_embeddings` (768-dim CLIP text centroids), `faces_processed` (tracking), `sessions`, `photo_books`, `book_chapters` (migration 016), `book_sections` (with optional `chapter_id`), `section_photos`, `book_pages` (with `split_position` for adjustable column splits in mixed formats), `page_slots` (with `text_content` for text-only slots, `crop_x`/`crop_y`/`crop_scale` for per-photo crop control, mutually exclusive with `photo_uid`).
 
 **Face name normalization:** `GetFacesBySubjectName` normalizes names via `facematch.NormalizePersonName` (remove diacritics, lowercase, dashes→spaces) using the `unaccent` PostgreSQL extension.
 
@@ -462,6 +463,7 @@ web/src/
 │   ├── Button.tsx
 │   ├── Card.tsx
 │   ├── Combobox.tsx           # Autocomplete combobox (label/album filters)
+│   ├── ConfirmDialog.tsx      # Reusable confirmation dialog
 │   ├── ErrorBoundary.tsx      # Error catching wrapper
 │   ├── FormCheckbox.tsx       # Styled checkbox with label
 │   ├── FormInput.tsx          # Styled text/number input with label
@@ -490,6 +492,8 @@ web/src/
 │   ├── index.ts
 │   └── locales/{cs,en}/       # common.json, forms.json, pages.json
 ├── utils/
+│   ├── clipboard.ts           # Clipboard copy utility
+│   ├── markdown.ts            # Markdown-to-HTML renderer (marked.js + DOMPurify)
 │   └── pageFormats.ts         # Book page format helpers
 ├── pages/                     # Page components
 │   ├── Albums.tsx             # Album listing
@@ -523,8 +527,7 @@ web/src/
 │   │   └── PhotoActionOverlay.tsx, PhotoInfoOverlay.tsx
 │   ├── Slideshow/             # Photo slideshow (hooks/useSlideshow.ts, useSlideshowPhotos.ts)
 │   ├── SuggestAlbums/         # Album completion
-│   ├── Upload/                # Photo upload (hooks/useUploadJob.ts, DropZone.tsx)
-│   └── Help/                  # Help screenshot assets (cs/, en/)
+│   └── Upload/                # Photo upload (hooks/useUploadJob.ts, DropZone.tsx)
 └── types/
     ├── events.ts              # Typed SSE events (discriminated unions)
     └── index.ts               # API response types

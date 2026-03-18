@@ -62,7 +62,9 @@ Fullscreen format: `internal/database/postgres/migrations/011_add_1_fullscreen_f
 Page description + photo note: `internal/database/postgres/migrations/010_add_page_desc_and_photo_note.sql`
 Slot text content: `internal/database/postgres/migrations/012_add_slot_text_content.sql`
 Page style (modern/archival): `internal/database/postgres/migrations/013_add_page_style.sql`
+Crop position + split: `internal/database/postgres/migrations/014_add_crop_and_split.sql`
 Crop scale (zoom): `internal/database/postgres/migrations/015_add_crop_scale.sql`
+Chapters: `internal/database/postgres/migrations/016_create_book_chapters.sql`
 
 ### Tables
 
