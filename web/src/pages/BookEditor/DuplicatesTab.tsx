@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X, Loader2 } from 'lucide-react';
-import { getThumbnailUrl, removeSectionPhotos } from '../../api/client';
+import { getThumbnailUrl, removeSectionPhotos, clearSlot } from '../../api/client';
 import type { BookDetail, SectionPhoto } from '../../types';
 
 interface DuplicatesTabProps {
@@ -11,9 +11,21 @@ interface DuplicatesTabProps {
   onRefresh: () => Promise<void>;
 }
 
-interface DuplicateEntry {
+interface SectionDuplicateEntry {
   photoUid: string;
   sectionIds: string[];
+}
+
+interface PageSlotOccurrence {
+  pageId: string;
+  sectionId: string;
+  slotIndex: number;
+  pageNumber: number;
+}
+
+interface PageDuplicateEntry {
+  photoUid: string;
+  occurrences: PageSlotOccurrence[];
 }
 
 export function DuplicatesTab({ book, sectionPhotos, loadSectionPhotos, onRefresh }: DuplicatesTabProps) {
@@ -46,8 +58,8 @@ export function DuplicatesTab({ book, sectionPhotos, loadSectionPhotos, onRefres
     return map;
   }, [book.sections]);
 
-  // Find duplicates: photos appearing in 2+ sections
-  const duplicates: DuplicateEntry[] = useMemo(() => {
+  // Find cross-section duplicates: photos appearing in 2+ sections
+  const sectionDuplicates: SectionDuplicateEntry[] = useMemo(() => {
     const photoSections = new Map<string, string[]>();
     for (const [sectionId, photos] of Object.entries(sectionPhotos)) {
       for (const p of photos) {
@@ -59,7 +71,7 @@ export function DuplicatesTab({ book, sectionPhotos, loadSectionPhotos, onRefres
         }
       }
     }
-    const result: DuplicateEntry[] = [];
+    const result: SectionDuplicateEntry[] = [];
     for (const [photoUid, sectionIds] of photoSections) {
       if (sectionIds.length >= 2) {
         result.push({ photoUid, sectionIds });
@@ -68,8 +80,40 @@ export function DuplicatesTab({ book, sectionPhotos, loadSectionPhotos, onRefres
     return result;
   }, [sectionPhotos]);
 
-  const handleRemove = useCallback(async (photoUid: string, sectionId: string) => {
-    const key = `${photoUid}-${sectionId}`;
+  // Find cross-page duplicates: photos assigned to 2+ page slots
+  const pageDuplicates: PageDuplicateEntry[] = useMemo(() => {
+    const photoSlots = new Map<string, PageSlotOccurrence[]>();
+    // Compute global page numbers
+    const sortedPages = [...book.pages].sort((a, b) => a.sort_order - b.sort_order);
+    for (let i = 0; i < sortedPages.length; i++) {
+      const page = sortedPages[i];
+      for (const slot of page.slots) {
+        if (!slot.photo_uid) continue;
+        const occurrence: PageSlotOccurrence = {
+          pageId: page.id,
+          sectionId: page.section_id,
+          slotIndex: slot.slot_index,
+          pageNumber: i + 1,
+        };
+        const existing = photoSlots.get(slot.photo_uid);
+        if (existing) {
+          existing.push(occurrence);
+        } else {
+          photoSlots.set(slot.photo_uid, [occurrence]);
+        }
+      }
+    }
+    const result: PageDuplicateEntry[] = [];
+    for (const [photoUid, occurrences] of photoSlots) {
+      if (occurrences.length >= 2) {
+        result.push({ photoUid, occurrences });
+      }
+    }
+    return result;
+  }, [book.pages]);
+
+  const handleRemoveFromSection = useCallback(async (photoUid: string, sectionId: string) => {
+    const key = `section-${photoUid}-${sectionId}`;
     setRemovingKey(key);
     try {
       await removeSectionPhotos(sectionId, [photoUid]);
@@ -80,6 +124,18 @@ export function DuplicatesTab({ book, sectionPhotos, loadSectionPhotos, onRefres
     }
     setRemovingKey(null);
   }, [loadSectionPhotos, onRefresh]);
+
+  const handleRemoveFromSlot = useCallback(async (pageId: string, slotIndex: number) => {
+    const key = `page-${pageId}-${slotIndex}`;
+    setRemovingKey(key);
+    try {
+      await clearSlot(pageId, slotIndex);
+      void onRefresh();
+    } catch (e) {
+      console.error('Failed to clear page slot:', e);
+    }
+    setRemovingKey(null);
+  }, [onRefresh]);
 
   const allSectionsLoaded = book.sections.every(s => sectionPhotos[s.id]);
 
@@ -92,7 +148,10 @@ export function DuplicatesTab({ book, sectionPhotos, loadSectionPhotos, onRefres
     );
   }
 
-  if (duplicates.length === 0) {
+  const hasSectionDupes = sectionDuplicates.length > 0;
+  const hasPageDupes = pageDuplicates.length > 0;
+
+  if (!hasSectionDupes && !hasPageDupes) {
     return (
       <div className="text-center py-16 text-slate-400">
         {t('books.editor.duplicatesEmpty')}
@@ -101,49 +160,107 @@ export function DuplicatesTab({ book, sectionPhotos, loadSectionPhotos, onRefres
   }
 
   return (
-    <div>
-      <p className="text-sm text-slate-400 mb-4">
-        {t('books.editor.duplicatesCount', { count: duplicates.length })}
-      </p>
-      <div className="space-y-3">
-        {duplicates.map(({ photoUid, sectionIds }) => (
-          <div
-            key={photoUid}
-            className="flex gap-4 bg-slate-800 border border-slate-700 rounded-lg p-3"
-          >
-            <img
-              src={getThumbnailUrl(photoUid, 'tile_100')}
-              alt=""
-              className="w-20 h-20 object-cover rounded flex-shrink-0"
-            />
-            <div className="flex-1 min-w-0 space-y-1.5">
-              {sectionIds.map(sectionId => {
-                const key = `${photoUid}-${sectionId}`;
-                const isRemoving = removingKey === key;
-                return (
-                  <div key={sectionId} className="flex items-center gap-2 text-sm">
-                    <span className="text-slate-300 truncate">
-                      {sectionNames[sectionId] || sectionId}
-                    </span>
-                    <button
-                      onClick={() => void handleRemove(photoUid, sectionId)}
-                      disabled={isRemoving}
-                      className="text-slate-500 hover:text-red-400 transition-colors flex-shrink-0 disabled:opacity-40"
-                      title={t('books.editor.duplicatesRemove')}
-                    >
-                      {isRemoving ? (
-                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                      ) : (
-                        <X className="h-3.5 w-3.5" />
-                      )}
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
+    <div className="space-y-6">
+      {hasSectionDupes && (
+        <div>
+          <h3 className="text-sm font-medium text-slate-400 mb-3">
+            {t('books.editor.duplicatesSectionGroup')}
+          </h3>
+          <p className="text-sm text-slate-400 mb-4">
+            {t('books.editor.duplicatesCount', { count: sectionDuplicates.length })}
+          </p>
+          <div className="space-y-3">
+            {sectionDuplicates.map(({ photoUid, sectionIds }) => (
+              <div
+                key={photoUid}
+                className="flex gap-4 bg-slate-800 border border-slate-700 rounded-lg p-3"
+              >
+                <img
+                  src={getThumbnailUrl(photoUid, 'tile_100')}
+                  alt=""
+                  className="w-20 h-20 object-cover rounded flex-shrink-0"
+                />
+                <div className="flex-1 min-w-0 space-y-1.5">
+                  {sectionIds.map(sectionId => {
+                    const key = `section-${photoUid}-${sectionId}`;
+                    const isRemoving = removingKey === key;
+                    return (
+                      <div key={sectionId} className="flex items-center gap-2 text-sm">
+                        <span className="text-slate-300 truncate">
+                          {sectionNames[sectionId] || sectionId}
+                        </span>
+                        <button
+                          onClick={() => void handleRemoveFromSection(photoUid, sectionId)}
+                          disabled={isRemoving}
+                          className="text-slate-500 hover:text-red-400 transition-colors flex-shrink-0 disabled:opacity-40"
+                          title={t('books.editor.duplicatesRemove')}
+                        >
+                          {isRemoving ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <X className="h-3.5 w-3.5" />
+                          )}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        </div>
+      )}
+
+      {hasPageDupes && (
+        <div>
+          <h3 className="text-sm font-medium text-slate-400 mb-3">
+            {t('books.editor.duplicatesPageGroup')}
+          </h3>
+          <div className="space-y-3">
+            {pageDuplicates.map(({ photoUid, occurrences }) => (
+              <div
+                key={photoUid}
+                className="flex gap-4 bg-slate-800 border border-slate-700 rounded-lg p-3"
+              >
+                <img
+                  src={getThumbnailUrl(photoUid, 'tile_100')}
+                  alt=""
+                  className="w-20 h-20 object-cover rounded flex-shrink-0"
+                />
+                <div className="flex-1 min-w-0 space-y-1.5">
+                  {occurrences.map(occ => {
+                    const key = `page-${occ.pageId}-${occ.slotIndex}`;
+                    const isRemoving = removingKey === key;
+                    return (
+                      <div key={key} className="flex items-center gap-2 text-sm">
+                        <span className="text-slate-300 truncate">
+                          {t('books.editor.duplicatesPageLocation', {
+                            section: sectionNames[occ.sectionId] || occ.sectionId,
+                            page: occ.pageNumber,
+                            slot: occ.slotIndex + 1,
+                          })}
+                        </span>
+                        <button
+                          onClick={() => void handleRemoveFromSlot(occ.pageId, occ.slotIndex)}
+                          disabled={isRemoving}
+                          className="text-slate-500 hover:text-red-400 transition-colors flex-shrink-0 disabled:opacity-40"
+                          title={t('books.editor.duplicatesRemoveSlot')}
+                        >
+                          {isRemoving ? (
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <X className="h-3.5 w-3.5" />
+                          )}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
