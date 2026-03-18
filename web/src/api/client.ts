@@ -750,6 +750,13 @@ export async function cancelUploadJob(
   });
 }
 
+// Auto-layout section
+export async function autoLayoutSection(bookId: string, sectionId: string): Promise<{ pages_created: number; photos_placed: number; pages: BookPage[] }> {
+  return request<{ pages_created: number; photos_placed: number; pages: BookPage[] }>(`/books/${bookId}/sections/${sectionId}/auto-layout`, {
+    method: 'POST',
+  });
+}
+
 // PDF Export
 export async function exportBookPDF(bookId: string): Promise<void> {
   const response = await fetch(`${API_BASE}/books/${bookId}/export-pdf`, {

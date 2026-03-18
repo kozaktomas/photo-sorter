@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback, useMemo, useRef, type Dispatch, type 
 import { useTranslation } from 'react-i18next';
 import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, pointerWithin, useSensor, useSensors, type DragEndEvent, type DragStartEvent, type Modifier } from '@dnd-kit/core';
 import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
-import { Type, Heading1, Heading2, Bold, Italic, List, ListOrdered, LayoutGrid } from 'lucide-react';
-import { assignSlot, assignTextSlot, clearSlot, swapSlots, updatePage, updateSlotCrop, reorderPages, getThumbnailUrl } from '../../api/client';
+import { Type, Heading1, Heading2, Bold, Italic, List, ListOrdered, LayoutGrid, Wand2, Loader2 } from 'lucide-react';
+import { assignSlot, assignTextSlot, clearSlot, swapSlots, updatePage, updateSlotCrop, reorderPages, getThumbnailUrl, autoLayoutSection } from '../../api/client';
 import { MarkdownContent } from '../../utils/markdown';
 import { useBookKeyboardNav } from '../../hooks/useBookKeyboardNav';
 import { useUndoRedo, type SlotContent, type UndoEntry } from './hooks/useUndoRedo';
@@ -449,6 +449,8 @@ export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRe
   const [minimapOpen, setMinimapOpen] = useState(() => {
     try { return localStorage.getItem(`book-minimap-${book.id}`) === 'true'; } catch { return false; }
   });
+  const [autoLayoutLoading, setAutoLayoutLoading] = useState(false);
+  const [autoLayoutMessage, setAutoLayoutMessage] = useState<string | null>(null);
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
@@ -464,6 +466,27 @@ export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRe
   }, [minimapOpen, book.id]);
 
   const toggleMinimap = useCallback(() => setMinimapOpen(v => !v), []);
+
+  const handleAutoLayout = useCallback(async () => {
+    if (!selectedPage?.section_id || autoLayoutLoading) return;
+    setAutoLayoutLoading(true);
+    setAutoLayoutMessage(null);
+    try {
+      const result = await autoLayoutSection(book.id, selectedPage.section_id);
+      if (result.pages_created > 0) {
+        setAutoLayoutMessage(t('books.editor.autoLayoutSuccess', { pages: result.pages_created, photos: result.photos_placed }));
+        onRefresh();
+      } else {
+        setAutoLayoutMessage(t('books.editor.autoLayoutEmpty'));
+      }
+      setTimeout(() => setAutoLayoutMessage(null), 3000);
+    } catch {
+      setAutoLayoutMessage(t('books.editor.autoLayoutEmpty'));
+      setTimeout(() => setAutoLayoutMessage(null), 3000);
+    } finally {
+      setAutoLayoutLoading(false);
+    }
+  }, [selectedPage, autoLayoutLoading, book.id, onRefresh, t]);
 
   // Keyboard navigation: W/S = prev/next page, E/D = prev/next section
   useBookKeyboardNav({
@@ -879,6 +902,23 @@ export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRe
         >
           <LayoutGrid className="h-4 w-4" />
         </button>
+        {selectedPage?.section_id && unassignedPhotos.length > 0 && (
+          <button
+            onClick={handleAutoLayout}
+            disabled={autoLayoutLoading}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-sm rounded bg-slate-700 hover:bg-slate-600 text-slate-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {autoLayoutLoading ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <Wand2 className="h-4 w-4" />
+            )}
+            {t('books.editor.autoLayout')}
+          </button>
+        )}
+        {autoLayoutMessage && (
+          <span className="text-sm text-emerald-400 animate-pulse">{autoLayoutMessage}</span>
+        )}
       </div>
       {minimapOpen && book.pages.length > 0 && (
         <div className="mb-3">

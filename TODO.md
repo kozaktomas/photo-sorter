@@ -17,6 +17,6 @@
 - [x] Add inline caption editing from page slots ([spec](docs/specs/inline-caption-editing.md))
 - [x] Add spread view (facing pages) to Preview tab ([spec](docs/specs/spread-view.md))
 - [x] Add auto-layout backend endpoint to generate pages from section photos ([spec](docs/specs/auto-layout-backend.md))
-- [ ] Add auto-layout UI button in Pages tab ([spec](docs/specs/auto-layout-frontend.md))
+- [x] Add auto-layout UI button in Pages tab ([spec](docs/specs/auto-layout-frontend.md))
 - [ ] Add preflight check backend endpoint for book export validation ([spec](docs/specs/preflight-backend.md))
 - [ ] Add preflight check modal before PDF export ([spec](docs/specs/preflight-modal.md))
