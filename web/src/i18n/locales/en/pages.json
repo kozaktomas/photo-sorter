@@ -468,6 +468,9 @@
       "minimapToggle": "Page overview",
       "dpiLabel": "Effective print resolution",
       "statsToggle": "Book statistics",
+      "spreadView": "Spread view",
+      "singlePageView": "Single page view",
+      "blankPage": "blank",
       "stats": {
         "pages": "Pages",
         "photosPlaced": "Photos placed",

@@ -15,7 +15,7 @@
 - [x] Add book statistics dashboard panel to editor ([spec](docs/specs/book-stats-dashboard.md))
 - [x] Detect duplicate photos across page slots in Duplicates tab ([spec](docs/specs/cross-page-duplicates.md))
 - [x] Add inline caption editing from page slots ([spec](docs/specs/inline-caption-editing.md))
-- [ ] Add spread view (facing pages) to Preview tab ([spec](docs/specs/spread-view.md))
+- [x] Add spread view (facing pages) to Preview tab ([spec](docs/specs/spread-view.md))
 - [ ] Add auto-layout backend endpoint to generate pages from section photos ([spec](docs/specs/auto-layout-backend.md))
 - [ ] Add auto-layout UI button in Pages tab ([spec](docs/specs/auto-layout-frontend.md))
 - [ ] Add preflight check backend endpoint for book export validation ([spec](docs/specs/preflight-backend.md))

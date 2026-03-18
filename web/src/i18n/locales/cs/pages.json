@@ -457,6 +457,9 @@
       "minimapToggle": "Přehled stránek",
       "dpiLabel": "Efektivní tiskové rozlišení",
       "statsToggle": "Statistiky knihy",
+      "spreadView": "Dvoustránkový náhled",
+      "singlePageView": "Jednostránkový náhled",
+      "blankPage": "prázdná",
       "stats": {
         "pages": "Stránky",
         "photosPlaced": "Umístěné fotky",
