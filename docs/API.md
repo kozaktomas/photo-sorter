@@ -1943,6 +1943,54 @@ Automatically generates pages with optimal format choices based on photo orienta
 }
 ```
 
+### Preflight Check
+
+#### Validate Book Before Export
+
+```
+GET /books/{id}/preflight
+```
+
+Runs validation checks on a book and returns a report of warnings and informational issues without generating a PDF. Use this before export to catch problems early.
+
+**Checks performed:**
+
+| Check | Severity | Description |
+|-------|----------|-------------|
+| Empty slots | Warning | Pages with unfilled slot positions |
+| Low DPI | Warning | Photos with effective DPI < 200 at their assigned slot size |
+| Empty sections | Warning | Sections with no pages |
+| Unplaced photos | Info | Section photos not assigned to any page slot |
+| Missing captions | Info | Photo slots without a description in section_photos |
+
+**Response (200):**
+```json
+{
+  "ok": false,
+  "errors": [],
+  "warnings": [
+    { "type": "empty_slot", "page_number": 3, "section": "Summer", "slot_index": 2 },
+    { "type": "low_dpi", "page_number": 5, "section": "Summer", "slot_index": 0, "photo_uid": "abc", "dpi": 185 },
+    { "type": "empty_section", "section": "Winter" }
+  ],
+  "info": [
+    { "type": "unplaced_photos", "section": "Summer", "count": 4 },
+    { "type": "missing_captions", "count": 12 }
+  ],
+  "summary": { "total_pages": 20, "total_photos": 45, "filled_slots": 38, "total_slots": 52 }
+}
+```
+
+`ok` is `true` when there are no warnings and no errors.
+
+**Error Responses:**
+| Status | Description |
+|--------|-------------|
+| 404 | Book not found |
+| 500 | Failed to load book data |
+
+---
+
 ### PDF Export
 
 #### Export Book as PDF

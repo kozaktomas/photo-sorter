@@ -7,9 +7,11 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"os/exec"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/kozaktomas/photo-sorter/internal/config"
@@ -1264,6 +1266,353 @@ func createAutoLayoutPages(
 		PhotosPlaced: photosPlaced,
 		Pages:        createdPages,
 	}
+}
+
+// --- Preflight Check ---
+
+type preflightIssue struct {
+	Type       string `json:"type"`
+	PageNumber int    `json:"page_number,omitempty"`
+	Section    string `json:"section,omitempty"`
+	SlotIndex  int    `json:"slot_index,omitempty"`
+	PhotoUID   string `json:"photo_uid,omitempty"`
+	DPI        int    `json:"dpi,omitempty"`
+	Count      int    `json:"count,omitempty"`
+}
+
+type preflightSummary struct {
+	TotalPages  int `json:"total_pages"`
+	TotalPhotos int `json:"total_photos"`
+	FilledSlots int `json:"filled_slots"`
+	TotalSlots  int `json:"total_slots"`
+}
+
+type preflightResponse struct {
+	OK       bool             `json:"ok"`
+	Errors   []preflightIssue `json:"errors"`
+	Warnings []preflightIssue `json:"warnings"`
+	Info     []preflightIssue `json:"info"`
+	Summary  preflightSummary `json:"summary"`
+}
+
+// preflightData holds the loaded book data needed for preflight checks.
+type preflightData struct {
+	sections    []database.BookSection
+	pages       []database.BookPage
+	sectionByID map[string]string
+	photoDims   map[string][2]int
+}
+
+// preflightResult accumulates the results of preflight checks.
+type preflightResult struct {
+	warnings     []preflightIssue
+	info         []preflightIssue
+	totalSlots   int
+	filledSlots  int
+	uniquePhotos map[string]bool
+}
+
+// Preflight handles GET /api/v1/books/:id/preflight and validates a book before PDF export.
+func (h *BooksHandler) Preflight(w http.ResponseWriter, r *http.Request) {
+	pp := middleware.MustGetPhotoPrism(r.Context(), w)
+	if pp == nil {
+		return
+	}
+	bw := getBookWriter(r, w)
+	if bw == nil {
+		return
+	}
+
+	id := chi.URLParam(r, "id")
+	book, err := bw.GetBook(r.Context(), id)
+	if err != nil || book == nil {
+		respondError(w, http.StatusNotFound, "book not found")
+		return
+	}
+
+	data, errMsg := loadPreflightData(r, bw, pp, id)
+	if errMsg != "" {
+		respondError(w, http.StatusInternalServerError, errMsg)
+		return
+	}
+
+	result := &preflightResult{uniquePhotos: make(map[string]bool)}
+	checkPageSlots(data, result)
+	checkSections(r, bw, data, result)
+	checkMissingCaptions(r, bw, data, result)
+
+	warnings := result.warnings
+	info := result.info
+	if warnings == nil {
+		warnings = []preflightIssue{}
+	}
+	if info == nil {
+		info = []preflightIssue{}
+	}
+
+	respondJSON(w, http.StatusOK, preflightResponse{
+		OK:       len(warnings) == 0,
+		Errors:   []preflightIssue{},
+		Warnings: warnings,
+		Info:     info,
+		Summary: preflightSummary{
+			TotalPages:  len(data.pages),
+			TotalPhotos: len(result.uniquePhotos),
+			FilledSlots: result.filledSlots,
+			TotalSlots:  result.totalSlots,
+		},
+	})
+}
+
+// loadPreflightData loads all book data needed for preflight checks.
+func loadPreflightData(
+	r *http.Request, bw database.BookWriter, pp *photoprism.PhotoPrism, bookID string,
+) (*preflightData, string) {
+	sections, err := bw.GetSections(r.Context(), bookID)
+	if err != nil {
+		return nil, "failed to get sections"
+	}
+	pages, err := bw.GetPages(r.Context(), bookID)
+	if err != nil {
+		return nil, "failed to get pages"
+	}
+
+	sectionByID := make(map[string]string, len(sections))
+	for _, s := range sections {
+		sectionByID[s.ID] = s.Title
+	}
+
+	allPhotoUIDs := collectSlotPhotoUIDs(pages)
+	var photoDims map[string][2]int
+	if len(allPhotoUIDs) > 0 {
+		photoDims = fetchPhotoDimensions(pp, allPhotoUIDs)
+	} else {
+		photoDims = make(map[string][2]int)
+	}
+
+	return &preflightData{
+		sections:    sections,
+		pages:       pages,
+		sectionByID: sectionByID,
+		photoDims:   photoDims,
+	}, ""
+}
+
+// collectSlotPhotoUIDs returns deduplicated photo UIDs from all page slots.
+func collectSlotPhotoUIDs(pages []database.BookPage) []string {
+	seen := make(map[string]bool)
+	var uids []string
+	for i := range pages {
+		for _, slot := range pages[i].Slots {
+			if slot.PhotoUID != "" && !seen[slot.PhotoUID] {
+				uids = append(uids, slot.PhotoUID)
+				seen[slot.PhotoUID] = true
+			}
+		}
+	}
+	return uids
+}
+
+// checkPageSlots checks all pages for empty slots and low DPI photos.
+func checkPageSlots(data *preflightData, result *preflightResult) {
+	layoutConfig := latex.DefaultLayoutConfig()
+	for pageIdx, page := range data.pages {
+		checkSinglePage(page, pageIdx+1, data, layoutConfig, result)
+	}
+}
+
+// checkSinglePage checks one page for empty slots and low DPI.
+func checkSinglePage(
+	page database.BookPage, pageNum int, data *preflightData,
+	layoutConfig latex.LayoutConfig, result *preflightResult,
+) {
+	sectionTitle := data.sectionByID[page.SectionID]
+	slotRects := latex.FormatSlotsGridWithSplit(page.Format, layoutConfig, page.SplitPosition)
+	expectedSlots := database.PageFormatSlotCount(page.Format)
+	result.totalSlots += expectedSlots
+
+	filledByIndex := indexFilledSlots(page.Slots, result)
+
+	for slotIdx := range expectedSlots {
+		slot, filled := filledByIndex[slotIdx]
+		if !filled {
+			result.warnings = append(result.warnings, preflightIssue{
+				Type: "empty_slot", PageNumber: pageNum, Section: sectionTitle, SlotIndex: slotIdx,
+			})
+			continue
+		}
+		if w := checkSlotDPI(slot, slotIdx, slotRects, data.photoDims, pageNum, sectionTitle); w != nil {
+			result.warnings = append(result.warnings, *w)
+		}
+	}
+}
+
+// indexFilledSlots builds a lookup of non-empty slots and updates the result counters.
+func indexFilledSlots(slots []database.PageSlot, result *preflightResult) map[int]database.PageSlot {
+	m := make(map[int]database.PageSlot)
+	for _, slot := range slots {
+		if !slot.IsEmpty() {
+			m[slot.SlotIndex] = slot
+			result.filledSlots++
+			if slot.PhotoUID != "" {
+				result.uniquePhotos[slot.PhotoUID] = true
+			}
+		}
+	}
+	return m
+}
+
+// checkSlotDPI checks a single slot for low DPI and returns a warning if applicable.
+func checkSlotDPI(
+	slot database.PageSlot, slotIdx int, slotRects []latex.SlotRect,
+	photoDims map[string][2]int, pageNum int, sectionTitle string,
+) *preflightIssue {
+	if slot.PhotoUID == "" || slotIdx >= len(slotRects) {
+		return nil
+	}
+	dims, ok := photoDims[slot.PhotoUID]
+	if !ok {
+		return nil
+	}
+	rect := slotRects[slotIdx]
+	dpi := computeEffectiveDPI(dims[0], dims[1], rect.W, rect.H)
+	if dpi >= 200 {
+		return nil
+	}
+	return &preflightIssue{
+		Type: "low_dpi", PageNumber: pageNum, Section: sectionTitle,
+		SlotIndex: slotIdx, PhotoUID: slot.PhotoUID, DPI: dpi,
+	}
+}
+
+// buildAssignedPhotosIndex builds per-section assigned photo UID sets
+// and tracks which sections have pages.
+func buildAssignedPhotosIndex(
+	pages []database.BookPage,
+) (assignedBySection map[string]map[string]bool, pagesPerSection map[string]bool) {
+	assignedBySection = make(map[string]map[string]bool)
+	pagesPerSection = make(map[string]bool)
+	for _, p := range pages {
+		pagesPerSection[p.SectionID] = true
+		if assignedBySection[p.SectionID] == nil {
+			assignedBySection[p.SectionID] = make(map[string]bool)
+		}
+		for _, slot := range p.Slots {
+			if slot.PhotoUID != "" {
+				assignedBySection[p.SectionID][slot.PhotoUID] = true
+			}
+		}
+	}
+	return
+}
+
+// checkSections checks for empty sections and unplaced photos.
+func checkSections(
+	r *http.Request, bw database.BookWriter, data *preflightData, result *preflightResult,
+) {
+	assignedBySection, pagesPerSection := buildAssignedPhotosIndex(data.pages)
+
+	for _, section := range data.sections {
+		if !pagesPerSection[section.ID] {
+			result.warnings = append(result.warnings, preflightIssue{
+				Type: "empty_section", Section: section.Title,
+			})
+		}
+
+		sectionPhotos, err := bw.GetSectionPhotos(r.Context(), section.ID)
+		if err != nil {
+			continue
+		}
+		unplaced := countUnplaced(sectionPhotos, assignedBySection[section.ID])
+		if unplaced > 0 {
+			result.info = append(result.info, preflightIssue{
+				Type: "unplaced_photos", Section: section.Title, Count: unplaced,
+			})
+		}
+	}
+}
+
+// countUnplaced counts section photos not present in the assigned set.
+func countUnplaced(sectionPhotos []database.SectionPhoto, assigned map[string]bool) int {
+	count := 0
+	for _, sp := range sectionPhotos {
+		if !assigned[sp.PhotoUID] {
+			count++
+		}
+	}
+	return count
+}
+
+// sectionPhotoKey identifies a photo within a section.
+type sectionPhotoKey struct{ sectionID, photoUID string }
+
+// buildDescribedPhotos returns a set of section-photo pairs that have descriptions.
+func buildDescribedPhotos(
+	r *http.Request, bw database.BookWriter, sections []database.BookSection,
+) map[sectionPhotoKey]bool {
+	described := make(map[sectionPhotoKey]bool)
+	for _, section := range sections {
+		sectionPhotos, err := bw.GetSectionPhotos(r.Context(), section.ID)
+		if err != nil {
+			continue
+		}
+		for _, sp := range sectionPhotos {
+			if sp.Description != "" {
+				described[sectionPhotoKey{section.ID, sp.PhotoUID}] = true
+			}
+		}
+	}
+	return described
+}
+
+// checkMissingCaptions counts photo slots without descriptions and appends to result.
+func checkMissingCaptions(
+	r *http.Request, bw database.BookWriter, data *preflightData, result *preflightResult,
+) {
+	described := buildDescribedPhotos(r, bw, data.sections)
+	count := 0
+	for _, page := range data.pages {
+		for _, slot := range page.Slots {
+			if slot.PhotoUID != "" && !described[sectionPhotoKey{page.SectionID, slot.PhotoUID}] {
+				count++
+			}
+		}
+	}
+	if count > 0 {
+		result.info = append(result.info, preflightIssue{
+			Type: "missing_captions", Count: count,
+		})
+	}
+}
+
+// fetchPhotoDimensions batch-fetches photo dimensions from PhotoPrism.
+func fetchPhotoDimensions(pp *photoprism.PhotoPrism, uids []string) map[string][2]int {
+	dims := make(map[string][2]int, len(uids))
+	const batchSize = 100
+	for i := 0; i < len(uids); i += batchSize {
+		end := min(i+batchSize, len(uids))
+		batch := uids[i:end]
+		query := "uid:" + strings.Join(batch, "|uid:")
+		photos, err := pp.GetPhotosWithQuery(len(batch), 0, query, 0)
+		if err != nil {
+			log.Printf("preflight: failed to fetch photo dimensions: %v", err)
+			continue
+		}
+		for _, p := range photos {
+			dims[p.UID] = [2]int{p.Width, p.Height}
+		}
+	}
+	return dims
+}
+
+// computeEffectiveDPI calculates the effective DPI for a photo at a given slot size.
+func computeEffectiveDPI(photoW, photoH int, slotWmm, slotHmm float64) int {
+	if slotWmm <= 0 || slotHmm <= 0 {
+		return 0
+	}
+	dpiW := float64(photoW) / slotWmm * 25.4
+	dpiH := float64(photoH) / slotHmm * 25.4
+	return int(math.Min(dpiW, dpiH))
 }
 
 // --- PDF Export ---

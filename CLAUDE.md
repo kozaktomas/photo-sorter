@@ -450,6 +450,7 @@ Session cookies use `HttpOnly`, `SameSite=Strict`, and auto-detect `Secure` flag
 - `POST /api/v1/pages/{id}/slots/swap` - Swap two slots atomically (`{ slot_a, slot_b }`)
 - `DELETE /api/v1/pages/{id}/slots/{index}` - Clear page slot
 - `POST /api/v1/books/{id}/sections/{sectionId}/auto-layout` - Auto-generate pages from unassigned section photos
+- `GET /api/v1/books/{id}/preflight` - Validate book before PDF export (empty slots, low DPI, unplaced photos)
 - `GET /api/v1/books/{id}/export-pdf` - Export book as PDF (requires lualatex)
 
 **Frontend Structure:**
