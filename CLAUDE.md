@@ -449,6 +449,7 @@ Session cookies use `HttpOnly`, `SameSite=Strict`, and auto-detect `Secure` flag
 - `PUT /api/v1/pages/{id}/slots/{index}/crop` - Update crop for a slot (`{ crop_x, crop_y, crop_scale? }`, position 0.0-1.0, scale 0.1-1.0)
 - `POST /api/v1/pages/{id}/slots/swap` - Swap two slots atomically (`{ slot_a, slot_b }`)
 - `DELETE /api/v1/pages/{id}/slots/{index}` - Clear page slot
+- `POST /api/v1/books/{id}/sections/{sectionId}/auto-layout` - Auto-generate pages from unassigned section photos
 - `GET /api/v1/books/{id}/export-pdf` - Export book as PDF (requires lualatex)
 
 **Frontend Structure:**

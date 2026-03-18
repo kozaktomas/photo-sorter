@@ -1898,6 +1898,51 @@ DELETE /pages/{id}/slots/{index}
 
 Removes photo/text assignment and resets crop to defaults (0.5, 0.5, scale 1.0).
 
+### Auto-Layout
+
+#### Generate Pages from Section Photos
+
+```
+POST /books/{id}/sections/{sectionId}/auto-layout
+```
+
+Automatically generates pages with optimal format choices based on photo orientations in a section's unassigned pool.
+
+**Request Body (all fields optional):**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `prefer_formats` | `string[]` | Allowed page formats (default: all 5 formats) |
+| `max_pages` | `number` | Maximum pages to create (default: unlimited) |
+
+**Layout Algorithm Priority:**
+1. 4 landscapes → `4_landscape` (2×2 grid)
+2. 2 landscapes + 1 portrait → alternating `2l_1p` / `1p_2l`
+3. 2 portraits → `2_portrait`
+4. Remaining landscapes paired with portraits as `2_portrait`, else `1_fullscreen`
+5. Remaining portraits → `1_fullscreen`
+
+**Response:**
+
+```json
+{
+  "pages_created": 3,
+  "photos_placed": 9,
+  "pages": [
+    {
+      "id": "page-uuid",
+      "section_id": "section-uuid",
+      "format": "4_landscape",
+      "style": "modern",
+      "sort_order": 1,
+      "slots": [
+        { "slot_index": 0, "photo_uid": "photo1", "crop_x": 0.5, "crop_y": 0.5, "crop_scale": 1.0 }
+      ]
+    }
+  ]
+}
+```
+
 ### PDF Export
 
 #### Export Book as PDF

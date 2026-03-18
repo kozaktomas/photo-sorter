@@ -1653,3 +1653,108 @@ func TestBooksHandler_UpdatePage_SplitPosition(t *testing.T) {
 		assertStatusCode(t, recorder, http.StatusOK)
 	})
 }
+
+// --- Auto-Layout Algorithm Tests ---
+
+func allFormats() map[string]bool {
+	return map[string]bool{
+		"4_landscape": true, "2l_1p": true, "1p_2l": true,
+		"2_portrait": true, "1_fullscreen": true,
+	}
+}
+
+func TestComputeAutoLayout_FourLandscapes(t *testing.T) {
+	specs := computeAutoLayout([]string{"l1", "l2", "l3", "l4"}, nil, allFormats(), 0)
+	if len(specs) != 1 {
+		t.Fatalf("expected 1 page, got %d", len(specs))
+	}
+	if specs[0].format != "4_landscape" {
+		t.Errorf("expected 4_landscape, got %s", specs[0].format)
+	}
+	if len(specs[0].photos) != 4 {
+		t.Errorf("expected 4 photos, got %d", len(specs[0].photos))
+	}
+}
+
+func TestComputeAutoLayout_MixedAlternates(t *testing.T) {
+	// 3 landscapes + 2 portraits: not enough for 4_landscape, so mixed pages
+	specs := computeAutoLayout([]string{"l1", "l2", "l3"}, []string{"p1", "p2"}, allFormats(), 0)
+	if len(specs) != 2 {
+		t.Fatalf("expected 2 pages, got %d", len(specs))
+	}
+	if specs[0].format != "2l_1p" {
+		t.Errorf("expected 2l_1p, got %s", specs[0].format)
+	}
+	// Remaining 1 landscape + 1 portrait → 2_portrait
+	if specs[1].format != "2_portrait" {
+		t.Errorf("expected 2_portrait for remainder, got %s", specs[1].format)
+	}
+}
+
+func TestComputeAutoLayout_MixedAlternatesMultiple(t *testing.T) {
+	// 5 landscapes + 2 portraits: 4_landscape + 2l_1p (2L+1P) + remaining 1P → 1_fullscreen
+	// Actually: 4L→4_landscape, then 1L+2P remaining, not enough for mixed (needs 2L+1P)
+	// So: 4_landscape + 2_portrait + 1_fullscreen
+	specs := computeAutoLayout(
+		[]string{"l1", "l2", "l3", "l4", "l5"},
+		[]string{"p1", "p2"},
+		allFormats(), 0,
+	)
+	if len(specs) != 3 {
+		t.Fatalf("expected 3 pages, got %d", len(specs))
+	}
+	if specs[0].format != "4_landscape" {
+		t.Errorf("expected 4_landscape, got %s", specs[0].format)
+	}
+}
+
+func TestComputeAutoLayout_TwoPortraits(t *testing.T) {
+	specs := computeAutoLayout(nil, []string{"p1", "p2"}, allFormats(), 0)
+	if len(specs) != 1 {
+		t.Fatalf("expected 1 page, got %d", len(specs))
+	}
+	if specs[0].format != "2_portrait" {
+		t.Errorf("expected 2_portrait, got %s", specs[0].format)
+	}
+}
+
+func TestComputeAutoLayout_SinglesGoFullscreen(t *testing.T) {
+	specs := computeAutoLayout([]string{"l1"}, []string{"p1"}, allFormats(), 0)
+	// 1 landscape + 1 portrait: should pair as 2_portrait
+	if len(specs) != 1 {
+		t.Fatalf("expected 1 page, got %d", len(specs))
+	}
+	if specs[0].format != "2_portrait" {
+		t.Errorf("expected 2_portrait, got %s", specs[0].format)
+	}
+}
+
+func TestComputeAutoLayout_MaxPages(t *testing.T) {
+	specs := computeAutoLayout(
+		[]string{"l1", "l2", "l3", "l4", "l5", "l6", "l7", "l8"},
+		nil, allFormats(), 1,
+	)
+	if len(specs) != 1 {
+		t.Fatalf("expected 1 page (max_pages=1), got %d", len(specs))
+	}
+}
+
+func TestComputeAutoLayout_RestrictedFormats(t *testing.T) {
+	allowed := map[string]bool{"1_fullscreen": true}
+	specs := computeAutoLayout([]string{"l1", "l2"}, []string{"p1"}, allowed, 0)
+	if len(specs) != 3 {
+		t.Fatalf("expected 3 fullscreen pages, got %d", len(specs))
+	}
+	for _, s := range specs {
+		if s.format != "1_fullscreen" {
+			t.Errorf("expected 1_fullscreen, got %s", s.format)
+		}
+	}
+}
+
+func TestComputeAutoLayout_EmptyInput(t *testing.T) {
+	specs := computeAutoLayout(nil, nil, allFormats(), 0)
+	if len(specs) != 0 {
+		t.Fatalf("expected 0 pages, got %d", len(specs))
+	}
+}

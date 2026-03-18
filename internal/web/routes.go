@@ -133,6 +133,7 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 			r.Put("/pages/{id}/slots/{index}/crop", booksHandler.UpdateSlotCrop)
 			r.Post("/pages/{id}/slots/swap", booksHandler.SwapSlots)
 			r.Delete("/pages/{id}/slots/{index}", booksHandler.ClearSlot)
+			r.Post("/books/{id}/sections/{sectionId}/auto-layout", booksHandler.AutoLayout)
 			r.Get("/books/{id}/export-pdf", booksHandler.ExportPDF)
 		})
 	})

@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -14,6 +15,7 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/config"
 	"github.com/kozaktomas/photo-sorter/internal/database"
 	"github.com/kozaktomas/photo-sorter/internal/latex"
+	"github.com/kozaktomas/photo-sorter/internal/photoprism"
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
 
@@ -971,6 +973,297 @@ func (h *BooksHandler) ClearSlot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respondJSON(w, http.StatusOK, map[string]bool{"cleared": true})
+}
+
+// --- Auto-Layout ---
+
+type autoLayoutRequest struct {
+	PreferFormats []string `json:"prefer_formats"`
+	MaxPages      int      `json:"max_pages"`
+}
+
+type autoLayoutResponse struct {
+	PagesCreated int            `json:"pages_created"`
+	PhotosPlaced int            `json:"photos_placed"`
+	Pages        []pageResponse `json:"pages"`
+}
+
+// pageSpec describes a page to be created by the auto-layout algorithm.
+type pageSpec struct {
+	format string
+	photos []string
+}
+
+// computeAutoLayout runs the layout algorithm on classified landscape/portrait photo lists.
+// Returns page specs describing which pages to create and which photos to assign to each.
+func computeAutoLayout(landscapes, portraits []string, allowed map[string]bool, maxPages int) []pageSpec {
+	var specs []pageSpec
+
+	// Step 1: 4 landscapes → 4_landscape
+	specs, landscapes = layoutQuadLandscapes(specs, landscapes, allowed)
+
+	// Step 2: 2 landscapes + 1 portrait → alternate 2l_1p / 1p_2l
+	specs, landscapes, portraits = layoutMixedPages(specs, landscapes, portraits, allowed)
+
+	// Step 3: 2 portraits → 2_portrait
+	specs, portraits = layoutPairedPortraits(specs, portraits, allowed)
+
+	// Step 4+5: remaining singles
+	specs = layoutRemaining(specs, landscapes, portraits, allowed)
+
+	if maxPages > 0 && len(specs) > maxPages {
+		specs = specs[:maxPages]
+	}
+	return specs
+}
+
+// layoutQuadLandscapes groups sets of 4 landscapes into 4_landscape pages.
+func layoutQuadLandscapes(specs []pageSpec, landscapes []string, allowed map[string]bool) ([]pageSpec, []string) {
+	if !allowed["4_landscape"] {
+		return specs, landscapes
+	}
+	for len(landscapes) >= 4 {
+		specs = append(specs, pageSpec{"4_landscape", landscapes[:4]})
+		landscapes = landscapes[4:]
+	}
+	return specs, landscapes
+}
+
+// layoutPairedPortraits groups pairs of portraits into 2_portrait pages.
+func layoutPairedPortraits(specs []pageSpec, portraits []string, allowed map[string]bool) ([]pageSpec, []string) {
+	if !allowed["2_portrait"] {
+		return specs, portraits
+	}
+	for len(portraits) >= 2 {
+		specs = append(specs, pageSpec{"2_portrait", portraits[:2]})
+		portraits = portraits[2:]
+	}
+	return specs, portraits
+}
+
+// layoutRemaining handles leftover landscapes and portraits as pairs or fullscreen singles.
+func layoutRemaining(specs []pageSpec, landscapes, portraits []string, allowed map[string]bool) []pageSpec {
+	for len(landscapes) > 0 {
+		if len(portraits) > 0 && allowed["2_portrait"] {
+			specs = append(specs, pageSpec{"2_portrait", []string{landscapes[0], portraits[0]}})
+			landscapes = landscapes[1:]
+			portraits = portraits[1:]
+		} else if allowed["1_fullscreen"] {
+			specs = append(specs, pageSpec{"1_fullscreen", []string{landscapes[0]}})
+			landscapes = landscapes[1:]
+		} else {
+			break
+		}
+	}
+	if allowed["1_fullscreen"] {
+		for len(portraits) > 0 {
+			specs = append(specs, pageSpec{"1_fullscreen", []string{portraits[0]}})
+			portraits = portraits[1:]
+		}
+	}
+	return specs
+}
+
+const (
+	format2L1P = "2l_1p"
+	format1P2L = "1p_2l"
+)
+
+// layoutMixedPages creates alternating 2l_1p / 1p_2l pages from landscapes and portraits.
+func layoutMixedPages(
+	specs []pageSpec, landscapes, portraits []string, allowed map[string]bool,
+) ([]pageSpec, []string, []string) {
+	alternate := true
+	for len(landscapes) >= 2 && len(portraits) >= 1 {
+		format := pickMixedFormat(alternate, allowed)
+		if format == "" {
+			break
+		}
+		if format == format2L1P {
+			specs = append(specs, pageSpec{format, []string{landscapes[0], landscapes[1], portraits[0]}})
+		} else {
+			specs = append(specs, pageSpec{format, []string{portraits[0], landscapes[0], landscapes[1]}})
+		}
+		landscapes = landscapes[2:]
+		portraits = portraits[1:]
+		alternate = !alternate
+	}
+	return specs, landscapes, portraits
+}
+
+// pickMixedFormat selects 2l_1p or 1p_2l based on alternation and allowed formats.
+func pickMixedFormat(prefer2l1p bool, allowed map[string]bool) string {
+	if prefer2l1p && allowed[format2L1P] {
+		return format2L1P
+	}
+	if !prefer2l1p && allowed[format1P2L] {
+		return format1P2L
+	}
+	if allowed[format2L1P] {
+		return format2L1P
+	}
+	if allowed[format1P2L] {
+		return format1P2L
+	}
+	return ""
+}
+
+// parseAutoLayoutFormats validates and returns the allowed formats set.
+func parseAutoLayoutFormats(preferFormats []string) (map[string]bool, string) {
+	if len(preferFormats) == 0 {
+		return map[string]bool{
+			"4_landscape": true, format2L1P: true, format1P2L: true,
+			"2_portrait": true, "1_fullscreen": true,
+		}, ""
+	}
+	allowed := make(map[string]bool, len(preferFormats))
+	for _, f := range preferFormats {
+		if database.PageFormatSlotCount(f) == 0 {
+			return nil, "invalid format: " + f
+		}
+		allowed[f] = true
+	}
+	return allowed, ""
+}
+
+// AutoLayout handles POST /api/v1/books/{id}/sections/{sectionId}/auto-layout
+// and generates pages with optimal format choices based on photo orientations.
+func (h *BooksHandler) AutoLayout(w http.ResponseWriter, r *http.Request) {
+	pp := middleware.MustGetPhotoPrism(r.Context(), w)
+	if pp == nil {
+		return
+	}
+	bw := getBookWriter(r, w)
+	if bw == nil {
+		return
+	}
+
+	bookID := chi.URLParam(r, "id")
+	sectionID := chi.URLParam(r, "sectionId")
+
+	var req autoLayoutRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil && err != io.EOF {
+		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
+		return
+	}
+
+	allowedFormats, errMsg := parseAutoLayoutFormats(req.PreferFormats)
+	if errMsg != "" {
+		respondError(w, http.StatusBadRequest, errMsg)
+		return
+	}
+
+	// Get unassigned photo UIDs for this section.
+	unassigned, err := getUnassignedPhotos(r, bw, bookID, sectionID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	if len(unassigned) == 0 {
+		respondJSON(w, http.StatusOK, autoLayoutResponse{Pages: []pageResponse{}})
+		return
+	}
+
+	// Classify each photo as landscape or portrait.
+	landscapes, portraits := classifyPhotos(pp, unassigned)
+
+	// Run layout algorithm and create pages.
+	specs := computeAutoLayout(landscapes, portraits, allowedFormats, req.MaxPages)
+	result := createAutoLayoutPages(r, bw, bookID, sectionID, specs)
+	respondJSON(w, http.StatusOK, result)
+}
+
+// getUnassignedPhotos returns photo UIDs in the section that are not yet assigned to page slots.
+func getUnassignedPhotos(
+	r *http.Request, bw database.BookWriter, bookID, sectionID string,
+) ([]string, error) {
+	sectionPhotos, err := bw.GetSectionPhotos(r.Context(), sectionID)
+	if err != nil {
+		return nil, errors.New("failed to get section photos")
+	}
+	pages, err := bw.GetPages(r.Context(), bookID)
+	if err != nil {
+		return nil, errors.New("failed to get pages")
+	}
+
+	assignedUIDs := make(map[string]bool)
+	for i := range pages {
+		if pages[i].SectionID != sectionID {
+			continue
+		}
+		for _, slot := range pages[i].Slots {
+			if slot.PhotoUID != "" {
+				assignedUIDs[slot.PhotoUID] = true
+			}
+		}
+	}
+
+	var unassigned []string
+	for _, sp := range sectionPhotos {
+		if !assignedUIDs[sp.PhotoUID] {
+			unassigned = append(unassigned, sp.PhotoUID)
+		}
+	}
+	return unassigned, nil
+}
+
+// photoQuerier abstracts the PhotoPrism photo query method for classifyPhotos.
+type photoQuerier interface {
+	GetPhotosWithQuery(count int, offset int, query string, quality ...int) ([]photoprism.Photo, error)
+}
+
+// classifyPhotos queries PhotoPrism for each photo's dimensions and splits into landscape/portrait lists.
+func classifyPhotos(pp photoQuerier, uids []string) (landscapes, portraits []string) {
+	for _, uid := range uids {
+		photos, err := pp.GetPhotosWithQuery(1, 0, "uid:"+uid)
+		if err != nil || len(photos) == 0 {
+			log.Printf("auto-layout: skipping photo %s: %v", sanitizeForLog(uid), err)
+			continue
+		}
+		if photos[0].Width >= photos[0].Height {
+			landscapes = append(landscapes, uid)
+		} else {
+			portraits = append(portraits, uid)
+		}
+	}
+	return
+}
+
+// createAutoLayoutPages creates pages and assigns slots based on the layout specs.
+func createAutoLayoutPages(
+	r *http.Request, bw database.BookWriter, bookID, sectionID string, specs []pageSpec,
+) autoLayoutResponse {
+	var createdPages []pageResponse
+	photosPlaced := 0
+	for _, spec := range specs {
+		page := &database.BookPage{BookID: bookID, SectionID: sectionID, Format: spec.format, Style: "modern"}
+		if err := bw.CreatePage(r.Context(), page); err != nil {
+			log.Printf("auto-layout: failed to create page: %v", err)
+			continue
+		}
+		slots := make([]slotResponse, 0, len(spec.photos))
+		for i, uid := range spec.photos {
+			if err := bw.AssignSlot(r.Context(), page.ID, i, uid); err != nil {
+				log.Printf("auto-layout: failed to assign slot %d on page %s: %v", i, sanitizeForLog(page.ID), err)
+				continue
+			}
+			slots = append(slots, slotResponse{SlotIndex: i, PhotoUID: uid, CropX: 0.5, CropY: 0.5, CropScale: 1.0})
+			photosPlaced++
+		}
+		createdPages = append(createdPages, pageResponse{
+			ID:        page.ID,
+			SectionID: page.SectionID,
+			Format:    page.Format,
+			Style:     page.Style,
+			SortOrder: page.SortOrder,
+			Slots:     slots,
+		})
+	}
+	return autoLayoutResponse{
+		PagesCreated: len(createdPages),
+		PhotosPlaced: photosPlaced,
+		Pages:        createdPages,
+	}
 }
 
 // --- PDF Export ---
