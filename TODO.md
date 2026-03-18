@@ -11,7 +11,7 @@
 - [x] Add page minimap/overview panel to Pages tab ([spec](docs/specs/page-minimap.md))
 - [x] Enable drag-and-drop of photos between sections in Sections tab ([spec](docs/specs/drag-photos-between-sections.md))
 - [x] Add undo/redo for page slot assignments with Ctrl+Z / Ctrl+Shift+Z ([spec](docs/specs/undo-redo-slots.md))
-- [ ] Add DPI quality indicator on photo slots in page editor ([spec](docs/specs/dpi-indicator.md))
+- [x] Add DPI quality indicator on photo slots in page editor ([spec](docs/specs/dpi-indicator.md))
 - [ ] Add book statistics dashboard panel to editor ([spec](docs/specs/book-stats-dashboard.md))
 - [ ] Detect duplicate photos across page slots in Duplicates tab ([spec](docs/specs/cross-page-duplicates.md))
 - [ ] Add inline caption editing from page slots ([spec](docs/specs/inline-caption-editing.md))

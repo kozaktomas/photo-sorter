@@ -96,6 +96,60 @@ function colSpanWidth(n: number): number {
 
 const HALF_CANVAS_HEIGHT = (CANVAS_HEIGHT - ROW_GAP) / 2;
 
+/** Returns the physical slot dimensions [widthMm, heightMm] for a given slot in a page format. */
+function getSlotDimensionsMm(format: PageFormat, slotIndex: number, splitPosition?: number | null): [number, number] {
+  if (splitPosition != null && format !== '1_fullscreen') {
+    const availW = CONTENT_WIDTH - COLUMN_GUTTER;
+    const leftW = availW * splitPosition;
+    const rightW = availW * (1 - splitPosition);
+
+    switch (format) {
+      case '2_portrait':
+        return [slotIndex === 0 ? leftW : rightW, CANVAS_HEIGHT];
+      case '4_landscape':
+        return [slotIndex % 2 === 0 ? leftW : rightW, HALF_CANVAS_HEIGHT];
+      case '2l_1p':
+        return slotIndex < 2
+          ? [leftW, HALF_CANVAS_HEIGHT]
+          : [rightW, CANVAS_HEIGHT];
+      case '1p_2l':
+        return slotIndex === 0
+          ? [leftW, CANVAS_HEIGHT]
+          : [rightW, HALF_CANVAS_HEIGHT];
+    }
+  }
+
+  const halfW = colSpanWidth(6);
+  switch (format) {
+    case '1_fullscreen':
+      return [CONTENT_WIDTH, CANVAS_HEIGHT];
+    case '2_portrait':
+      return [halfW, CANVAS_HEIGHT];
+    case '4_landscape':
+      return [halfW, HALF_CANVAS_HEIGHT];
+    case '2l_1p':
+      return slotIndex < 2
+        ? [colSpanWidth(8), HALF_CANVAS_HEIGHT]
+        : [colSpanWidth(4), CANVAS_HEIGHT];
+    case '1p_2l':
+      return slotIndex === 0
+        ? [colSpanWidth(4), CANVAS_HEIGHT]
+        : [colSpanWidth(8), HALF_CANVAS_HEIGHT];
+  }
+}
+
+/** Computes the effective print DPI for a photo in a given slot. */
+export function computeEffectiveDpi(
+  naturalW: number, naturalH: number,
+  format: PageFormat, slotIndex: number,
+  splitPosition?: number | null,
+): number {
+  const [slotW, slotH] = getSlotDimensionsMm(format, slotIndex, splitPosition);
+  const dpiW = (naturalW / slotW) * 25.4;
+  const dpiH = (naturalH / slotH) * 25.4;
+  return Math.round(Math.min(dpiW, dpiH));
+}
+
 /** Returns the W/H aspect ratio for a given slot in a page format. */
 export function getSlotAspectRatio(format: PageFormat, slotIndex: number, splitPosition?: number | null): number {
   // With custom split position

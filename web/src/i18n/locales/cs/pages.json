@@ -450,7 +450,8 @@
       "duplicatesCount_few": "Nalezeny {{count}} fotky ve více sekcích",
       "duplicatesCount_other": "Nalezeno {{count}} fotek ve více sekcích",
       "duplicatesRemove": "Odebrat ze sekce",
-      "minimapToggle": "Přehled stránek"
+      "minimapToggle": "Přehled stránek",
+      "dpiLabel": "Efektivní tiskové rozlišení"
     }
   },
   "suggestAlbums": {

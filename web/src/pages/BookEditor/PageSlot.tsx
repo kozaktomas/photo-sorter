@@ -6,6 +6,8 @@ import { getThumbnailUrl } from '../../api/client';
 import { PhotoActionOverlay } from './PhotoActionOverlay';
 import { PhotoInfoOverlay } from './PhotoInfoOverlay';
 import { MarkdownContent } from '../../utils/markdown';
+import { computeEffectiveDpi } from '../../utils/pageFormats';
+import type { PageFormat } from '../../types';
 
 interface Props {
   pageId: string;
@@ -15,6 +17,8 @@ interface Props {
   cropX?: number;
   cropY?: number;
   cropScale?: number;
+  format?: PageFormat;
+  splitPosition?: number | null;
   onClear: () => void;
   onEditCrop?: () => void;
   description?: string;
@@ -25,9 +29,10 @@ interface Props {
   className?: string;
 }
 
-export function PageSlotComponent({ pageId, slotIndex, photoUid, textContent, cropX, cropY, cropScale, onClear, onEditCrop, description, note, onEditDescription, onEditText, onAddText, className }: Props) {
+export function PageSlotComponent({ pageId, slotIndex, photoUid, textContent, cropX, cropY, cropScale, format, splitPosition, onClear, onEditCrop, description, note, onEditDescription, onEditText, onAddText, className }: Props) {
   const { t } = useTranslation('pages');
   const [orientation, setOrientation] = useState<'L' | 'P' | null>(null);
+  const [dpi, setDpi] = useState<number | null>(null);
   const droppableId = `slot-${pageId}-${slotIndex}`;
   const { isOver, setNodeRef: setDropRef } = useDroppable({
     id: droppableId,
@@ -70,6 +75,9 @@ export function PageSlotComponent({ pageId, slotIndex, photoUid, textContent, cr
             onLoad={(e) => {
               const img = e.currentTarget;
               setOrientation(img.naturalWidth >= img.naturalHeight ? 'L' : 'P');
+              if (format) {
+                setDpi(computeEffectiveDpi(img.naturalWidth, img.naturalHeight, format, slotIndex, splitPosition));
+              }
             }}
           />
           <div className="absolute top-1 right-1 flex gap-0.5">
@@ -100,6 +108,16 @@ export function PageSlotComponent({ pageId, slotIndex, photoUid, textContent, cr
             >
               <Pencil className="h-3 w-3" />
             </button>
+          )}
+          {dpi !== null && (
+            <span
+              className={`absolute bottom-1 left-1 bg-black/60 rounded px-1 text-[10px] font-mono ${
+                dpi >= 300 ? 'text-green-400' : dpi >= 200 ? 'text-amber-400' : 'text-red-400'
+              }`}
+              title={t('books.editor.dpiLabel')}
+            >
+              {dpi}
+            </span>
           )}
           <PhotoInfoOverlay
             description={description}

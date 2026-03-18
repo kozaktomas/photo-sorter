@@ -160,6 +160,8 @@ export function PageTemplate({ page, onClearSlot, sectionPhotos, onEditDescripti
               cropX={cropX}
               cropY={cropY}
               cropScale={cropScale}
+              format={page.format}
+              splitPosition={page.split_position}
               onClear={() => onClearSlot(i)}
               onEditCrop={uid && onEditCrop ? () => onEditCrop(i) : undefined}
               description={sp?.description ?? ''}

@@ -461,7 +461,8 @@
       "duplicatesCount_one": "Found {{count}} photo in multiple sections",
       "duplicatesCount_other": "Found {{count}} photos in multiple sections",
       "duplicatesRemove": "Remove from section",
-      "minimapToggle": "Page overview"
+      "minimapToggle": "Page overview",
+      "dpiLabel": "Effective print resolution"
     }
   },
   "suggestAlbums": {
