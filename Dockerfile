@@ -31,6 +31,8 @@ RUN apk update && \
     curl -fsSL -o /usr/share/texmf-dist/tex/latex/enumitem/enumitem.sty \
       --create-dirs \
       https://mirrors.ctan.org/macros/latex/contrib/enumitem/enumitem.sty && \
+    # Update TeX file database so lualatex can find manually-installed packages
+    mktexlsr && \
     # Pre-generate font cache for luaotfload
     mkdir -p /var/cache/luatex-cache && \
     TEXMFCACHE=/var/cache/luatex-cache TEXMFVAR=/var/cache/luatex-cache luaotfload-tool --update && \

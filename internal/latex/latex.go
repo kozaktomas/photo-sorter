@@ -731,10 +731,12 @@ func compileLatex(ctx context.Context, data TemplateData, tmpDir string) ([]byte
 			texPath,
 		)
 		cmd.Dir = tmpDir
-		// Ensure luaotfload has a writable cache and HOME directory.
-		// Inherits parent env, then overrides to guarantee writable paths.
+		// Ensure luaotfload has writable fallback paths.
+		// TEXMFVAR provides a writable directory for font cache updates.
+		// HOME ensures lualatex can write temp files even as nobody user.
+		// TEXMFCACHE is NOT overridden — it stays at the Docker ENV value
+		// so the pre-built font cache is used without regeneration.
 		cmd.Env = append(os.Environ(),
-			"TEXMFCACHE="+tmpDir,
 			"TEXMFVAR="+tmpDir,
 			"HOME="+tmpDir,
 		)
