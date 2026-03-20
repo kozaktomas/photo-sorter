@@ -731,6 +731,13 @@ func compileLatex(ctx context.Context, data TemplateData, tmpDir string) ([]byte
 			texPath,
 		)
 		cmd.Dir = tmpDir
+		// Ensure luaotfload has a writable cache and HOME directory.
+		// Inherits parent env, then overrides to guarantee writable paths.
+		cmd.Env = append(os.Environ(),
+			"TEXMFCACHE="+tmpDir,
+			"TEXMFVAR="+tmpDir,
+			"HOME="+tmpDir,
+		)
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			return nil, fmt.Errorf("lualatex pass %d failed: %w\n%s", pass+1, err, string(output))

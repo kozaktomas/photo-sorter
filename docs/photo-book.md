@@ -207,7 +207,7 @@ The book can be exported to a print-ready A4 landscape PDF via the "Export PDF" 
 - **TeX packages:** `texlive-luatex`, `texmf-dist-latexrecommended`, `texmf-dist-fontsrecommended`, `texmf-dist-langczechslovak`, `texmf-dist-pictures`
 - **Additional LaTeX packages:** `enumitem`, `microtype`, `crop` (from `texmf-dist-latexrecommended` or installed separately)
 - **Fonts:** EB Garamond OpenType (Regular, SemiBold, Italic, SemiBoldItalic) — available from CTAN (`fonts/ebgaramond/opentype/`)
-- **Font cache:** `luaotfload` requires a writable cache directory; set `TEXMFCACHE` env var if running as a non-root user
+- **Font cache:** `luaotfload` requires a writable cache directory; set `TEXMFCACHE` and `TEXMFVAR` env vars if running as a non-root user (the Go code auto-sets both to the temp directory at runtime)
 - Returns HTTP 503 if `lualatex` is not available
 
 ### Layout Configuration — 12-Column Grid System

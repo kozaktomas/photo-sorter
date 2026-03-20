@@ -24,22 +24,23 @@ RUN apk update && \
     # Install EBGaramond fonts from CTAN (avoids pulling huge texmf-dist-fontsextra)
     mkdir -p /usr/share/fonts/opentype/ebgaramond && \
     for f in EBGaramond-Regular.otf EBGaramond-SemiBold.otf EBGaramond-Italic.otf EBGaramond-SemiBoldItalic.otf; do \
-      curl -sL -o /usr/share/fonts/opentype/ebgaramond/$f \
+      curl -fsSL -o /usr/share/fonts/opentype/ebgaramond/$f \
         https://mirrors.ctan.org/fonts/ebgaramond/opentype/$f; \
     done && \
     # Install enumitem.sty from CTAN (avoids pulling huge texmf-dist-latexextra)
-    curl -sL -o /usr/share/texmf-dist/tex/latex/enumitem/enumitem.sty \
+    curl -fsSL -o /usr/share/texmf-dist/tex/latex/enumitem/enumitem.sty \
       --create-dirs \
       https://mirrors.ctan.org/macros/latex/contrib/enumitem/enumitem.sty && \
-    # Pre-generate font cache and make it writable for nobody user
+    # Pre-generate font cache for luaotfload
     mkdir -p /var/cache/luatex-cache && \
-    TEXMFCACHE=/var/cache/luatex-cache luaotfload-tool --update 2>/dev/null || true && \
+    TEXMFCACHE=/var/cache/luatex-cache TEXMFVAR=/var/cache/luatex-cache luaotfload-tool --update && \
     chmod -R 777 /var/cache/luatex-cache && \
     apk del curl && \
     rm -rf /var/cache/apk/* && \
     mkdir /app
 
 ENV TEXMFCACHE=/var/cache/luatex-cache
+ENV TEXMFVAR=/var/cache/luatex-cache
 
 WORKDIR /app
 
