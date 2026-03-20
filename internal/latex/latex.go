@@ -724,6 +724,18 @@ func compileLatex(ctx context.Context, data TemplateData, tmpDir string) ([]byte
 
 	// Run lualatex twice — second pass resolves remember picture positions.
 	// Arguments are safe (tmpDir from os.MkdirTemp, texPath derived from it).
+	//
+	// All TEXMF* and HOME vars are set to tmpDir so luaotfload builds a fresh
+	// font database there. The pre-built Docker cache at /var/cache/luatex-cache
+	// cannot be used because luaotfload's cache detection fails when lualatex is
+	// invoked via Go's exec.Command (works from shell but not from Go — likely a
+	// difference in how the fontloader-basics-gen cache writability check behaves
+	// with Go's fork+exec). Font database generation adds ~2s per export.
+	latexEnv := setEnvVars(os.Environ(), map[string]string{
+		"TEXMFCACHE": tmpDir,
+		"TEXMFVAR":   tmpDir,
+		"HOME":       tmpDir,
+	})
 	for pass := range 2 {
 		cmd := exec.CommandContext(ctx, "lualatex", //nolint:gosec
 			"-interaction=nonstopmode",
@@ -731,15 +743,7 @@ func compileLatex(ctx context.Context, data TemplateData, tmpDir string) ([]byte
 			texPath,
 		)
 		cmd.Dir = tmpDir
-		// Ensure luaotfload has writable fallback paths.
-		// TEXMFVAR provides a writable directory for font cache updates.
-		// HOME ensures lualatex can write temp files even as nobody user.
-		// TEXMFCACHE is NOT overridden — it stays at the Docker ENV value
-		// so the pre-built font cache is used without regeneration.
-		cmd.Env = append(os.Environ(),
-			"TEXMFVAR="+tmpDir,
-			"HOME="+tmpDir,
-		)
+		cmd.Env = latexEnv
 		output, err := cmd.CombinedOutput()
 		if err != nil {
 			return nil, fmt.Errorf("lualatex pass %d failed: %w\n%s", pass+1, err, string(output))
@@ -945,4 +949,21 @@ func buildPhotoSlotNew(
 		BorderW:      slot.W,
 		BorderH:      slot.H,
 	}
+}
+
+// setEnvVars returns a copy of environ with the given vars set, replacing any
+// existing entries with the same key. This avoids duplicate env entries where
+// only the first occurrence is used by most libc implementations.
+func setEnvVars(environ []string, vars map[string]string) []string {
+	result := make([]string, 0, len(environ)+len(vars))
+	for _, entry := range environ {
+		key, _, _ := strings.Cut(entry, "=")
+		if _, override := vars[key]; !override {
+			result = append(result, entry)
+		}
+	}
+	for k, v := range vars {
+		result = append(result, k+"="+v)
+	}
+	return result
 }

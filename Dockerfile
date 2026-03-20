@@ -28,8 +28,8 @@ RUN apk update && \
         https://mirrors.ctan.org/fonts/ebgaramond/opentype/$f; \
     done && \
     # Install enumitem.sty from CTAN (avoids pulling huge texmf-dist-latexextra)
+    mkdir -p /usr/share/texmf-dist/tex/latex/enumitem && \
     curl -fsSL -o /usr/share/texmf-dist/tex/latex/enumitem/enumitem.sty \
-      --create-dirs \
       https://mirrors.ctan.org/macros/latex/contrib/enumitem/enumitem.sty && \
     # Update TeX file database so lualatex can find manually-installed packages
     mktexlsr && \
