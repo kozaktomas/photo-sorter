@@ -14,6 +14,7 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/database"
 	"github.com/kozaktomas/photo-sorter/internal/database/postgres"
 	"github.com/kozaktomas/photo-sorter/internal/web"
+	"github.com/kozaktomas/photo-sorter/internal/web/handlers"
 	"github.com/spf13/cobra"
 )
 
@@ -177,6 +178,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 		return errors.New("PHOTOPRISM_URL environment variable is required")
 	}
 
+	handlers.SetVersionInfo(Version, CommitSHA)
 	server := web.NewServer(cfg, port, host, sessionSecret, sessionRepo)
 
 	sigChan := make(chan os.Signal, 1)

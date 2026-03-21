@@ -71,7 +71,8 @@ fi
 
 if [ "$NEED_GO" = true ]; then
   echo "==> Building backend..."
-  cd "$SCRIPT_DIR" && go build -o photo-sorter .
+  COMMIT_SHA=$(git -C "$SCRIPT_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)
+  cd "$SCRIPT_DIR" && go build -ldflags "-X github.com/kozaktomas/photo-sorter/cmd.CommitSHA=${COMMIT_SHA}" -o photo-sorter .
 fi
 
 echo "==> Starting photo-sorter on port 8085..."

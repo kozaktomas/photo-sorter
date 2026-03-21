@@ -59,6 +59,8 @@ The header navigation groups items to reduce clutter:
 
 Dropdown buttons highlight when one of their child pages is active. Dropdowns close when clicking outside.
 
+The header also displays the app version next to the GitHub icon: tag name (e.g., `v1.0.2`) for releases, or the short commit hash for dev builds.
+
 ## Pages
 
 ### Dashboard

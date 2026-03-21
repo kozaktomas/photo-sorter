@@ -111,6 +111,8 @@ export interface Config {
   providers: ProviderInfo[];
   photoprism_domain?: string;
   embeddings_writable?: boolean;
+  version: string;
+  commit_sha: string;
 }
 
 export interface AuthStatus {

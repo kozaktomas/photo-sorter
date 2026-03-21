@@ -1290,7 +1290,9 @@ GET /config
     }
   ],
   "photoprism_domain": "https://photos.example.com",
-  "embeddings_writable": true
+  "embeddings_writable": true,
+  "version": "v1.0.2",
+  "commit_sha": "a1b2c3d"
 }
 ```
 

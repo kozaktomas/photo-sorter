@@ -1,5 +1,9 @@
 .PHONY: build build-web build-go clean dev serve test lint lint-fix fmt vet check
 
+VERSION ?= dev
+COMMIT_SHA ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
+LDFLAGS := -X github.com/kozaktomas/photo-sorter/cmd.Version=$(VERSION) -X github.com/kozaktomas/photo-sorter/cmd.CommitSHA=$(COMMIT_SHA)
+
 ## build: Build everything (frontend + Go binary)
 build: build-web build-go
 
@@ -12,13 +16,13 @@ build-web:
 ## build-go: Build the Go binary
 build-go:
 	@echo "Building Go binary..."
-	go build -o photo-sorter .
+	go build -ldflags "$(LDFLAGS)" -o photo-sorter .
 	@echo "Built: photo-sorter"
 
 ## build-go-dev: Build Go binary without frontend (for development)
 build-go-dev:
 	@echo "Building Go binary (dev mode)..."
-	go build -o photo-sorter .
+	go build -ldflags "$(LDFLAGS)" -o photo-sorter .
 
 ## clean: Clean build artifacts
 clean:

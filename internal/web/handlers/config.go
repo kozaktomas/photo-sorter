@@ -7,6 +7,18 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/database"
 )
 
+// Package-level version info, set at startup via SetVersionInfo.
+var (
+	appVersion   = "dev"
+	appCommitSHA = "unknown"
+)
+
+// SetVersionInfo sets the application version and commit SHA for API responses.
+func SetVersionInfo(version, commitSHA string) {
+	appVersion = version
+	appCommitSHA = commitSHA
+}
+
 // ConfigHandler handles configuration endpoints.
 type ConfigHandler struct {
 	config *config.Config
@@ -24,6 +36,8 @@ type ConfigResponse struct {
 	Providers          []ProviderInfo `json:"providers"`
 	PhotoPrismDomain   string         `json:"photoprism_domain,omitempty"`
 	EmbeddingsWritable bool           `json:"embeddings_writable"`
+	Version            string         `json:"version"`
+	CommitSHA          string         `json:"commit_sha"`
 }
 
 // ProviderInfo represents information about an AI provider.
@@ -60,6 +74,8 @@ func (h *ConfigHandler) Get(w http.ResponseWriter, r *http.Request) {
 		Providers:          providers,
 		PhotoPrismDomain:   h.config.PhotoPrism.Domain,
 		EmbeddingsWritable: embeddingsWritable,
+		Version:            appVersion,
+		CommitSHA:          appCommitSHA,
 	}
 
 	respondJSON(w, http.StatusOK, response)

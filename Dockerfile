@@ -14,7 +14,9 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 COPY --from=frontend /app/internal/web/static/dist/ ./internal/web/static/dist/
-RUN go build -ldflags "-s -w" -o photo-sorter .
+ARG VERSION=dev
+ARG COMMIT_SHA=unknown
+RUN go build -ldflags "-s -w -X github.com/kozaktomas/photo-sorter/cmd.Version=${VERSION} -X github.com/kozaktomas/photo-sorter/cmd.CommitSHA=${COMMIT_SHA}" -o photo-sorter .
 
 # Stage 3: Runtime
 FROM alpine:3

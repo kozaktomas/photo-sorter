@@ -67,6 +67,10 @@ go run . <command>
 go run . serve
 ```
 
+### Version Injection
+
+Build metadata (`Version`, `CommitSHA` in `cmd/version.go`) is injected via `-ldflags` at compile time. The Makefile auto-detects the current commit hash. In Docker builds, GitHub Actions computes the version (tag name or `dev`) and passes it as build args. The version is exposed via `GET /api/v1/config` and displayed in the web UI header next to the GitHub icon.
+
 ## Development Environment
 
 **IMPORTANT:** After every code change, run the dev script to rebuild and restart the server:
@@ -411,7 +415,7 @@ Session cookies use `HttpOnly`, `SameSite=Strict`, and auto-detect `Secure` flag
 - `POST /api/v1/upload/job` - Start background upload job (multipart with config)
 - `GET /api/v1/upload/{jobId}/events` - SSE stream for upload job progress
 - `DELETE /api/v1/upload/{jobId}` - Cancel upload job
-- `GET /api/v1/config` - Get available providers
+- `GET /api/v1/config` - Get available providers and version info
 - `GET /api/v1/stats` - Get processing statistics
 - `GET /api/v1/subjects` - List subjects (people)
 - `GET /api/v1/subjects/{uid}` - Get single subject
