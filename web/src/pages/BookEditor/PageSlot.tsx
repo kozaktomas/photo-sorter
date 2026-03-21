@@ -1,8 +1,8 @@
-import { useState, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useDroppable, useDraggable } from '@dnd-kit/core';
 import { useTranslation } from 'react-i18next';
 import { X, Pencil, Type, Crop } from 'lucide-react';
-import { getThumbnailUrl } from '../../api/client';
+import { getThumbnailUrl, getPhoto } from '../../api/client';
 import { PhotoActionOverlay } from './PhotoActionOverlay';
 import { PhotoInfoOverlay } from './PhotoInfoOverlay';
 import { MarkdownContent } from '../../utils/markdown';
@@ -52,6 +52,21 @@ export function PageSlotComponent({ pageId, slotIndex, photoUid, textContent, cr
     setDragRef(node);
   }, [setDropRef, setDragRef]);
 
+  // Fetch original photo dimensions for accurate DPI calculation
+  useEffect(() => {
+    if (!photoUid || !format) {
+      setDpi(null);
+      return;
+    }
+    let cancelled = false;
+    getPhoto(photoUid).then(photo => {
+      if (!cancelled && photo.width && photo.height) {
+        setDpi(computeEffectiveDpi(photo.width, photo.height, format, slotIndex, splitPosition));
+      }
+    }).catch(() => { /* ignore */ });
+    return () => { cancelled = true; };
+  }, [photoUid, format, slotIndex, splitPosition]);
+
   return (
     <div
       ref={combinedRef}
@@ -75,9 +90,6 @@ export function PageSlotComponent({ pageId, slotIndex, photoUid, textContent, cr
             onLoad={(e) => {
               const img = e.currentTarget;
               setOrientation(img.naturalWidth >= img.naturalHeight ? 'L' : 'P');
-              if (format) {
-                setDpi(computeEffectiveDpi(img.naturalWidth, img.naturalHeight, format, slotIndex, splitPosition));
-              }
             }}
           />
           <div className="absolute top-1 right-1 flex gap-0.5">
