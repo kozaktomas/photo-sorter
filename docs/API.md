@@ -485,6 +485,7 @@ POST /photos/search-by-text
   "query": "západ slunce na pláži",
   "translated_query": "sunset at the beach with orange sky and waves",
   "translate_cost_usd": 0.0001,
+  "translate_error": "translating text: 401 Unauthorized",
   "threshold": 0.5,
   "results": [
     {

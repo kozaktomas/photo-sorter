@@ -535,7 +535,7 @@ Four-tab editor for organizing a photo book.
 - Toggle state persisted to localStorage per book
 
 **Sections Tab:**
-- **Section Sidebar** - Sortable list of sections with optional chapter grouping (drag to reorder). Create and delete sections and chapters. Shows placement stats (placed/total) per section — green when all photos are placed
+- **Section Sidebar** - Sortable list of sections with optional chapter grouping (drag to reorder). Create and delete sections and chapters (with confirmation dialogs). Shows placement stats (placed/total) per section — green when all photos are placed
   - **Chapters** (optional) - Add chapters to group sections. Chapters are collapsible with a chevron toggle. Drag-and-drop reordering for both chapters and sections. Inline chapter title editing. Delete chapter confirmation dialog. Uncategorized sections appear at the top when chapters exist. Chapter name shown in section headers with `|` delimiter
   - **Move to Chapter** - Use the dropdown selector on a section to assign it to a chapter
 - **Photo Pool** - Grid of photos in the selected section with thumbnails
@@ -546,7 +546,7 @@ Four-tab editor for organizing a photo book.
 - **Photo Browser Modal** - Full-screen modal to browse the entire library, search, and add photos to a section. Album and label filters use autocomplete comboboxes. Already-added photos are grayed out
 
 **Pages Tab:**
-- **Page Sidebar** - Pages grouped by section with collapsible headers (collapse state persisted to localStorage). Each section header shows the section title and page count, with a chevron toggle to collapse/expand. Quick-add button (+) next to each section opens a format picker popover for fast page creation. Pages show thumbnail previews of their slots (mini grid matching the page format) instead of plain "Page N" labels. Completed pages have green highlight; partially filled pages have rose highlight. Pages are sortable within a section (drag to reorder); cross-section drag is blocked. Global page numbering (1, 2, 3...) is preserved across sections. Creating a new page auto-expands the target section if collapsed. Create pages with format selector and section assignment
+- **Page Sidebar** - Pages grouped by section with collapsible headers (collapse state persisted to localStorage). Each section header shows the section title and page count, with a chevron toggle to collapse/expand. Quick-add button (+) next to each section opens a format picker popover for fast page creation. Pages show thumbnail previews of their slots (mini grid matching the page format) instead of plain "Page N" labels. Completed pages have green highlight; partially filled pages have rose highlight. Pages are sortable within a section (drag to reorder); cross-section drag is blocked. Global page numbering (1, 2, 3...) is preserved across sections. Creating a new page auto-expands the target section if collapsed. Create pages with format selector and section assignment. Delete pages with confirmation dialog
 - **Page Minimap** - Compact visual overview of all pages grouped by section. Shows mini layout renderers matching each format, with rose ring on selected page, green ring on fully filled pages, and amber dot on partially filled ones. Slot thumbnails preview assigned photos, text icons for text slots, and dashed borders for empty slots. Limited to 200px height with scrolling
 - **Page Template** - Visual CSS grid representation of the page layout with droppable slots
 - **Drag-and-Drop** - Drag photos from the unassigned pool into page slots

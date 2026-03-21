@@ -9,6 +9,7 @@ import {
 import { useDndContext } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { createPage, deletePage, getThumbnailUrl } from '../../api/client';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import type { BookChapter, BookPage, BookSection, PageFormat } from '../../types';
 import { pageFormatLabelKey, pageFormatSlotCount } from '../../types';
 
@@ -305,7 +306,16 @@ export function PageSidebar({ bookId, pages, chapters, sections, selectedId, onS
     } catch { /* silent */ }
   };
 
-  const handleDelete = async (id: string) => {
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
+
+  const handleDelete = (id: string) => {
+    setDeleteTargetId(id);
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTargetId) return;
+    const id = deleteTargetId;
+    setDeleteTargetId(null);
     try {
       await deletePage(id);
       onRefresh();
@@ -402,6 +412,16 @@ export function PageSidebar({ bookId, pages, chapters, sections, selectedId, onS
           {t('books.editor.addPage')}
         </button>
       </div>
+
+      <ConfirmDialog
+        open={deleteTargetId !== null}
+        title={t('common:buttons.delete')}
+        message={t('books.editor.deletePageConfirm')}
+        confirmLabel={t('common:buttons.delete')}
+        variant="danger"
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteTargetId(null)}
+      />
     </div>
   );
 }

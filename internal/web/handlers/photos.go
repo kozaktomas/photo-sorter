@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"math"
 	"net/http"
 	"sort"
@@ -646,6 +647,7 @@ type TextSearchResponse struct {
 	Query            string               `json:"query"`
 	TranslatedQuery  string               `json:"translated_query,omitempty"`
 	TranslateCostUSD float64              `json:"translate_cost_usd,omitempty"`
+	TranslateError   string               `json:"translate_error,omitempty"`
 	Threshold        float64              `json:"threshold"`
 	Results          []SimilarPhotoResult `json:"results"`
 	Count            int                  `json:"count"`
@@ -656,6 +658,7 @@ type translateQueryResult struct {
 	queryText       string
 	translatedQuery string
 	translateCost   float64
+	translateError  string
 }
 
 // translateQueryForCLIP optionally translates the query text to CLIP-optimized English.
@@ -665,7 +668,12 @@ func translateQueryForCLIP(ctx context.Context, openAIToken, text string) transl
 		return result
 	}
 	translated, err := ai.TranslateForCLIP(ctx, openAIToken, text)
-	if err == nil && translated.Text != text {
+	if err != nil {
+		log.Printf("WARNING: CLIP translation failed: %v", err)
+		result.translateError = err.Error()
+		return result
+	}
+	if translated.Text != text {
 		result.queryText = translated.Text
 		result.translatedQuery = translated.Text
 		result.translateCost = translated.Cost
@@ -727,8 +735,9 @@ func (h *PhotosHandler) SearchByText(w http.ResponseWriter, r *http.Request) {
 
 	respondJSON(w, http.StatusOK, TextSearchResponse{
 		Query: req.Text, TranslatedQuery: tr.translatedQuery,
-		TranslateCostUSD: tr.translateCost, Threshold: req.Threshold,
-		Results: results, Count: len(results),
+		TranslateCostUSD: tr.translateCost, TranslateError: tr.translateError,
+		Threshold: req.Threshold,
+		Results:   results, Count: len(results),
 	})
 }
 

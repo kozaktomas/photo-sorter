@@ -12,6 +12,7 @@ import {
   createChapter, updateChapter, deleteChapter,
 } from '../../api/client';
 import type { BookSection, BookChapter, BookPage } from '../../types';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 
 interface Props {
   bookId: string;
@@ -279,11 +280,10 @@ export function SectionSidebar({ bookId, chapters, sections, pages, selectedId, 
     } catch { /* silent */ }
   };
 
-  const handleDeleteSection = async (id: string) => {
-    try {
-      await deleteSection(id);
-      onRefresh();
-    } catch { /* silent */ }
+  const [deleteTarget, setDeleteTarget] = useState<{ type: 'section' | 'chapter'; id: string } | null>(null);
+
+  const handleDeleteSection = (id: string) => {
+    setDeleteTarget({ type: 'section', id });
   };
 
   const handleRenameSection = async (id: string, title: string) => {
@@ -307,10 +307,20 @@ export function SectionSidebar({ bookId, chapters, sections, pages, selectedId, 
     } catch { /* silent */ }
   };
 
-  const handleDeleteChapter = async (id: string) => {
-    if (!confirm(t('books.editor.deleteChapterConfirm'))) return;
+  const handleDeleteChapter = (id: string) => {
+    setDeleteTarget({ type: 'chapter', id });
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    const { type, id } = deleteTarget;
+    setDeleteTarget(null);
     try {
-      await deleteChapter(id);
+      if (type === 'section') {
+        await deleteSection(id);
+      } else {
+        await deleteChapter(id);
+      }
       onRefresh();
     } catch { /* silent */ }
   };
@@ -407,6 +417,16 @@ export function SectionSidebar({ bookId, chapters, sections, pages, selectedId, 
           </div>
         </div>
       )}
+
+      <ConfirmDialog
+        open={deleteTarget !== null}
+        title={deleteTarget?.type === 'chapter' ? t('books.editor.deleteChapter') : t('common:buttons.delete')}
+        message={deleteTarget?.type === 'chapter' ? t('books.editor.deleteChapterConfirm') : t('books.editor.deleteSectionConfirm')}
+        confirmLabel={t('common:buttons.delete')}
+        variant="danger"
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }

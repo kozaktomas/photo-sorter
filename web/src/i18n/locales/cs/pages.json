@@ -234,7 +234,8 @@
     "similarityInfo": "Podobnost: procento ukazující, jak dobře fotky odpovídají textovému dotazu",
     "matchingPhotos": "Odpovídající fotky",
     "noMatchingPhotos": "Žádné odpovídající fotky nenalezeny",
-    "tryDifferentQuery": "Zkuste jiný dotaz nebo snižte práh"
+    "tryDifferentQuery": "Zkuste jiný dotaz nebo snižte práh",
+    "translateError": "Překlad selhal"
   },
   "expand": {
     "title": "Rozšířit",
@@ -443,6 +444,8 @@
       "noChapter": "Nezařazené",
       "deleteChapter": "Smazat kapitolu",
       "deleteChapterConfirm": "Smazat tuto kapitolu? Sekce budou odřazeny.",
+      "deleteSectionConfirm": "Smazat tuto sekci? Její stránky a přiřazení fotek budou odstraněny.",
+      "deletePageConfirm": "Smazat tuto stránku? Přiřazení slotů budou odstraněna.",
       "duplicatesTab": "Duplikáty",
       "duplicatesLoading": "Načítám fotky sekcí...",
       "duplicatesEmpty": "Žádné duplicitní fotky napříč sekcemi",

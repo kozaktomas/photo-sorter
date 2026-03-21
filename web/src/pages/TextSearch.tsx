@@ -285,6 +285,11 @@ export function TextSearchPage() {
                       </div>
                     </>
                   )}
+                  {result.translate_error && (
+                    <div className="mt-3 p-2 bg-red-500/10 border border-red-500/20 rounded text-sm text-red-400">
+                      {t('pages:textSearch.translateError')}: {result.translate_error}
+                    </div>
+                  )}
                 </div>
 
                 {/* Summary stats */}

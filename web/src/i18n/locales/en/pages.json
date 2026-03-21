@@ -234,7 +234,8 @@
     "similarityInfo": "Similarity: percentage showing how well photos match the text query",
     "matchingPhotos": "Matching Photos",
     "noMatchingPhotos": "No matching photos found",
-    "tryDifferentQuery": "Try a different query or lower the threshold"
+    "tryDifferentQuery": "Try a different query or lower the threshold",
+    "translateError": "Translation failed"
   },
   "expand": {
     "title": "Expand",
@@ -458,6 +459,8 @@
       "noChapter": "Uncategorized",
       "deleteChapter": "Delete Chapter",
       "deleteChapterConfirm": "Delete this chapter? Sections will be unassigned.",
+      "deleteSectionConfirm": "Delete this section? Its pages and photo assignments will be removed.",
+      "deletePageConfirm": "Delete this page? Its slot assignments will be removed.",
       "duplicatesTab": "Duplicates",
       "duplicatesLoading": "Loading section photos...",
       "duplicatesEmpty": "No duplicate photos found across sections",

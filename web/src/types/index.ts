@@ -255,6 +255,7 @@ export interface TextSearchResponse {
   query: string;
   translated_query?: string;
   translate_cost_usd?: number;
+  translate_error?: string;
   threshold: number;
   results: SimilarPhotoResult[];
   count: number;
