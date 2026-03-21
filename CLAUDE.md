@@ -480,7 +480,7 @@ web/src/
 │   ├── PhotoWithBBox.tsx
 │   └── StatsGrid.tsx          # Stats display grid (configurable columns/colors)
 ├── constants/
-│   ├── actions.ts             # Face action styling (labels, colors)
+│   ├── actions.ts             # Face action styling (i18n label keys, colors)
 │   ├── index.ts               # Magic numbers and defaults
 │   └── pageConfig.ts          # Book page format configuration
 ├── hooks/                     # Global hooks

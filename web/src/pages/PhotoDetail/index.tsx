@@ -189,7 +189,7 @@ export function PhotoDetailPage() {
             {t('pages:photoDetail.copyUid')}
           </Button>
           {config?.photoprism_domain && (
-            <Button variant="ghost" size="sm" onClick={handleOpenInPhotoprism} title="Open in PhotoPrism">
+            <Button variant="ghost" size="sm" onClick={handleOpenInPhotoprism} title={t('common:buttons.openInPhotoprism')}>
               <ExternalLink className="h-4 w-4 mr-1" />
               {t('pages:photoDetail.photoprism')}
             </Button>

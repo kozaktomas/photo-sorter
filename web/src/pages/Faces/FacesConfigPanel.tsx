@@ -64,7 +64,7 @@ export function FacesConfigPanel({
               <Link
                 to={`/subjects/${subjects.find(s => s.slug === selectedPerson)?.uid}`}
                 className="text-slate-400 hover:text-blue-400 p-2"
-                title="View subject details"
+                title={t('common:tooltips.viewSubjectDetails')}
               >
                 <ExternalLink className="h-4 w-4" />
               </Link>

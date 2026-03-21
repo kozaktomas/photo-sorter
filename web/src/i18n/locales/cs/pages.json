@@ -563,6 +563,9 @@
     "excluded": "Vyloučeno",
     "description": "Popis",
     "notes": "Poznámky",
+    "alias": "Přezdívka",
+    "about": "O osobě",
+    "bio": "Životopis",
     "yes": "Ano",
     "no": "Ne"
   }

@@ -10,29 +10,29 @@ interface ActionStyle {
 
 const ACTION_CONFIG: Record<MatchAction, ActionStyle> = {
   create_marker: {
-    label: 'New',
-    descriptiveLabel: 'Unassigned',
+    label: 'actions.new',
+    descriptiveLabel: 'actions.unassigned',
     borderColor: 'border-red-500',
     bgColor: 'bg-red-500',
     panelStyle: 'bg-red-500/10 text-red-400 border-red-500/30',
   },
   assign_person: {
-    label: 'Assign',
-    descriptiveLabel: 'Needs assignment',
+    label: 'actions.assign',
+    descriptiveLabel: 'actions.needsAssignment',
     borderColor: 'border-yellow-500',
     bgColor: 'bg-yellow-500',
     panelStyle: 'bg-yellow-500/10 text-yellow-400 border-yellow-500/30',
   },
   already_done: {
-    label: 'Done',
-    descriptiveLabel: 'Assigned',
+    label: 'actions.done',
+    descriptiveLabel: 'actions.assigned',
     borderColor: 'border-green-500',
     bgColor: 'bg-green-500',
     panelStyle: 'bg-green-500/10 text-green-400 border-green-500/30',
   },
   unassign_person: {
-    label: 'Outlier',
-    descriptiveLabel: 'Outlier',
+    label: 'actions.outlier',
+    descriptiveLabel: 'actions.outlier',
     borderColor: 'border-orange-500',
     bgColor: 'bg-orange-500',
     panelStyle: 'bg-orange-500/10 text-orange-400 border-orange-500/30',

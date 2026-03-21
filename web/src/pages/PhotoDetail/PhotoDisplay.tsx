@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { getThumbnailUrl } from '../../api/client';
 import { ACTION_BORDER_COLORS } from '../../constants/actions';
@@ -20,6 +21,7 @@ interface PhotoDisplayProps {
 }
 
 export function PhotoDisplay({ photo, faces, selectedFaceIndex, onFaceSelect, hasPrev, hasNext, onPrev, onNext, currentIndex, totalPhotos, markingsVisible = true, fullscreen = false }: PhotoDisplayProps) {
+  const { t } = useTranslation('common');
   const [imageLoaded, setImageLoaded] = useState(false);
 
   // Reset imageLoaded when photo changes so face boxes don't persist
@@ -42,7 +44,7 @@ export function PhotoDisplay({ photo, faces, selectedFaceIndex, onFaceSelect, ha
               ? 'text-white hover:bg-black/70 cursor-pointer opacity-0 group-hover:opacity-100'
               : 'text-slate-600 cursor-not-allowed opacity-0 group-hover:opacity-50'
           }`}
-          aria-label="Previous photo"
+          aria-label={t('buttons.previousPhoto')}
         >
           <ChevronLeft className="h-8 w-8" />
         </button>
@@ -58,7 +60,7 @@ export function PhotoDisplay({ photo, faces, selectedFaceIndex, onFaceSelect, ha
               ? 'text-white hover:bg-black/70 cursor-pointer opacity-0 group-hover:opacity-100'
               : 'text-slate-600 cursor-not-allowed opacity-0 group-hover:opacity-50'
           }`}
-          aria-label="Next photo"
+          aria-label={t('buttons.nextPhoto')}
         >
           <ChevronRight className="h-8 w-8" />
         </button>

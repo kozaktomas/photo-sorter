@@ -1,4 +1,5 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, type CSSProperties } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { getThumbnailUrl } from '../../api/client';
 import { useSlideshowPhotos } from './hooks/useSlideshowPhotos';
@@ -47,6 +48,7 @@ function useMouseActivity(isFullscreen: boolean) {
 }
 
 export function SlideshowPage() {
+  const { t } = useTranslation('common');
   const { photos, title, isLoading, error, sourceType } = useSlideshowPhotos();
   const slideshow = useSlideshow(photos);
   const [imageLoaded, setImageLoaded] = useState(false);
@@ -252,7 +254,7 @@ export function SlideshowPage() {
             ? `${controlsVisible ? (hasPrev ? 'opacity-100' : 'opacity-30') : 'opacity-0 pointer-events-none'} transition-opacity duration-300`
             : (hasPrev ? 'opacity-0 group-hover/slideshow:opacity-100' : 'opacity-0 group-hover/slideshow:opacity-30')
         }`}
-        aria-label="Previous photo"
+        aria-label={t('buttons.previousPhoto')}
       >
         <ChevronLeft className="h-8 w-8" />
       </button>
@@ -270,7 +272,7 @@ export function SlideshowPage() {
             ? `${controlsVisible ? (hasNext ? 'opacity-100' : 'opacity-30') : 'opacity-0 pointer-events-none'} transition-opacity duration-300`
             : (hasNext ? 'opacity-0 group-hover/slideshow:opacity-100' : 'opacity-0 group-hover/slideshow:opacity-30')
         }`}
-        aria-label="Next photo"
+        aria-label={t('buttons.nextPhoto')}
       >
         <ChevronRight className="h-8 w-8" />
       </button>

@@ -20,7 +20,8 @@
     "enterLabel": "Enter label...",
     "searchAlbums": "Search albums...",
     "searchLabels": "Search labels...",
-    "searchPhotos": "Search photos..."
+    "searchPhotos": "Search photos...",
+    "addLabels": "Add labels..."
   },
   "validation": {
     "required": "This field is required",

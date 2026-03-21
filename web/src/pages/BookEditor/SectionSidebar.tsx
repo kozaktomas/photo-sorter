@@ -37,6 +37,7 @@ function SortableItem({ section, isSelected, isDropTarget, onSelect, onDelete, o
   chapters: BookChapter[];
   placedCount: number;
 }) {
+  const { t } = useTranslation(['common']);
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: `section-${section.id}` });
   const style = { transform: CSS.Transform.toString(transform), transition };
   const [editing, setEditing] = useState(false);
@@ -120,7 +121,7 @@ function SortableItem({ section, isSelected, isDropTarget, onSelect, onDelete, o
               onChange={(e) => { e.stopPropagation(); onMoveToChapter(e.target.value); }}
               onClick={(e) => e.stopPropagation()}
               className="ml-1 bg-transparent border-none text-xs text-slate-500 hover:text-slate-300 cursor-pointer p-0 focus:outline-none"
-              title="Move to chapter"
+              title={t('common:tooltips.moveToChapter')}
             >
               <option value="">—</option>
               {chapters.map(ch => (
@@ -252,7 +253,7 @@ function AddInput({ placeholder, onAdd }: { placeholder: string; onAdd: (title: 
 }
 
 export function SectionSidebar({ bookId, chapters, sections, pages, selectedId, onSelect, onRefresh, isPhotoDragging, dragSourceSectionId, overSectionId }: Props) {
-  const { t } = useTranslation('pages');
+  const { t } = useTranslation(['pages', 'common']);
 
   // Compute placed photo counts per section
   const placedBySection = useMemo(() => {

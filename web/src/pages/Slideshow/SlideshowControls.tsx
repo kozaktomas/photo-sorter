@@ -1,6 +1,6 @@
 import { Play, Pause, X, Maximize, Minimize, Info, Wand2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
 import type { SlideshowEffect } from './hooks/useSlideshow';
-import { EFFECT_LABELS } from './effectConfigs';
 
 interface SlideshowControlsProps {
   isPlaying: boolean;
@@ -51,6 +51,7 @@ export function SlideshowControls({
   onToggleEffect,
   onExit,
 }: SlideshowControlsProps) {
+  const { t } = useTranslation('common');
   const totalSeconds = totalPhotos * (interval / 1000);
 
   return (
@@ -61,7 +62,7 @@ export function SlideshowControls({
           <button
             onClick={onTogglePlayPause}
             className="p-2.5 rounded-full bg-white/15 hover:bg-white/25 text-white transition-colors"
-            aria-label={isPlaying ? 'Pause' : 'Play'}
+            aria-label={isPlaying ? t('buttons.pause') : t('buttons.play')}
           >
             {isPlaying ? <Pause className="h-5 w-5" /> : <Play className="h-5 w-5" />}
           </button>
@@ -98,12 +99,12 @@ export function SlideshowControls({
                 ? 'bg-white/25 text-white pl-3 pr-3.5 py-2'
                 : 'bg-white/15 text-white/50 hover:bg-white/25 hover:text-white p-2.5'
             }`}
-            aria-label={`Effect: ${EFFECT_LABELS[activeEffect]}`}
-            title={`${EFFECT_LABELS[activeEffect]} (K)`}
+            aria-label={t('effects.' + activeEffect)}
+            title={`${t('effects.' + activeEffect)} (K)`}
           >
             <Wand2 className="h-5 w-5" />
             {activeEffect !== 'none' && (
-              <span className="text-sm font-medium">{EFFECT_LABELS[activeEffect]}</span>
+              <span className="text-sm font-medium">{t('effects.' + activeEffect)}</span>
             )}
           </button>
 
@@ -114,8 +115,8 @@ export function SlideshowControls({
                 ? 'bg-white/25 text-white'
                 : 'bg-white/15 text-white/50 hover:bg-white/25 hover:text-white'
             }`}
-            aria-label={showInfo ? 'Hide info' : 'Show info'}
-            title="Toggle info (I)"
+            aria-label={showInfo ? t('tooltips.hideInfo') : t('tooltips.showInfo')}
+            title={t('tooltips.toggleInfo')}
           >
             <Info className="h-5 w-5" />
           </button>
@@ -123,8 +124,8 @@ export function SlideshowControls({
           <button
             onClick={onToggleFullscreen}
             className="p-2.5 rounded-full bg-white/15 hover:bg-white/25 text-white transition-colors"
-            aria-label={isFullscreen ? 'Exit fullscreen' : 'Enter fullscreen'}
-            title="Fullscreen (F)"
+            aria-label={isFullscreen ? t('tooltips.exitFullscreen') : t('tooltips.enterFullscreen')}
+            title={t('tooltips.fullscreen')}
           >
             {isFullscreen ? <Minimize className="h-5 w-5" /> : <Maximize className="h-5 w-5" />}
           </button>
@@ -132,8 +133,8 @@ export function SlideshowControls({
           <button
             onClick={onExit}
             className="p-2.5 rounded-full bg-white/15 hover:bg-white/25 text-white transition-colors"
-            aria-label="Exit slideshow"
-            title="Exit (Esc)"
+            aria-label={t('tooltips.exitSlideshow')}
+            title={t('tooltips.exit')}
           >
             <X className="h-5 w-5" />
           </button>

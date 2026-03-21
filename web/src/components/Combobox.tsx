@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback, useId } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ChevronDown, X } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
@@ -28,6 +29,7 @@ export function Combobox({
   className = '',
   focusRingClass,
 }: ComboboxProps) {
+  const { t } = useTranslation('common');
   const [isOpen, setIsOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [highlightIndex, setHighlightIndex] = useState(-1);
@@ -173,7 +175,7 @@ export function Combobox({
               inputRef.current?.focus();
             }}
             className={`${isSm ? 'mr-1.5' : 'mr-2'} text-slate-400 hover:text-white shrink-0`}
-            aria-label="Clear"
+            aria-label={t('buttons.clear')}
           >
             <X className={isSm ? 'h-3.5 w-3.5' : 'h-4 w-4'} />
           </button>

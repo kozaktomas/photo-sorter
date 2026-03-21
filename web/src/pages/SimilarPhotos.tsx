@@ -240,7 +240,7 @@ export function SimilarPhotosPage() {
                       <button
                         onClick={() => handleOpenInPhotoprism(result.source_photo_uid)}
                         className="p-2 text-slate-400 hover:text-white transition-colors"
-                        title="Open in PhotoPrism"
+                        title={t('common:buttons.openInPhotoprism')}
                       >
                         <ExternalLink className="h-4 w-4" />
                       </button>

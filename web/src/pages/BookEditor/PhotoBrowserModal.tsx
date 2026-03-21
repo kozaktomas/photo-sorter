@@ -14,7 +14,7 @@ interface Props {
 }
 
 export function PhotoBrowserModal({ sectionId, existingUids, onClose, onAdded }: Props) {
-  const { t } = useTranslation(['pages', 'common']);
+  const { t } = useTranslation(['pages', 'common', 'forms']);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [loading, setLoading] = useState(false);
   const [query, setQuery] = useState('');
@@ -148,14 +148,14 @@ export function PhotoBrowserModal({ sectionId, existingUids, onClose, onAdded }:
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-            placeholder="Search photos..."
+            placeholder={t('forms:placeholders.searchPhotos')}
             className="flex-1 min-w-[150px] px-3 py-1.5 bg-slate-800 border border-slate-700 rounded text-sm text-white placeholder-slate-500 focus:outline-none focus-visible:ring-1 focus-visible:ring-rose-500"
           />
           <button
             onClick={handleSearch}
             className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white text-sm rounded transition-colors"
           >
-            Search
+            {t('common:buttons.search')}
           </button>
           <Combobox
             value={selectedAlbum}

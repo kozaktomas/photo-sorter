@@ -20,7 +20,8 @@
     "enterLabel": "Zadejte štítek...",
     "searchAlbums": "Hledat alba...",
     "searchLabels": "Hledat štítky...",
-    "searchPhotos": "Hledat fotky..."
+    "searchPhotos": "Hledat fotky...",
+    "addLabels": "P\u0159idat \u0161t\u00edtky..."
   },
   "validation": {
     "required": "Toto pole je povinné",

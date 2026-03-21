@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { Eye, Search, Copy, Check } from 'lucide-react';
 import { copyToClipboard } from '../../utils/clipboard';
@@ -8,6 +9,7 @@ interface Props {
 }
 
 export function PhotoActionOverlay({ photoUid }: Props) {
+  const { t } = useTranslation('common');
   const navigate = useNavigate();
   const [copied, setCopied] = useState(false);
 
@@ -46,7 +48,7 @@ export function PhotoActionOverlay({ photoUid }: Props) {
           onClick={handleOpenDetail}
           onPointerDown={(e) => e.stopPropagation()}
           className="p-1.5 bg-black/60 rounded text-white hover:bg-black/80 transition-colors"
-          title="View details"
+          title={t('buttons.viewDetails')}
         >
           <Eye className="h-3 w-3" />
         </button>
@@ -54,7 +56,7 @@ export function PhotoActionOverlay({ photoUid }: Props) {
           onClick={handleFindSimilar}
           onPointerDown={(e) => e.stopPropagation()}
           className="p-1.5 bg-black/60 rounded text-white hover:bg-black/80 transition-colors"
-          title="Find similar"
+          title={t('buttons.findSimilar')}
         >
           <Search className="h-3 w-3" />
         </button>
@@ -64,7 +66,7 @@ export function PhotoActionOverlay({ photoUid }: Props) {
           className={`p-1.5 rounded text-white transition-colors ${
             copied ? 'bg-green-600' : 'bg-black/60 hover:bg-black/80'
           }`}
-          title={copied ? 'Copied!' : 'Copy photo ID'}
+          title={copied ? t('buttons.copied') : t('buttons.copyPhotoId')}
         >
           {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
         </button>

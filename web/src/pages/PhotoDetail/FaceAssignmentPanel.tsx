@@ -77,7 +77,7 @@ export function FaceAssignmentPanel({
                   {suggestion.person_name}
                 </div>
                 <div className="text-xs text-slate-400">
-                  {(suggestion.confidence * 100).toFixed(0)}% match
+                  {t('common:match', { value: (suggestion.confidence * 100).toFixed(0) })}
                 </div>
               </div>
               <Button
@@ -191,7 +191,7 @@ export function FaceAssignmentPanel({
           Face #{selectedFaceIndex + 1}
         </h4>
         <span className={`text-xs px-2 py-0.5 rounded border ${ACTION_PANEL_STYLES[selectedFace.action]}`}>
-          {selectedFace.marker_name || ACTION_DESCRIPTIVE_LABELS[selectedFace.action]}
+          {selectedFace.marker_name || t('common:' + ACTION_DESCRIPTIVE_LABELS[selectedFace.action])}
         </span>
       </div>
 

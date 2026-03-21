@@ -50,7 +50,18 @@
     "detectFaces": "Detect Faces",
     "rescan": "Re-scan",
     "scanAllPeople": "Scan All People",
-    "slideshow": "Slideshow"
+    "slideshow": "Slideshow",
+    "viewDetails": "View details",
+    "openInPhotoprism": "Open in PhotoPrism",
+    "approve": "Approve",
+    "reject": "Reject",
+    "previousPhoto": "Previous photo",
+    "nextPhoto": "Next photo",
+    "copied": "Copied!",
+    "copyPhotoId": "Copy photo ID",
+    "clear": "Clear",
+    "play": "Play",
+    "pause": "Pause"
   },
   "status": {
     "loading": "Loading...",
@@ -99,6 +110,36 @@
     "faces": "Faces",
     "tools": "Tools"
   },
+  "tooltips": {
+    "viewSubjectDetails": "View subject details",
+    "moveToChapter": "Move to chapter",
+    "toggleInfo": "Toggle info (I)",
+    "fullscreen": "Fullscreen (F)",
+    "exitFullscreen": "Exit fullscreen",
+    "enterFullscreen": "Enter fullscreen",
+    "exitSlideshow": "Exit slideshow",
+    "exit": "Exit (Esc)",
+    "hideInfo": "Hide info",
+    "showInfo": "Show info"
+  },
+  "actions": {
+    "new": "New",
+    "assign": "Assign",
+    "done": "Done",
+    "outlier": "Outlier",
+    "unassigned": "Unassigned",
+    "needsAssignment": "Needs assignment",
+    "assigned": "Assigned"
+  },
+  "effects": {
+    "none": "No effect",
+    "kenBurns": "Ken Burns",
+    "reflections": "Reflections",
+    "dissolve": "Dissolve",
+    "push": "Push",
+    "origami": "Origami"
+  },
+  "match": "{{value}}% match",
   "time": {
     "noDate": "No date"
   }

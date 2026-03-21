@@ -314,6 +314,9 @@
     "excluded": "Excluded",
     "description": "Description",
     "notes": "Notes",
+    "alias": "Alias",
+    "about": "About",
+    "bio": "Bio",
     "yes": "Yes",
     "no": "No"
   },

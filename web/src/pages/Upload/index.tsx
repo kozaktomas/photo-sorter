@@ -32,6 +32,7 @@ function AlbumCheckboxList({
   placeholder: string;
   disabled?: boolean;
 }) {
+  const { t } = useTranslation(['pages']);
   const filtered = filter
     ? albums.filter(a => a.title.toLowerCase().includes(filter.toLowerCase()))
     : albums;
@@ -64,7 +65,7 @@ function AlbumCheckboxList({
           </label>
         ))}
         {filtered.length === 0 && (
-          <p className="text-sm text-slate-500 px-2 py-1.5">No albums found</p>
+          <p className="text-sm text-slate-500 px-2 py-1.5">{t('pages:albums.noAlbumsFound')}</p>
         )}
       </div>
     </div>
@@ -84,6 +85,7 @@ function LabelTagInput({
   onRemove: (name: string) => void;
   disabled?: boolean;
 }) {
+  const { t } = useTranslation(['forms']);
   const [query, setQuery] = useState('');
 
   const suggestions = query.length > 0
@@ -131,7 +133,7 @@ function LabelTagInput({
           onChange={e => setQuery(e.target.value)}
           onKeyDown={handleKeyDown}
           disabled={disabled}
-          placeholder="Add labels..."
+          placeholder={t('forms:placeholders.addLabels')}
           className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
         />
         {suggestions.length > 0 && (
@@ -166,7 +168,7 @@ const PHASE_LABELS: Record<string, string> = {
 };
 
 export function UploadPage() {
-  const { t } = useTranslation(['pages', 'common']);
+  const { t } = useTranslation(['pages', 'common', 'forms']);
 
   // Data loading
   const [albums, setAlbums] = useState<Album[]>([]);

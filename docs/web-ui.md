@@ -885,9 +885,10 @@ Face action styling is centralized in `constants/actions.ts`:
 ```typescript
 import { ACTION_LABELS, ACTION_BORDER_COLORS, ACTION_BG_COLORS } from '../constants/actions';
 
-// Usage
+// ACTION_LABELS and ACTION_DESCRIPTIVE_LABELS contain i18n keys, not display text.
+// Wrap with t() at render time:
 <div className={ACTION_BORDER_COLORS[match.action]}>
-  {ACTION_LABELS[match.action]}
+  {t(ACTION_LABELS[match.action])}
 </div>
 ```
 
@@ -914,9 +915,11 @@ function MyComponent() {
 ```
 
 **Namespaces:**
-- `common` - Shared strings (nav, buttons, status, errors, units)
+- `common` - Shared strings (nav, buttons, status, errors, units, tooltips, actions, effects)
 - `pages` - Page-specific content
 - `forms` - Form labels and placeholders
+
+**Important:** All user-visible text must use `t()` — including `title`, `aria-label`, and `placeholder` attributes. Do not use hardcoded English strings in any component.
 
 **Pluralization (Czech):**
 Czech uses three plural forms: `_one`, `_few`, `_many`:

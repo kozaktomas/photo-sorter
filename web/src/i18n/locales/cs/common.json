@@ -50,7 +50,18 @@
     "rescan": "Znovu skenovat",
     "scanAllPeople": "Skenovat všechny osoby",
     "select": "Vybrat",
-    "slideshow": "Prezentace"
+    "slideshow": "Prezentace",
+    "viewDetails": "Zobrazit detail",
+    "openInPhotoprism": "Otev\u0159\u00edt v PhotoPrism",
+    "approve": "Schv\u00e1lit",
+    "reject": "Odm\u00edtnout",
+    "previousPhoto": "P\u0159edchoz\u00ed fotka",
+    "nextPhoto": "Dal\u0161\u00ed fotka",
+    "copied": "Zkop\u00edrov\u00e1no!",
+    "copyPhotoId": "Kop\u00edrovat ID fotky",
+    "clear": "Vymazat",
+    "play": "P\u0159ehr\u00e1t",
+    "pause": "Pozastavit"
   },
   "status": {
     "loading": "Načítání...",
@@ -107,6 +118,36 @@
     "faces": "Obli\u010deje",
     "tools": "N\u00e1stroje"
   },
+  "tooltips": {
+    "viewSubjectDetails": "Zobrazit detail osoby",
+    "moveToChapter": "P\u0159esunout do kapitoly",
+    "toggleInfo": "P\u0159epnout info (I)",
+    "fullscreen": "Cel\u00e1 obrazovka (F)",
+    "exitFullscreen": "Opustit celou obrazovku",
+    "enterFullscreen": "Cel\u00e1 obrazovka",
+    "exitSlideshow": "Ukon\u010dit prezentaci",
+    "exit": "Ukon\u010dit (Esc)",
+    "hideInfo": "Skr\u00fdt info",
+    "showInfo": "Zobrazit info"
+  },
+  "actions": {
+    "new": "Nov\u00fd",
+    "assign": "P\u0159i\u0159adit",
+    "done": "Hotovo",
+    "outlier": "Odchylka",
+    "unassigned": "Nep\u0159i\u0159azeno",
+    "needsAssignment": "Pot\u0159ebuje p\u0159i\u0159azen\u00ed",
+    "assigned": "P\u0159i\u0159azeno"
+  },
+  "effects": {
+    "none": "Bez efektu",
+    "kenBurns": "Ken Burns",
+    "reflections": "Odrazy",
+    "dissolve": "Prol\u00edn\u00e1n\u00ed",
+    "push": "Posun",
+    "origami": "Origami"
+  },
+  "match": "{{value}}% shoda",
   "time": {
     "noDate": "Bez data"
   }

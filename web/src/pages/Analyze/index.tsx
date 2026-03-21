@@ -13,7 +13,7 @@ import { DEFAULT_CONCURRENCY, MAX_ALBUMS_FETCH } from '../../constants';
 import type { Album, Config } from '../../types';
 
 export function AnalyzePage() {
-  const { t } = useTranslation('pages');
+  const { t } = useTranslation(['pages', 'common']);
   const [searchParams] = useSearchParams();
   const preselectedAlbum = searchParams.get('album');
 
@@ -80,7 +80,7 @@ export function AnalyzePage() {
         concurrency,
       });
     } catch {
-      alert('Failed to start analysis');
+      alert(t('common:errors.somethingWentWrong'));
     }
   };
 

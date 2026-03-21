@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { Copy, ExternalLink, Search, Check, Loader2, X, Eye, Star } from 'lucide-react';
 import { getThumbnailUrl } from '../api/client';
@@ -49,6 +50,7 @@ export function PhotoCard({
   badge,
   aspectRatio = 'square',
 }: PhotoCardProps) {
+  const { t } = useTranslation('common');
   const [isApproving, setIsApproving] = useState(false);
   const [copied, setCopied] = useState(false);
 
@@ -157,7 +159,7 @@ export function PhotoCard({
         <div
           className={`absolute top-2 right-2 ${ACTION_BG_COLORS[action]} text-white text-xs px-1.5 py-0.5 rounded font-medium`}
         >
-          {ACTION_LABELS[action]}
+          {t(ACTION_LABELS[action])}
         </div>
       )}
 
@@ -173,7 +175,7 @@ export function PhotoCard({
         <div className="flex items-center justify-between">
           {/* Match percent */}
           <div className="text-xs text-white">
-            {matchPercent !== undefined ? `${matchPercent} % match` : ''}
+            {matchPercent !== undefined ? t('match', { value: matchPercent }) : ''}
           </div>
 
           {/* Action buttons - always visible on hover */}
@@ -183,8 +185,8 @@ export function PhotoCard({
               to={`/photos/${photoUid}`}
               onClick={e => e.stopPropagation()}
               className="p-1.5 bg-black/60 rounded text-white hover:bg-black/80 transition-colors"
-              title="View details"
-              aria-label="View details"
+              title={t('buttons.viewDetails')}
+              aria-label={t('buttons.viewDetails')}
             >
               <Eye className="h-3 w-3" />
             </Link>
@@ -194,8 +196,8 @@ export function PhotoCard({
               to={`/similar?photo=${photoUid}`}
               onClick={e => e.stopPropagation()}
               className="p-1.5 bg-black/60 rounded text-white hover:bg-black/80 transition-colors"
-              title="Find similar"
-              aria-label="Find similar"
+              title={t('buttons.findSimilar')}
+              aria-label={t('buttons.findSimilar')}
             >
               <Search className="h-3 w-3" />
             </Link>
@@ -206,8 +208,8 @@ export function PhotoCard({
               className={`p-1.5 rounded text-white transition-colors ${
                 copied ? 'bg-green-600' : 'bg-black/60 hover:bg-black/80'
               }`}
-              title={copied ? 'Copied!' : 'Copy photo ID'}
-              aria-label={copied ? 'Copied!' : 'Copy photo ID'}
+              title={copied ? t('buttons.copied') : t('buttons.copyPhotoId')}
+              aria-label={copied ? t('buttons.copied') : t('buttons.copyPhotoId')}
             >
               {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
             </button>
@@ -217,8 +219,8 @@ export function PhotoCard({
               <button
                 onClick={handleOpenPhotoprism}
                 className="p-1.5 bg-black/60 rounded text-white hover:bg-black/80 transition-colors"
-                title="Open in PhotoPrism"
-                aria-label="Open in PhotoPrism"
+                title={t('buttons.openInPhotoprism')}
+                aria-label={t('buttons.openInPhotoprism')}
               >
                 <ExternalLink className="h-3 w-3" />
               </button>
@@ -235,8 +237,8 @@ export function PhotoCard({
               onClick={handleApprove}
               disabled={isApproving}
               className="p-1.5 bg-green-600 hover:bg-green-500 disabled:bg-green-800 text-white rounded transition-colors"
-              title="Approve"
-              aria-label="Approve"
+              title={t('buttons.approve')}
+              aria-label={t('buttons.approve')}
             >
               {isApproving ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -250,8 +252,8 @@ export function PhotoCard({
               onClick={handleReject}
               disabled={isApproving}
               className="p-1.5 bg-red-600 hover:bg-red-500 disabled:bg-red-800 text-white rounded transition-colors"
-              title="Reject"
-              aria-label="Reject"
+              title={t('buttons.reject')}
+              aria-label={t('buttons.reject')}
             >
               <X className="h-4 w-4" />
             </button>
@@ -272,6 +274,7 @@ export function PhotoCardLink({
   photoprismDomain?: string;
   favorite?: boolean;
 }) {
+  const { t } = useTranslation('common');
   const [copied, setCopied] = useState(false);
 
   const handleCopyId = (e: React.MouseEvent) => {
@@ -316,8 +319,8 @@ export function PhotoCardLink({
             href={`/similar?photo=${photoUid}`}
             onClick={e => e.stopPropagation()}
             className="p-1.5 bg-black/60 rounded text-white hover:bg-black/80 transition-colors"
-            title="Find similar"
-            aria-label="Find similar"
+            title={t('buttons.findSimilar')}
+            aria-label={t('buttons.findSimilar')}
           >
             <Search className="h-3 w-3" />
           </a>
@@ -328,8 +331,8 @@ export function PhotoCardLink({
             className={`p-1.5 rounded text-white transition-colors ${
               copied ? 'bg-green-600' : 'bg-black/60 hover:bg-black/80'
             }`}
-            title={copied ? 'Copied!' : 'Copy photo ID'}
-            aria-label={copied ? 'Copied!' : 'Copy photo ID'}
+            title={copied ? t('buttons.copied') : t('buttons.copyPhotoId')}
+            aria-label={copied ? t('buttons.copied') : t('buttons.copyPhotoId')}
           >
             {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
           </button>
@@ -339,8 +342,8 @@ export function PhotoCardLink({
             <button
               onClick={handleOpenPhotoprism}
               className="p-1.5 bg-black/60 rounded text-white hover:bg-black/80 transition-colors"
-              title="Open in PhotoPrism"
-              aria-label="Open in PhotoPrism"
+              title={t('buttons.openInPhotoprism')}
+              aria-label={t('buttons.openInPhotoprism')}
             >
               <ExternalLink className="h-3 w-3" />
             </button>

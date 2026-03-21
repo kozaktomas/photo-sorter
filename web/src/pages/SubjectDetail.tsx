@@ -168,19 +168,19 @@ export function SubjectDetailPage() {
             </div>
             {subject.alias && (
               <div>
-                <dt className="text-sm text-slate-400">Alias</dt>
+                <dt className="text-sm text-slate-400">{t('pages:subjectDetail.alias')}</dt>
                 <dd className="text-white mt-1">{subject.alias}</dd>
               </div>
             )}
             {subject.about && (
               <div className="col-span-2">
-                <dt className="text-sm text-slate-400">About</dt>
+                <dt className="text-sm text-slate-400">{t('pages:subjectDetail.about')}</dt>
                 <dd className="text-white mt-1">{subject.about}</dd>
               </div>
             )}
             {subject.bio && (
               <div className="col-span-2">
-                <dt className="text-sm text-slate-400">Bio</dt>
+                <dt className="text-sm text-slate-400">{t('pages:subjectDetail.bio')}</dt>
                 <dd className="text-white mt-1">{subject.bio}</dd>
               </div>
             )}
