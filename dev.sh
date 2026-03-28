@@ -75,15 +75,18 @@ if [ "$NEED_GO" = true ]; then
   cd "$SCRIPT_DIR" && go build -ldflags "-X github.com/kozaktomas/photo-sorter/cmd.CommitSHA=${COMMIT_SHA}" -o photo-sorter .
 fi
 
-echo "==> Starting photo-sorter on port 8085..."
+BACKEND_PORT="${PORT:-8085}"
+
+echo "==> Starting photo-sorter on port ${BACKEND_PORT}..."
 echo "==> Logs: tail -f $LOGFILE"
 set -a && source "$SCRIPT_DIR/.env.dev" && set +a
+export WEB_PORT="$BACKEND_PORT"
 "$SCRIPT_DIR/photo-sorter" serve > "$LOGFILE" 2>&1 &
 SERVE_PID=$!
 
 # Wait for server to become healthy (up to 30s)
 for i in $(seq 1 60); do
-  if curl -s -o /dev/null -w '' http://localhost:8085/api/v1/health 2>/dev/null; then
+  if curl -s -o /dev/null -w '' http://localhost:${BACKEND_PORT}/api/v1/health 2>/dev/null; then
     echo "==> Server ready (PID $SERVE_PID)"
     exit 0
   fi
