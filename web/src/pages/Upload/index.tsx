@@ -183,7 +183,7 @@ export function UploadPage() {
   const [selectedLabels, setSelectedLabels] = useState<string[]>([]);
   const [selectedBookId, setSelectedBookId] = useState('');
   const [selectedSectionId, setSelectedSectionId] = useState('');
-  const [autoProcess, setAutoProcess] = useState(true);
+  const [autoProcess, setAutoProcess] = useState(false);
 
   // Upload job
   const {
