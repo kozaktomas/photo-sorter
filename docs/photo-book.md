@@ -15,14 +15,15 @@ Chapters provide an optional grouping level between books and sections. Sections
 3. **Define sections** — Named groups (e.g., "Childhood", "Wedding", "Vacation"), optionally assigned to a chapter
 4. **Prepick photos** — Browse the library and add photos to sections
 5. **Write descriptions** — Add a description (caption for print) and optional note (internal) to each photo
-6. **Create pages** — Choose a page format and assign to a section
+6. **Create pages** — Choose a page format and assign to a section (or use auto-layout to generate pages automatically from unassigned photos)
 7. **Add page descriptions** — Optional text displayed at the top of each page
 8. **Assign photos to slots** — Drag photos from the unassigned pool into page slots
 9. **Adjust crops** — Fine-tune crop position and zoom for each photo slot (drag to reposition, scroll to zoom, drag bottom-right corner handle to resize). Displays live pixel dimensions of the cropped region.
 10. **Adjust split position** — For mixed landscape/portrait formats, adjust the column split ratio
 11. **Add text to slots** — Click "Add text" on empty slots to place text content instead of photos
 12. **Preview** — Review the full book layout with page descriptions and photo captions
-13. **Export PDF** — Generate a print-ready A4 landscape PDF via LaTeX
+13. **Preflight check** — Validate the book for empty slots, low-DPI photos, unplaced photos, and missing captions
+14. **Export PDF** — Generate a print-ready A4 landscape PDF via LaTeX
 
 ## Page Formats
 
@@ -186,6 +187,25 @@ Deleting a book cascades to all chapters, sections, pages, and slots.
 | PUT | `/api/v1/pages/:id/slots/:index/crop` | Update crop for a slot (`{ crop_x, crop_y, crop_scale? }`) |
 | POST | `/api/v1/pages/:id/slots/swap` | Swap two slots atomically (`{ slot_a, slot_b }`) |
 | DELETE | `/api/v1/pages/:id/slots/:index` | Clear slot |
+
+### Auto-Layout
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/v1/books/:id/sections/:sectionId/auto-layout` | Generate pages from unassigned photos (`{ prefer_formats?, max_pages? }`) |
+
+### Preflight
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/books/:id/preflight` | Validate book before export (returns `{ ok, errors, warnings, info, summary }`) |
+
+### Text AI
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| POST | `/api/v1/text/check` | Check Czech text for spelling/grammar (`{ text }`) |
+| POST | `/api/v1/text/rewrite` | Rewrite text to target length (`{ text, target_length }`) |
 
 ## PDF Export
 
@@ -504,7 +524,7 @@ Returns `application/pdf` with `Content-Disposition: attachment`.
 | `web/src/hooks/useBookKeyboardNav.ts` | Shared keyboard navigation hook (W/S prev/next, E/D chapter jump) |
 | `web/src/pages/BookEditor/SectionsTab.tsx` | Sections tab — sidebar + photo pool + cross-section drag-and-drop |
 | `web/src/pages/BookEditor/SectionSidebar.tsx` | Sortable chapter and section list, placement stats (placed/total) |
-| `web/src/pages/BookEditor/SectionPhotoPool.tsx` | Photo grid with selection, add by ID, inline description + note editing |
+| `web/src/pages/BookEditor/SectionPhotoPool.tsx` | Photo grid (fixed 3-column) with selection, add by ID, modal description + note editing via PhotoDescriptionDialog |
 | `web/src/pages/BookEditor/PhotoBrowserModal.tsx` | Full-screen modal to browse library and add photos |
 | `web/src/pages/BookEditor/PagesTab.tsx` | Pages tab — DndContext for drag-to-slot, minimap, undo/redo |
 | `web/src/pages/BookEditor/PageSidebar.tsx` | Thumbnail previews, quick-add (+) button, collapsible sections (persisted) |

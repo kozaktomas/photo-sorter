@@ -20,6 +20,7 @@ This document describes all REST API endpoints for the PhotoPrism AI Sorter web 
 - [Health Check](#health-check)
 - [Error Responses](#error-responses)
 - [Real-Time Updates (SSE)](#real-time-updates-sse)
+- [Text AI](#text-ai)
 
 ---
 
@@ -2086,3 +2087,77 @@ interface ProcessJobResult {
   total_face_photos: number;
 }
 ```
+
+---
+
+## Text AI
+
+AI-powered text operations for Czech text editing. Requires `OPENAI_TOKEN` to be configured.
+
+### Check Text
+
+Check Czech text for spelling, diacritics, and grammar issues using GPT-4.1-mini.
+
+```
+POST /text/check
+```
+
+**Request:**
+```json
+{
+  "text": "Fotografie z naseho domu v Veselici"
+}
+```
+
+**Response (200):**
+```json
+{
+  "corrected_text": "Fotografie z našeho domu ve Veselici",
+  "readability_score": 85,
+  "changes": [
+    "naseho → našeho (diacritics)",
+    "v Veselici → ve Veselici (preposition)"
+  ]
+}
+```
+
+**Error Responses:**
+| Status | Description |
+|--------|-------------|
+| 400 | Missing or empty `text` field |
+| 503 | `OPENAI_TOKEN` not configured |
+
+### Rewrite Text
+
+Rewrite Czech text to a target length using GPT-4.1-mini.
+
+```
+POST /text/rewrite
+```
+
+**Request:**
+```json
+{
+  "text": "Tato fotografie zachycuje pohled na náš dům v zimním období roku 1985.",
+  "target_length": "shorter"
+}
+```
+
+**Parameters:**
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `text` | string | Yes | Czech text to rewrite |
+| `target_length` | string | Yes | One of: `much_shorter`, `shorter`, `longer`, `much_longer` |
+
+**Response (200):**
+```json
+{
+  "rewritten_text": "Náš dům v zimě 1985."
+}
+```
+
+**Error Responses:**
+| Status | Description |
+|--------|-------------|
+| 400 | Missing `text` or invalid `target_length` |
+| 503 | `OPENAI_TOKEN` not configured |

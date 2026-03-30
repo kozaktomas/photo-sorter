@@ -543,7 +543,7 @@ Four-tab editor for organizing a photo book.
 - **Photo Pool** - Grid of photos in the selected section with thumbnails
 - **Drag-and-Drop Between Sections** - Select photos and drag them to a different section in the sidebar. Multi-photo dragging supported. Visual feedback shows rose border on drop target and count badge on drag overlay. Target sections without empty capacity are visually dimmed
 - **Add by Photo ID** - Inline text input to quickly add a photo by pasting its UID (validates existence, checks for duplicates)
-- **Description Editing** - Click a photo description to edit it inline (textarea)
+- **Description Editing** - Click a photo to open the PhotoDescriptionDialog modal for editing description and note (same modal as Pages tab). Includes AI-powered text check (spelling/grammar) and text rewrite (length adjustment) buttons powered by GPT-4.1-mini
 - **Bulk Selection** - Select multiple photos for batch removal
 - **Photo Browser Modal** - Full-screen modal to browse the entire library, search, and add photos to a section. Album and label filters use autocomplete comboboxes. Already-added photos are grayed out
 
@@ -554,6 +554,7 @@ Four-tab editor for organizing a photo book.
 - **Drag-and-Drop** - Drag photos from the unassigned pool into page slots
 - **Undo/Redo** - Ctrl+Z to undo and Ctrl+Shift+Z (or Ctrl+Y) to redo slot assignments. Tracks assign, clear, and swap operations with up to 50 entries per stack
 - **Unassigned Pool** - Photos in the page's section not yet assigned to any page slot
+- **Auto-Layout** - Click the wand icon (Auto-layout) next to a section header to automatically generate pages from unassigned photos. Algorithm selects optimal page formats (prioritizing `4_landscape`, then mixed formats, then `2_portrait`, then `1_fullscreen`). Shows success message with page and photo counts
 - **Text Slots** - Click "Add text" on empty slots to place markdown content instead of photos. Supports headings, bold, italic, lists, blockquotes, and GFM tables (pipe syntax with optional column width percentages). Preview renders via marked.js + DOMPurify
 
 **Page Formats:**
@@ -579,6 +580,13 @@ Four-tab editor for organizing a photo book.
 - Shows photo thumbnail, list of sections containing the photo, and one-click remove button per section
 - Counter displays total number of duplicate entries found
 - Empty state when no duplicates exist
+
+**Export PDF:**
+- Click "Export PDF" in the editor header to generate a print-ready A4 landscape PDF
+- **Preflight check** runs automatically before export, validating for empty slots, low-DPI photos, empty sections, unplaced photos, and missing captions
+- If preflight finds warnings, a modal displays them with "Go to page" links for quick navigation to issues
+- "Export anyway" button is always available to proceed despite warnings
+- If no warnings, export starts immediately without the modal
 
 **Dependencies:** Uses `@dnd-kit/core`, `@dnd-kit/sortable`, `@dnd-kit/utilities` for drag-and-drop.
 
@@ -707,6 +715,12 @@ The Web UI communicates with these backend endpoints:
 | POST | `/api/v1/pages/:id/slots/swap` | Swap two slots atomically |
 | DELETE | `/api/v1/pages/:id/slots/:index` | Clear page slot |
 | GET | `/api/v1/photos/:uid/books` | Get photo book/section memberships |
+| POST | `/api/v1/books/:id/sections/:sectionId/auto-layout` | Auto-generate pages from unassigned photos |
+| GET | `/api/v1/books/:id/preflight` | Validate book before PDF export |
+| GET | `/api/v1/books/:id/export-pdf` | Export book as PDF |
+| PUT | `/api/v1/pages/:id/slots/:index/crop` | Update crop for a slot |
+| POST | `/api/v1/text/check` | AI text check (spelling, grammar) |
+| POST | `/api/v1/text/rewrite` | AI text rewrite (length adjustment) |
 
 ## Frontend Architecture
 
@@ -810,7 +824,7 @@ web/src/
 │   │   ├── hooks/useUndoRedo.ts  # Undo/redo for slot assignments
 │   │   ├── SectionsTab.tsx       # Sections with cross-section drag-and-drop
 │   │   ├── SectionSidebar.tsx    # Section list with placement stats
-│   │   ├── SectionPhotoPool.tsx
+│   │   ├── SectionPhotoPool.tsx  # Photo grid with modal description editing
 │   │   ├── PhotoBrowserModal.tsx
 │   │   ├── PhotoDescriptionDialog.tsx
 │   │   ├── PhotoActionOverlay.tsx

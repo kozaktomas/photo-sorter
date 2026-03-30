@@ -73,7 +73,7 @@ flowchart TB
 |---------|---------|-----------|
 | `cmd/` | Cobra CLI commands (sort, albums, labels, upload, move, photo, cache, serve, etc.) | Root command, subcommands |
 | `internal/ai/` | AI provider interface and implementations (OpenAI, Gemini, Ollama, llama.cpp) | `Provider`, `PhotoAnalysis`, `BatchPhotoRequest`, `Usage` |
-| `internal/ai/prompts/` | Embedded prompt templates (photo analysis, date estimation, CLIP translation) | Embedded text files |
+| `internal/ai/prompts/` | Embedded prompt templates (photo analysis, date estimation, CLIP translation, text check, text rewrite) | Embedded text files |
 | `internal/config/` | Environment-based configuration loader and pricing data | `Config`, `prices.yaml` (embedded) |
 | `internal/constants/` | Shared constants for page sizes, thresholds, concurrency limits, upload limits | Constants |
 | `internal/database/` | Repository interfaces, HNSW index wrappers, cosine distance | `FaceReader`, `FaceWriter`, `EmbeddingReader`, `BookReader`, `BookWriter`, `HNSWIndex` |
@@ -85,7 +85,7 @@ flowchart TB
 | `internal/latex/` | PDF export via LaTeX — markdown-to-LaTeX conversion, layout validation, 12-column grid system | `LayoutConfig`, `FormatSlotsGrid`, markdown converter |
 | `internal/web/` | Web server setup and route registration | `Server` |
 | `internal/web/middleware/` | HTTP middleware: auth, CORS, session management, PhotoPrism client injection | `SessionManager`, `RequireAuth`, `WithPhotoPrismClient` |
-| `internal/web/handlers/` | REST API handlers for all endpoints (albums, photos, faces, books, sort jobs, SSE) | `FacesHandler`, `BooksHandler`, handler functions |
+| `internal/web/handlers/` | REST API handlers for all endpoints (albums, photos, faces, books, text AI, sort jobs, SSE) | `FacesHandler`, `BooksHandler`, `TextHandler`, handler functions |
 | `web/` | React + TypeScript + TailwindCSS frontend (Vite build, i18n with Czech + English) | Pages, components, hooks, typed API client |
 
 ## Data Flow

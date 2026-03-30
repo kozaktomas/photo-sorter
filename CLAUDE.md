@@ -85,7 +85,7 @@ This script:
 2. Runs `npm install` (skipped if `node_modules` is up-to-date with `package-lock.json`)
 3. Builds the frontend via `tsc -b && vite build` (skipped if `dist/` is newer than all source files)
 4. Builds the Go binary (skipped if binary is newer than all `.go` files and frontend wasn't rebuilt)
-5. Starts the server on port 8085 using test services (PhotoPrism + pgvector)
+5. Starts the server on port 8085 (configurable via `PORT` env variable) using test services (PhotoPrism + pgvector)
 
 Smart caching makes repeated runs fast (~5s when nothing changed vs ~10min for full rebuild on the Pi).
 
@@ -313,6 +313,8 @@ Located in `internal/ai/prompts/` (embedded at compile time):
 - `photo_analysis_with_date.txt` - Labels + description + date estimation
 - `album_date.txt` - Album-wide date estimation from descriptions
 - `clip_translate.txt` - Czech to CLIP-optimized English translation for text search
+- `text_check.txt` - Czech text spelling, diacritics, and grammar checking
+- `text_rewrite.txt` - Czech text length adjustment (shorter/longer)
 
 **Language:** Czech (descriptions are generated in Czech)
 
@@ -456,6 +458,8 @@ Session cookies use `HttpOnly`, `SameSite=Strict`, and auto-detect `Secure` flag
 - `POST /api/v1/books/{id}/sections/{sectionId}/auto-layout` - Auto-generate pages from unassigned section photos
 - `GET /api/v1/books/{id}/preflight` - Validate book before PDF export (empty slots, low DPI, unplaced photos)
 - `GET /api/v1/books/{id}/export-pdf` - Export book as PDF (requires lualatex)
+- `POST /api/v1/text/check` - AI text check (spelling, grammar, diacritics) via GPT-4.1-mini
+- `POST /api/v1/text/rewrite` - AI text rewrite (length adjustment) via GPT-4.1-mini
 
 **Frontend Structure:**
 ```
@@ -557,6 +561,7 @@ internal/web/handlers/
 ├── face_outliers.go, face_photos.go            # Outlier detection, photo faces
 ├── face_helpers.go                             # Shared face helpers
 ├── books.go                                    # BooksHandler: books, chapters, sections, pages, slots
+├── text.go                                     # TextHandler: AI text check and rewrite
 └── jobs.go                                     # Sort job status
 ```
 
