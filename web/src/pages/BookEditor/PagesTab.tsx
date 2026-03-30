@@ -90,7 +90,7 @@ function TextSlotDialog({ text, onSave, onClose }: { text: string; onSave: (text
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-slate-800 rounded-lg p-6 w-full max-w-3xl" onClick={e => e.stopPropagation()}>
+      <div className="bg-slate-800 rounded-lg p-6 w-full max-w-4xl" onClick={e => e.stopPropagation()}>
         <h3 className="text-lg font-semibold text-white mb-4">{t('books.editor.textSlotTitle')}</h3>
         <div className="flex gap-1 mb-2">
           {toolbarButtons.map(btn => (
@@ -110,11 +110,11 @@ function TextSlotDialog({ text, onSave, onClose }: { text: string; onSave: (text
             ref={textareaRef}
             value={value}
             onChange={e => setValue(e.target.value)}
-            className="w-full h-48 px-3 py-2 bg-slate-900 border border-slate-600 rounded text-sm text-white font-mono focus:outline-none focus-visible:ring-1 focus-visible:ring-rose-500 resize-none"
+            className="w-full h-80 px-3 py-2 bg-slate-900 border border-slate-600 rounded text-sm text-white font-mono focus:outline-none focus-visible:ring-1 focus-visible:ring-rose-500 resize-none"
             placeholder={t('books.editor.textPlaceholder')}
             autoFocus
           />
-          <div className="h-48 overflow-auto bg-slate-900 border border-slate-600 rounded p-3">
+          <div className="h-80 overflow-auto bg-slate-900 border border-slate-600 rounded p-3">
             <p className="text-xs text-slate-500 mb-2">{t('books.editor.markdownPreview')}</p>
             {value.trim() ? (
               <MarkdownContent content={value} />
