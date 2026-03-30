@@ -191,7 +191,12 @@ function TextSlotDialog({ text, onSave, onClose }: { text: string; onSave: (text
               )}
             </div>
           </div>
-          <p className="text-xs text-slate-500">{t('books.editor.markdownHelp')}</p>
+          <div className="flex items-center justify-between">
+            <p className="text-xs text-slate-500">{t('books.editor.markdownHelp')}</p>
+            <p className="text-xs text-slate-500">
+              {t('books.editor.charCount', { count: value.length })} · {t('books.editor.wordCount', { count: value.trim().split(/\s+/).filter(Boolean).length })}
+            </p>
+          </div>
 
           {/* AI buttons */}
           <div className="flex flex-wrap items-center gap-2">

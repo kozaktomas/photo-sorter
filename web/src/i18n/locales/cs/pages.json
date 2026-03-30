@@ -439,6 +439,8 @@
       "longer": "Prodloužit mírně",
       "muchLonger": "Prodloužit hodně",
       "cost": "Cena: {{amount}} Kč",
+      "charCount": "{{count}} znaků",
+      "wordCount": "{{count}} slov",
       "exportPDF": "Export PDF",
       "exporting": "Exportuji...",
       "addText": "Přidat text",

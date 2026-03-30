@@ -454,6 +454,8 @@
       "longer": "Slightly longer",
       "muchLonger": "Much longer",
       "cost": "Cost: {{amount}} CZK",
+      "charCount": "{{count}} chars",
+      "wordCount": "{{count}} words",
       "exportPDF": "Export PDF",
       "exporting": "Exporting...",
       "addText": "Add text",

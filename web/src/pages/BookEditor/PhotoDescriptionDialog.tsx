@@ -143,7 +143,12 @@ export function PhotoDescriptionDialog({ sectionId, photoUid, description, note,
               rows={8}
               autoFocus
             />
-            <p className="text-xs text-slate-500 mt-1">{t('books.editor.descriptionHelp')}</p>
+            <div className="flex items-center justify-between mt-1">
+              <p className="text-xs text-slate-500">{t('books.editor.descriptionHelp')}</p>
+              <p className="text-xs text-slate-500">
+                {t('books.editor.charCount', { count: desc.length })} · {t('books.editor.wordCount', { count: desc.trim().split(/\s+/).filter(Boolean).length })}
+              </p>
+            </div>
           </div>
 
           {/* AI buttons */}
@@ -272,7 +277,10 @@ export function PhotoDescriptionDialog({ sectionId, photoUid, description, note,
               className="w-full px-3 py-2 bg-slate-900 border border-slate-600 rounded text-sm text-white resize-none focus:outline-none focus-visible:ring-1 focus-visible:ring-amber-500"
               rows={2}
             />
-            <p className="text-xs text-slate-500 mt-1">{t('books.editor.noteHelp')}</p>
+            <div className="flex items-center justify-between mt-1">
+              <p className="text-xs text-slate-500">{t('books.editor.noteHelp')}</p>
+              <p className="text-xs text-slate-500">{t('books.editor.charCount', { count: noteText.length })}</p>
+            </div>
           </div>
         </div>
 
