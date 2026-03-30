@@ -4,6 +4,7 @@ import { Plus, Trash2, CheckSquare, Square } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
 import { removeSectionPhotos, getPhoto, addSectionPhotos, getThumbnailUrl } from '../../api/client';
 import { PhotoActionOverlay } from './PhotoActionOverlay';
+import { PhotoInfoOverlay } from './PhotoInfoOverlay';
 import { PhotoBrowserModal } from './PhotoBrowserModal';
 import { PhotoDescriptionDialog } from './PhotoDescriptionDialog';
 import type { SectionPhoto } from '../../types';
@@ -48,6 +49,7 @@ function DraggablePhoto({ photo, sectionId, selected, onToggleSelect, children }
             <Square className="h-5 w-5 text-white/50" />
           )}
         </div>
+        <PhotoInfoOverlay description={photo.description} note={photo.note} />
         <PhotoActionOverlay photoUid={photo.photo_uid} />
       </div>
       {children}
@@ -228,19 +230,12 @@ export function SectionPhotoPool({ sectionId, photos, onRefresh, onReloadPhotos 
             onToggleSelect={() => toggleSelect(photo.photo_uid)}
           >
             <div
-              className="p-2 space-y-1 cursor-pointer hover:bg-slate-700/50 transition-colors"
+              className="px-2 py-1.5 cursor-pointer hover:bg-slate-700/50 transition-colors text-center"
               onClick={() => setEditingPhoto(photo)}
             >
-              <div className={`text-xs truncate px-1 py-0.5 ${
-                photo.description ? 'text-slate-300' : 'text-slate-600 italic'
-              }`}>
-                {photo.description || t('books.editor.descriptionPlaceholder')}
-              </div>
-              <div className={`text-xs truncate px-1 py-0.5 ${
-                photo.note ? 'text-amber-400/80' : 'text-slate-600 italic'
-              }`}>
-                {photo.note || t('books.editor.notePlaceholder')}
-              </div>
+              <span className="text-xs text-slate-500 hover:text-slate-300">
+                {t('books.editor.editDescription')}
+              </span>
             </div>
           </DraggablePhoto>
         ))}

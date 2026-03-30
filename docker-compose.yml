@@ -56,7 +56,7 @@ services:
       - seccomp:unconfined
       - apparmor:unconfined
     ports:
-      - "3306:3306"
+      - "3307:3306"
     command: >
       --innodb-buffer-pool-size=512M
       --transaction-isolation=READ-COMMITTED
@@ -79,7 +79,7 @@ services:
     container_name: pgvector
     image: pgvector/pgvector:pg17
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - ./volumes/pgvector_data:/var/lib/postgresql/data
     environment:

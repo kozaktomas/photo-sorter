@@ -431,6 +431,7 @@
       "sectionPageCount_other": "{{count}} pages",
       "pageDescriptionPlaceholder": "Page description...",
       "notePlaceholder": "Internal note...",
+      "editDescription": "Edit description",
       "photoDetailsTitle": "Photo Details",
       "descriptionLabel": "Description",
       "descriptionHelp": "Caption for the printed book",
