@@ -1,6 +1,6 @@
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { SpellCheck, ArrowLeftRight, Loader2, Check, DollarSign, ChevronDown, ChevronUp, ExternalLink } from 'lucide-react';
+import { SpellCheck, ArrowLeftRight, Loader2, Check, DollarSign, ChevronDown, ChevronUp, ExternalLink, X } from 'lucide-react';
 import { checkText, rewriteText, updateSectionPhoto, assignTextSlot } from '../../api/client';
 import { StatsGrid } from '../../components/StatsGrid';
 import type { BookDetail, SectionPhoto } from '../../types';
@@ -77,6 +77,13 @@ export function TextsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, on
   const [rewriteResults, setRewriteResults] = useState<Record<string, RewriteResult>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [targetLengths, setTargetLengths] = useState<Record<string, TargetLength>>({});
+
+  // Batch check state
+  const [isBatchChecking, setIsBatchChecking] = useState(false);
+  const [batchProgress, setBatchProgress] = useState(0);
+  const [batchTotal, setBatchTotal] = useState(0);
+  const [batchTotalCost, setBatchTotalCost] = useState<number | null>(null);
+  const batchCancelledRef = useRef(false);
 
   // Build text entries from book data
   const textEntries = useMemo<TextEntry[]>(() => {
@@ -195,6 +202,49 @@ export function TextsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, on
     }
   }, [rewriteResults, onRefresh]);
 
+  const handleBatchCheck = useCallback(async () => {
+    const unchecked = textEntries.filter(e => !checkStatuses[e.id] || checkStatuses[e.id] === 'unchecked');
+    if (unchecked.length === 0) return;
+
+    batchCancelledRef.current = false;
+    setIsBatchChecking(true);
+    setBatchProgress(0);
+    setBatchTotal(unchecked.length);
+    setBatchTotalCost(null);
+
+    let totalCost = 0;
+
+    for (let i = 0; i < unchecked.length; i++) {
+      if (batchCancelledRef.current) break;
+
+      const entry = unchecked[i];
+      setBatchProgress(i + 1);
+      setChecking(entry.id);
+      setErrors(prev => ({ ...prev, [entry.id]: '' }));
+
+      try {
+        const result = await checkText(entry.text);
+        setCheckResults(prev => ({ ...prev, [entry.id]: result }));
+        setCheckStatuses(prev => ({
+          ...prev,
+          [entry.id]: result.changes.length === 0 ? 'clean' : 'has_errors',
+        }));
+        totalCost += result.cost_czk;
+      } catch (err) {
+        setErrors(prev => ({ ...prev, [entry.id]: err instanceof Error ? err.message : 'Check failed' }));
+      } finally {
+        setChecking(null);
+      }
+    }
+
+    setBatchTotalCost(totalCost);
+    setIsBatchChecking(false);
+  }, [textEntries, checkStatuses]);
+
+  const handleCancelBatch = useCallback(() => {
+    batchCancelledRef.current = true;
+  }, []);
+
   const getStatusIndicator = (entryId: string) => {
     const status = checkStatuses[entryId] || 'unchecked';
     switch (status) {
@@ -221,6 +271,7 @@ export function TextsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, on
     { value: 'much_longer', labelKey: 'books.editor.muchLonger' },
   ];
 
+  const allChecked = textEntries.length > 0 && textEntries.every(e => checkStatuses[e.id] === 'clean' || checkStatuses[e.id] === 'has_errors');
   const isAnyLoading = checking !== null || rewriting !== null;
 
   return (
@@ -234,6 +285,54 @@ export function TextsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, on
           { value: errorCount, label: t('books.editor.textsWithErrors'), color: 'red' },
         ]}
       />
+
+      {/* Batch check */}
+      {textEntries.length > 0 && (
+        <div className="flex items-center gap-3 flex-wrap">
+          {isBatchChecking ? (
+            <>
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <Loader2 className="h-4 w-4 animate-spin text-indigo-400 flex-shrink-0" />
+                <span className="text-sm text-slate-300">
+                  {t('books.editor.checkingProgress', { current: batchProgress, total: batchTotal })}
+                </span>
+                <div className="flex-1 h-1.5 bg-slate-700 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-indigo-500 rounded-full transition-all duration-300"
+                    style={{ width: `${(batchProgress / batchTotal) * 100}%` }}
+                  />
+                </div>
+              </div>
+              <button
+                onClick={handleCancelBatch}
+                className="inline-flex items-center gap-1 px-3 py-1.5 text-sm font-medium rounded bg-slate-700 hover:bg-slate-600 text-slate-300 transition-colors"
+              >
+                <X className="h-3.5 w-3.5" />
+                {t('books.editor.cancelCheck')}
+              </button>
+            </>
+          ) : (
+            <>
+              <button
+                onClick={() => void handleBatchCheck()}
+                disabled={allChecked || isAnyLoading}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors"
+              >
+                <SpellCheck className="h-4 w-4" />
+                <DollarSign className="h-3.5 w-3.5 -ml-1 opacity-60" />
+                {t('books.editor.checkAll')}
+              </button>
+              {batchTotalCost !== null && (
+                <span className="text-sm text-slate-400">
+                  {t('books.editor.batchComplete')} — {t('books.editor.totalCost', {
+                    amount: batchTotalCost.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+                  })}
+                </span>
+              )}
+            </>
+          )}
+        </div>
+      )}
 
       {/* Text list */}
       {textEntries.length === 0 ? (

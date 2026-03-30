@@ -511,6 +511,10 @@
       "clean": "Clean",
       "hasErrors": "Has errors",
       "checkAll": "Check all",
+      "checkingProgress": "Checking {{current}}/{{total}}...",
+      "batchComplete": "Check complete",
+      "totalCost": "Total cost: {{amount}} CZK",
+      "cancelCheck": "Cancel",
       "sectionPhotoSource": "{{section}} — photo",
       "pageSlotSource": "Page {{page}}, slot {{slot}}",
       "stats": {

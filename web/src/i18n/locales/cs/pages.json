@@ -497,6 +497,10 @@
       "clean": "V pořádku",
       "hasErrors": "Obsahuje chyby",
       "checkAll": "Zkontrolovat vše",
+      "checkingProgress": "Kontroluji {{current}}/{{total}}...",
+      "batchComplete": "Kontrola dokončena",
+      "totalCost": "Celková cena: {{amount}} Kč",
+      "cancelCheck": "Zrušit",
       "sectionPhotoSource": "{{section}} — fotka",
       "pageSlotSource": "Stránka {{page}}, slot {{slot}}",
       "stats": {
