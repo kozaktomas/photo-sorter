@@ -453,6 +453,7 @@
       "shorter": "Slightly shorter",
       "longer": "Slightly longer",
       "muchLonger": "Much longer",
+      "cost": "Cost: {{amount}} CZK",
       "exportPDF": "Export PDF",
       "exporting": "Exporting...",
       "addText": "Add text",

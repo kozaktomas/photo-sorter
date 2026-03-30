@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X, SpellCheck, ArrowLeftRight, Check, Loader2 } from 'lucide-react';
+import { X, SpellCheck, ArrowLeftRight, Check, Loader2, DollarSign } from 'lucide-react';
 import { getThumbnailUrl, updateSectionPhoto, checkText, rewriteText } from '../../api/client';
 
 interface Props {
@@ -16,10 +16,12 @@ interface CheckResult {
   corrected_text: string;
   readability_score: number;
   changes: string[];
+  cost_czk: number;
 }
 
 interface RewriteResult {
   rewritten_text: string;
+  cost_czk: number;
 }
 
 type TargetLength = 'much_shorter' | 'shorter' | 'longer' | 'much_longer';
@@ -151,7 +153,7 @@ export function PhotoDescriptionDialog({ sectionId, photoUid, description, note,
               disabled={descEmpty || aiLoading}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors"
             >
-              {checking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <SpellCheck className="h-3.5 w-3.5" />}
+              {checking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <><SpellCheck className="h-3.5 w-3.5" /><DollarSign className="h-3 w-3 -ml-1 opacity-60" /></>}
               {checking ? t('books.editor.checking') : t('books.editor.textCheck')}
             </button>
 
@@ -171,7 +173,7 @@ export function PhotoDescriptionDialog({ sectionId, photoUid, description, note,
                 disabled={descEmpty || aiLoading}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded bg-amber-600 hover:bg-amber-700 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors"
               >
-                {rewriting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowLeftRight className="h-3.5 w-3.5" />}
+                {rewriting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <><ArrowLeftRight className="h-3.5 w-3.5" /><DollarSign className="h-3 w-3 -ml-1 opacity-60" /></>}
                 {rewriting ? t('books.editor.rewriting') : t('books.editor.adjustLength')}
               </button>
             </div>
@@ -206,7 +208,7 @@ export function PhotoDescriptionDialog({ sectionId, photoUid, description, note,
                   </div>
                 </>
               )}
-              <div className="flex gap-2 pt-1">
+              <div className="flex items-center gap-2 pt-1">
                 {checkResult.changes.length > 0 && (
                   <button
                     onClick={acceptCheck}
@@ -221,6 +223,9 @@ export function PhotoDescriptionDialog({ sectionId, photoUid, description, note,
                 >
                   {t('books.editor.dismiss')}
                 </button>
+                <span className="ml-auto text-xs text-slate-500">
+                  {t('books.editor.cost', { amount: checkResult.cost_czk.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) })}
+                </span>
               </div>
             </div>
           )}
@@ -233,7 +238,7 @@ export function PhotoDescriptionDialog({ sectionId, photoUid, description, note,
             <div className="rounded border border-amber-500/30 bg-amber-950/30 p-3 space-y-2">
               <p className="text-xs font-medium text-slate-400 mb-1">{t('books.editor.rewrittenText')}:</p>
               <p className="text-xs text-slate-300 bg-slate-900/50 p-2 rounded whitespace-pre-wrap">{rewriteResult.rewritten_text}</p>
-              <div className="flex gap-2 pt-1">
+              <div className="flex items-center gap-2 pt-1">
                 <button
                   onClick={acceptRewrite}
                   className="px-2.5 py-1 text-xs font-medium rounded bg-amber-600 hover:bg-amber-700 text-white transition-colors"
@@ -246,6 +251,9 @@ export function PhotoDescriptionDialog({ sectionId, photoUid, description, note,
                 >
                   {t('books.editor.dismiss')}
                 </button>
+                <span className="ml-auto text-xs text-slate-500">
+                  {t('books.editor.cost', { amount: rewriteResult.cost_czk.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) })}
+                </span>
               </div>
             </div>
           )}

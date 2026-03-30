@@ -19,6 +19,20 @@ func NewTextHandler(cfg *config.Config) *TextHandler {
 	return &TextHandler{config: cfg}
 }
 
+// usdToCZK is the approximate USD to CZK conversion rate.
+const usdToCZK = 23.5
+
+// textModel is the model used for text operations.
+const textModel = "gpt-4.1-mini"
+
+// computeCostCZK calculates cost in CZK from token usage and model pricing.
+func (h *TextHandler) computeCostCZK(usage ai.TokenUsage) float64 {
+	pricing := h.config.GetModelPricing(textModel)
+	inputCostUSD := float64(usage.PromptTokens) / 1_000_000 * pricing.Standard.Input
+	outputCostUSD := float64(usage.CompletionTokens) / 1_000_000 * pricing.Standard.Output
+	return (inputCostUSD + outputCostUSD) * usdToCZK
+}
+
 // Check handles POST /api/v1/text/check.
 func (h *TextHandler) Check(w http.ResponseWriter, r *http.Request) {
 	if h.config.OpenAI.Token == "" {
@@ -45,7 +59,12 @@ func (h *TextHandler) Check(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondJSON(w, http.StatusOK, result)
+	respondJSON(w, http.StatusOK, map[string]any{
+		"corrected_text":    result.CorrectedText,
+		"readability_score": result.ReadabilityScore,
+		"changes":           result.Changes,
+		"cost_czk":          h.computeCostCZK(result.Usage),
+	})
 }
 
 // Rewrite handles POST /api/v1/text/rewrite.
@@ -86,5 +105,8 @@ func (h *TextHandler) Rewrite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondJSON(w, http.StatusOK, result)
+	respondJSON(w, http.StatusOK, map[string]any{
+		"rewritten_text": result.RewrittenText,
+		"cost_czk":       h.computeCostCZK(result.Usage),
+	})
 }

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef, type Dispatch, type 
 import { useTranslation } from 'react-i18next';
 import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, pointerWithin, useSensor, useSensors, type DragEndEvent, type DragStartEvent, type Modifier } from '@dnd-kit/core';
 import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
-import { Type, Heading1, Heading2, Bold, Italic, List, ListOrdered, LayoutGrid, Wand2, Loader2, SpellCheck, ArrowLeftRight, Check } from 'lucide-react';
+import { Type, Heading1, Heading2, Bold, Italic, List, ListOrdered, LayoutGrid, Wand2, Loader2, SpellCheck, ArrowLeftRight, Check, DollarSign } from 'lucide-react';
 import { assignSlot, assignTextSlot, clearSlot, swapSlots, updatePage, updateSlotCrop, reorderPages, getThumbnailUrl, autoLayoutSection, checkText, rewriteText } from '../../api/client';
 import { MarkdownContent } from '../../utils/markdown';
 import { useBookKeyboardNav } from '../../hooks/useBookKeyboardNav';
@@ -83,12 +83,12 @@ function TextSlotDialog({ text, onSave, onClose }: { text: string; onSave: (text
 
   // AI text check state
   const [checking, setChecking] = useState(false);
-  const [checkResult, setCheckResult] = useState<{ corrected_text: string; readability_score: number; changes: string[] } | null>(null);
+  const [checkResult, setCheckResult] = useState<{ corrected_text: string; readability_score: number; changes: string[]; cost_czk: number } | null>(null);
   const [checkError, setCheckError] = useState('');
 
   // AI text rewrite state
   const [rewriting, setRewriting] = useState(false);
-  const [rewriteResult, setRewriteResult] = useState<{ rewritten_text: string } | null>(null);
+  const [rewriteResult, setRewriteResult] = useState<{ rewritten_text: string; cost_czk: number } | null>(null);
   const [rewriteError, setRewriteError] = useState('');
   const [targetLength, setTargetLength] = useState<TargetLength>('shorter');
 
@@ -200,7 +200,7 @@ function TextSlotDialog({ text, onSave, onClose }: { text: string; onSave: (text
               disabled={valueEmpty || aiLoading}
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors"
             >
-              {checking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <SpellCheck className="h-3.5 w-3.5" />}
+              {checking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <><SpellCheck className="h-3.5 w-3.5" /><DollarSign className="h-3 w-3 -ml-1 opacity-60" /></>}
               {checking ? t('books.editor.checking') : t('books.editor.textCheck')}
             </button>
 
@@ -220,7 +220,7 @@ function TextSlotDialog({ text, onSave, onClose }: { text: string; onSave: (text
                 disabled={valueEmpty || aiLoading}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded bg-amber-600 hover:bg-amber-700 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors"
               >
-                {rewriting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowLeftRight className="h-3.5 w-3.5" />}
+                {rewriting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <><ArrowLeftRight className="h-3.5 w-3.5" /><DollarSign className="h-3 w-3 -ml-1 opacity-60" /></>}
                 {rewriting ? t('books.editor.rewriting') : t('books.editor.adjustLength')}
               </button>
             </div>
@@ -255,7 +255,7 @@ function TextSlotDialog({ text, onSave, onClose }: { text: string; onSave: (text
                   </div>
                 </>
               )}
-              <div className="flex gap-2 pt-1">
+              <div className="flex items-center gap-2 pt-1">
                 {checkResult.changes.length > 0 && (
                   <button
                     onClick={acceptCheck}
@@ -270,6 +270,9 @@ function TextSlotDialog({ text, onSave, onClose }: { text: string; onSave: (text
                 >
                   {t('books.editor.dismiss')}
                 </button>
+                <span className="ml-auto text-xs text-slate-500">
+                  {t('books.editor.cost', { amount: checkResult.cost_czk.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) })}
+                </span>
               </div>
             </div>
           )}
@@ -280,7 +283,7 @@ function TextSlotDialog({ text, onSave, onClose }: { text: string; onSave: (text
             <div className="rounded border border-amber-500/30 bg-amber-950/30 p-3 space-y-2">
               <p className="text-xs font-medium text-slate-400 mb-1">{t('books.editor.rewrittenText')}:</p>
               <p className="text-xs text-slate-300 bg-slate-900/50 p-2 rounded whitespace-pre-wrap">{rewriteResult.rewritten_text}</p>
-              <div className="flex gap-2 pt-1">
+              <div className="flex items-center gap-2 pt-1">
                 <button
                   onClick={acceptRewrite}
                   className="px-2.5 py-1 text-xs font-medium rounded bg-amber-600 hover:bg-amber-700 text-white transition-colors"
@@ -293,6 +296,9 @@ function TextSlotDialog({ text, onSave, onClose }: { text: string; onSave: (text
                 >
                   {t('books.editor.dismiss')}
                 </button>
+                <span className="ml-auto text-xs text-slate-500">
+                  {t('books.editor.cost', { amount: rewriteResult.cost_czk.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) })}
+                </span>
               </div>
             </div>
           )}
