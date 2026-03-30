@@ -33,7 +33,7 @@ export function PhotoDescriptionDialog({ sectionId, photoUid, description, note,
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={onClose}>
       <div
-        className="bg-slate-800 border border-slate-700 rounded-lg w-full max-w-md mx-4 overflow-hidden"
+        className="bg-slate-800 border border-slate-700 rounded-lg w-full max-w-2xl mx-4 overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700">
@@ -61,7 +61,7 @@ export function PhotoDescriptionDialog({ sectionId, photoUid, description, note,
               onChange={(e) => setDesc(e.target.value)}
               placeholder={t('books.editor.descriptionPlaceholder')}
               className="w-full px-3 py-2 bg-slate-900 border border-slate-600 rounded text-sm text-white resize-none focus:outline-none focus-visible:ring-1 focus-visible:ring-rose-500"
-              rows={3}
+              rows={8}
               autoFocus
             />
             <p className="text-xs text-slate-500 mt-1">{t('books.editor.descriptionHelp')}</p>
