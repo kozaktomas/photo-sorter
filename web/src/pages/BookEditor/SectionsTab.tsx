@@ -29,11 +29,13 @@ interface Props {
   sectionPhotos: Record<string, SectionPhoto[]>;
   loadSectionPhotos: (sectionId: string) => void;
   onRefresh: () => void;
+  initialSectionId?: string | null;
 }
 
-export function SectionsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh }: Props) {
+export function SectionsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, initialSectionId }: Props) {
   const { t } = useTranslation('pages');
   const [selectedId, setSelectedId] = useState<string | null>(
+    (initialSectionId && book.sections.find(s => s.id === initialSectionId)) ? initialSectionId :
     book.sections.length > 0 ? book.sections[0].id : null
   );
 

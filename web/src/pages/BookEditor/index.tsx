@@ -12,11 +12,12 @@ import { SectionsTab } from './SectionsTab';
 import { PagesTab } from './PagesTab';
 import { PreviewTab } from './PreviewTab';
 import { DuplicatesTab } from './DuplicatesTab';
+import { TextsTab } from './TextsTab';
 import { PreflightModal } from './PreflightModal';
 
-type Tab = 'sections' | 'pages' | 'preview' | 'duplicates';
+type Tab = 'sections' | 'pages' | 'preview' | 'duplicates' | 'texts';
 
-const VALID_TABS: Tab[] = ['sections', 'pages', 'preview', 'duplicates'];
+const VALID_TABS: Tab[] = ['sections', 'pages', 'preview', 'duplicates', 'texts'];
 
 function isValidTab(value: string | null): value is Tab {
   return value !== null && VALID_TABS.includes(value as Tab);
@@ -32,6 +33,7 @@ export function BookEditorPage() {
   const tabParam = searchParams.get('tab');
   const activeTab: Tab = isValidTab(tabParam) ? tabParam : 'pages';
   const pageParam = searchParams.get('page');
+  const sectionParam = searchParams.get('section');
 
   const handleTabChange = useCallback((tab: Tab) => {
     setSearchParams(prev => {
@@ -148,9 +150,25 @@ export function BookEditorPage() {
     }
   };
 
+  const handleNavigateToPage = useCallback((pageId: string) => {
+    handleTabChange('pages');
+    handlePageSelect(pageId);
+  }, [handleTabChange, handlePageSelect]);
+
+  const handleNavigateToSection = useCallback((sectionId: string) => {
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      next.set('tab', 'sections');
+      next.set('section', sectionId);
+      next.delete('page');
+      return next;
+    }, { replace: true });
+  }, [setSearchParams]);
+
   const tabs: { key: Tab; label: string }[] = [
     { key: 'pages', label: t('books.editor.pagesTab') },
     { key: 'sections', label: t('books.editor.sectionsTab') },
+    { key: 'texts', label: t('books.editor.textsTab') },
     { key: 'preview', label: t('books.editor.previewTab') },
     { key: 'duplicates', label: t('books.editor.duplicatesTab') },
   ];
@@ -245,6 +263,7 @@ export function BookEditorPage() {
                 sectionPhotos={sectionPhotos}
                 loadSectionPhotos={loadSectionPhotos}
                 onRefresh={refresh}
+                initialSectionId={sectionParam}
               />
             )}
             {activeTab === 'pages' && (
@@ -260,6 +279,16 @@ export function BookEditorPage() {
             )}
             {activeTab === 'preview' && (
               <PreviewTab book={book} sectionPhotos={sectionPhotos} loadSectionPhotos={loadSectionPhotos} initialPageId={pageParam} />
+            )}
+            {activeTab === 'texts' && (
+              <TextsTab
+                book={book}
+                sectionPhotos={sectionPhotos}
+                loadSectionPhotos={loadSectionPhotos}
+                onRefresh={refresh}
+                onNavigateToPage={handleNavigateToPage}
+                onNavigateToSection={handleNavigateToSection}
+              />
             )}
             {activeTab === 'duplicates' && (
               <DuplicatesTab
