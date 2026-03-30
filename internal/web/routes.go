@@ -25,6 +25,7 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 	processHandler := handlers.NewProcessHandler(s.config, sessionManager, facesHandler, photosHandler, statsHandler)
 	uploadHandler := handlers.NewUploadHandler(s.config, sessionManager, processHandler)
 	booksHandler := handlers.NewBooksHandler(s.config, sessionManager)
+	textHandler := handlers.NewTextHandler(s.config)
 
 	// Health check (no auth required).
 	s.router.Get("/api/v1/health", handlers.HealthCheck)
@@ -136,6 +137,10 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 			r.Post("/books/{id}/sections/{sectionId}/auto-layout", booksHandler.AutoLayout)
 			r.Get("/books/{id}/preflight", booksHandler.Preflight)
 			r.Get("/books/{id}/export-pdf", booksHandler.ExportPDF)
+
+			// Text AI operations.
+			r.Post("/text/check", textHandler.Check)
+			r.Post("/text/rewrite", textHandler.Rewrite)
 		})
 	})
 

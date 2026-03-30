@@ -763,6 +763,21 @@ export async function preflightBook(bookId: string): Promise<PreflightResponse> 
   return request<PreflightResponse>(`/books/${bookId}/preflight`);
 }
 
+// Text AI operations
+export async function checkText(text: string): Promise<{ corrected_text: string; readability_score: number; changes: string[] }> {
+  return request('/text/check', {
+    method: 'POST',
+    body: JSON.stringify({ text }),
+  });
+}
+
+export async function rewriteText(text: string, targetLength: string): Promise<{ rewritten_text: string }> {
+  return request('/text/rewrite', {
+    method: 'POST',
+    body: JSON.stringify({ text, target_length: targetLength }),
+  });
+}
+
 // PDF Export
 export async function exportBookPDF(bookId: string): Promise<void> {
   const response = await fetch(`${API_BASE}/books/${bookId}/export-pdf`, {
