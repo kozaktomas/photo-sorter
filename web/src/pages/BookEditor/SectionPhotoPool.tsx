@@ -2,9 +2,10 @@ import { useState, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus, Trash2, CheckSquare, Square } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
-import { removeSectionPhotos, updateSectionPhoto, getPhoto, addSectionPhotos, getThumbnailUrl } from '../../api/client';
+import { removeSectionPhotos, getPhoto, addSectionPhotos, getThumbnailUrl } from '../../api/client';
 import { PhotoActionOverlay } from './PhotoActionOverlay';
 import { PhotoBrowserModal } from './PhotoBrowserModal';
+import { PhotoDescriptionDialog } from './PhotoDescriptionDialog';
 import type { SectionPhoto } from '../../types';
 
 function DraggablePhoto({ photo, sectionId, selected, onToggleSelect, children }: {
@@ -65,10 +66,7 @@ export function SectionPhotoPool({ sectionId, photos, onRefresh, onReloadPhotos 
   const { t } = useTranslation('pages');
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [showBrowser, setShowBrowser] = useState(false);
-  const [editingDesc, setEditingDesc] = useState<string | null>(null);
-  const [descText, setDescText] = useState('');
-  const [editingNote, setEditingNote] = useState<string | null>(null);
-  const [noteText, setNoteText] = useState('');
+  const [editingPhoto, setEditingPhoto] = useState<SectionPhoto | null>(null);
   const [addByIdValue, setAddByIdValue] = useState('');
   const [addByIdError, setAddByIdError] = useState('');
   const [addByIdLoading, setAddByIdLoading] = useState(false);
@@ -97,22 +95,9 @@ export function SectionPhotoPool({ sectionId, photos, onRefresh, onReloadPhotos 
     } catch { /* silent */ }
   };
 
-  const handleDescBlur = async (photoUid: string) => {
-    const photo = photos.find(p => p.photo_uid === photoUid);
-    try {
-      await updateSectionPhoto(sectionId, photoUid, descText, photo?.note || '');
-      onReloadPhotos();
-    } catch { /* silent */ }
-    setEditingDesc(null);
-  };
-
-  const handleNoteBlur = async (photoUid: string) => {
-    const photo = photos.find(p => p.photo_uid === photoUid);
-    try {
-      await updateSectionPhoto(sectionId, photoUid, photo?.description || '', noteText);
-      onReloadPhotos();
-    } catch { /* silent */ }
-    setEditingNote(null);
+  const handleDescriptionSaved = () => {
+    setEditingPhoto(null);
+    onReloadPhotos();
   };
 
   const handleAddById = async () => {
@@ -233,7 +218,7 @@ export function SectionPhotoPool({ sectionId, photos, onRefresh, onReloadPhotos 
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+      <div className="grid grid-cols-3 gap-3">
         {photos.map((photo) => (
           <DraggablePhoto
             key={photo.photo_uid}
@@ -242,53 +227,35 @@ export function SectionPhotoPool({ sectionId, photos, onRefresh, onReloadPhotos 
             selected={selected}
             onToggleSelect={() => toggleSelect(photo.photo_uid)}
           >
-            <div className="p-2 space-y-1">
-              {/* Description */}
-              {editingDesc === photo.photo_uid ? (
-                <textarea
-                  value={descText}
-                  onChange={(e) => setDescText(e.target.value)}
-                  onBlur={() => handleDescBlur(photo.photo_uid)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleDescBlur(photo.photo_uid); } }}
-                  className="w-full px-2 py-1 bg-slate-900 border border-slate-600 rounded text-xs text-white resize-none focus:outline-none focus-visible:ring-1 focus-visible:ring-rose-500"
-                  rows={2}
-                  autoFocus
-                />
-              ) : (
-                <div
-                  onClick={() => { setEditingDesc(photo.photo_uid); setDescText(photo.description); }}
-                  className={`text-xs min-h-[1.5rem] px-1 py-0.5 rounded cursor-text ${
-                    photo.description ? 'text-slate-300' : 'text-slate-600 italic'
-                  }`}
-                >
-                  {photo.description || t('books.editor.descriptionPlaceholder')}
-                </div>
-              )}
-              {/* Note */}
-              {editingNote === photo.photo_uid ? (
-                <textarea
-                  value={noteText}
-                  onChange={(e) => setNoteText(e.target.value)}
-                  onBlur={() => handleNoteBlur(photo.photo_uid)}
-                  onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); void handleNoteBlur(photo.photo_uid); } }}
-                  className="w-full px-2 py-1 bg-slate-900 border border-amber-700/50 rounded text-xs text-white resize-none focus:outline-none focus-visible:ring-1 focus-visible:ring-amber-500"
-                  rows={2}
-                  autoFocus
-                />
-              ) : (
-                <div
-                  onClick={() => { setEditingNote(photo.photo_uid); setNoteText(photo.note); }}
-                  className={`text-xs min-h-[1.5rem] px-1 py-0.5 rounded cursor-text ${
-                    photo.note ? 'text-amber-400/80' : 'text-slate-600 italic'
-                  }`}
-                >
-                  {photo.note || t('books.editor.notePlaceholder')}
-                </div>
-              )}
+            <div
+              className="p-2 space-y-1 cursor-pointer hover:bg-slate-700/50 transition-colors"
+              onClick={() => setEditingPhoto(photo)}
+            >
+              <div className={`text-xs truncate px-1 py-0.5 ${
+                photo.description ? 'text-slate-300' : 'text-slate-600 italic'
+              }`}>
+                {photo.description || t('books.editor.descriptionPlaceholder')}
+              </div>
+              <div className={`text-xs truncate px-1 py-0.5 ${
+                photo.note ? 'text-amber-400/80' : 'text-slate-600 italic'
+              }`}>
+                {photo.note || t('books.editor.notePlaceholder')}
+              </div>
             </div>
           </DraggablePhoto>
         ))}
       </div>
+
+      {editingPhoto && (
+        <PhotoDescriptionDialog
+          sectionId={sectionId}
+          photoUid={editingPhoto.photo_uid}
+          description={editingPhoto.description}
+          note={editingPhoto.note}
+          onSaved={handleDescriptionSaved}
+          onClose={() => setEditingPhoto(null)}
+        />
+      )}
 
       {showBrowser && (
         <PhotoBrowserModal
