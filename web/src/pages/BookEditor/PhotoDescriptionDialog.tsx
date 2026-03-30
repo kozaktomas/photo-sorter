@@ -17,11 +17,13 @@ interface CheckResult {
   readability_score: number;
   changes: string[];
   cost_czk: number;
+  cached: boolean;
 }
 
 interface RewriteResult {
   rewritten_text: string;
   cost_czk: number;
+  cached: boolean;
 }
 
 type TargetLength = 'much_shorter' | 'shorter' | 'longer' | 'much_longer';
@@ -230,6 +232,7 @@ export function PhotoDescriptionDialog({ sectionId, photoUid, description, note,
                 </button>
                 <span className="ml-auto text-xs text-slate-500">
                   {t('books.editor.cost', { amount: checkResult.cost_czk.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) })}
+                  {checkResult.cached && <span className="ml-1 text-emerald-500">({t('books.editor.cachedResult')})</span>}
                 </span>
               </div>
             </div>
@@ -258,6 +261,7 @@ export function PhotoDescriptionDialog({ sectionId, photoUid, description, note,
                 </button>
                 <span className="ml-auto text-xs text-slate-500">
                   {t('books.editor.cost', { amount: rewriteResult.cost_czk.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) })}
+                  {rewriteResult.cached && <span className="ml-1 text-emerald-500">({t('books.editor.cachedResult')})</span>}
                 </span>
               </div>
             </div>

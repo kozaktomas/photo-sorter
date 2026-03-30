@@ -83,12 +83,12 @@ function TextSlotDialog({ text, onSave, onClose }: { text: string; onSave: (text
 
   // AI text check state
   const [checking, setChecking] = useState(false);
-  const [checkResult, setCheckResult] = useState<{ corrected_text: string; readability_score: number; changes: string[]; cost_czk: number } | null>(null);
+  const [checkResult, setCheckResult] = useState<{ corrected_text: string; readability_score: number; changes: string[]; cost_czk: number; cached: boolean } | null>(null);
   const [checkError, setCheckError] = useState('');
 
   // AI text rewrite state
   const [rewriting, setRewriting] = useState(false);
-  const [rewriteResult, setRewriteResult] = useState<{ rewritten_text: string; cost_czk: number } | null>(null);
+  const [rewriteResult, setRewriteResult] = useState<{ rewritten_text: string; cost_czk: number; cached: boolean } | null>(null);
   const [rewriteError, setRewriteError] = useState('');
   const [targetLength, setTargetLength] = useState<TargetLength>('shorter');
 
@@ -277,6 +277,7 @@ function TextSlotDialog({ text, onSave, onClose }: { text: string; onSave: (text
                 </button>
                 <span className="ml-auto text-xs text-slate-500">
                   {t('books.editor.cost', { amount: checkResult.cost_czk.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) })}
+                  {checkResult.cached && <span className="ml-1 text-emerald-500">({t('books.editor.cachedResult')})</span>}
                 </span>
               </div>
             </div>
@@ -303,6 +304,7 @@ function TextSlotDialog({ text, onSave, onClose }: { text: string; onSave: (text
                 </button>
                 <span className="ml-auto text-xs text-slate-500">
                   {t('books.editor.cost', { amount: rewriteResult.cost_czk.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) })}
+                  {rewriteResult.cached && <span className="ml-1 text-emerald-500">({t('books.editor.cachedResult')})</span>}
                 </span>
               </div>
             </div>

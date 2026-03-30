@@ -439,6 +439,7 @@
       "longer": "Prodloužit mírně",
       "muchLonger": "Prodloužit hodně",
       "cost": "Cena: {{amount}} Kč",
+      "cachedResult": "z cache",
       "charCount": "{{count}} znaků",
       "wordCount": "{{count}} slov",
       "exportPDF": "Export PDF",

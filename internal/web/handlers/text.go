@@ -1,9 +1,13 @@
 package handlers
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
+	"maps"
 	"net/http"
 	"strings"
+	"sync"
 
 	"github.com/kozaktomas/photo-sorter/internal/ai"
 	"github.com/kozaktomas/photo-sorter/internal/config"
@@ -12,11 +16,53 @@ import (
 // TextHandler handles AI text operations.
 type TextHandler struct {
 	config *config.Config
+	mu     sync.RWMutex
+	cache  map[string]cachedResult
+}
+
+type cachedResult struct {
+	response map[string]any
 }
 
 // NewTextHandler creates a new text handler.
 func NewTextHandler(cfg *config.Config) *TextHandler {
-	return &TextHandler{config: cfg}
+	return &TextHandler{
+		config: cfg,
+		cache:  make(map[string]cachedResult),
+	}
+}
+
+// cacheKey computes a SHA-256 hash of the given parts joined by a null byte.
+func cacheKey(parts ...string) string {
+	h := sha256.New()
+	for i, p := range parts {
+		if i > 0 {
+			h.Write([]byte{0})
+		}
+		h.Write([]byte(p))
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// getCache returns a cached response if it exists.
+func (h *TextHandler) getCache(key string) (map[string]any, bool) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	if cached, ok := h.cache[key]; ok {
+		return cached.response, true
+	}
+	return nil, false
+}
+
+// setCache stores a response in the cache with cost zeroed and cached flag set.
+func (h *TextHandler) setCache(key string, resp map[string]any) {
+	cached := make(map[string]any, len(resp))
+	maps.Copy(cached, resp)
+	cached["cost_czk"] = 0.0
+	cached["cached"] = true
+	h.mu.Lock()
+	h.cache[key] = cachedResult{response: cached}
+	h.mu.Unlock()
 }
 
 // usdToCZK is the approximate USD to CZK conversion rate.
@@ -53,18 +99,27 @@ func (h *TextHandler) Check(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	key := cacheKey("check", req.Text)
+	if cached, ok := h.getCache(key); ok {
+		respondJSON(w, http.StatusOK, cached)
+		return
+	}
+
 	result, err := ai.CheckText(r.Context(), h.config.OpenAI.Token, req.Text)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "text check failed: "+err.Error())
 		return
 	}
 
-	respondJSON(w, http.StatusOK, map[string]any{
+	resp := map[string]any{
 		"corrected_text":    result.CorrectedText,
 		"readability_score": result.ReadabilityScore,
 		"changes":           result.Changes,
 		"cost_czk":          h.computeCostCZK(result.Usage),
-	})
+		"cached":            false,
+	}
+	respondJSON(w, http.StatusOK, resp)
+	h.setCache(key, resp)
 }
 
 // Rewrite handles POST /api/v1/text/rewrite.
@@ -99,14 +154,23 @@ func (h *TextHandler) Rewrite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	key := cacheKey("rewrite", req.Text, req.TargetLength)
+	if cached, ok := h.getCache(key); ok {
+		respondJSON(w, http.StatusOK, cached)
+		return
+	}
+
 	result, err := ai.RewriteText(r.Context(), h.config.OpenAI.Token, req.Text, req.TargetLength)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "text rewrite failed: "+err.Error())
 		return
 	}
 
-	respondJSON(w, http.StatusOK, map[string]any{
+	resp := map[string]any{
 		"rewritten_text": result.RewrittenText,
 		"cost_czk":       h.computeCostCZK(result.Usage),
-	})
+		"cached":         false,
+	}
+	respondJSON(w, http.StatusOK, resp)
+	h.setCache(key, resp)
 }

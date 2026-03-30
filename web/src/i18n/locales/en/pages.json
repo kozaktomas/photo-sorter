@@ -454,6 +454,7 @@
       "longer": "Slightly longer",
       "muchLonger": "Much longer",
       "cost": "Cost: {{amount}} CZK",
+      "cachedResult": "cached",
       "charCount": "{{count}} chars",
       "wordCount": "{{count}} words",
       "exportPDF": "Export PDF",

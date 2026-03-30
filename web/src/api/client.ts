@@ -764,14 +764,14 @@ export async function preflightBook(bookId: string): Promise<PreflightResponse> 
 }
 
 // Text AI operations
-export async function checkText(text: string): Promise<{ corrected_text: string; readability_score: number; changes: string[]; cost_czk: number }> {
+export async function checkText(text: string): Promise<{ corrected_text: string; readability_score: number; changes: string[]; cost_czk: number; cached: boolean }> {
   return request('/text/check', {
     method: 'POST',
     body: JSON.stringify({ text }),
   });
 }
 
-export async function rewriteText(text: string, targetLength: string): Promise<{ rewritten_text: string; cost_czk: number }> {
+export async function rewriteText(text: string, targetLength: string): Promise<{ rewritten_text: string; cost_czk: number; cached: boolean }> {
   return request('/text/rewrite', {
     method: 'POST',
     body: JSON.stringify({ text, target_length: targetLength }),
