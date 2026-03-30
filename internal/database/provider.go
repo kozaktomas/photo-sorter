@@ -26,6 +26,7 @@ var (
 	postgresBookWriter         func() BookWriter
 	postgresFaceHNSW           HNSWRebuilder // Singleton for face HNSW rebuilding
 	postgresEmbeddingHNSW      HNSWRebuilder // Singleton for embedding HNSW rebuilding
+	postgresTextVersionStore   func() TextVersionStore
 	postgresInitialized        bool
 )
 
@@ -39,6 +40,7 @@ func ResetForTesting() {
 	postgresBookWriter = nil
 	postgresFaceHNSW = nil
 	postgresEmbeddingHNSW = nil
+	postgresTextVersionStore = nil
 	postgresInitialized = false
 }
 
@@ -184,4 +186,20 @@ func GetBookReader(ctx context.Context) (BookReader, error) {
 		return nil, errors.New("PostgreSQL book writer not registered")
 	}
 	return postgresBookWriter(), nil
+}
+
+// RegisterTextVersionStore registers the TextVersionStore constructor.
+func RegisterTextVersionStore(store func() TextVersionStore) {
+	postgresTextVersionStore = store
+}
+
+// GetTextVersionStore returns a TextVersionStore from the PostgreSQL backend.
+func GetTextVersionStore(ctx context.Context) (TextVersionStore, error) {
+	if !postgresInitialized {
+		return nil, errors.New("PostgreSQL backend not initialized: DATABASE_URL is required")
+	}
+	if postgresTextVersionStore == nil {
+		return nil, errors.New("PostgreSQL text version store not registered")
+	}
+	return postgresTextVersionStore(), nil
 }

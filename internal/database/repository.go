@@ -155,3 +155,10 @@ type BookWriter interface {
 	SwapSlots(ctx context.Context, pageID string, slotA int, slotB int) error
 	UpdateSlotCrop(ctx context.Context, pageID string, slotIndex int, cropX, cropY, cropScale float64) error
 }
+
+// TextVersionStore provides access to text version history.
+type TextVersionStore interface {
+	SaveTextVersion(ctx context.Context, version *TextVersion) error
+	ListTextVersions(ctx context.Context, sourceType, sourceID, field string, limit int) ([]TextVersion, error)
+	GetTextVersion(ctx context.Context, id int) (*TextVersion, error)
+}

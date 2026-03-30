@@ -89,6 +89,9 @@ func registerServeBackends(
 	database.RegisterBookWriter(func() database.BookWriter { return bookRepo })
 	fmt.Printf("Photo book storage enabled (PostgreSQL)\n")
 
+	tvRepo := postgres.NewTextVersionRepository(pool)
+	database.RegisterTextVersionStore(func() database.TextVersionStore { return tvRepo })
+
 	sessionRepo := postgres.NewSessionRepository(pool)
 	fmt.Printf("Session persistence enabled (PostgreSQL)\n")
 	return sessionRepo

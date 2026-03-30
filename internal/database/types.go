@@ -150,6 +150,17 @@ func (s PageSlot) IsEmpty() bool {
 	return s.PhotoUID == "" && s.TextContent == ""
 }
 
+// TextVersion stores a historical snapshot of a text field.
+type TextVersion struct {
+	ID         int
+	SourceType string // "section_photo" or "page_slot"
+	SourceID   string // "sectionID:photoUID" or "pageID:slotIndex"
+	Field      string // "description", "note", or "text_content"
+	Content    string
+	ChangedBy  string // "user" or "ai"
+	CreatedAt  time.Time
+}
+
 // PhotoBookMembership represents a book+section that contains a photo.
 type PhotoBookMembership struct {
 	BookID       string
