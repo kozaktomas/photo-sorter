@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback, useMemo, useRef, type Dispatch, type 
 import { useTranslation } from 'react-i18next';
 import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, pointerWithin, useSensor, useSensors, type DragEndEvent, type DragStartEvent, type Modifier } from '@dnd-kit/core';
 import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
-import { Type, Heading1, Heading2, Bold, Italic, List, ListOrdered, LayoutGrid, Wand2, Loader2 } from 'lucide-react';
-import { assignSlot, assignTextSlot, clearSlot, swapSlots, updatePage, updateSlotCrop, reorderPages, getThumbnailUrl, autoLayoutSection } from '../../api/client';
+import { Type, Heading1, Heading2, Bold, Italic, List, ListOrdered, LayoutGrid, Wand2, Loader2, SpellCheck, ArrowLeftRight, Check } from 'lucide-react';
+import { assignSlot, assignTextSlot, clearSlot, swapSlots, updatePage, updateSlotCrop, reorderPages, getThumbnailUrl, autoLayoutSection, checkText, rewriteText } from '../../api/client';
 import { MarkdownContent } from '../../utils/markdown';
 import { useBookKeyboardNav } from '../../hooks/useBookKeyboardNav';
 import { useUndoRedo, type SlotContent, type UndoEntry } from './hooks/useUndoRedo';
@@ -74,10 +74,77 @@ function insertMarkdown(textarea: HTMLTextAreaElement, prefix: string, suffix: s
 }
 
 // Inline text slot editing dialog with markdown toolbar and preview
+type TargetLength = 'much_shorter' | 'shorter' | 'longer' | 'much_longer';
+
 function TextSlotDialog({ text, onSave, onClose }: { text: string; onSave: (text: string) => void; onClose: () => void }) {
   const { t } = useTranslation('pages');
   const [value, setValue] = useState(text);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // AI text check state
+  const [checking, setChecking] = useState(false);
+  const [checkResult, setCheckResult] = useState<{ corrected_text: string; readability_score: number; changes: string[] } | null>(null);
+  const [checkError, setCheckError] = useState('');
+
+  // AI text rewrite state
+  const [rewriting, setRewriting] = useState(false);
+  const [rewriteResult, setRewriteResult] = useState<{ rewritten_text: string } | null>(null);
+  const [rewriteError, setRewriteError] = useState('');
+  const [targetLength, setTargetLength] = useState<TargetLength>('shorter');
+
+  const valueEmpty = value.trim() === '';
+  const aiLoading = checking || rewriting;
+
+  const handleCheck = async () => {
+    setChecking(true);
+    setCheckResult(null);
+    setCheckError('');
+    setRewriteResult(null);
+    try {
+      const result = await checkText(value);
+      setCheckResult(result);
+    } catch (err) {
+      setCheckError(err instanceof Error ? err.message : 'Check failed');
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const handleRewrite = async () => {
+    setRewriting(true);
+    setRewriteResult(null);
+    setRewriteError('');
+    setCheckResult(null);
+    try {
+      const result = await rewriteText(value, targetLength);
+      setRewriteResult(result);
+    } catch (err) {
+      setRewriteError(err instanceof Error ? err.message : 'Rewrite failed');
+    } finally {
+      setRewriting(false);
+    }
+  };
+
+  const acceptCheck = () => {
+    if (checkResult) {
+      setValue(checkResult.corrected_text);
+      setCheckResult(null);
+    }
+  };
+
+  const acceptRewrite = () => {
+    if (rewriteResult) {
+      setValue(rewriteResult.rewritten_text);
+      setRewriteResult(null);
+    }
+  };
+
+  const lengthOptions: { value: TargetLength; labelKey: string }[] = [
+    { value: 'much_shorter', labelKey: 'books.editor.muchShorter' },
+    { value: 'shorter', labelKey: 'books.editor.shorter' },
+    { value: 'longer', labelKey: 'books.editor.longer' },
+    { value: 'much_longer', labelKey: 'books.editor.muchLonger' },
+  ];
 
   const toolbarButtons = [
     { icon: Heading1, title: 'H1', action: () => textareaRef.current && insertMarkdown(textareaRef.current, '# ', '', setValue, true) },
@@ -90,7 +157,7 @@ function TextSlotDialog({ text, onSave, onClose }: { text: string; onSave: (text
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-slate-800 rounded-lg p-6 w-full max-w-4xl" onClick={e => e.stopPropagation()}>
+      <div className="bg-slate-800 rounded-lg p-6 w-full max-w-4xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
         <h3 className="text-lg font-semibold text-white mb-4">{t('books.editor.textSlotTitle')}</h3>
         <div className="flex gap-1 mb-2">
           {toolbarButtons.map(btn => (
@@ -105,25 +172,133 @@ function TextSlotDialog({ text, onSave, onClose }: { text: string; onSave: (text
             </button>
           ))}
         </div>
-        <div className="grid grid-cols-2 gap-4">
-          <textarea
-            ref={textareaRef}
-            value={value}
-            onChange={e => setValue(e.target.value)}
-            className="w-full h-80 px-3 py-2 bg-slate-900 border border-slate-600 rounded text-sm text-white font-mono focus:outline-none focus-visible:ring-1 focus-visible:ring-rose-500 resize-none"
-            placeholder={t('books.editor.textPlaceholder')}
-            autoFocus
-          />
-          <div className="h-80 overflow-auto bg-slate-900 border border-slate-600 rounded p-3">
-            <p className="text-xs text-slate-500 mb-2">{t('books.editor.markdownPreview')}</p>
-            {value.trim() ? (
-              <MarkdownContent content={value} />
-            ) : (
-              <p className="text-slate-600 text-sm italic">{t('books.editor.textPlaceholder')}</p>
-            )}
+        <div className="overflow-y-auto flex-1 min-h-0 space-y-3">
+          <div className="grid grid-cols-2 gap-4">
+            <textarea
+              ref={textareaRef}
+              value={value}
+              onChange={e => setValue(e.target.value)}
+              className="w-full h-80 px-3 py-2 bg-slate-900 border border-slate-600 rounded text-sm text-white font-mono focus:outline-none focus-visible:ring-1 focus-visible:ring-rose-500 resize-none"
+              placeholder={t('books.editor.textPlaceholder')}
+              autoFocus
+            />
+            <div className="h-80 overflow-auto bg-slate-900 border border-slate-600 rounded p-3">
+              <p className="text-xs text-slate-500 mb-2">{t('books.editor.markdownPreview')}</p>
+              {value.trim() ? (
+                <MarkdownContent content={value} />
+              ) : (
+                <p className="text-slate-600 text-sm italic">{t('books.editor.textPlaceholder')}</p>
+              )}
+            </div>
           </div>
+          <p className="text-xs text-slate-500">{t('books.editor.markdownHelp')}</p>
+
+          {/* AI buttons */}
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={handleCheck}
+              disabled={valueEmpty || aiLoading}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors"
+            >
+              {checking ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <SpellCheck className="h-3.5 w-3.5" />}
+              {checking ? t('books.editor.checking') : t('books.editor.textCheck')}
+            </button>
+
+            <div className="inline-flex items-center gap-1.5">
+              <select
+                value={targetLength}
+                onChange={e => setTargetLength(e.target.value as TargetLength)}
+                disabled={aiLoading}
+                className="px-2 py-1.5 text-xs bg-slate-900 border border-slate-600 rounded text-white focus:outline-none focus-visible:ring-1 focus-visible:ring-amber-500"
+              >
+                {lengthOptions.map(opt => (
+                  <option key={opt.value} value={opt.value}>{t(opt.labelKey)}</option>
+                ))}
+              </select>
+              <button
+                onClick={handleRewrite}
+                disabled={valueEmpty || aiLoading}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded bg-amber-600 hover:bg-amber-700 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors"
+              >
+                {rewriting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowLeftRight className="h-3.5 w-3.5" />}
+                {rewriting ? t('books.editor.rewriting') : t('books.editor.adjustLength')}
+              </button>
+            </div>
+          </div>
+
+          {/* Check result panel */}
+          {checkResult && (
+            <div className="rounded border border-indigo-500/30 bg-indigo-950/30 p-3 space-y-2">
+              {checkResult.changes.length === 0 ? (
+                <div className="flex items-center gap-2 text-sm text-emerald-400">
+                  <Check className="h-4 w-4" />
+                  {t('books.editor.textOk')}
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-indigo-300">
+                      {t('books.editor.readability')}: {checkResult.readability_score}%
+                    </span>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-slate-400 mb-1">{t('books.editor.changes')}:</p>
+                    <ul className="text-xs text-slate-300 space-y-0.5 list-disc list-inside">
+                      {checkResult.changes.map((change, i) => (
+                        <li key={i}>{change}</li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium text-slate-400 mb-1">{t('books.editor.correctedText')}:</p>
+                    <p className="text-xs text-slate-300 bg-slate-900/50 p-2 rounded whitespace-pre-wrap">{checkResult.corrected_text}</p>
+                  </div>
+                </>
+              )}
+              <div className="flex gap-2 pt-1">
+                {checkResult.changes.length > 0 && (
+                  <button
+                    onClick={acceptCheck}
+                    className="px-2.5 py-1 text-xs font-medium rounded bg-indigo-600 hover:bg-indigo-700 text-white transition-colors"
+                  >
+                    {t('books.editor.accept')}
+                  </button>
+                )}
+                <button
+                  onClick={() => setCheckResult(null)}
+                  className="px-2.5 py-1 text-xs text-slate-400 hover:text-white transition-colors"
+                >
+                  {t('books.editor.dismiss')}
+                </button>
+              </div>
+            </div>
+          )}
+          {checkError && <p className="text-xs text-red-400">{checkError}</p>}
+
+          {/* Rewrite result panel */}
+          {rewriteResult && (
+            <div className="rounded border border-amber-500/30 bg-amber-950/30 p-3 space-y-2">
+              <p className="text-xs font-medium text-slate-400 mb-1">{t('books.editor.rewrittenText')}:</p>
+              <p className="text-xs text-slate-300 bg-slate-900/50 p-2 rounded whitespace-pre-wrap">{rewriteResult.rewritten_text}</p>
+              <div className="flex gap-2 pt-1">
+                <button
+                  onClick={acceptRewrite}
+                  className="px-2.5 py-1 text-xs font-medium rounded bg-amber-600 hover:bg-amber-700 text-white transition-colors"
+                >
+                  {t('books.editor.accept')}
+                </button>
+                <button
+                  onClick={() => setRewriteResult(null)}
+                  className="px-2.5 py-1 text-xs text-slate-400 hover:text-white transition-colors"
+                >
+                  {t('books.editor.dismiss')}
+                </button>
+              </div>
+            </div>
+          )}
+          {rewriteError && <p className="text-xs text-red-400">{rewriteError}</p>}
         </div>
-        <p className="text-xs text-slate-500 mt-2">{t('books.editor.markdownHelp')}</p>
+
         <div className="flex justify-end gap-2 mt-4">
           <button
             onClick={onClose}
