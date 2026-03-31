@@ -96,6 +96,51 @@ function colSpanWidth(n: number): number {
 
 const HALF_CANVAS_HEIGHT = (CANVAS_HEIGHT - ROW_GAP) / 2;
 
+export interface SlotRect {
+  x: number; // mm from content left
+  y: number; // mm from canvas top
+  w: number; // mm
+  h: number; // mm
+}
+
+/** Returns slot rectangles (position + size in mm) for all slots in a page format. */
+export function getSlotRects(format: PageFormat, splitPosition: number | null): SlotRect[] {
+  const availW = CONTENT_WIDTH - COLUMN_GUTTER;
+  const sp = splitPosition ?? (format === '2l_1p' ? 2 / 3 : format === '1p_2l' ? 1 / 3 : 0.5);
+  const leftW = availW * sp;
+  const rightW = availW * (1 - sp);
+  const rightX = leftW + COLUMN_GUTTER;
+
+  switch (format) {
+    case '1_fullscreen':
+      return [{ x: 0, y: 0, w: CONTENT_WIDTH, h: CANVAS_HEIGHT }];
+    case '2_portrait':
+      return [
+        { x: 0, y: 0, w: leftW, h: CANVAS_HEIGHT },
+        { x: rightX, y: 0, w: rightW, h: CANVAS_HEIGHT },
+      ];
+    case '4_landscape':
+      return [
+        { x: 0, y: 0, w: leftW, h: HALF_CANVAS_HEIGHT },
+        { x: rightX, y: 0, w: rightW, h: HALF_CANVAS_HEIGHT },
+        { x: 0, y: HALF_CANVAS_HEIGHT + ROW_GAP, w: leftW, h: HALF_CANVAS_HEIGHT },
+        { x: rightX, y: HALF_CANVAS_HEIGHT + ROW_GAP, w: rightW, h: HALF_CANVAS_HEIGHT },
+      ];
+    case '2l_1p':
+      return [
+        { x: 0, y: 0, w: leftW, h: HALF_CANVAS_HEIGHT },
+        { x: 0, y: HALF_CANVAS_HEIGHT + ROW_GAP, w: leftW, h: HALF_CANVAS_HEIGHT },
+        { x: rightX, y: 0, w: rightW, h: CANVAS_HEIGHT },
+      ];
+    case '1p_2l':
+      return [
+        { x: 0, y: 0, w: leftW, h: CANVAS_HEIGHT },
+        { x: rightX, y: 0, w: rightW, h: HALF_CANVAS_HEIGHT },
+        { x: rightX, y: HALF_CANVAS_HEIGHT + ROW_GAP, w: rightW, h: HALF_CANVAS_HEIGHT },
+      ];
+  }
+}
+
 /** Returns the physical slot dimensions [widthMm, heightMm] for a given slot in a page format. */
 function getSlotDimensionsMm(format: PageFormat, slotIndex: number, splitPosition?: number | null): [number, number] {
   if (splitPosition != null && format !== '1_fullscreen') {

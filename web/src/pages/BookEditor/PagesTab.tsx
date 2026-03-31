@@ -2,9 +2,9 @@ import { useState, useEffect, useCallback, useMemo, useRef, type Dispatch, type 
 import { useTranslation } from 'react-i18next';
 import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, pointerWithin, useSensor, useSensors, type DragEndEvent, type DragStartEvent, type Modifier } from '@dnd-kit/core';
 import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
-import { Type, Heading1, Heading2, Bold, Italic, List, ListOrdered, LayoutGrid, Wand2, Loader2, SpellCheck, ArrowLeftRight, Check, DollarSign, History, Maximize2, Minimize2 } from 'lucide-react';
+import { Type, Heading1, Heading2, Bold, Italic, List, ListOrdered, LayoutGrid, Wand2, Loader2, SpellCheck, ArrowLeftRight, Check, DollarSign, History, Maximize2, Minimize2, Eye, Printer } from 'lucide-react';
 import { assignSlot, assignTextSlot, clearSlot, swapSlots, updatePage, updateSlotCrop, reorderPages, getThumbnailUrl, autoLayoutSection, checkTextAndSave, rewriteText, listTextVersions, restoreTextVersion } from '../../api/client';
-import { MarkdownContent } from '../../utils/markdown';
+import { MarkdownContent, renderMarkdown } from '../../utils/markdown';
 import { handleMarkdownPaste } from '../../utils/paste';
 import { useBookKeyboardNav } from '../../hooks/useBookKeyboardNav';
 import { useUndoRedo, type SlotContent, type UndoEntry } from './hooks/useUndoRedo';
@@ -15,8 +15,9 @@ import { UnassignedPool } from './UnassignedPool';
 import { PhotoDescriptionDialog } from './PhotoDescriptionDialog';
 import type { BookDetail, SectionPhoto, PageFormat, PageStyle, PageSlot, TextVersion } from '../../types';
 import { pageFormatSlotCount } from '../../types';
-import { getSlotAspectRatio } from '../../utils/pageFormats';
+import { getSlotAspectRatio, getSlotRects } from '../../utils/pageFormats';
 import { PageLayoutPreview } from '../../components/PageLayoutPreview';
+import { BOOK_TYPOGRAPHY } from '../../constants/bookTypography';
 
 // Snap the DragOverlay center to the cursor so large source elements don't cause offset
 const snapCenterToCursor: Modifier = ({ activatorEvent, activeNodeRect, draggingNodeRect, transform }) => {
@@ -87,7 +88,11 @@ function TextSlotDialog({ text, pageId, slotIndex, pageFormat, pageSlots, splitP
   const { t } = useTranslation('pages');
   const [value, setValue] = useState(text);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [previewMode, setPreviewMode] = useState<'print' | 'editor'>('print');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const wysiwygContentRef = useRef<HTMLDivElement>(null);
+  const wysiwygContainerRef = useRef<HTMLDivElement>(null);
+  const [fillPercent, setFillPercent] = useState<number | null>(null);
 
   // AI text check state
   const [checking, setChecking] = useState(false);
@@ -106,6 +111,24 @@ function TextSlotDialog({ text, pageId, slotIndex, pageFormat, pageSlots, splitP
   const [historyLoading, setHistoryLoading] = useState(false);
 
   const sourceId = `${pageId}:${slotIndex}`;
+
+  // Compute slot dimensions in mm for WYSIWYG preview
+  const slotRect = useMemo(() => {
+    const rects = getSlotRects(pageFormat, splitPosition);
+    return rects[slotIndex] ?? rects[0];
+  }, [pageFormat, splitPosition, slotIndex]);
+
+  // Measure fill percentage from rendered WYSIWYG content
+  useEffect(() => {
+    if (previewMode !== 'print') return;
+    const container = wysiwygContainerRef.current;
+    const content = wysiwygContentRef.current;
+    if (!container || !content) { setFillPercent(null); return; }
+    const containerH = container.clientHeight;
+    if (containerH <= 0) { setFillPercent(null); return; }
+    const contentH = content.scrollHeight;
+    setFillPercent(Math.round((contentH / containerH) * 100));
+  }, [value, previewMode, pageFormat, splitPosition, slotIndex]);
 
   const loadHistory = useCallback(async () => {
     setHistoryLoading(true);
@@ -288,13 +311,92 @@ function TextSlotDialog({ text, pageId, slotIndex, pageFormat, pageSlots, splitP
                 placeholder={t('books.editor.textPlaceholder')}
                 autoFocus
               />
-              <div className={`overflow-auto bg-slate-900 border border-slate-600 rounded p-3 ${isFullscreen ? 'h-[70vh]' : 'h-80'}`}>
-                <p className="text-xs text-slate-500 mb-2">{t('books.editor.markdownPreview')}</p>
-                {value.trim() ? (
-                  <MarkdownContent content={value} />
-                ) : (
-                  <p className="text-slate-600 text-sm italic">{t('books.editor.textPlaceholder')}</p>
-                )}
+              <div className={`flex flex-col bg-slate-900 border border-slate-600 rounded ${isFullscreen ? 'h-[70vh]' : 'h-80'}`}>
+                {/* Preview mode toggle */}
+                <div className="flex items-center gap-1 px-3 pt-2 pb-1 shrink-0">
+                  <button
+                    onClick={() => setPreviewMode('print')}
+                    className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded transition-colors ${
+                      previewMode === 'print'
+                        ? 'bg-rose-600/20 text-rose-300 font-medium'
+                        : 'text-slate-500 hover:text-slate-300'
+                    }`}
+                  >
+                    <Printer className="h-3 w-3" />
+                    {t('books.editor.printPreview')}
+                  </button>
+                  <button
+                    onClick={() => setPreviewMode('editor')}
+                    className={`inline-flex items-center gap-1 px-2 py-1 text-xs rounded transition-colors ${
+                      previewMode === 'editor'
+                        ? 'bg-rose-600/20 text-rose-300 font-medium'
+                        : 'text-slate-500 hover:text-slate-300'
+                    }`}
+                  >
+                    <Eye className="h-3 w-3" />
+                    {t('books.editor.editorPreview')}
+                  </button>
+                  {previewMode === 'print' && fillPercent !== null && value.trim() && (
+                    <span className={`ml-auto text-xs font-medium ${
+                      fillPercent > 100 ? 'text-red-400' : fillPercent > 85 ? 'text-amber-400' : 'text-emerald-400'
+                    }`}>
+                      ~{fillPercent}%
+                    </span>
+                  )}
+                </div>
+                {/* Preview content */}
+                <div className="flex-1 min-h-0 overflow-auto p-3 pt-1">
+                  {previewMode === 'editor' ? (
+                    // Editor preview (existing dark-themed markdown)
+                    value.trim() ? (
+                      <MarkdownContent content={value} />
+                    ) : (
+                      <p className="text-slate-600 text-sm italic">{t('books.editor.textPlaceholder')}</p>
+                    )
+                  ) : (
+                    // WYSIWYG print preview with PDF-accurate dimensions
+                    <div className="flex justify-center">
+                      <div
+                        ref={wysiwygContainerRef}
+                        className="relative bg-white border border-slate-300 shadow-sm"
+                        style={{
+                          width: `${slotRect.w}mm`,
+                          height: `${slotRect.h}mm`,
+                        }}
+                      >
+                        {value.trim() ? (
+                          <div
+                            ref={wysiwygContentRef}
+                            className="wysiwyg-preview"
+                            style={{
+                              fontFamily: BOOK_TYPOGRAPHY.textSlot.fontFamily,
+                              fontSize: BOOK_TYPOGRAPHY.textSlot.fontSize,
+                              lineHeight: BOOK_TYPOGRAPHY.textSlot.lineHeight,
+                            }}
+                            dangerouslySetInnerHTML={{ __html: renderMarkdown(value) }}
+                          />
+                        ) : (
+                          <div className="w-full h-full flex items-center justify-center">
+                            <p className="text-slate-300 text-sm italic">{t('books.editor.emptySlot')}</p>
+                          </div>
+                        )}
+                        {/* Overflow region — reduced opacity overlay beyond slot boundary */}
+                        {fillPercent !== null && fillPercent > 100 && (
+                          <>
+                            <div
+                              className="absolute left-0 right-0 bg-red-50/70 pointer-events-none"
+                              style={{ top: `${slotRect.h}mm`, bottom: 0 }}
+                            />
+                            <div
+                              className="absolute left-0 right-0 border-t-2 border-dashed border-red-400 pointer-events-none"
+                              style={{ top: `${slotRect.h}mm` }}
+                            />
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
             <div className="shrink-0">

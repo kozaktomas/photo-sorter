@@ -172,3 +172,79 @@ body {
   background-color: #334155; /* slate-700 */
   color: #f1f5f9; /* slate-100 */
 }
+
+/* WYSIWYG print preview — matches PDF output typography */
+.wysiwyg-preview {
+  font-family: 'EB Garamond', serif;
+  font-size: 12pt;
+  line-height: 14.4pt;
+  color: #1a1a1a;
+  background: white;
+  text-align: left;
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+.wysiwyg-preview h1 {
+  font-size: 17.28pt;
+  font-weight: 700;
+  line-height: 1.2;
+  margin: 0 0 4mm;
+}
+.wysiwyg-preview h2 {
+  font-size: 14.4pt;
+  font-weight: 700;
+  line-height: 1.2;
+  margin: 0 0 4mm;
+}
+.wysiwyg-preview h3 {
+  font-size: 12pt;
+  font-weight: 700;
+  line-height: 1.2;
+  margin: 0 0 2mm;
+}
+.wysiwyg-preview p {
+  margin: 0 0 4mm;
+}
+.wysiwyg-preview p:last-child {
+  margin-bottom: 0;
+}
+.wysiwyg-preview strong {
+  font-weight: 700;
+}
+.wysiwyg-preview em {
+  font-style: italic;
+}
+.wysiwyg-preview blockquote {
+  font-style: italic;
+  margin: 0 0 4mm;
+  padding-left: 1.5em;
+}
+.wysiwyg-preview ul,
+.wysiwyg-preview ol {
+  margin: 0 0 4mm;
+  padding-left: 1.5em;
+}
+.wysiwyg-preview ul {
+  list-style-type: disc;
+}
+.wysiwyg-preview ol {
+  list-style-type: decimal;
+}
+.wysiwyg-preview li {
+  margin-bottom: 1mm;
+}
+.wysiwyg-preview table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 0 4mm;
+}
+.wysiwyg-preview th,
+.wysiwyg-preview td {
+  border: 1px solid #999;
+  padding: 1mm 2mm;
+  text-align: left;
+}
+.wysiwyg-preview th {
+  font-weight: 700;
+  background-color: #f0f0f0;
+}

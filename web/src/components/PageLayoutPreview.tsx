@@ -2,65 +2,17 @@ import { useRef, useEffect, useState, useMemo, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MarkdownContent } from '../utils/markdown';
 import { getThumbnailUrl } from '../api/client';
+import { PAGE_DIMENSIONS } from '../constants/bookTypography';
+import { getSlotRects } from '../utils/pageFormats';
 import type { PageFormat, PageSlot } from '../types';
 
-// Physical page dimensions in mm (A4 landscape-ish book page)
-const PAGE_WIDTH_MM = 297;
-const PAGE_HEIGHT_MM = 210;
-const MARGIN_INSIDE_MM = 20;
-const MARGIN_OUTSIDE_MM = 12;
-const HEADER_MM = 4;
-const FOOTER_MM = 8;
-const CANVAS_HEIGHT_MM = 172;
-const CONTENT_WIDTH_MM = PAGE_WIDTH_MM - MARGIN_INSIDE_MM - MARGIN_OUTSIDE_MM; // 265
-const COLUMN_GUTTER_MM = 4;
-const ROW_GAP_MM = 4;
-
-const HALF_CANVAS = (CANVAS_HEIGHT_MM - ROW_GAP_MM) / 2;
-
-interface SlotRect {
-  x: number; // mm from content left
-  y: number; // mm from canvas top
-  w: number; // mm
-  h: number; // mm
-}
-
-function getSlotRects(format: PageFormat, splitPosition: number | null): SlotRect[] {
-  const availW = CONTENT_WIDTH_MM - COLUMN_GUTTER_MM;
-  const sp = splitPosition ?? (format === '2l_1p' ? 2 / 3 : format === '1p_2l' ? 1 / 3 : 0.5);
-  const leftW = availW * sp;
-  const rightW = availW * (1 - sp);
-  const rightX = leftW + COLUMN_GUTTER_MM;
-
-  switch (format) {
-    case '1_fullscreen':
-      return [{ x: 0, y: 0, w: CONTENT_WIDTH_MM, h: CANVAS_HEIGHT_MM }];
-    case '2_portrait':
-      return [
-        { x: 0, y: 0, w: leftW, h: CANVAS_HEIGHT_MM },
-        { x: rightX, y: 0, w: rightW, h: CANVAS_HEIGHT_MM },
-      ];
-    case '4_landscape':
-      return [
-        { x: 0, y: 0, w: leftW, h: HALF_CANVAS },
-        { x: rightX, y: 0, w: rightW, h: HALF_CANVAS },
-        { x: 0, y: HALF_CANVAS + ROW_GAP_MM, w: leftW, h: HALF_CANVAS },
-        { x: rightX, y: HALF_CANVAS + ROW_GAP_MM, w: rightW, h: HALF_CANVAS },
-      ];
-    case '2l_1p':
-      return [
-        { x: 0, y: 0, w: leftW, h: HALF_CANVAS },
-        { x: 0, y: HALF_CANVAS + ROW_GAP_MM, w: leftW, h: HALF_CANVAS },
-        { x: rightX, y: 0, w: rightW, h: CANVAS_HEIGHT_MM },
-      ];
-    case '1p_2l':
-      return [
-        { x: 0, y: 0, w: leftW, h: CANVAS_HEIGHT_MM },
-        { x: rightX, y: 0, w: rightW, h: HALF_CANVAS },
-        { x: rightX, y: HALF_CANVAS + ROW_GAP_MM, w: rightW, h: HALF_CANVAS },
-      ];
-  }
-}
+const {
+  pageWidth: PAGE_WIDTH_MM,
+  pageHeight: PAGE_HEIGHT_MM,
+  marginInside: MARGIN_INSIDE_MM,
+  headerHeight: HEADER_MM,
+  footerHeight: FOOTER_MM,
+} = PAGE_DIMENSIONS;
 
 interface PageLayoutPreviewProps {
   format: PageFormat;
