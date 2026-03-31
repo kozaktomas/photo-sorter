@@ -475,6 +475,8 @@
       "textPlaceholder": "Enter text for this slot...",
       "textSlotTitle": "Text Slot",
       "markdownPreview": "Preview",
+      "pagePreview": "Page preview",
+      "textOverflow": "Text is too long for this slot",
       "markdownHelp": "Supports Markdown: # heading, **bold**, *italic*, - list, 1. numbered list",
       "adjustCrop": "Adjust crop",
       "cropTitle": "Adjust Crop Position",

@@ -12,9 +12,10 @@ import { PageMinimap } from './PageMinimap';
 import { PageTemplate } from './PageTemplate';
 import { UnassignedPool } from './UnassignedPool';
 import { PhotoDescriptionDialog } from './PhotoDescriptionDialog';
-import type { BookDetail, SectionPhoto, PageFormat, PageStyle, TextVersion } from '../../types';
+import type { BookDetail, SectionPhoto, PageFormat, PageStyle, PageSlot, TextVersion } from '../../types';
 import { pageFormatSlotCount } from '../../types';
 import { getSlotAspectRatio } from '../../utils/pageFormats';
+import { PageLayoutPreview } from '../../components/PageLayoutPreview';
 
 // Snap the DragOverlay center to the cursor so large source elements don't cause offset
 const snapCenterToCursor: Modifier = ({ activatorEvent, activeNodeRect, draggingNodeRect, transform }) => {
@@ -76,7 +77,12 @@ function insertMarkdown(textarea: HTMLTextAreaElement, prefix: string, suffix: s
 // Inline text slot editing dialog with markdown toolbar and preview
 type TargetLength = 'much_shorter' | 'shorter' | 'longer' | 'much_longer';
 
-function TextSlotDialog({ text, pageId, slotIndex, onSave, onClose }: { text: string; pageId: string; slotIndex: number; onSave: (text: string) => void; onClose: () => void }) {
+function TextSlotDialog({ text, pageId, slotIndex, pageFormat, pageSlots, splitPosition, onSave, onClose }: {
+  text: string; pageId: string; slotIndex: number;
+  pageFormat: PageFormat; pageSlots: PageSlot[];
+  splitPosition: number | null;
+  onSave: (text: string) => void; onClose: () => void;
+}) {
   const { t } = useTranslation('pages');
   const [value, setValue] = useState(text);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -217,22 +223,34 @@ function TextSlotDialog({ text, pageId, slotIndex, onSave, onClose }: { text: st
           />
         )}
         <div className="overflow-y-auto flex-1 min-h-0 space-y-3">
-          <div className="grid grid-cols-2 gap-4">
-            <textarea
-              ref={textareaRef}
-              value={value}
-              onChange={e => setValue(e.target.value)}
-              className="w-full h-80 px-3 py-2 bg-slate-900 border border-slate-600 rounded text-sm text-white font-mono focus:outline-none focus-visible:ring-1 focus-visible:ring-rose-500 resize-none"
-              placeholder={t('books.editor.textPlaceholder')}
-              autoFocus
-            />
-            <div className="h-80 overflow-auto bg-slate-900 border border-slate-600 rounded p-3">
-              <p className="text-xs text-slate-500 mb-2">{t('books.editor.markdownPreview')}</p>
-              {value.trim() ? (
-                <MarkdownContent content={value} />
-              ) : (
-                <p className="text-slate-600 text-sm italic">{t('books.editor.textPlaceholder')}</p>
-              )}
+          <div className="flex gap-4">
+            <div className="flex-1 min-w-0 grid grid-cols-2 gap-4">
+              <textarea
+                ref={textareaRef}
+                value={value}
+                onChange={e => setValue(e.target.value)}
+                className="w-full h-80 px-3 py-2 bg-slate-900 border border-slate-600 rounded text-sm text-white font-mono focus:outline-none focus-visible:ring-1 focus-visible:ring-rose-500 resize-none"
+                placeholder={t('books.editor.textPlaceholder')}
+                autoFocus
+              />
+              <div className="h-80 overflow-auto bg-slate-900 border border-slate-600 rounded p-3">
+                <p className="text-xs text-slate-500 mb-2">{t('books.editor.markdownPreview')}</p>
+                {value.trim() ? (
+                  <MarkdownContent content={value} />
+                ) : (
+                  <p className="text-slate-600 text-sm italic">{t('books.editor.textPlaceholder')}</p>
+                )}
+              </div>
+            </div>
+            <div className="shrink-0">
+              <PageLayoutPreview
+                format={pageFormat}
+                activeSlotIndex={slotIndex}
+                slots={pageSlots}
+                splitPosition={splitPosition}
+                liveText={value}
+                previewWidth={200}
+              />
             </div>
           </div>
           <div className="flex items-center justify-between">
@@ -1280,15 +1298,21 @@ export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRe
           />
         )}
 
-        {editingTextSlot !== null && (
-          <TextSlotDialog
-            text={editingTextSlot.text}
-            pageId={editingTextSlot.pageId}
-            slotIndex={editingTextSlot.slotIndex}
-            onSave={handleSaveText}
-            onClose={() => setEditingTextSlot(null)}
-          />
-        )}
+        {editingTextSlot !== null && (() => {
+          const editPage = book.pages.find(p => p.id === editingTextSlot.pageId);
+          return (
+            <TextSlotDialog
+              text={editingTextSlot.text}
+              pageId={editingTextSlot.pageId}
+              slotIndex={editingTextSlot.slotIndex}
+              pageFormat={editPage?.format ?? '1_fullscreen'}
+              pageSlots={editPage?.slots ?? []}
+              splitPosition={editPage?.split_position ?? null}
+              onSave={handleSaveText}
+              onClose={() => setEditingTextSlot(null)}
+            />
+          );
+        })()}
 
         {editingCrop && (
           <CropDialog

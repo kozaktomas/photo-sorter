@@ -460,6 +460,8 @@
       "textPlaceholder": "Zadejte text pro tento slot...",
       "textSlotTitle": "Textový slot",
       "markdownPreview": "Náhled",
+      "pagePreview": "Náhled na stránce",
+      "textOverflow": "Text je příliš dlouhý pro tento slot",
       "markdownHelp": "Podporuje Markdown: # nadpis, **tučně**, *kurzíva*, - seznam, 1. číslovaný seznam",
       "adjustCrop": "Upravit ořez",
       "cropTitle": "Upravit pozici ořezu",
