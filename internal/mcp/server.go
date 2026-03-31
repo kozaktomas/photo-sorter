@@ -44,6 +44,8 @@ func NewServer(
 	s.mcpServer = mcpServer
 	s.registerBookTools()
 	s.registerChapterTools()
+	s.registerSectionTools()
+	s.registerSectionPhotoTools()
 
 	return s
 }
@@ -128,6 +130,8 @@ func (s *Server) registerBookTools() {
 }
 
 // registerChapterTools registers chapter CRUD + reorder tools.
+//
+//nolint:dupl // intentionally mirrors registerSectionTools — same CRUD pattern, different entity
 func (s *Server) registerChapterTools() {
 	s.mcpServer.AddTool(
 		mcp.NewTool("create_chapter",

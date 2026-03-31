@@ -32,6 +32,29 @@ func optionalStr(args map[string]any, key string) string {
 	return s
 }
 
+func requiredStrArray(args map[string]any, key string) ([]string, error) {
+	raw, ok := args[key]
+	if !ok {
+		return nil, fmt.Errorf("missing required parameter: %s", key)
+	}
+	arr, ok := raw.([]any)
+	if !ok {
+		return nil, fmt.Errorf("%s must be an array", key)
+	}
+	if len(arr) == 0 {
+		return nil, fmt.Errorf("%s must not be empty", key)
+	}
+	result := make([]string, len(arr))
+	for i, v := range arr {
+		str, ok := v.(string)
+		if !ok {
+			return nil, fmt.Errorf("%s[%d] must be a string", key, i)
+		}
+		result[i] = str
+	}
+	return result, nil
+}
+
 func jsonResult(v any) (*mcp.CallToolResult, error) {
 	data, err := json.Marshal(v)
 	if err != nil {
@@ -378,22 +401,9 @@ func (s *Server) handleReorderChapters(ctx context.Context, req mcp.CallToolRequ
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	rawIDs, ok := args["chapter_ids"]
-	if !ok {
-		return mcp.NewToolResultError("missing required parameter: chapter_ids"), nil
-	}
-	arr, ok := rawIDs.([]any)
-	if !ok {
-		return mcp.NewToolResultError("chapter_ids must be an array"), nil
-	}
-
-	ids := make([]string, len(arr))
-	for i, v := range arr {
-		s, ok := v.(string)
-		if !ok {
-			return mcp.NewToolResultError(fmt.Sprintf("chapter_ids[%d] must be a string", i)), nil
-		}
-		ids[i] = s
+	ids, err := requiredStrArray(args, "chapter_ids")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
 	}
 
 	if err := s.bookWriter.ReorderChapters(s.ctx(), bookID, ids); err != nil {
