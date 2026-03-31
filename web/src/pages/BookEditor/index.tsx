@@ -13,12 +13,13 @@ import { PagesTab } from './PagesTab';
 import { PreviewTab } from './PreviewTab';
 import { DuplicatesTab } from './DuplicatesTab';
 import { TextsTab } from './TextsTab';
+import { TypographyTab } from './TypographyTab';
 import { PreflightModal } from './PreflightModal';
 import { KeyboardShortcutsHelp } from './KeyboardShortcutsHelp';
 
-type Tab = 'sections' | 'pages' | 'preview' | 'duplicates' | 'texts';
+type Tab = 'sections' | 'pages' | 'preview' | 'duplicates' | 'texts' | 'typography';
 
-const VALID_TABS: Tab[] = ['sections', 'pages', 'preview', 'duplicates', 'texts'];
+const VALID_TABS: Tab[] = ['sections', 'pages', 'preview', 'texts', 'typography', 'duplicates'];
 
 function isValidTab(value: string | null): value is Tab {
   return value !== null && VALID_TABS.includes(value as Tab);
@@ -197,8 +198,9 @@ export function BookEditorPage() {
   const tabs: { key: Tab; label: string }[] = [
     { key: 'pages', label: t('books.editor.pagesTab') },
     { key: 'sections', label: t('books.editor.sectionsTab') },
-    { key: 'texts', label: t('books.editor.textsTab') },
     { key: 'preview', label: t('books.editor.previewTab') },
+    { key: 'texts', label: t('books.editor.textsTab') },
+    { key: 'typography', label: t('books.editor.typographyTab') },
     { key: 'duplicates', label: t('books.editor.duplicatesTab') },
   ];
 
@@ -326,6 +328,9 @@ export function BookEditorPage() {
                 onNavigateToPage={handleNavigateToPage}
                 onNavigateToSection={handleNavigateToSection}
               />
+            )}
+            {activeTab === 'typography' && (
+              <TypographyTab book={book} onRefresh={refresh} />
             )}
             {activeTab === 'duplicates' && (
               <DuplicatesTab
