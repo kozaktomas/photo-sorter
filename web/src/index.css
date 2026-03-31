@@ -106,7 +106,7 @@ body {
 
 /* Markdown content styles for book text slots */
 .markdown-content {
-  text-align: left;
+  text-align: justify;
   color: #e2e8f0; /* slate-200 */
   font-size: 0.875rem;
   line-height: 1.5;
@@ -191,7 +191,7 @@ body {
   line-height: 14.4pt;
   color: #1a1a1a;
   background: white;
-  text-align: left;
+  text-align: justify;
   overflow-wrap: break-word;
   word-wrap: break-word;
 }
