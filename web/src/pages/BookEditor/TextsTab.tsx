@@ -1,8 +1,9 @@
 import { useState, useMemo, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { SpellCheck, ArrowLeftRight, Loader2, Check, DollarSign, ChevronDown, ChevronUp, ExternalLink, X, BarChart3 } from 'lucide-react';
+import { SpellCheck, ArrowLeftRight, Loader2, Check, DollarSign, ChevronDown, ChevronUp, ExternalLink, X, BarChart3, Copy } from 'lucide-react';
 import { checkText, rewriteText, checkTextConsistency, updateSectionPhoto, assignTextSlot } from '../../api/client';
 import { StatsGrid } from '../../components/StatsGrid';
+import { findDuplicateTexts } from '../../utils/textSimilarity';
 import type { BookDetail, SectionPhoto } from '../../types';
 
 type TargetLength = 'much_shorter' | 'shorter' | 'longer' | 'much_longer';
@@ -143,6 +144,12 @@ export function TextsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, on
   const totalTexts = textEntries.length;
   const checkedCount = Object.values(checkStatuses).filter(s => s === 'clean').length;
   const errorCount = Object.values(checkStatuses).filter(s => s === 'has_errors').length;
+
+  // Duplicate detection
+  const duplicatePairs = useMemo(
+    () => findDuplicateTexts(textEntries.map(e => ({ id: e.id, text: e.text }))),
+    [textEntries],
+  );
 
   const handleCheck = useCallback(async (entry: TextEntry) => {
     setChecking(entry.id);
@@ -309,11 +316,12 @@ export function TextsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, on
     <div className="space-y-6">
       {/* Stats */}
       <StatsGrid
-        columns={3}
+        columns={4}
         items={[
           { value: totalTexts, label: t('books.editor.totalTexts'), color: 'white' },
           { value: checkedCount, label: t('books.editor.checkedTexts'), color: 'green' },
           { value: errorCount, label: t('books.editor.textsWithErrors'), color: 'red' },
+          { value: duplicatePairs.length, label: t('books.editor.duplicateTexts'), color: duplicatePairs.length > 0 ? 'yellow' : 'white' },
         ]}
       />
 
@@ -636,6 +644,82 @@ export function TextsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, on
               </div>
             );
           })}
+        </div>
+      )}
+
+      {/* Duplicate texts */}
+      {textEntries.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Copy className="h-4 w-4 text-yellow-400" />
+            <h3 className="text-sm font-medium text-slate-200">{t('books.editor.duplicateTexts')}</h3>
+            {duplicatePairs.length > 0 && (
+              <span className="text-xs text-yellow-400">({duplicatePairs.length})</span>
+            )}
+          </div>
+          {duplicatePairs.length === 0 ? (
+            <p className="text-sm text-slate-500 text-center py-4">{t('books.editor.noDuplicates')}</p>
+          ) : (
+            <div className="space-y-2">
+              {duplicatePairs.map((pair, idx) => {
+                const entryA = textEntries.find(e => e.id === pair.entryA.id);
+                const entryB = textEntries.find(e => e.id === pair.entryB.id);
+                return (
+                  <div key={idx} className="bg-slate-800 rounded-lg p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-medium text-yellow-400">
+                        {t('books.editor.similarity', { percent: Math.round(pair.similarity * 100) })}
+                      </span>
+                    </div>
+                    {/* Text A */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs text-slate-300 truncate">
+                          {pair.entryA.text.length > 80 ? pair.entryA.text.slice(0, 80) + '...' : pair.entryA.text}
+                        </p>
+                        {entryA && (
+                          <p className="text-xs text-slate-500 mt-0.5">{getSourceLabel(entryA)}</p>
+                        )}
+                      </div>
+                      {entryA && (
+                        <button
+                          onClick={() => {
+                            if (entryA.source === 'text_slot' && entryA.pageId) onNavigateToPage(entryA.pageId);
+                            else if (entryA.source === 'section_photo' && entryA.sectionId) onNavigateToSection(entryA.sectionId);
+                          }}
+                          className="text-xs text-yellow-400 hover:text-yellow-300 flex-shrink-0 transition-colors"
+                        >
+                          {t('books.editor.goToText')}
+                        </button>
+                      )}
+                    </div>
+                    {/* Text B */}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs text-slate-300 truncate">
+                          {pair.entryB.text.length > 80 ? pair.entryB.text.slice(0, 80) + '...' : pair.entryB.text}
+                        </p>
+                        {entryB && (
+                          <p className="text-xs text-slate-500 mt-0.5">{getSourceLabel(entryB)}</p>
+                        )}
+                      </div>
+                      {entryB && (
+                        <button
+                          onClick={() => {
+                            if (entryB.source === 'text_slot' && entryB.pageId) onNavigateToPage(entryB.pageId);
+                            else if (entryB.source === 'section_photo' && entryB.sectionId) onNavigateToSection(entryB.sectionId);
+                          }}
+                          className="text-xs text-yellow-400 hover:text-yellow-300 flex-shrink-0 transition-colors"
+                        >
+                          {t('books.editor.goToText')}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
     </div>

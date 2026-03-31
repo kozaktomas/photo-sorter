@@ -538,6 +538,10 @@
       "suggestion": "Suggestion",
       "consistencyChecking": "Analyzing consistency...",
       "goToText": "Go to",
+      "duplicateTexts": "Possible duplicates",
+      "noDuplicates": "No duplicates",
+      "similarity": "{{percent}}% similarity",
+      "duplicateTextsCount": "Possible duplicates: {{count}}",
       "stats": {
         "pages": "Pages",
         "photosPlaced": "Photos placed",

@@ -524,6 +524,10 @@
       "suggestion": "Návrh",
       "consistencyChecking": "Analyzuji konzistenci...",
       "goToText": "Přejít",
+      "duplicateTexts": "Možné duplikáty",
+      "noDuplicates": "Žádné duplikáty",
+      "similarity": "{{percent}}% podobnost",
+      "duplicateTextsCount": "Možné duplikáty: {{count}}",
       "stats": {
         "pages": "Stránky",
         "photosPlaced": "Umístěné fotky",
