@@ -148,7 +148,7 @@ func (h *UploadHandler) runUploadJob(
 		return
 	}
 
-	newUIDs, allAfterUIDs := h.detectNewPhotos(ctx, job, pp, primaryAlbumUID, beforeUIDs)
+	newUIDs := h.detectNewPhotos(ctx, job, pp, primaryAlbumUID, beforeUIDs)
 	result := &UploadJobResult{
 		Uploaded:     len(uploadTokens),
 		NewPhotoUIDs: newUIDs,
@@ -157,7 +157,7 @@ func (h *UploadHandler) runUploadJob(
 		result.ExistingCount = max(len(uploadTokens)-len(newUIDs), 0)
 	}
 
-	h.applyPostUploadActions(ctx, job, pp, session, newUIDs, allAfterUIDs, result)
+	h.applyPostUploadActions(ctx, job, pp, session, newUIDs, result)
 
 	if ctx.Err() != nil {
 		h.cancelUploadJob(job)
@@ -223,14 +223,15 @@ func (h *UploadHandler) uploadFiles(
 }
 
 // detectNewPhotos diffs album UIDs before/after to find new photos.
-// Returns both the new-only UIDs and all UIDs present after upload.
+// Returns UIDs that appeared in the album after upload (includes duplicates
+// that PhotoPrism recognized and added to the album).
 func (h *UploadHandler) detectNewPhotos(
 	ctx context.Context, job *UploadJob,
 	pp *photoprism.PhotoPrism, albumUID string,
 	beforeUIDs map[string]struct{},
-) (newUIDs []string, allAfterUIDs []string) {
+) []string {
 	if beforeUIDs == nil {
-		return nil, nil
+		return nil
 	}
 	job.SendEvent(JobEvent{
 		Type: "detecting_photos", Message: "Detecting new photos",
@@ -238,28 +239,29 @@ func (h *UploadHandler) detectNewPhotos(
 	afterUIDs, err := getAlbumPhotoUIDSet(ctx, pp, albumUID)
 	if err != nil {
 		log.Printf("Warning: failed to snapshot album after upload: %v", err)
-		return nil, nil
+		return nil
 	}
+	var newUIDs []string
 	for uid := range afterUIDs {
-		allAfterUIDs = append(allAfterUIDs, uid)
 		if _, existed := beforeUIDs[uid]; !existed {
 			newUIDs = append(newUIDs, uid)
 		}
 	}
-	return newUIDs, allAfterUIDs
+	return newUIDs
 }
 
 // applyPostUploadActions applies labels, albums, book section, and auto-process.
 func (h *UploadHandler) applyPostUploadActions(
 	ctx context.Context, job *UploadJob,
 	pp *photoprism.PhotoPrism, session *middleware.Session,
-	newUIDs []string, allAlbumUIDs []string, result *UploadJobResult,
+	newUIDs []string, result *UploadJobResult,
 ) {
-	// Book section gets ALL album photos (including duplicates that were
-	// already in the album before upload). AddSectionPhotos uses
-	// ON CONFLICT DO NOTHING so existing entries are safely skipped.
-	if job.Options.BookSectionID != "" && len(allAlbumUIDs) > 0 {
-		addToBookSection(ctx, job, allAlbumUIDs, result)
+	// Add uploaded photos to book section. newUIDs contains all photos that
+	// appeared in the album after upload (both truly new and duplicates that
+	// PhotoPrism recognized). AddSectionPhotos uses ON CONFLICT DO NOTHING
+	// so photos already in the section are safely skipped.
+	if job.Options.BookSectionID != "" && len(newUIDs) > 0 {
+		addToBookSection(ctx, job, newUIDs, result)
 	}
 
 	if len(newUIDs) == 0 {
