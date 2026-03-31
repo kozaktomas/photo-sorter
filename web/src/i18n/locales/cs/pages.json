@@ -43,7 +43,12 @@
     "sortAdded": "Naposledy přidané",
     "sortEdited": "Naposledy upravené",
     "sortFileName": "Název souboru",
-    "sortTitle": "Název"
+    "sortTitle": "Název",
+    "addToBook": "Přidat do fotoknihy",
+    "selectBook": "Vyberte fotoknihu...",
+    "selectSection": "Vyberte sekci...",
+    "addedToSection": "Přidáno {{count}} fotek do sekce {{section}}",
+    "noBooks": "Žádné fotoknihy"
   },
   "labels": {
     "title": "Štítky",

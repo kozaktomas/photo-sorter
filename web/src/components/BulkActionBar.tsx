@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next';
-import { X, FolderPlus, Tag, Star, FolderMinus } from 'lucide-react';
+import { X, FolderPlus, Tag, Star, FolderMinus, BookOpen } from 'lucide-react';
 import { Button } from './Button';
 import type { ActionMessage, UsePhotoSelectionReturn } from '../hooks/usePhotoSelection';
 
@@ -87,6 +87,70 @@ export function BulkActionBar({
             {t('common:buttons.addLabel')}
           </Button>
         </div>
+
+        {/* Add to Book Section */}
+        {selection.books.length > 0 && (
+          <div className="flex items-center gap-2">
+            <select
+              value={selection.selectedBookId}
+              onChange={(e) => void selection.setSelectedBookId(e.target.value)}
+              className="px-3 py-1.5 bg-slate-900 border border-slate-600 rounded text-white text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+            >
+              <option value="">{t('pages:photos.selectBook')}</option>
+              {selection.books.map((book) => (
+                <option key={book.id} value={book.id}>
+                  {book.title}
+                </option>
+              ))}
+            </select>
+            {selection.selectedBookId && (
+              <select
+                value={selection.selectedSectionId}
+                onChange={(e) => selection.setSelectedSectionId(e.target.value)}
+                disabled={selection.isLoadingBookSections}
+                className="px-3 py-1.5 bg-slate-900 border border-slate-600 rounded text-white text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              >
+                <option value="">{selection.isLoadingBookSections ? '...' : t('pages:photos.selectSection')}</option>
+                {selection.bookChapters.length > 0
+                  ? <>
+                      {selection.bookSections.filter(s => !s.chapter_id).map((section) => (
+                        <option key={section.id} value={section.id}>
+                          {section.title}
+                        </option>
+                      ))}
+                      {selection.bookChapters.map((chapter) => {
+                        const chapterSections = selection.bookSections.filter(s => s.chapter_id === chapter.id);
+                        if (chapterSections.length === 0) return null;
+                        return (
+                          <optgroup key={chapter.id} label={chapter.title}>
+                            {chapterSections.map((section) => (
+                              <option key={section.id} value={section.id}>
+                                {section.title}
+                              </option>
+                            ))}
+                          </optgroup>
+                        );
+                      })}
+                    </>
+                  : selection.bookSections.map((section) => (
+                      <option key={section.id} value={section.id}>
+                        {section.title}
+                      </option>
+                    ))
+                }
+              </select>
+            )}
+            <Button
+              size="sm"
+              onClick={selection.handleAddToBookSection}
+              disabled={!selection.selectedSectionId || selection.isAddingToSection}
+              isLoading={selection.isAddingToSection}
+            >
+              <BookOpen className="h-3 w-3 mr-1" />
+              {t('pages:photos.addToBook')}
+            </Button>
+          </div>
+        )}
 
         {/* Favorite toggle */}
         {showFavorite && (

@@ -43,7 +43,12 @@
     "sortAdded": "Recently Added",
     "sortEdited": "Recently Edited",
     "sortFileName": "File Name",
-    "sortTitle": "Title"
+    "sortTitle": "Title",
+    "addToBook": "Add to book",
+    "selectBook": "Select book...",
+    "selectSection": "Select section...",
+    "addedToSection": "Added {{count}} photos to section {{section}}",
+    "noBooks": "No books"
   },
   "labels": {
     "title": "Labels",

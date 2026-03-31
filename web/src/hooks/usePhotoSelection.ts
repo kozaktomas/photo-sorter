@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
-import { addPhotosToAlbum, batchAddLabels, batchEditPhotos, removePhotosFromAlbum, getAlbums, getLabels } from '../api/client';
+import { addPhotosToAlbum, batchAddLabels, batchEditPhotos, removePhotosFromAlbum, getAlbums, getLabels, getBooks, getBook, addSectionPhotos } from '../api/client';
 import { MAX_ALBUMS_FETCH, MAX_LABELS_FETCH } from '../constants';
-import type { Album, Label } from '../types';
+import type { Album, Label, PhotoBook, BookSection, BookChapter } from '../types';
 
 export interface ActionMessage {
   type: 'success' | 'error';
@@ -29,6 +29,16 @@ export interface UsePhotoSelectionReturn {
   handleAddLabel: () => Promise<void>;
   handleBatchEdit: (updates: { favorite?: boolean; private?: boolean }) => Promise<void>;
   handleRemoveFromAlbum: (albumUid: string) => Promise<void>;
+  books: PhotoBook[];
+  selectedBookId: string;
+  setSelectedBookId: (id: string) => Promise<void>;
+  bookSections: BookSection[];
+  bookChapters: BookChapter[];
+  selectedSectionId: string;
+  setSelectedSectionId: (id: string) => void;
+  isAddingToSection: boolean;
+  isLoadingBookSections: boolean;
+  handleAddToBookSection: () => Promise<void>;
 }
 
 export function usePhotoSelection(): UsePhotoSelectionReturn {
@@ -43,16 +53,25 @@ export function usePhotoSelection(): UsePhotoSelectionReturn {
   const [isRemovingFromAlbum, setIsRemovingFromAlbum] = useState(false);
   const [actionMessage, setActionMessage] = useState<ActionMessage | null>(null);
   const [dataLoaded, setDataLoaded] = useState(false);
+  const [books, setBooks] = useState<PhotoBook[]>([]);
+  const [selectedBookId, setSelectedBookIdRaw] = useState('');
+  const [bookSections, setBookSections] = useState<BookSection[]>([]);
+  const [bookChapters, setBookChapters] = useState<BookChapter[]>([]);
+  const [selectedSectionId, setSelectedSectionId] = useState('');
+  const [isAddingToSection, setIsAddingToSection] = useState(false);
+  const [isLoadingBookSections, setIsLoadingBookSections] = useState(false);
 
   const loadAlbumsAndLabels = useCallback(async () => {
     if (dataLoaded) return;
     try {
-      const [albumsData, labelsData] = await Promise.all([
+      const [albumsData, labelsData, booksData] = await Promise.all([
         getAlbums({ count: MAX_ALBUMS_FETCH, order: 'name' }),
         getLabels({ count: MAX_LABELS_FETCH, all: true }),
+        getBooks(),
       ]);
       setAlbums(albumsData);
       setLabels(labelsData);
+      setBooks(booksData);
       setDataLoaded(true);
     } catch (err) {
       console.error('Failed to load albums/labels:', err);
@@ -140,6 +159,47 @@ export function usePhotoSelection(): UsePhotoSelectionReturn {
     }
   }, [selectedPhotos]);
 
+  const setSelectedBookId = useCallback(async (bookId: string) => {
+    setSelectedBookIdRaw(bookId);
+    setSelectedSectionId('');
+    setBookSections([]);
+    setBookChapters([]);
+    if (!bookId) return;
+    setIsLoadingBookSections(true);
+    try {
+      const detail = await getBook(bookId);
+      setBookSections(detail.sections);
+      setBookChapters(detail.chapters);
+    } catch (err) {
+      console.error('Failed to load book sections:', err);
+    } finally {
+      setIsLoadingBookSections(false);
+    }
+  }, []);
+
+  const handleAddToBookSection = useCallback(async () => {
+    if (!selectedSectionId || selectedPhotos.size === 0) return;
+    setIsAddingToSection(true);
+    setActionMessage(null);
+    try {
+      await addSectionPhotos(selectedSectionId, Array.from(selectedPhotos));
+      const section = bookSections.find(s => s.id === selectedSectionId);
+      setActionMessage({
+        type: 'success',
+        text: `Added ${selectedPhotos.size} photos to section ${section?.title ?? selectedSectionId}`,
+      });
+      setSelectedPhotos(new Set());
+      setSelectedBookIdRaw('');
+      setSelectedSectionId('');
+      setBookSections([]);
+      setBookChapters([]);
+    } catch (err) {
+      setActionMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to add to section' });
+    } finally {
+      setIsAddingToSection(false);
+    }
+  }, [selectedSectionId, selectedPhotos, bookSections]);
+
   const handleRemoveFromAlbum = useCallback(async (albumUid: string) => {
     if (selectedPhotos.size === 0) return;
     setIsRemovingFromAlbum(true);
@@ -176,5 +236,15 @@ export function usePhotoSelection(): UsePhotoSelectionReturn {
     handleAddLabel,
     handleBatchEdit,
     handleRemoveFromAlbum,
+    books,
+    selectedBookId,
+    setSelectedBookId,
+    bookSections,
+    bookChapters,
+    selectedSectionId,
+    setSelectedSectionId,
+    isAddingToSection,
+    isLoadingBookSections,
+    handleAddToBookSection,
   };
 }
