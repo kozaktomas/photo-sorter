@@ -477,6 +477,13 @@ export interface PhotoBookMembership {
   section_title: string;
 }
 
+export interface TextVersion {
+  id: number;
+  content: string;
+  changed_by: string;
+  created_at: string;
+}
+
 export type PageFormat = '4_landscape' | '2l_1p' | '1p_2l' | '2_portrait' | '1_fullscreen';
 
 // Upload job types

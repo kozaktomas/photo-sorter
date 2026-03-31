@@ -31,6 +31,7 @@ import type {
   PageFormat,
   PhotoBookMembership,
   PreflightResponse,
+  TextVersion,
 } from '../types';
 
 const API_BASE = '/api/v1';
@@ -776,6 +777,19 @@ export async function rewriteText(text: string, targetLength: string): Promise<{
     method: 'POST',
     body: JSON.stringify({ text, target_length: targetLength }),
   });
+}
+
+// Text version history
+export async function listTextVersions(
+  sourceType: string, sourceId: string, field: string,
+): Promise<TextVersion[]> {
+  return request<TextVersion[]>(
+    `/text-versions?source_type=${encodeURIComponent(sourceType)}&source_id=${encodeURIComponent(sourceId)}&field=${encodeURIComponent(field)}`,
+  );
+}
+
+export async function restoreTextVersion(id: number): Promise<{ content: string }> {
+  return request<{ content: string }>(`/text-versions/${id}/restore`, { method: 'POST' });
 }
 
 // PDF Export

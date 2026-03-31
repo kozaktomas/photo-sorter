@@ -523,6 +523,11 @@
       "batchComplete": "Check complete",
       "totalCost": "Total cost: {{amount}} CZK",
       "cancelCheck": "Cancel",
+      "history": "History",
+      "restore": "Restore",
+      "changedByUser": "user",
+      "changedByAi": "AI",
+      "noHistory": "No history",
       "sectionPhotoSource": "{{section}} — photo",
       "pageSlotSource": "Page {{page}}, slot {{slot}}",
       "stats": {

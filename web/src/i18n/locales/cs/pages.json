@@ -509,6 +509,11 @@
       "batchComplete": "Kontrola dokončena",
       "totalCost": "Celková cena: {{amount}} Kč",
       "cancelCheck": "Zrušit",
+      "history": "Historie",
+      "restore": "Obnovit",
+      "changedByUser": "uživatel",
+      "changedByAi": "AI",
+      "noHistory": "Žádná historie",
       "sectionPhotoSource": "{{section}} — fotka",
       "pageSlotSource": "Stránka {{page}}, slot {{slot}}",
       "stats": {

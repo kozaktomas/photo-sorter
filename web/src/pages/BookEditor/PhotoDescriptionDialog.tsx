@@ -1,7 +1,8 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X, SpellCheck, ArrowLeftRight, Check, Loader2, DollarSign } from 'lucide-react';
-import { getThumbnailUrl, updateSectionPhoto, checkText, rewriteText } from '../../api/client';
+import { X, SpellCheck, ArrowLeftRight, Check, Loader2, DollarSign, History } from 'lucide-react';
+import { getThumbnailUrl, updateSectionPhoto, checkText, rewriteText, listTextVersions, restoreTextVersion } from '../../api/client';
+import type { TextVersion } from '../../types';
 
 interface Props {
   sectionId: string;
@@ -44,6 +45,54 @@ export function PhotoDescriptionDialog({ sectionId, photoUid, description, note,
   const [rewriteResult, setRewriteResult] = useState<RewriteResult | null>(null);
   const [rewriteError, setRewriteError] = useState('');
   const [targetLength, setTargetLength] = useState<TargetLength>('shorter');
+
+  // History state
+  const [showDescHistory, setShowDescHistory] = useState(false);
+  const [showNoteHistory, setShowNoteHistory] = useState(false);
+  const [descHistory, setDescHistory] = useState<TextVersion[]>([]);
+  const [noteHistory, setNoteHistory] = useState<TextVersion[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  const sourceId = `${sectionId}:${photoUid}`;
+
+  const loadDescHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    try {
+      const versions = await listTextVersions('section_photo', sourceId, 'description');
+      setDescHistory(versions);
+    } catch { /* silent */ }
+    setHistoryLoading(false);
+  }, [sourceId]);
+
+  const loadNoteHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    try {
+      const versions = await listTextVersions('section_photo', sourceId, 'note');
+      setNoteHistory(versions);
+    } catch { /* silent */ }
+    setHistoryLoading(false);
+  }, [sourceId]);
+
+  useEffect(() => {
+    if (showDescHistory) loadDescHistory();
+  }, [showDescHistory, loadDescHistory]);
+
+  useEffect(() => {
+    if (showNoteHistory) loadNoteHistory();
+  }, [showNoteHistory, loadNoteHistory]);
+
+  const handleRestore = async (id: number, target: 'desc' | 'note') => {
+    try {
+      const result = await restoreTextVersion(id);
+      if (target === 'desc') {
+        setDesc(result.content);
+        loadDescHistory();
+      } else {
+        setNoteText(result.content);
+        loadNoteHistory();
+      }
+    } catch { /* silent */ }
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -134,9 +183,26 @@ export function PhotoDescriptionDialog({ sectionId, photoUid, description, note,
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-slate-400 mb-1">
-              {t('books.editor.descriptionLabel')}
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-medium text-slate-400">
+                {t('books.editor.descriptionLabel')}
+              </label>
+              <button
+                onClick={() => { setShowDescHistory(!showDescHistory); setShowNoteHistory(false); }}
+                className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-300 transition-colors"
+              >
+                <History className="h-3 w-3" />
+                {t('books.editor.history')}
+              </button>
+            </div>
+            {showDescHistory && (
+              <VersionHistoryPanel
+                versions={descHistory}
+                loading={historyLoading}
+                onRestore={(id) => handleRestore(id, 'desc')}
+                t={t}
+              />
+            )}
             <textarea
               value={desc}
               onChange={(e) => setDesc(e.target.value)}
@@ -271,9 +337,26 @@ export function PhotoDescriptionDialog({ sectionId, photoUid, description, note,
           )}
 
           <div>
-            <label className="block text-xs font-medium text-slate-400 mb-1">
-              {t('books.editor.noteLabel')}
-            </label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-xs font-medium text-slate-400">
+                {t('books.editor.noteLabel')}
+              </label>
+              <button
+                onClick={() => { setShowNoteHistory(!showNoteHistory); setShowDescHistory(false); }}
+                className="inline-flex items-center gap-1 text-xs text-slate-500 hover:text-slate-300 transition-colors"
+              >
+                <History className="h-3 w-3" />
+                {t('books.editor.history')}
+              </button>
+            </div>
+            {showNoteHistory && (
+              <VersionHistoryPanel
+                versions={noteHistory}
+                loading={historyLoading}
+                onRestore={(id) => handleRestore(id, 'note')}
+                t={t}
+              />
+            )}
             <textarea
               value={noteText}
               onChange={(e) => setNoteText(e.target.value)}
@@ -304,6 +387,56 @@ export function PhotoDescriptionDialog({ sectionId, photoUid, description, note,
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+function VersionHistoryPanel({
+  versions, loading, onRestore, t,
+}: {
+  versions: TextVersion[];
+  loading: boolean;
+  onRestore: (id: number) => void;
+  t: (key: string, opts?: Record<string, unknown>) => string;
+}) {
+  if (loading) {
+    return (
+      <div className="mb-2 p-2 bg-slate-900/50 border border-slate-700 rounded text-xs text-slate-500">
+        <Loader2 className="h-3 w-3 animate-spin inline mr-1" />
+        ...
+      </div>
+    );
+  }
+
+  if (versions.length === 0) {
+    return (
+      <div className="mb-2 p-2 bg-slate-900/50 border border-slate-700 rounded text-xs text-slate-500">
+        {t('books.editor.noHistory')}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mb-2 max-h-32 overflow-y-auto bg-slate-900/50 border border-slate-700 rounded divide-y divide-slate-700/50">
+      {versions.map((v) => (
+        <div key={v.id} className="flex items-center gap-2 px-2 py-1.5 text-xs">
+          <span className="flex-1 text-slate-300 truncate" title={v.content}>
+            {v.content.length > 50 ? v.content.slice(0, 50) + '...' : v.content}
+          </span>
+          <span className={`shrink-0 px-1 rounded text-[10px] ${v.changed_by === 'ai' ? 'bg-indigo-900/50 text-indigo-300' : 'bg-slate-700 text-slate-400'}`}>
+            {v.changed_by === 'ai' ? t('books.editor.changedByAi') : t('books.editor.changedByUser')}
+          </span>
+          <span className="shrink-0 text-slate-500">
+            {new Date(v.created_at).toLocaleString()}
+          </span>
+          <button
+            onClick={() => onRestore(v.id)}
+            className="shrink-0 px-1.5 py-0.5 text-[10px] font-medium rounded bg-rose-600/80 hover:bg-rose-600 text-white transition-colors"
+          >
+            {t('books.editor.restore')}
+          </button>
+        </div>
+      ))}
     </div>
   );
 }

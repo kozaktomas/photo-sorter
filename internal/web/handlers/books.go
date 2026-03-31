@@ -624,6 +624,10 @@ func (h *BooksHandler) UpdatePhotoDescription(w http.ResponseWriter, r *http.Req
 		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return
 	}
+
+	// Save previous values as versions before updating.
+	saveTextVersionsForSectionPhoto(r, bw, sectionID, photoUID, req.Description, req.Note)
+
 	if err := bw.UpdateSectionPhoto(r.Context(), sectionID, photoUID, req.Description, req.Note); err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to update photo")
 		return
@@ -871,6 +875,9 @@ func (h *BooksHandler) AssignSlot(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if req.TextContent != "" {
+		// Save previous text content as a version before overwriting.
+		saveTextVersionForPageSlot(r, bw, pageID, slotIndex, req.TextContent)
+
 		if err := bw.AssignTextSlot(r.Context(), pageID, slotIndex, req.TextContent); err != nil {
 			respondError(w, http.StatusInternalServerError, "failed to assign text slot")
 			return
@@ -1683,4 +1690,71 @@ func (h *BooksHandler) ExportPDF(w http.ResponseWriter, r *http.Request) {
 		suffix = "-debug"
 	}
 	writePDFResponse(w, pdfData, book.Title+suffix, report)
+}
+
+// saveTextVersionsForSectionPhoto saves previous description/note as versions if they changed.
+func saveTextVersionsForSectionPhoto(
+	r *http.Request, bw database.BookWriter,
+	sectionID, photoUID, newDesc, newNote string,
+) {
+	store, err := database.GetTextVersionStore(r.Context())
+	if err != nil {
+		return
+	}
+	photos, err := bw.GetSectionPhotos(r.Context(), sectionID)
+	if err != nil {
+		return
+	}
+	sourceID := sectionID + ":" + photoUID
+	for _, p := range photos {
+		if p.PhotoUID == photoUID {
+			if p.Description != newDesc && p.Description != "" {
+				_ = store.SaveTextVersion(r.Context(), &database.TextVersion{
+					SourceType: "section_photo",
+					SourceID:   sourceID,
+					Field:      "description",
+					Content:    p.Description,
+					ChangedBy:  "user",
+				})
+			}
+			if p.Note != newNote && p.Note != "" {
+				_ = store.SaveTextVersion(r.Context(), &database.TextVersion{
+					SourceType: "section_photo",
+					SourceID:   sourceID,
+					Field:      "note",
+					Content:    p.Note,
+					ChangedBy:  "user",
+				})
+			}
+			return
+		}
+	}
+}
+
+// saveTextVersionForPageSlot saves the previous text content as a version if it changed.
+func saveTextVersionForPageSlot(
+	r *http.Request, bw database.BookWriter,
+	pageID string, slotIndex int, newText string,
+) {
+	store, err := database.GetTextVersionStore(r.Context())
+	if err != nil {
+		return
+	}
+	slots, err := bw.GetPageSlots(r.Context(), pageID)
+	if err != nil {
+		return
+	}
+	for _, s := range slots {
+		if s.SlotIndex == slotIndex && s.TextContent != newText && s.TextContent != "" {
+			sourceID := pageID + ":" + strconv.Itoa(slotIndex)
+			_ = store.SaveTextVersion(r.Context(), &database.TextVersion{
+				SourceType: "page_slot",
+				SourceID:   sourceID,
+				Field:      "text_content",
+				Content:    s.TextContent,
+				ChangedBy:  "user",
+			})
+			return
+		}
+	}
 }

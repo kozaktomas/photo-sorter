@@ -2,8 +2,8 @@ import { useState, useEffect, useCallback, useMemo, useRef, type Dispatch, type 
 import { useTranslation } from 'react-i18next';
 import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, pointerWithin, useSensor, useSensors, type DragEndEvent, type DragStartEvent, type Modifier } from '@dnd-kit/core';
 import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
-import { Type, Heading1, Heading2, Bold, Italic, List, ListOrdered, LayoutGrid, Wand2, Loader2, SpellCheck, ArrowLeftRight, Check, DollarSign } from 'lucide-react';
-import { assignSlot, assignTextSlot, clearSlot, swapSlots, updatePage, updateSlotCrop, reorderPages, getThumbnailUrl, autoLayoutSection, checkText, rewriteText } from '../../api/client';
+import { Type, Heading1, Heading2, Bold, Italic, List, ListOrdered, LayoutGrid, Wand2, Loader2, SpellCheck, ArrowLeftRight, Check, DollarSign, History } from 'lucide-react';
+import { assignSlot, assignTextSlot, clearSlot, swapSlots, updatePage, updateSlotCrop, reorderPages, getThumbnailUrl, autoLayoutSection, checkText, rewriteText, listTextVersions, restoreTextVersion } from '../../api/client';
 import { MarkdownContent } from '../../utils/markdown';
 import { useBookKeyboardNav } from '../../hooks/useBookKeyboardNav';
 import { useUndoRedo, type SlotContent, type UndoEntry } from './hooks/useUndoRedo';
@@ -12,7 +12,7 @@ import { PageMinimap } from './PageMinimap';
 import { PageTemplate } from './PageTemplate';
 import { UnassignedPool } from './UnassignedPool';
 import { PhotoDescriptionDialog } from './PhotoDescriptionDialog';
-import type { BookDetail, SectionPhoto, PageFormat, PageStyle } from '../../types';
+import type { BookDetail, SectionPhoto, PageFormat, PageStyle, TextVersion } from '../../types';
 import { pageFormatSlotCount } from '../../types';
 import { getSlotAspectRatio } from '../../utils/pageFormats';
 
@@ -76,7 +76,7 @@ function insertMarkdown(textarea: HTMLTextAreaElement, prefix: string, suffix: s
 // Inline text slot editing dialog with markdown toolbar and preview
 type TargetLength = 'much_shorter' | 'shorter' | 'longer' | 'much_longer';
 
-function TextSlotDialog({ text, onSave, onClose }: { text: string; onSave: (text: string) => void; onClose: () => void }) {
+function TextSlotDialog({ text, pageId, slotIndex, onSave, onClose }: { text: string; pageId: string; slotIndex: number; onSave: (text: string) => void; onClose: () => void }) {
   const { t } = useTranslation('pages');
   const [value, setValue] = useState(text);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -91,6 +91,34 @@ function TextSlotDialog({ text, onSave, onClose }: { text: string; onSave: (text
   const [rewriteResult, setRewriteResult] = useState<{ rewritten_text: string; cost_czk: number; cached: boolean } | null>(null);
   const [rewriteError, setRewriteError] = useState('');
   const [targetLength, setTargetLength] = useState<TargetLength>('shorter');
+
+  // History state
+  const [showHistory, setShowHistory] = useState(false);
+  const [history, setHistory] = useState<TextVersion[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
+  const sourceId = `${pageId}:${slotIndex}`;
+
+  const loadHistory = useCallback(async () => {
+    setHistoryLoading(true);
+    try {
+      const versions = await listTextVersions('page_slot', sourceId, 'text_content');
+      setHistory(versions);
+    } catch { /* silent */ }
+    setHistoryLoading(false);
+  }, [sourceId]);
+
+  useEffect(() => {
+    if (showHistory) loadHistory();
+  }, [showHistory, loadHistory]);
+
+  const handleHistoryRestore = async (id: number) => {
+    try {
+      const result = await restoreTextVersion(id);
+      setValue(result.content);
+      loadHistory();
+    } catch { /* silent */ }
+  };
 
   const valueEmpty = value.trim() === '';
   const aiLoading = checking || rewriting;
@@ -159,7 +187,7 @@ function TextSlotDialog({ text, onSave, onClose }: { text: string; onSave: (text
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={onClose}>
       <div className="bg-slate-800 rounded-lg p-6 w-full max-w-4xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
         <h3 className="text-lg font-semibold text-white mb-4">{t('books.editor.textSlotTitle')}</h3>
-        <div className="flex gap-1 mb-2">
+        <div className="flex items-center gap-1 mb-2">
           {toolbarButtons.map(btn => (
             <button
               key={btn.title}
@@ -171,7 +199,23 @@ function TextSlotDialog({ text, onSave, onClose }: { text: string; onSave: (text
               <btn.icon className="h-4 w-4" />
             </button>
           ))}
+          <div className="flex-1" />
+          <button
+            onClick={() => setShowHistory(!showHistory)}
+            className="inline-flex items-center gap-1 px-2 py-1 text-xs text-slate-500 hover:text-slate-300 transition-colors"
+          >
+            <History className="h-3 w-3" />
+            {t('books.editor.history')}
+          </button>
         </div>
+        {showHistory && (
+          <TextSlotHistoryPanel
+            versions={history}
+            loading={historyLoading}
+            onRestore={handleHistoryRestore}
+            t={t}
+          />
+        )}
         <div className="overflow-y-auto flex-1 min-h-0 space-y-3">
           <div className="grid grid-cols-2 gap-4">
             <textarea
@@ -616,6 +660,56 @@ function CropDialog({ photoUid, cropX, cropY, cropScale: initialScale, format, s
   );
 }
 
+function TextSlotHistoryPanel({
+  versions, loading, onRestore, t,
+}: {
+  versions: TextVersion[];
+  loading: boolean;
+  onRestore: (id: number) => void;
+  t: (key: string) => string;
+}) {
+  if (loading) {
+    return (
+      <div className="mb-2 p-2 bg-slate-900/50 border border-slate-700 rounded text-xs text-slate-500">
+        <Loader2 className="h-3 w-3 animate-spin inline mr-1" />
+        ...
+      </div>
+    );
+  }
+
+  if (versions.length === 0) {
+    return (
+      <div className="mb-2 p-2 bg-slate-900/50 border border-slate-700 rounded text-xs text-slate-500">
+        {t('books.editor.noHistory')}
+      </div>
+    );
+  }
+
+  return (
+    <div className="mb-2 max-h-32 overflow-y-auto bg-slate-900/50 border border-slate-700 rounded divide-y divide-slate-700/50">
+      {versions.map((v) => (
+        <div key={v.id} className="flex items-center gap-2 px-2 py-1.5 text-xs">
+          <span className="flex-1 text-slate-300 truncate" title={v.content}>
+            {v.content.length > 50 ? v.content.slice(0, 50) + '...' : v.content}
+          </span>
+          <span className={`shrink-0 px-1 rounded text-[10px] ${v.changed_by === 'ai' ? 'bg-indigo-900/50 text-indigo-300' : 'bg-slate-700 text-slate-400'}`}>
+            {v.changed_by === 'ai' ? t('books.editor.changedByAi') : t('books.editor.changedByUser')}
+          </span>
+          <span className="shrink-0 text-slate-500">
+            {new Date(v.created_at).toLocaleString()}
+          </span>
+          <button
+            onClick={() => onRestore(v.id)}
+            className="shrink-0 px-1.5 py-0.5 text-[10px] font-medium rounded bg-rose-600/80 hover:bg-rose-600 text-white transition-colors"
+          >
+            {t('books.editor.restore')}
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 function getSlotContent(book: BookDetail, pageId: string, slotIndex: number): SlotContent {
   const page = book.pages.find(p => p.id === pageId);
   const slot = page?.slots.find(s => s.slot_index === slotIndex);
@@ -632,7 +726,7 @@ export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRe
   const [activeTextContent, setActiveTextContent] = useState<string | null>(null);
   const [isPhotoDrag, setIsPhotoDrag] = useState(false);
   const [editingPhoto, setEditingPhoto] = useState<{ sectionId: string; photoUid: string } | null>(null);
-  const [editingTextSlot, setEditingTextSlot] = useState<{ slotIndex: number; text: string } | null>(null);
+  const [editingTextSlot, setEditingTextSlot] = useState<{ slotIndex: number; text: string; pageId: string } | null>(null);
   const [editingCrop, setEditingCrop] = useState<{ slotIndex: number; photoUid: string; cropX: number; cropY: number; cropScale: number; format: PageFormat; splitPosition?: number | null } | null>(null);
   const [minimapOpen, setMinimapOpen] = useState(() => {
     try { return localStorage.getItem(`book-minimap-${book.id}`) === 'true'; } catch { return false; }
@@ -1012,13 +1106,14 @@ export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRe
   }, [editingPhoto, loadSectionPhotos]);
 
   const handleAddText = useCallback((slotIndex: number) => {
-    setEditingTextSlot({ slotIndex, text: '' });
-  }, []);
+    if (!selectedPage) return;
+    setEditingTextSlot({ slotIndex, text: '', pageId: selectedPage.id });
+  }, [selectedPage]);
 
   const handleEditText = useCallback((slotIndex: number) => {
     if (!selectedPage) return;
     const slot = selectedPage.slots.find(s => s.slot_index === slotIndex);
-    setEditingTextSlot({ slotIndex, text: slot?.text_content || '' });
+    setEditingTextSlot({ slotIndex, text: slot?.text_content || '', pageId: selectedPage.id });
   }, [selectedPage]);
 
   const handleSaveText = useCallback(async (text: string) => {
@@ -1179,6 +1274,8 @@ export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRe
         {editingTextSlot !== null && (
           <TextSlotDialog
             text={editingTextSlot.text}
+            pageId={editingTextSlot.pageId}
+            slotIndex={editingTextSlot.slotIndex}
             onSave={handleSaveText}
             onClose={() => setEditingTextSlot(null)}
           />
