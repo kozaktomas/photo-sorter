@@ -21,6 +21,7 @@ This document describes all REST API endpoints for the PhotoPrism AI Sorter web 
 - [Error Responses](#error-responses)
 - [Real-Time Updates (SSE)](#real-time-updates-sse)
 - [Text AI](#text-ai)
+- [Text Version History](#text-version-history)
 
 ---
 
@@ -254,6 +255,28 @@ DELETE /albums/{uid}/photos
 }
 ```
 
+### Remove Specific Photos from Album (Batch)
+
+Remove specific photos from an album by UID.
+
+```
+DELETE /albums/{uid}/photos/batch
+```
+
+**Request:**
+```json
+{
+  "photo_uids": ["pq8abc123", "pq8def456"]
+}
+```
+
+**Response (200):**
+```json
+{
+  "removed": 2
+}
+```
+
 ---
 
 ## Photos
@@ -369,6 +392,61 @@ POST /photos/batch/labels
 {
   "updated": 2,
   "errors": []
+}
+```
+
+### Batch Edit Photos
+
+Batch update photo metadata (favorite, private flags).
+
+```
+POST /photos/batch/edit
+```
+
+**Request:**
+```json
+{
+  "photo_uids": ["pq8abc123", "pq8def456"],
+  "favorite": true,
+  "private": false
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `photo_uids` | string[] | Yes | Photo UIDs to edit |
+| `favorite` | boolean | No | Set favorite flag |
+| `private` | boolean | No | Set private flag |
+
+At least one of `favorite` or `private` must be provided.
+
+**Response (200):**
+```json
+{
+  "updated": 2,
+  "errors": []
+}
+```
+
+### Batch Archive Photos
+
+Archive (soft-delete) multiple photos.
+
+```
+POST /photos/batch/archive
+```
+
+**Request:**
+```json
+{
+  "photo_uids": ["pq8abc123", "pq8def456"]
+}
+```
+
+**Response (200):**
+```json
+{
+  "archived": 2
 }
 ```
 
@@ -1165,6 +1243,40 @@ DELETE /process/{jobId}
 ```json
 {
   "cancelled": true
+}
+```
+
+### Rebuild HNSW Indexes
+
+Rebuild in-memory HNSW indexes (face and embedding) from PostgreSQL data. Saves to disk if persistence paths are configured.
+
+```
+POST /process/rebuild-index
+```
+
+**Response (200):**
+```json
+{
+  "face_count": 12500,
+  "embedding_count": 5000,
+  "duration_ms": 3200
+}
+```
+
+### Sync Cache
+
+Synchronize face marker data from PhotoPrism to local cache. Updates marker metadata and cleans up orphaned data for deleted/archived photos.
+
+```
+POST /process/sync-cache
+```
+
+**Response (200):**
+```json
+{
+  "faces_updated": 150,
+  "photos_deleted": 3,
+  "duration_ms": 8500
 }
 ```
 
@@ -2161,3 +2273,173 @@ POST /text/rewrite
 |--------|-------------|
 | 400 | Missing `text` or invalid `target_length` |
 | 503 | `OPENAI_TOKEN` not configured |
+
+### Check Text Consistency
+
+Analyze style consistency across multiple Czech texts (e.g., all texts in a book). Returns a consistency score, detected tone, and specific issues.
+
+```
+POST /text/consistency
+```
+
+**Request:**
+```json
+{
+  "texts": [
+    { "id": "section1:photo1", "content": "Pohled na dům v zimě roku 1985." },
+    { "id": "section1:photo2", "content": "Krásný letní den u rybníka." }
+  ]
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `texts` | array | Yes | At least 2 text entries with `id` and `content` |
+
+**Response (200):**
+```json
+{
+  "consistency_score": 78,
+  "tone": "nostalgický, popisný",
+  "issues": [
+    "Nekonzistentní použití času: první text v minulém čase, druhý v přítomném."
+  ],
+  "cost_czk": 0.12,
+  "cached": false
+}
+```
+
+**Error Responses:**
+| Status | Description |
+|--------|-------------|
+| 400 | Fewer than 2 texts provided |
+| 503 | `OPENAI_TOKEN` not configured |
+
+### Check Text and Save Result
+
+Run AI text check and persist the result to the database for status tracking.
+
+```
+POST /text/check-and-save
+```
+
+**Request:**
+```json
+{
+  "text": "Fotografie z naseho domu",
+  "source_type": "section_photo",
+  "source_id": "abc123:pq8def456",
+  "field": "description"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `text` | string | Yes | Czech text to check |
+| `source_type` | string | Yes | Source type (`section_photo` or `page_slot`) |
+| `source_id` | string | Yes | Source identifier (format depends on type) |
+| `field` | string | Yes | Field name (`description`, `note`, or `text_content`) |
+
+**Response (200):**
+```json
+{
+  "corrected_text": "Fotografie z našeho domu",
+  "readability_score": 90,
+  "changes": ["naseho → našeho (diacritics)"],
+  "cost_czk": 0.05,
+  "cached": false,
+  "status": "has_errors",
+  "content_hash": "a1b2c3...",
+  "checked_at": "2025-03-31T10:00:00Z"
+}
+```
+
+### Get Book Text Check Status
+
+Get the text check status for all texts in a book. Returns check results keyed by `source_type:source_id:field`.
+
+```
+GET /books/{id}/text-check-status
+```
+
+**Response (200):**
+```json
+{
+  "section_photo:abc123:pq8def456:description": {
+    "status": "has_errors",
+    "readability_score": 85,
+    "checked_at": "2025-03-31T10:00:00Z",
+    "is_stale": false,
+    "corrected_text": "Fotografie z našeho domu",
+    "changes": ["naseho → našeho"]
+  },
+  "page_slot:page1:0:text_content": {
+    "status": "clean",
+    "readability_score": 95,
+    "checked_at": "2025-03-31T09:30:00Z",
+    "is_stale": true
+  }
+}
+```
+
+The `is_stale` flag indicates the text content has changed since the last check (content hash mismatch). Results with `status: "clean"` omit `corrected_text` and `changes`.
+
+---
+
+## Text Version History
+
+Automatic version history tracking for text fields in photo books. Versions are created when text content changes.
+
+### List Text Versions
+
+```
+GET /text-versions
+```
+
+**Query Parameters:**
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `source_type` | string | Yes | Source type (`section_photo` or `page_slot`) |
+| `source_id` | string | Yes | Source identifier |
+| `field` | string | Yes | Field name (`description`, `note`, or `text_content`) |
+
+**Response (200):**
+```json
+[
+  {
+    "id": 42,
+    "content": "Previous text content",
+    "changed_by": "user",
+    "created_at": "2025-03-31T09:00:00Z"
+  },
+  {
+    "id": 41,
+    "content": "Even older text",
+    "changed_by": "ai_rewrite",
+    "created_at": "2025-03-30T15:00:00Z"
+  }
+]
+```
+
+Returns up to 20 most recent versions, newest first.
+
+### Restore Text Version
+
+Restore a previous version. Saves the current text as a new version before restoring.
+
+```
+POST /text-versions/{id}/restore
+```
+
+**Response (200):**
+```json
+{
+  "content": "Restored text content"
+}
+```
+
+**Error Responses:**
+| Status | Description |
+|--------|-------------|
+| 400 | Invalid version ID |
+| 404 | Version not found |

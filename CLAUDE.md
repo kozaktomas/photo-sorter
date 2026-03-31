@@ -275,7 +275,7 @@ go run . cache compute-eras [flags]           # Compute CLIP era embedding centr
 
 ### Database Package
 
-The `internal/database/` package provides storage for embeddings and faces data using PostgreSQL with pgvector.
+The `internal/database/` package provides storage for embeddings, faces data, photo books, text versions, and text check results using PostgreSQL with pgvector.
 
 **In-Memory HNSW:** Loads face embeddings (512-dim) and image embeddings (768-dim) into separate in-memory HNSW indexes at startup for O(log N) similarity search. Face index auto-updates when faces are saved and when marker metadata is updated via `UpdateFaceMarker`. Persistence via `HNSW_INDEX_PATH` / `HNSW_EMBEDDING_INDEX_PATH` env vars; saved on graceful shutdown (after HTTP server stops, before DB pool closes) and after "Rebuild Index". Docker deployments should set `stop_grace_period: 60s` to allow time for index persistence on slow hardware.
 
@@ -297,10 +297,12 @@ internal/database/
     ├── era_embeddings.go  # EraEmbeddingReader/Writer implementation
     ├── books.go        # BookRepository (BookReader/BookWriter)
     ├── sessions.go     # Session persistence for web auth
-    └── migrations/     # SQL migrations 001-018 (embedded)
+    ├── text_versions.go   # TextVersionStore implementation
+    ├── text_checks.go     # TextCheckStore implementation
+    └── migrations/     # SQL migrations 001-019 (embedded)
 ```
 
-**Tables:** `embeddings` (768-dim CLIP), `faces` (512-dim ResNet100 with cached PhotoPrism marker data), `era_embeddings` (768-dim CLIP text centroids), `faces_processed` (tracking), `sessions` (with `user_uid` for upload support across restarts), `photo_books`, `book_chapters` (migration 016), `book_sections` (with optional `chapter_id`), `section_photos`, `book_pages` (with `split_position` for adjustable column splits in mixed formats), `page_slots` (with `text_content` for text-only slots, `crop_x`/`crop_y`/`crop_scale` for per-photo crop control, mutually exclusive with `photo_uid`).
+**Tables:** `embeddings` (768-dim CLIP), `faces` (512-dim ResNet100 with cached PhotoPrism marker data), `era_embeddings` (768-dim CLIP text centroids), `faces_processed` (tracking), `sessions` (with `user_uid` for upload support across restarts), `photo_books`, `book_chapters` (migration 016), `book_sections` (with optional `chapter_id`), `section_photos`, `book_pages` (with `split_position` for adjustable column splits in mixed formats), `page_slots` (with `text_content` for text-only slots, `crop_x`/`crop_y`/`crop_scale` for per-photo crop control, mutually exclusive with `photo_uid`), `text_versions` (migration 017, version history for text fields), `text_check_results` (migration 019, persisted AI text check results with content hash for stale detection).
 
 **Face name normalization:** `GetFacesBySubjectName` normalizes names via `facematch.NormalizePersonName` (remove diacritics, lowercase, dashes→spaces) using the `unaccent` PostgreSQL extension.
 
@@ -460,8 +462,12 @@ Session cookies use `HttpOnly`, `SameSite=Strict`, and auto-detect `Secure` flag
 - `GET /api/v1/books/{id}/preflight` - Validate book before PDF export (empty slots, low DPI, unplaced photos)
 - `GET /api/v1/books/{id}/export-pdf` - Export book as PDF (requires lualatex)
 - `POST /api/v1/text/check` - AI text check (spelling, grammar, diacritics) via GPT-4.1-mini
+- `POST /api/v1/text/check-and-save` - AI text check with database persistence
 - `POST /api/v1/text/rewrite` - AI text rewrite (length adjustment) via GPT-4.1-mini
 - `POST /api/v1/text/consistency` - AI style consistency check across all book texts via GPT-4.1-mini
+- `GET /api/v1/books/{id}/text-check-status` - Get text check status for all book texts
+- `GET /api/v1/text-versions` - List text version history
+- `POST /api/v1/text-versions/{id}/restore` - Restore a previous text version
 
 **Frontend Structure:**
 ```
@@ -530,11 +536,13 @@ web/src/
 │   ├── Duplicates/            # Near-duplicate detection
 │   ├── Compare/               # Side-by-side comparison (hooks/useCompareState.ts)
 │   ├── Books/                 # Photo books list
-│   ├── BookEditor/            # Book editor (sections, pages, preview, duplicates)
+│   ├── BookEditor/            # Book editor (sections, pages, preview, texts, duplicates)
 │   │   ├── hooks/useBookData.ts, hooks/useUndoRedo.ts
+│   │   ├── BookStatsPanel.tsx, KeyboardShortcutsHelp.tsx
 │   │   ├── SectionsTab.tsx, SectionSidebar.tsx, SectionPhotoPool.tsx
 │   │   ├── PagesTab.tsx, PageSidebar.tsx, PageMinimap.tsx, PageTemplate.tsx, PageSlot.tsx
-│   │   ├── UnassignedPool.tsx, PreviewTab.tsx, DuplicatesTab.tsx
+│   │   ├── UnassignedPool.tsx, PreviewTab.tsx, PreviewModal.tsx
+│   │   ├── TextsTab.tsx, DuplicatesTab.tsx
 │   │   ├── PhotoBrowserModal.tsx, PhotoDescriptionDialog.tsx
 │   │   └── PhotoActionOverlay.tsx, PhotoInfoOverlay.tsx
 │   ├── Slideshow/             # Photo slideshow (hooks/useSlideshow.ts, useSlideshowPhotos.ts)
@@ -546,6 +554,7 @@ web/src/
 ```
 
 **Shared Hooks:**
+- `useBookKeyboardNav` - Book editor keyboard nav (W/S/E/D). Used by BookEditor.
 - `useFaceApproval` - Single and batch face approval. Used by Faces, Recognition, PhotoDetail.
 - `usePhotoSelection` - Photo selection + bulk actions (add to album, label, favorite, remove). Used by Photos, SimilarPhotos, Expand, Duplicates.
 - `useSubjectsAndConfig` - Loads subjects and config in parallel. Used by Faces, Recognition, Outliers.
@@ -563,7 +572,8 @@ internal/web/handlers/
 ├── face_outliers.go, face_photos.go            # Outlier detection, photo faces
 ├── face_helpers.go                             # Shared face helpers
 ├── books.go                                    # BooksHandler: books, chapters, sections, pages, slots
-├── text.go                                     # TextHandler: AI text check and rewrite
+├── text.go                                     # TextHandler: AI text check, rewrite, consistency, check-and-save
+├── text_versions.go                            # TextVersionsHandler: text version history and restore
 └── jobs.go                                     # Sort job status
 ```
 

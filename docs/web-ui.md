@@ -527,7 +527,7 @@ Plan and organize photos into a printed landscape photo book with PDF export.
 
 ### Book Editor (`/books/:id`)
 
-Four-tab editor for organizing a photo book.
+Five-tab editor for organizing a photo book.
 
 **Statistics Panel:**
 - Toggle via BarChart3 icon in the editor header (next to Export/Delete buttons)
@@ -580,6 +580,15 @@ Four-tab editor for organizing a photo book.
 - Shows photo thumbnail, list of sections containing the photo, and one-click remove button per section
 - Counter displays total number of duplicate entries found
 - Empty state when no duplicates exist
+
+**Texts Tab:**
+- Overview of all text content in the book (section photo descriptions, notes, text slots)
+- **Stats Panel** - Total texts, word count, character count, reading time estimate
+- **Text Search** - Filter texts by content
+- **Batch AI Text Check** - Run AI text check on all texts with progress tracking. Results persisted to database with stale detection (content hash mismatch)
+- **Style Consistency Check** - AI analysis of style consistency across all book texts (tone, issues, score)
+- **Text Version History** - View and restore previous versions of any text field (up to 20 versions)
+- **Duplicate/Similar Text Detection** - Find texts with similar content across the book
 
 **Export PDF:**
 - Click "Export PDF" in the editor header to generate a print-ready A4 landscape PDF
@@ -720,7 +729,17 @@ The Web UI communicates with these backend endpoints:
 | GET | `/api/v1/books/:id/export-pdf` | Export book as PDF |
 | PUT | `/api/v1/pages/:id/slots/:index/crop` | Update crop for a slot |
 | POST | `/api/v1/text/check` | AI text check (spelling, grammar) |
+| POST | `/api/v1/text/check-and-save` | AI text check with database persistence |
 | POST | `/api/v1/text/rewrite` | AI text rewrite (length adjustment) |
+| POST | `/api/v1/text/consistency` | AI style consistency check across texts |
+| GET | `/api/v1/books/:id/text-check-status` | Get text check status for a book |
+| GET | `/api/v1/text-versions` | List text version history |
+| POST | `/api/v1/text-versions/:id/restore` | Restore a text version |
+| POST | `/api/v1/process/rebuild-index` | Rebuild HNSW indexes |
+| POST | `/api/v1/process/sync-cache` | Sync face cache from PhotoPrism |
+| POST | `/api/v1/photos/batch/edit` | Batch edit photos (favorite, private) |
+| POST | `/api/v1/photos/batch/archive` | Batch archive photos |
+| DELETE | `/api/v1/albums/:uid/photos/batch` | Remove specific photos from album |
 
 ## Frontend Architecture
 
@@ -733,23 +752,34 @@ web/src/
 ├── api/
 │   └── client.ts           # Typed API client
 ├── components/             # Shared UI components
+│   ├── AccentCard.tsx      # Accent-colored card
+│   ├── Alert.tsx           # Alert/notification component
+│   ├── BulkActionBar.tsx   # Bulk action panel for photo selection
 │   ├── Button.tsx
 │   ├── Card.tsx
 │   ├── Combobox.tsx        # Autocomplete combobox for filtering
+│   ├── ConfirmDialog.tsx   # Reusable confirmation dialog
 │   ├── ErrorBoundary.tsx   # Error catching wrapper
+│   ├── FormCheckbox.tsx    # Styled checkbox with label
+│   ├── FormInput.tsx       # Styled text/number input with label
+│   ├── FormSelect.tsx      # Styled select dropdown with label
 │   ├── LanguageSwitcher.tsx # Language toggle button
 │   ├── LazyImage.tsx
 │   ├── Layout.tsx
 │   ├── LoadingState.tsx    # Unified loading/error/empty states
-│   ├── BulkActionBar.tsx   # Bulk action panel for photo selection
+│   ├── PageHeader.tsx      # Page header with title/actions
+│   ├── PageLayoutPreview.tsx # Live page layout preview for text editing
 │   ├── PhotoCard.tsx
 │   ├── PhotoGrid.tsx       # Supports optional selection mode
-│   └── PhotoWithBBox.tsx
+│   ├── PhotoWithBBox.tsx
+│   └── StatsGrid.tsx       # Stats display grid (configurable 2-6 columns)
 ├── constants/              # Shared constants
-│   ├── actions.ts          # Face action styling
-│   └── index.ts            # Magic numbers, defaults, cache keys
+│   ├── actions.ts          # Face action styling (i18n label keys, colors)
+│   ├── index.ts            # Magic numbers, defaults, cache keys
+│   └── pageConfig.ts       # Book page format configuration
 ├── hooks/                  # Global hooks
 │   ├── useAuth.tsx
+│   ├── useBookKeyboardNav.ts # Book editor keyboard nav (W/S/E/D)
 │   ├── useFaceApproval.ts  # Face approval logic
 │   ├── usePhotoSelection.ts # Shared photo selection + bulk actions
 │   ├── useSSE.ts           # Server-Sent Events
@@ -819,9 +849,11 @@ web/src/
 │   │   └── index.tsx
 │   ├── Books/               # Photo books list
 │   │   └── index.tsx
-│   ├── BookEditor/           # Book editor (sections, pages, preview, duplicates)
+│   ├── BookEditor/           # Book editor (sections, pages, preview, texts, duplicates)
 │   │   ├── hooks/useBookData.ts
 │   │   ├── hooks/useUndoRedo.ts  # Undo/redo for slot assignments
+│   │   ├── BookStatsPanel.tsx    # Statistics panel (pages, photos, fill rate)
+│   │   ├── KeyboardShortcutsHelp.tsx # Keyboard shortcuts help dialog
 │   │   ├── SectionsTab.tsx       # Sections with cross-section drag-and-drop
 │   │   ├── SectionSidebar.tsx    # Section list with placement stats
 │   │   ├── SectionPhotoPool.tsx  # Photo grid with modal description editing
@@ -836,6 +868,8 @@ web/src/
 │   │   ├── PageSlot.tsx
 │   │   ├── UnassignedPool.tsx
 │   │   ├── PreviewTab.tsx
+│   │   ├── PreviewModal.tsx      # Preview modal for fullscreen view
+│   │   ├── TextsTab.tsx          # Texts tab with stats and AI operations
 │   │   ├── DuplicatesTab.tsx     # Cross-section duplicate finder
 │   │   └── index.tsx
 │   └── SuggestAlbums/       # Album completion
