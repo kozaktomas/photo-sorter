@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kozaktomas/photo-sorter/internal/config"
 	"github.com/kozaktomas/photo-sorter/internal/database"
 	"github.com/kozaktomas/photo-sorter/internal/photoprism"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -15,24 +16,33 @@ import (
 
 // Server wraps the MCP server with dependencies needed by tool handlers.
 type Server struct {
-	mcpServer  *server.MCPServer
-	sseServer  *server.SSEServer
-	bookWriter database.BookWriter
-	pp         *photoprism.PhotoPrism
-	apiToken   string
+	mcpServer        *server.MCPServer
+	sseServer        *server.SSEServer
+	bookWriter       database.BookWriter
+	textVersionStore database.TextVersionStore
+	textCheckStore   database.TextCheckStore
+	pp               *photoprism.PhotoPrism
+	config           *config.Config
+	apiToken         string
 }
 
 // NewServer creates a new MCP server with all book/chapter tools registered.
 func NewServer(
 	version string,
 	bookWriter database.BookWriter,
+	textVersionStore database.TextVersionStore,
+	textCheckStore database.TextCheckStore,
 	pp *photoprism.PhotoPrism,
+	cfg *config.Config,
 	apiToken string,
 ) *Server {
 	s := &Server{
-		bookWriter: bookWriter,
-		pp:         pp,
-		apiToken:   apiToken,
+		bookWriter:       bookWriter,
+		textVersionStore: textVersionStore,
+		textCheckStore:   textCheckStore,
+		pp:               pp,
+		config:           cfg,
+		apiToken:         apiToken,
 	}
 
 	mcpServer := server.NewMCPServer(
@@ -48,6 +58,7 @@ func NewServer(
 	s.registerSectionPhotoTools()
 	s.registerPageTools()
 	s.registerSlotTools()
+	s.registerTextTools()
 
 	return s
 }

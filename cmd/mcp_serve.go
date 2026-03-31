@@ -53,6 +53,12 @@ func runMCPServe(cmd *cobra.Command, args []string) error {
 	bookRepo := postgres.NewBookRepository(pool)
 	database.RegisterBookWriter(func() database.BookWriter { return bookRepo })
 
+	tvRepo := postgres.NewTextVersionRepository(pool)
+	database.RegisterTextVersionStore(func() database.TextVersionStore { return tvRepo })
+
+	tcRepo := postgres.NewTextCheckRepository(pool)
+	database.RegisterTextCheckStore(func() database.TextCheckStore { return tcRepo })
+
 	// Create PhotoPrism session for metadata access.
 	if cfg.PhotoPrism.URL == "" {
 		return errors.New("PHOTOPRISM_URL environment variable is required")
@@ -66,7 +72,7 @@ func runMCPServe(cmd *cobra.Command, args []string) error {
 	host := mustGetString(cmd, "host")
 	addr := fmt.Sprintf("%s:%d", host, port)
 
-	server := mcpserver.NewServer(Version, bookRepo, pp, apiToken)
+	server := mcpserver.NewServer(Version, bookRepo, tvRepo, tcRepo, pp, cfg, apiToken)
 
 	fmt.Printf("Starting MCP server (photo-sorter-books) on http://%s\n", addr)
 	fmt.Println("Press Ctrl+C to stop")
