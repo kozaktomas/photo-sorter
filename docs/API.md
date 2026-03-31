@@ -22,6 +22,7 @@ This document describes all REST API endpoints for the PhotoPrism AI Sorter web 
 - [Real-Time Updates (SSE)](#real-time-updates-sse)
 - [Text AI](#text-ai)
 - [Text Version History](#text-version-history)
+- [MCP Server](#mcp-server)
 
 ---
 
@@ -2443,3 +2444,36 @@ POST /text-versions/{id}/restore
 |--------|-------------|
 | 400 | Invalid version ID |
 | 404 | Version not found |
+
+---
+
+## MCP Server
+
+A separate MCP (Model Context Protocol) server exposes photo book management as tools for AI agents.
+
+**Command:** `go run . mcp-serve [--port 8086] [--host 0.0.0.0]`
+
+**Transport:** HTTP SSE (not stdio)
+
+**Authentication:** Bearer token via `MCP_API_TOKEN` environment variable. Clients must send `Authorization: Bearer <token>` header.
+
+**Server name:** `photo-sorter-books`
+
+### MCP Tools — Books
+
+| Tool | Description | Parameters |
+|------|-------------|------------|
+| `list_books` | List all photo books | (none) |
+| `get_book` | Get book detail with chapters, sections, pages | `book_id` (string, required) |
+| `create_book` | Create a new book | `title` (string, required), `description` (string, optional) |
+| `update_book` | Update book title/description | `book_id` (string, required), `title` (string, optional), `description` (string, optional) |
+| `delete_book` | Delete a book and all its content | `book_id` (string, required) |
+
+### MCP Tools — Chapters
+
+| Tool | Description | Parameters |
+|------|-------------|------------|
+| `create_chapter` | Create a chapter in a book | `book_id` (string, required), `title` (string, required), `color` (string, optional — hex like `#8B0000`) |
+| `update_chapter` | Update chapter title/color | `chapter_id` (string, required), `title` (string, optional), `color` (string, optional) |
+| `delete_chapter` | Delete a chapter | `chapter_id` (string, required) |
+| `reorder_chapters` | Reorder chapters in a book | `book_id` (string, required), `chapter_ids` (array of strings, required) |

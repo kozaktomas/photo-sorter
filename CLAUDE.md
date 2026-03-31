@@ -196,6 +196,7 @@ Environment variables (loaded from `.env`):
 - `HNSW_INDEX_PATH` (optional, path to persist face HNSW index, e.g., `/data/faces.pg.hnsw`)
 - `HNSW_EMBEDDING_INDEX_PATH` (optional, path to persist embedding HNSW index, e.g., `/data/embeddings.pg.hnsw`)
 - `PHOTOPRISM_DATABASE_URL` (optional, MariaDB DSN for direct database access, e.g., `photoprism:photoprism@tcp(mariadb:3306)/photoprism`)
+- `MCP_API_TOKEN` (required for `mcp-serve`, Bearer token for MCP client authentication)
 
 ### AI Provider API Calls
 
@@ -271,6 +272,23 @@ go run . cache push-embeddings [flags]        # Push InsightFace embeddings to P
 go run . cache compute-eras [flags]           # Compute CLIP era embedding centroids
   --dry-run   Preview without saving
   --json      Output as JSON
+```
+
+### MCP Server
+
+```bash
+go run . mcp-serve [flags]                    # Start MCP server for AI agents
+  --port 8086     Port to listen on (default: 8086)
+  --host 0.0.0.0  Host to bind to (default: 0.0.0.0)
+```
+
+Requires `MCP_API_TOKEN` environment variable. Exposes photo book and chapter management as MCP tools over HTTP SSE. Server name: `photo-sorter-books`.
+
+**Package structure:**
+```
+internal/mcp/
+├── server.go          # MCP server setup, auth middleware, lifecycle
+├── books.go           # Book and chapter tool handlers
 ```
 
 ### Database Package

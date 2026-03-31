@@ -1,0 +1,407 @@
+package mcp
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+
+	"github.com/kozaktomas/photo-sorter/internal/database"
+	"github.com/mark3labs/mcp-go/mcp"
+)
+
+// --- helpers ---
+
+func requiredStr(args map[string]any, key string) (string, error) {
+	v, ok := args[key]
+	if !ok || v == nil {
+		return "", fmt.Errorf("missing required parameter: %s", key)
+	}
+	s, ok := v.(string)
+	if !ok || s == "" {
+		return "", fmt.Errorf("parameter %s must be a non-empty string", key)
+	}
+	return s, nil
+}
+
+func optionalStr(args map[string]any, key string) string {
+	v, ok := args[key]
+	if !ok {
+		return ""
+	}
+	s, _ := v.(string)
+	return s
+}
+
+func jsonResult(v any) (*mcp.CallToolResult, error) {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to marshal response: %v", err)), nil
+	}
+	return mcp.NewToolResultText(string(data)), nil
+}
+
+// --- Book handlers ---
+
+func (s *Server) handleListBooks(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	books, err := s.bookWriter.ListBooks(s.ctx())
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to list books: %v", err)), nil
+	}
+
+	type bookItem struct {
+		ID          string `json:"id"`
+		Title       string `json:"title"`
+		Description string `json:"description"`
+		CreatedAt   string `json:"created_at"`
+	}
+
+	result := make([]bookItem, len(books))
+	for i, b := range books {
+		result[i] = bookItem{
+			ID:          b.ID,
+			Title:       b.Title,
+			Description: b.Description,
+			CreatedAt:   b.CreatedAt.Format("2006-01-02T15:04:05Z"),
+		}
+	}
+	return jsonResult(result)
+}
+
+// bookDetailResult holds the JSON response for get_book.
+type bookDetailResult struct {
+	ID          string              `json:"id"`
+	Title       string              `json:"title"`
+	Description string              `json:"description"`
+	Chapters    []chapterDetailItem `json:"chapters"`
+	Sections    []sectionDetailItem `json:"sections"`
+	Pages       []pageDetailItem    `json:"pages"`
+	CreatedAt   string              `json:"created_at"`
+	UpdatedAt   string              `json:"updated_at"`
+}
+
+type chapterDetailItem struct {
+	ID        string `json:"id"`
+	Title     string `json:"title"`
+	Color     string `json:"color,omitempty"`
+	SortOrder int    `json:"sort_order"`
+}
+
+type sectionDetailItem struct {
+	ID         string `json:"id"`
+	ChapterID  string `json:"chapter_id,omitempty"`
+	Title      string `json:"title"`
+	SortOrder  int    `json:"sort_order"`
+	PhotoCount int    `json:"photo_count"`
+}
+
+type pageDetailItem struct {
+	ID            string           `json:"id"`
+	SectionID     string           `json:"section_id,omitempty"`
+	Format        string           `json:"format"`
+	Style         string           `json:"style"`
+	Description   string           `json:"description,omitempty"`
+	SplitPosition *float64         `json:"split_position,omitempty"`
+	SortOrder     int              `json:"sort_order"`
+	Slots         []slotDetailItem `json:"slots"`
+}
+
+type slotDetailItem struct {
+	SlotIndex   int     `json:"slot_index"`
+	PhotoUID    string  `json:"photo_uid,omitempty"`
+	TextContent string  `json:"text_content,omitempty"`
+	CropX       float64 `json:"crop_x"`
+	CropY       float64 `json:"crop_y"`
+	CropScale   float64 `json:"crop_scale"`
+}
+
+func convertPages(pages []database.BookPage) []pageDetailItem {
+	items := make([]pageDetailItem, len(pages))
+	for i, p := range pages {
+		slots := make([]slotDetailItem, len(p.Slots))
+		for j, sl := range p.Slots {
+			slots[j] = slotDetailItem{
+				SlotIndex: sl.SlotIndex, PhotoUID: sl.PhotoUID,
+				TextContent: sl.TextContent,
+				CropX:       sl.CropX, CropY: sl.CropY, CropScale: sl.CropScale,
+			}
+		}
+		items[i] = pageDetailItem{
+			ID: p.ID, SectionID: p.SectionID, Format: p.Format,
+			Style: p.Style, Description: p.Description,
+			SplitPosition: p.SplitPosition, SortOrder: p.SortOrder,
+			Slots: slots,
+		}
+	}
+	return items
+}
+
+func (s *Server) buildBookDetail(bookID string) (*bookDetailResult, error) {
+	book, err := s.bookWriter.GetBook(s.ctx(), bookID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get book: %w", err)
+	}
+	if book == nil {
+		return nil, fmt.Errorf("book %s not found", bookID)
+	}
+
+	chapters, err := s.bookWriter.GetChapters(s.ctx(), bookID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get chapters: %w", err)
+	}
+
+	sections, err := s.bookWriter.GetSections(s.ctx(), bookID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get sections: %w", err)
+	}
+
+	pages, err := s.bookWriter.GetPages(s.ctx(), bookID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get pages: %w", err)
+	}
+
+	chapterItems := make([]chapterDetailItem, len(chapters))
+	for i, ch := range chapters {
+		chapterItems[i] = chapterDetailItem{
+			ID: ch.ID, Title: ch.Title, Color: ch.Color, SortOrder: ch.SortOrder,
+		}
+	}
+
+	sectionItems := make([]sectionDetailItem, len(sections))
+	for i, sec := range sections {
+		count, _ := s.bookWriter.CountSectionPhotos(s.ctx(), sec.ID)
+		sectionItems[i] = sectionDetailItem{
+			ID: sec.ID, ChapterID: sec.ChapterID, Title: sec.Title,
+			SortOrder: sec.SortOrder, PhotoCount: count,
+		}
+	}
+
+	return &bookDetailResult{
+		ID: book.ID, Title: book.Title, Description: book.Description,
+		Chapters:  chapterItems,
+		Sections:  sectionItems,
+		Pages:     convertPages(pages),
+		CreatedAt: book.CreatedAt.Format("2006-01-02T15:04:05Z"),
+		UpdatedAt: book.UpdatedAt.Format("2006-01-02T15:04:05Z"),
+	}, nil
+}
+
+func (s *Server) handleGetBook(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := req.GetArguments()
+	bookID, err := requiredStr(args, "book_id")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	result, err := s.buildBookDetail(bookID)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	return jsonResult(result)
+}
+
+func (s *Server) handleCreateBook(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := req.GetArguments()
+	title, err := requiredStr(args, "title")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	book := &database.PhotoBook{
+		Title:       title,
+		Description: optionalStr(args, "description"),
+	}
+	if err := s.bookWriter.CreateBook(s.ctx(), book); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to create book: %v", err)), nil
+	}
+
+	result := struct {
+		ID          string `json:"id"`
+		Title       string `json:"title"`
+		Description string `json:"description"`
+		CreatedAt   string `json:"created_at"`
+	}{
+		ID:          book.ID,
+		Title:       book.Title,
+		Description: book.Description,
+		CreatedAt:   book.CreatedAt.Format("2006-01-02T15:04:05Z"),
+	}
+	return jsonResult(result)
+}
+
+func (s *Server) handleUpdateBook(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := req.GetArguments()
+	bookID, err := requiredStr(args, "book_id")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	book, err := s.bookWriter.GetBook(s.ctx(), bookID)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to get book: %v", err)), nil
+	}
+	if book == nil {
+		return mcp.NewToolResultError(fmt.Sprintf("book %s not found", bookID)), nil
+	}
+
+	if t := optionalStr(args, "title"); t != "" {
+		book.Title = t
+	}
+	if d, ok := args["description"]; ok {
+		book.Description, _ = d.(string)
+	}
+
+	if err := s.bookWriter.UpdateBook(s.ctx(), book); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to update book: %v", err)), nil
+	}
+
+	result := struct {
+		ID          string `json:"id"`
+		Title       string `json:"title"`
+		Description string `json:"description"`
+		UpdatedAt   string `json:"updated_at"`
+	}{
+		ID:          book.ID,
+		Title:       book.Title,
+		Description: book.Description,
+		UpdatedAt:   book.UpdatedAt.Format("2006-01-02T15:04:05Z"),
+	}
+	return jsonResult(result)
+}
+
+func (s *Server) handleDeleteBook(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := req.GetArguments()
+	bookID, err := requiredStr(args, "book_id")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	if err := s.bookWriter.DeleteBook(s.ctx(), bookID); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to delete book: %v", err)), nil
+	}
+
+	return jsonResult(map[string]any{
+		"success": true,
+		"message": fmt.Sprintf("book %s deleted", bookID),
+	})
+}
+
+// --- Chapter handlers ---
+
+func (s *Server) handleCreateChapter(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := req.GetArguments()
+	bookID, err := requiredStr(args, "book_id")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+	title, err := requiredStr(args, "title")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	chapter := &database.BookChapter{
+		BookID: bookID,
+		Title:  title,
+		Color:  optionalStr(args, "color"),
+	}
+	if err := s.bookWriter.CreateChapter(s.ctx(), chapter); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to create chapter: %v", err)), nil
+	}
+
+	result := struct {
+		ID        string `json:"id"`
+		BookID    string `json:"book_id"`
+		Title     string `json:"title"`
+		Color     string `json:"color,omitempty"`
+		SortOrder int    `json:"sort_order"`
+	}{
+		ID:        chapter.ID,
+		BookID:    chapter.BookID,
+		Title:     chapter.Title,
+		Color:     chapter.Color,
+		SortOrder: chapter.SortOrder,
+	}
+	return jsonResult(result)
+}
+
+func (s *Server) handleUpdateChapter(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := req.GetArguments()
+	chapterID, err := requiredStr(args, "chapter_id")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	chapter := &database.BookChapter{ID: chapterID}
+	if t := optionalStr(args, "title"); t != "" {
+		chapter.Title = t
+	}
+	if c := optionalStr(args, "color"); c != "" {
+		chapter.Color = c
+	}
+
+	if err := s.bookWriter.UpdateChapter(s.ctx(), chapter); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to update chapter: %v", err)), nil
+	}
+
+	result := struct {
+		ID    string `json:"id"`
+		Title string `json:"title,omitempty"`
+		Color string `json:"color,omitempty"`
+	}{
+		ID:    chapter.ID,
+		Title: chapter.Title,
+		Color: chapter.Color,
+	}
+	return jsonResult(result)
+}
+
+func (s *Server) handleDeleteChapter(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := req.GetArguments()
+	chapterID, err := requiredStr(args, "chapter_id")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	if err := s.bookWriter.DeleteChapter(s.ctx(), chapterID); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to delete chapter: %v", err)), nil
+	}
+
+	return jsonResult(map[string]any{
+		"success": true,
+		"message": fmt.Sprintf("chapter %s deleted", chapterID),
+	})
+}
+
+func (s *Server) handleReorderChapters(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	args := req.GetArguments()
+	bookID, err := requiredStr(args, "book_id")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	rawIDs, ok := args["chapter_ids"]
+	if !ok {
+		return mcp.NewToolResultError("missing required parameter: chapter_ids"), nil
+	}
+	arr, ok := rawIDs.([]any)
+	if !ok {
+		return mcp.NewToolResultError("chapter_ids must be an array"), nil
+	}
+
+	ids := make([]string, len(arr))
+	for i, v := range arr {
+		s, ok := v.(string)
+		if !ok {
+			return mcp.NewToolResultError(fmt.Sprintf("chapter_ids[%d] must be a string", i)), nil
+		}
+		ids[i] = s
+	}
+
+	if err := s.bookWriter.ReorderChapters(s.ctx(), bookID, ids); err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to reorder chapters: %v", err)), nil
+	}
+
+	return jsonResult(map[string]any{
+		"success": true,
+		"message": "chapters reordered",
+	})
+}
