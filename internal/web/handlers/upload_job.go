@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -129,18 +130,18 @@ func (h *UploadHandler) runUploadJob(
 	primaryAlbumUID := job.Options.AlbumUIDs[0]
 	beforeUIDs := h.snapshotBefore(ctx, job, pp, primaryAlbumUID)
 
-	uploadTokens := h.uploadFiles(ctx, job, pp, tempDir)
-	if uploadTokens == nil {
+	uploaded := h.uploadFiles(ctx, job, pp, tempDir)
+	if uploaded == nil {
 		return // job already failed or cancelled
 	}
 
 	job.SendEvent(JobEvent{
 		Type: "processing_upload", Message: "Processing uploads",
-		Data: map[string]any{"current": 0, "total": len(uploadTokens)},
+		Data: map[string]any{"current": 0, "total": len(uploaded.tokens)},
 	})
-	processed, timedOut := processUploadTokens(ctx, pp, uploadTokens, job.Options.AlbumUIDs, job)
+	processed, timedOut := processUploadTokens(ctx, pp, uploaded.tokens, job.Options.AlbumUIDs, job)
 	if timedOut > 0 {
-		log.Printf("Upload processing: %d/%d succeeded, %d timed out", processed, len(uploadTokens), timedOut)
+		log.Printf("Upload processing: %d/%d succeeded, %d timed out", processed, len(uploaded.tokens), timedOut)
 	}
 
 	if ctx.Err() != nil {
@@ -149,22 +150,28 @@ func (h *UploadHandler) runUploadJob(
 	}
 
 	newUIDs := h.detectNewPhotos(ctx, job, pp, primaryAlbumUID, beforeUIDs)
-	result := &UploadJobResult{
-		Uploaded:     len(uploadTokens),
+	jobResult := &UploadJobResult{
+		Uploaded:     len(uploaded.tokens),
 		NewPhotoUIDs: newUIDs,
 	}
 	if beforeUIDs != nil {
-		result.ExistingCount = max(len(uploadTokens)-len(newUIDs), 0)
+		jobResult.ExistingCount = max(len(uploaded.tokens)-len(newUIDs), 0)
 	}
 
-	h.applyPostUploadActions(ctx, job, pp, session, newUIDs, result)
+	// For book section: find all uploaded photos by filename (new + duplicates).
+	var bookUIDs []string
+	if job.Options.BookSectionID != "" {
+		bookUIDs = h.findUploadedPhotoUIDs(ctx, job, pp, primaryAlbumUID, uploaded.fileNames)
+	}
+
+	h.applyPostUploadActions(ctx, job, pp, session, newUIDs, bookUIDs, jobResult)
 
 	if ctx.Err() != nil {
 		h.cancelUploadJob(job)
 		return
 	}
 
-	h.completeUploadJob(job, result)
+	h.completeUploadJob(job, jobResult)
 }
 
 // snapshotBefore captures album photo UIDs before upload if needed.
@@ -186,18 +193,24 @@ func (h *UploadHandler) snapshotBefore(
 	return uids
 }
 
-// uploadFiles uploads files one-by-one, returning tokens or nil on failure.
+// uploadResult holds the tokens and original filenames from an upload.
+type uploadResult struct {
+	tokens    []string
+	fileNames []string // base filenames (e.g. "photo.jpg")
+}
+
+// uploadFiles uploads files one-by-one, returning tokens and filenames or nil on failure.
 func (h *UploadHandler) uploadFiles(
 	ctx context.Context, job *UploadJob,
 	pp *photoprism.PhotoPrism, tempDir string,
-) []string {
+) *uploadResult {
 	filePaths, err := listFilesInDir(tempDir)
 	if err != nil {
 		h.failUploadJob(job, "failed to list upload files: "+err.Error())
 		return nil
 	}
 
-	var uploadTokens []string
+	result := &uploadResult{}
 	for i, filePath := range filePaths {
 		if ctx.Err() != nil {
 			h.cancelUploadJob(job)
@@ -212,14 +225,15 @@ func (h *UploadHandler) uploadFiles(
 			log.Printf("Upload error for %s: %v", fileName, uploadErr)
 			continue
 		}
-		uploadTokens = append(uploadTokens, token)
+		result.tokens = append(result.tokens, token)
+		result.fileNames = append(result.fileNames, fileName)
 	}
 
-	if len(uploadTokens) == 0 {
+	if len(result.tokens) == 0 {
 		h.failUploadJob(job, "no files were uploaded successfully")
 		return nil
 	}
-	return uploadTokens
+	return result
 }
 
 // detectNewPhotos diffs album UIDs before/after to find new photos.
@@ -250,18 +264,49 @@ func (h *UploadHandler) detectNewPhotos(
 	return newUIDs
 }
 
+// findUploadedPhotoUIDs searches the album for photos matching the uploaded filenames.
+// This finds both new photos and duplicates that PhotoPrism recognized.
+func (h *UploadHandler) findUploadedPhotoUIDs(
+	ctx context.Context, job *UploadJob,
+	pp *photoprism.PhotoPrism, albumUID string,
+	fileNames []string,
+) []string {
+	if len(fileNames) == 0 {
+		return nil
+	}
+	// Build a set of uploaded filenames (without extension, lowercased) for matching.
+	nameSet := make(map[string]struct{}, len(fileNames))
+	for _, name := range fileNames {
+		nameSet[strings.ToLower(name)] = struct{}{}
+	}
+
+	// Fetch all photos in the album and match by OriginalName.
+	allPhotos, err := getAllAlbumPhotos(ctx, pp, albumUID)
+	if err != nil {
+		log.Printf("Warning: failed to fetch album photos for book matching: %v", err)
+		return nil
+	}
+
+	var matched []string
+	for _, p := range allPhotos {
+		origName := strings.ToLower(filepath.Base(p.OriginalName))
+		if _, ok := nameSet[origName]; ok {
+			matched = append(matched, p.UID)
+		}
+	}
+	return matched
+}
+
 // applyPostUploadActions applies labels, albums, book section, and auto-process.
 func (h *UploadHandler) applyPostUploadActions(
 	ctx context.Context, job *UploadJob,
 	pp *photoprism.PhotoPrism, session *middleware.Session,
-	newUIDs []string, result *UploadJobResult,
+	newUIDs []string, bookUIDs []string, result *UploadJobResult,
 ) {
-	// Add uploaded photos to book section. newUIDs contains all photos that
-	// appeared in the album after upload (both truly new and duplicates that
-	// PhotoPrism recognized). AddSectionPhotos uses ON CONFLICT DO NOTHING
-	// so photos already in the section are safely skipped.
-	if job.Options.BookSectionID != "" && len(newUIDs) > 0 {
-		addToBookSection(ctx, job, newUIDs, result)
+	// Add uploaded photos to book section. bookUIDs are matched by filename
+	// so they include both new and duplicate uploads.
+	if job.Options.BookSectionID != "" && len(bookUIDs) > 0 {
+		addToBookSection(ctx, job, bookUIDs, result)
 	}
 
 	if len(newUIDs) == 0 {
@@ -344,6 +389,34 @@ func getAlbumPhotoUIDSet(
 		uids[p.UID] = struct{}{}
 	}
 	return uids, nil
+}
+
+// getAllAlbumPhotos fetches all photos in an album with full metadata.
+func getAllAlbumPhotos(
+	ctx context.Context,
+	pp *photoprism.PhotoPrism, albumUID string,
+) ([]photoprism.Photo, error) {
+	var allPhotos []photoprism.Photo
+	pageSize := constants.DefaultPageSize
+	offset := 0
+	for {
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("cancelled: %w", ctx.Err())
+		}
+		photos, err := pp.GetAlbumPhotos(albumUID, pageSize, offset)
+		if err != nil {
+			return nil, fmt.Errorf("fetching album photos: %w", err)
+		}
+		if len(photos) == 0 {
+			break
+		}
+		allPhotos = append(allPhotos, photos...)
+		if len(photos) < pageSize {
+			break
+		}
+		offset += len(photos)
+	}
+	return allPhotos, nil
 }
 
 // listFilesInDir returns all file paths in a directory.
