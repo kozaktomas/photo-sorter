@@ -419,6 +419,8 @@
       "photoBrowser": "Photo Browser",
       "addSelected": "Add Selected",
       "closeModal": "Close",
+      "maximize": "Maximize",
+      "minimize": "Minimize",
       "pageFormat": "Format",
       "pageStyle": "Style",
       "styleModern": "Modern",

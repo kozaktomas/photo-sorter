@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useMemo, useRef, type Dispatch, type 
 import { useTranslation } from 'react-i18next';
 import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, pointerWithin, useSensor, useSensors, type DragEndEvent, type DragStartEvent, type Modifier } from '@dnd-kit/core';
 import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
-import { Type, Heading1, Heading2, Bold, Italic, List, ListOrdered, LayoutGrid, Wand2, Loader2, SpellCheck, ArrowLeftRight, Check, DollarSign, History } from 'lucide-react';
+import { Type, Heading1, Heading2, Bold, Italic, List, ListOrdered, LayoutGrid, Wand2, Loader2, SpellCheck, ArrowLeftRight, Check, DollarSign, History, Maximize2, Minimize2 } from 'lucide-react';
 import { assignSlot, assignTextSlot, clearSlot, swapSlots, updatePage, updateSlotCrop, reorderPages, getThumbnailUrl, autoLayoutSection, checkText, rewriteText, listTextVersions, restoreTextVersion } from '../../api/client';
 import { MarkdownContent } from '../../utils/markdown';
 import { useBookKeyboardNav } from '../../hooks/useBookKeyboardNav';
@@ -85,6 +85,7 @@ function TextSlotDialog({ text, pageId, slotIndex, pageFormat, pageSlots, splitP
 }) {
   const { t } = useTranslation('pages');
   const [value, setValue] = useState(text);
+  const [isFullscreen, setIsFullscreen] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   // AI text check state
@@ -173,16 +174,25 @@ function TextSlotDialog({ text, pageId, slotIndex, pageFormat, pageSlots, splitP
     }
   };
 
-  // Keyboard shortcuts: Ctrl+Enter to save, Ctrl+Shift+C to check, Escape to close
-  const textDialogRef = useRef({ value, valueEmpty, aiLoading, onSave, onClose, handleCheck });
-  textDialogRef.current = { value, valueEmpty, aiLoading, onSave, onClose, handleCheck };
+  // Keyboard shortcuts: Ctrl+Enter to save, Ctrl+Shift+C to check, F11/Ctrl+Shift+F fullscreen, Escape to exit
+  const textDialogRef = useRef({ value, valueEmpty, aiLoading, isFullscreen, onSave, onClose, handleCheck, setIsFullscreen });
+  textDialogRef.current = { value, valueEmpty, aiLoading, isFullscreen, onSave, onClose, handleCheck, setIsFullscreen };
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      const { value, valueEmpty, aiLoading, onSave, onClose, handleCheck } = textDialogRef.current;
+      const { value, valueEmpty, aiLoading, isFullscreen, onSave, onClose, handleCheck, setIsFullscreen } = textDialogRef.current;
       if (e.key === 'Escape') {
         e.preventDefault();
-        onClose();
+        if (isFullscreen) {
+          setIsFullscreen(false);
+        } else {
+          onClose();
+        }
+        return;
+      }
+      if (e.key === 'F11' || (e.key === 'F' && (e.ctrlKey || e.metaKey) && e.shiftKey)) {
+        e.preventDefault();
+        setIsFullscreen((v: boolean) => !v);
         return;
       }
       if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
@@ -218,8 +228,24 @@ function TextSlotDialog({ text, pageId, slotIndex, pageFormat, pageSlots, splitP
 
   return (
     <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50" onClick={onClose}>
-      <div className="bg-slate-800 rounded-lg p-6 w-full max-w-4xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
-        <h3 className="text-lg font-semibold text-white mb-4">{t('books.editor.textSlotTitle')}</h3>
+      <div
+        className={`bg-slate-800 p-6 flex flex-col transition-all duration-200 ${
+          isFullscreen
+            ? 'fixed inset-0 w-full h-full rounded-none max-w-none max-h-none'
+            : 'rounded-lg w-full max-w-4xl max-h-[90vh]'
+        }`}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-lg font-semibold text-white">{t('books.editor.textSlotTitle')}</h3>
+          <button
+            onClick={() => setIsFullscreen(f => !f)}
+            className="p-1.5 rounded hover:bg-slate-700 text-slate-400 hover:text-white transition-colors"
+            title={isFullscreen ? t('books.editor.minimize') : t('books.editor.maximize')}
+          >
+            {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+          </button>
+        </div>
         <div className="flex items-center gap-1 mb-2">
           {toolbarButtons.map(btn => (
             <button
@@ -256,11 +282,11 @@ function TextSlotDialog({ text, pageId, slotIndex, pageFormat, pageSlots, splitP
                 ref={textareaRef}
                 value={value}
                 onChange={e => setValue(e.target.value)}
-                className="w-full h-80 px-3 py-2 bg-slate-900 border border-slate-600 rounded text-sm text-white font-mono focus:outline-none focus-visible:ring-1 focus-visible:ring-rose-500 resize-none"
+                className={`w-full px-3 py-2 bg-slate-900 border border-slate-600 rounded text-sm text-white font-mono focus:outline-none focus-visible:ring-1 focus-visible:ring-rose-500 resize-none ${isFullscreen ? 'h-[70vh]' : 'h-80'}`}
                 placeholder={t('books.editor.textPlaceholder')}
                 autoFocus
               />
-              <div className="h-80 overflow-auto bg-slate-900 border border-slate-600 rounded p-3">
+              <div className={`overflow-auto bg-slate-900 border border-slate-600 rounded p-3 ${isFullscreen ? 'h-[70vh]' : 'h-80'}`}>
                 <p className="text-xs text-slate-500 mb-2">{t('books.editor.markdownPreview')}</p>
                 {value.trim() ? (
                   <MarkdownContent content={value} />

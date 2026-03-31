@@ -403,6 +403,8 @@
       "photoBrowser": "Prohlížeč fotek",
       "addSelected": "Přidat vybrané",
       "closeModal": "Zavřít",
+      "maximize": "Maximalizovat",
+      "minimize": "Minimalizovat",
       "pageFormat": "Formát",
       "pageStyle": "Styl",
       "styleModern": "Moderní",
