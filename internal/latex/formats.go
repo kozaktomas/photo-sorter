@@ -6,10 +6,6 @@ const (
 	PageH = 210.0
 )
 
-// SectionHeadingHeightMM is the vertical space reserved for an inline section.
-// heading on the first content page of a section (rule + title + gap).
-const SectionHeadingHeightMM = 14.0
-
 // LayoutConfig holds the 12-column grid and 3-zone page layout configuration.
 type LayoutConfig struct {
 	InsideMarginMM  float64 // binding side (20mm)

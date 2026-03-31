@@ -659,23 +659,23 @@ func TestBuildTemplateData(t *testing.T) {
 		}
 	})
 
-	t.Run("section heading on first page", func(t *testing.T) {
+	t.Run("titled section uses full canvas height", func(t *testing.T) {
 		groups := []sectionGroup{
 			{sectionID: "s1", title: "My Section", pages: []database.BookPage{
 				{ID: "p1", SectionID: "s1", Format: "1_fullscreen"},
 				{ID: "p2", SectionID: "s1", Format: "1_fullscreen"},
 			}},
 		}
-		data, _ := buildTemplateData(groups, nil, nil, DefaultLayoutConfig(), "")
+		cfg := DefaultLayoutConfig()
+		data, _ := buildTemplateData(groups, nil, nil, cfg, "")
 		pages := data.Sections[0].Pages
-		if !pages[0].HasSectionTitle {
-			t.Error("first page should have section title")
+		// Both pages should use the full canvas top Y (no section heading reduction).
+		expectedCanvasTopY := PageH - cfg.TopMarginMM - cfg.HeaderHeightMM
+		if pages[0].CanvasTopY != expectedCanvasTopY {
+			t.Errorf("first page CanvasTopY = %.2f, want %.2f", pages[0].CanvasTopY, expectedCanvasTopY)
 		}
-		if pages[0].SectionTitle != "My Section" {
-			t.Errorf("expected section title 'My Section', got '%s'", pages[0].SectionTitle)
-		}
-		if pages[1].HasSectionTitle {
-			t.Error("second page should NOT have section title")
+		if pages[1].CanvasTopY != expectedCanvasTopY {
+			t.Errorf("second page CanvasTopY = %.2f, want %.2f", pages[1].CanvasTopY, expectedCanvasTopY)
 		}
 	})
 

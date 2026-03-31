@@ -41,12 +41,11 @@ type ExportReport struct {
 
 // ReportPage describes a single page in the export report.
 type ReportPage struct {
-	PageNumber   int           `json:"page_number"`
-	Format       string        `json:"format"`
-	SectionTitle string        `json:"section_title,omitempty"`
-	Title        string        `json:"title,omitempty"`
-	IsDivider    bool          `json:"is_divider"`
-	Photos       []ReportPhoto `json:"photos,omitempty"`
+	PageNumber int           `json:"page_number"`
+	Format     string        `json:"format"`
+	Title      string        `json:"title,omitempty"`
+	IsDivider  bool          `json:"is_divider"`
+	Photos     []ReportPhoto `json:"photos,omitempty"`
 }
 
 // ReportPhoto describes a single photo placement in the export report.
@@ -108,14 +107,7 @@ type TemplatePage struct {
 	ContentRightX float64
 	ContentW      float64
 	// Header zone.
-	HeaderY      float64 // Y position for running header text
-	RunningLeft  string  // section title (verso only)
-	RunningRight string  // page description (recto only)
-	// Inline section heading (first page of each titled section).
-	HasSectionTitle bool
-	SectionTitle    string
-	SectionTitleY   float64 // Y for title text node
-	SectionRuleY    float64 // Y for decorative line above title
+	HeaderY float64 // Y position for running header text
 	// Canvas zone.
 	CanvasTopY    float64
 	CanvasBottomY float64
@@ -401,10 +393,10 @@ func buildTemplateData(
 // buildSection builds a TemplateSection and accumulates report data.
 func (pb *pageBuilder) buildSection(g sectionGroup) TemplateSection {
 	tmplPages := make([]TemplatePage, 0, len(g.pages))
-	for i, p := range g.pages {
+	for _, p := range g.pages {
 		pb.contentPageIdx++
 		pb.pageNumber++
-		tmplPages = append(tmplPages, pb.buildContentPage(p, g.title, i))
+		tmplPages = append(tmplPages, pb.buildContentPage(p))
 	}
 
 	return TemplateSection{
@@ -449,9 +441,7 @@ func (pb *pageBuilder) computeZones(isRecto bool) (
 }
 
 // buildContentPage builds a single TemplatePage with slots and accumulates report data.
-//
-//nolint:funlen // Complex layout logic.
-func (pb *pageBuilder) buildContentPage(p database.BookPage, sectionTitle string, pageIndexInSection int) TemplatePage {
+func (pb *pageBuilder) buildContentPage(p database.BookPage) TemplatePage {
 	isLast := pb.contentPageIdx == pb.totalContentPages
 	isRecto := pb.pageNumber%2 == 1
 	style := p.Style
@@ -464,45 +454,16 @@ func (pb *pageBuilder) buildContentPage(p database.BookPage, sectionTitle string
 		folioAnchor := pb.computeZones(isRecto)
 	contentW := pb.config.ContentWidth()
 
-	// Inline section heading on first page of titled sections.
-	hasSectionTitle := pageIndexInSection == 0 && sectionTitle != ""
-	var sectionRuleY, sectionTitleY float64
-	slotConfig := pb.config
-	effectiveCanvasTopY := canvasTopY
-	if hasSectionTitle {
-		// Rule sits at the normal canvas top.
-		sectionRuleY = canvasTopY
-		// Title text sits below the rule (4mm gap).
-		sectionTitleY = canvasTopY - 5.0
-		// Shift canvas down to make room for heading.
-		effectiveCanvasTopY = canvasTopY - SectionHeadingHeightMM
-		// Create modified config for slot computation.
-		slotConfig.CanvasHeightMM -= SectionHeadingHeightMM
-	}
-
-	// Build slots using grid system (with possibly reduced canvas).
-	slots := FormatSlotsGridWithSplit(p.Format, slotConfig, p.SplitPosition)
-	tmplSlots, reportPhotos, footerCaptions := pb.buildSlots(p, slots, contentLeftX, effectiveCanvasTopY, style, isRecto)
+	// Build slots using grid system.
+	slots := FormatSlotsGridWithSplit(p.Format, pb.config, p.SplitPosition)
+	tmplSlots, reportPhotos, footerCaptions := pb.buildSlots(p, slots, contentLeftX, canvasTopY, style, isRecto)
 
 	pb.reportPages = append(pb.reportPages, ReportPage{
-		PageNumber:   pb.pageNumber,
-		Format:       p.Format,
-		SectionTitle: sectionTitle,
-		Title:        p.Description,
-		Photos:       reportPhotos,
+		PageNumber: pb.pageNumber,
+		Format:     p.Format,
+		Title:      p.Description,
+		Photos:     reportPhotos,
 	})
-
-	// Running headers.
-	var runningLeft, runningRight string
-	if !isRecto {
-		runningLeft = sectionTitle // verso: section title on left (outside)
-	} else {
-		if p.Description != "" {
-			runningRight = p.Description // recto: page description on right (outside)
-		} else {
-			runningRight = sectionTitle // fallback: section title if no description
-		}
-	}
 
 	// Caption block position.
 	var captionBlockX, captionBlockY, captionBlockW float64
@@ -514,32 +475,26 @@ func (pb *pageBuilder) buildContentPage(p database.BookPage, sectionTitle string
 	}
 
 	return TemplatePage{
-		Slots:           tmplSlots,
-		IsLast:          isLast,
-		PageNumber:      pb.pageNumber,
-		IsRecto:         isRecto,
-		Style:           style,
-		ContentLeftX:    contentLeftX,
-		ContentRightX:   contentRightX,
-		ContentW:        contentW,
-		HeaderY:         headerY,
-		RunningLeft:     runningLeft,
-		RunningRight:    runningRight,
-		HasSectionTitle: hasSectionTitle,
-		SectionTitle:    sectionTitle,
-		SectionTitleY:   sectionTitleY,
-		SectionRuleY:    sectionRuleY,
-		CanvasTopY:      effectiveCanvasTopY,
-		CanvasBottomY:   canvasBottomY,
-		FooterRuleY:     footerRuleY,
-		FolioX:          folioX,
-		FolioY:          folioY,
-		FolioAnchor:     folioAnchor,
-		Captions:        footerCaptions,
-		CaptionBlockX:   captionBlockX,
-		CaptionBlockY:   captionBlockY,
-		CaptionBlockW:   captionBlockW,
-		HasCaptions:     hasCaptions,
+		Slots:         tmplSlots,
+		IsLast:        isLast,
+		PageNumber:    pb.pageNumber,
+		IsRecto:       isRecto,
+		Style:         style,
+		ContentLeftX:  contentLeftX,
+		ContentRightX: contentRightX,
+		ContentW:      contentW,
+		HeaderY:       headerY,
+		CanvasTopY:    canvasTopY,
+		CanvasBottomY: canvasBottomY,
+		FooterRuleY:   footerRuleY,
+		FolioX:        folioX,
+		FolioY:        folioY,
+		FolioAnchor:   folioAnchor,
+		Captions:      footerCaptions,
+		CaptionBlockX: captionBlockX,
+		CaptionBlockY: captionBlockY,
+		CaptionBlockW: captionBlockW,
+		HasCaptions:   hasCaptions,
 	}
 }
 

@@ -58,19 +58,6 @@
 {{- range $pi, $page := $section.Pages}}
 % --- Page {{$page.PageNumber}} ({{$page.Style}}) ---
 \begin{tikzpicture}[remember picture,overlay,shift={(current page.south west)},x=1mm,y=1mm]
-% --- Header zone (disabled) ---
-{{- if $page.HasSectionTitle}}
-% --- Inline section heading ---
-  \draw[black!20,line width=0.4pt]
-    ({{printf "%.2f" $page.ContentLeftX}},{{printf "%.2f" $page.SectionRuleY}})
-    -- ({{printf "%.2f" $page.ContentRightX}},{{printf "%.2f" $page.SectionRuleY}});
-  \node[anchor=north west,inner sep=0,
-    font=\fontsize{18}{22}\selectfont\ebgaramondsb]
-    at ({{printf "%.2f" $page.ContentLeftX}},{{printf "%.2f" $page.SectionTitleY}})
-    {%
-    \addfontfeatures{LetterSpace=5}{{latexEscape $page.SectionTitle}}%
-  };
-{{- end}}
 % --- Canvas zone (clipped) ---
   \begin{scope}
     \clip ({{printf "%.2f" $page.ContentLeftX}},{{printf "%.2f" $page.CanvasBottomY}})
