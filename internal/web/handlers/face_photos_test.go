@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -121,7 +122,7 @@ func TestFacesHandler_GetPhotoFaces_MissingPhotoUID(t *testing.T) {
 		faceReader:     mockReader,
 	}
 
-	req := httptest.NewRequest("GET", "/api/v1/photos//faces", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/photos//faces", nil)
 	req = requestWithChiParams(req, map[string]string{})
 	recorder := httptest.NewRecorder()
 
@@ -140,7 +141,7 @@ func TestFacesHandler_GetPhotoFaces_NoFaceReader(t *testing.T) {
 		faceReader:     nil, // No face reader configured
 	}
 
-	req := httptest.NewRequest("GET", "/api/v1/photos/photo123/faces", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/photos/photo123/faces", nil)
 	req = requestWithChiParams(req, map[string]string{"uid": "photo123"})
 	recorder := httptest.NewRecorder()
 
@@ -161,7 +162,7 @@ func TestFacesHandler_GetPhotoFaces_NoPhotoPrismClient(t *testing.T) {
 	}
 
 	// Request without PhotoPrism client in context.
-	req := httptest.NewRequest("GET", "/api/v1/photos/photo123/faces", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/photos/photo123/faces", nil)
 	req = requestWithChiParams(req, map[string]string{"uid": "photo123"})
 	recorder := httptest.NewRecorder()
 

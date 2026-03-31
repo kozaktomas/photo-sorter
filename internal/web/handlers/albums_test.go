@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -85,7 +86,7 @@ func TestAlbumsHandler_List_WithPagination(t *testing.T) {
 func TestAlbumsHandler_List_NoClient(t *testing.T) {
 	handler := NewAlbumsHandler(testConfig(), nil)
 
-	req := httptest.NewRequest("GET", "/api/v1/albums", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/albums", nil)
 	recorder := httptest.NewRecorder()
 
 	handler.List(recorder, req)
@@ -156,7 +157,7 @@ func TestAlbumsHandler_Get_Success(t *testing.T) {
 func TestAlbumsHandler_Get_MissingUID(t *testing.T) {
 	handler := NewAlbumsHandler(testConfig(), nil)
 
-	req := httptest.NewRequest("GET", "/api/v1/albums/", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/albums/", nil)
 	req = requestWithChiParams(req, map[string]string{})
 	recorder := httptest.NewRecorder()
 
@@ -219,7 +220,7 @@ func TestAlbumsHandler_Create_Success(t *testing.T) {
 	handler := NewAlbumsHandler(testConfig(), nil)
 
 	body := bytes.NewBufferString(`{"title": "New Album"}`)
-	req := httptest.NewRequest("POST", "/api/v1/albums", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/albums", body)
 	req.Header.Set("Content-Type", "application/json")
 	ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
 	req = req.WithContext(ctx)
@@ -251,7 +252,7 @@ func TestAlbumsHandler_Create_MissingTitle(t *testing.T) {
 	handler := NewAlbumsHandler(testConfig(), nil)
 
 	body := bytes.NewBufferString(`{"title": ""}`)
-	req := httptest.NewRequest("POST", "/api/v1/albums", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/albums", body)
 	req.Header.Set("Content-Type", "application/json")
 	ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
 	req = req.WithContext(ctx)
@@ -268,7 +269,7 @@ func TestAlbumsHandler_Create_InvalidJSON(t *testing.T) {
 	handler := NewAlbumsHandler(testConfig(), nil)
 
 	body := bytes.NewBufferString(`{invalid json}`)
-	req := httptest.NewRequest("POST", "/api/v1/albums", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/albums", body)
 	req.Header.Set("Content-Type", "application/json")
 
 	recorder := httptest.NewRecorder()
@@ -319,7 +320,7 @@ func TestAlbumsHandler_GetPhotos_Success(t *testing.T) {
 func TestAlbumsHandler_GetPhotos_MissingUID(t *testing.T) {
 	handler := NewAlbumsHandler(testConfig(), nil)
 
-	req := httptest.NewRequest("GET", "/api/v1/albums//photos", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/albums//photos", nil)
 	req = requestWithChiParams(req, map[string]string{})
 	recorder := httptest.NewRecorder()
 
@@ -358,7 +359,7 @@ func TestAlbumsHandler_AddPhotos_Success(t *testing.T) {
 	handler := NewAlbumsHandler(testConfig(), nil)
 
 	body := bytes.NewBufferString(`{"photo_uids": ["photo1", "photo2"]}`)
-	req := httptest.NewRequest("POST", "/api/v1/albums/album123/photos", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/albums/album123/photos", body)
 	req.Header.Set("Content-Type", "application/json")
 	ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
 	req = req.WithContext(ctx)
@@ -386,7 +387,7 @@ func TestAlbumsHandler_AddPhotos_EmptyList(t *testing.T) {
 	handler := NewAlbumsHandler(testConfig(), nil)
 
 	body := bytes.NewBufferString(`{"photo_uids": []}`)
-	req := httptest.NewRequest("POST", "/api/v1/albums/album123/photos", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/albums/album123/photos", body)
 	req.Header.Set("Content-Type", "application/json")
 	ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
 	req = req.WithContext(ctx)
@@ -404,7 +405,7 @@ func TestAlbumsHandler_AddPhotos_MissingUID(t *testing.T) {
 	handler := NewAlbumsHandler(testConfig(), nil)
 
 	body := bytes.NewBufferString(`{"photo_uids": ["photo1"]}`)
-	req := httptest.NewRequest("POST", "/api/v1/albums//photos", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/albums//photos", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{})
 
@@ -487,7 +488,7 @@ func TestAlbumsHandler_ClearPhotos_EmptyAlbum(t *testing.T) {
 func TestAlbumsHandler_ClearPhotos_MissingUID(t *testing.T) {
 	handler := NewAlbumsHandler(testConfig(), nil)
 
-	req := httptest.NewRequest("DELETE", "/api/v1/albums//clear", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "DELETE", "/api/v1/albums//clear", nil)
 	req = requestWithChiParams(req, map[string]string{})
 	recorder := httptest.NewRecorder()
 

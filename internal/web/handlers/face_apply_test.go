@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -39,7 +40,7 @@ func TestFacesHandler_Apply_CreateMarker_Success(t *testing.T) {
 		"file_uid": "file123",
 		"bbox_rel": [0.1, 0.2, 0.15, 0.2]
 	}`)
-	req := httptest.NewRequest("POST", "/api/v1/faces/apply", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/faces/apply", body)
 	req.Header.Set("Content-Type", "application/json")
 	ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
 	req = req.WithContext(ctx)
@@ -76,7 +77,7 @@ func TestFacesHandler_Apply_CreateMarker_MissingFileUID(t *testing.T) {
 		"action": "create_marker",
 		"bbox_rel": [0.1, 0.2, 0.15, 0.2]
 	}`)
-	req := httptest.NewRequest("POST", "/api/v1/faces/apply", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/faces/apply", body)
 	req.Header.Set("Content-Type", "application/json")
 	ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
 	req = req.WithContext(ctx)
@@ -103,7 +104,7 @@ func TestFacesHandler_Apply_CreateMarker_InvalidBBox(t *testing.T) {
 		"file_uid": "file123",
 		"bbox_rel": [0.1, 0.2]
 	}`)
-	req := httptest.NewRequest("POST", "/api/v1/faces/apply", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/faces/apply", body)
 	req.Header.Set("Content-Type", "application/json")
 	ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
 	req = req.WithContext(ctx)
@@ -142,7 +143,7 @@ func TestFacesHandler_Apply_AssignPerson_Success(t *testing.T) {
 		"action": "assign_person",
 		"marker_uid": "marker123"
 	}`)
-	req := httptest.NewRequest("POST", "/api/v1/faces/apply", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/faces/apply", body)
 	req.Header.Set("Content-Type", "application/json")
 	ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
 	req = req.WithContext(ctx)
@@ -178,7 +179,7 @@ func TestFacesHandler_Apply_AssignPerson_MissingMarkerUID(t *testing.T) {
 		"person_name": "John Doe",
 		"action": "assign_person"
 	}`)
-	req := httptest.NewRequest("POST", "/api/v1/faces/apply", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/faces/apply", body)
 	req.Header.Set("Content-Type", "application/json")
 	ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
 	req = req.WithContext(ctx)
@@ -217,7 +218,7 @@ func TestFacesHandler_Apply_UnassignPerson_Success(t *testing.T) {
 		"action": "unassign_person",
 		"marker_uid": "marker123"
 	}`)
-	req := httptest.NewRequest("POST", "/api/v1/faces/apply", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/faces/apply", body)
 	req.Header.Set("Content-Type", "application/json")
 	ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
 	req = req.WithContext(ctx)
@@ -253,7 +254,7 @@ func TestFacesHandler_Apply_UnassignPerson_MissingMarkerUID(t *testing.T) {
 		"person_name": "John Doe",
 		"action": "unassign_person"
 	}`)
-	req := httptest.NewRequest("POST", "/api/v1/faces/apply", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/faces/apply", body)
 	req.Header.Set("Content-Type", "application/json")
 	ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
 	req = req.WithContext(ctx)
@@ -278,7 +279,7 @@ func TestFacesHandler_Apply_InvalidAction(t *testing.T) {
 		"person_name": "John Doe",
 		"action": "invalid_action"
 	}`)
-	req := httptest.NewRequest("POST", "/api/v1/faces/apply", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/faces/apply", body)
 	req.Header.Set("Content-Type", "application/json")
 	ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
 	req = req.WithContext(ctx)
@@ -299,7 +300,7 @@ func TestFacesHandler_Apply_MissingPhotoUID(t *testing.T) {
 		"action": "assign_person",
 		"marker_uid": "marker123"
 	}`)
-	req := httptest.NewRequest("POST", "/api/v1/faces/apply", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/faces/apply", body)
 	req.Header.Set("Content-Type", "application/json")
 
 	recorder := httptest.NewRecorder()
@@ -318,7 +319,7 @@ func TestFacesHandler_Apply_MissingPersonName(t *testing.T) {
 		"action": "assign_person",
 		"marker_uid": "marker123"
 	}`)
-	req := httptest.NewRequest("POST", "/api/v1/faces/apply", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/faces/apply", body)
 	req.Header.Set("Content-Type", "application/json")
 
 	recorder := httptest.NewRecorder()
@@ -333,7 +334,7 @@ func TestFacesHandler_Apply_InvalidJSON(t *testing.T) {
 	handler := createFacesHandlerForTest(testConfig())
 
 	body := bytes.NewBufferString(`{invalid json}`)
-	req := httptest.NewRequest("POST", "/api/v1/faces/apply", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/faces/apply", body)
 	req.Header.Set("Content-Type", "application/json")
 
 	recorder := httptest.NewRecorder()
@@ -353,7 +354,7 @@ func TestFacesHandler_Apply_NoPhotoPrismClient(t *testing.T) {
 		"action": "assign_person",
 		"marker_uid": "marker123"
 	}`)
-	req := httptest.NewRequest("POST", "/api/v1/faces/apply", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/faces/apply", body)
 	req.Header.Set("Content-Type", "application/json")
 
 	recorder := httptest.NewRecorder()
@@ -382,7 +383,7 @@ func TestFacesHandler_Apply_CreateMarker_PhotoPrismError(t *testing.T) {
 		"file_uid": "file123",
 		"bbox_rel": [0.1, 0.2, 0.15, 0.2]
 	}`)
-	req := httptest.NewRequest("POST", "/api/v1/faces/apply", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/faces/apply", body)
 	req.Header.Set("Content-Type", "application/json")
 	ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
 	req = req.WithContext(ctx)
@@ -408,7 +409,7 @@ func TestFacesHandler_Apply_CreateMarker_PhotoPrismError(t *testing.T) {
 func TestFacesHandler_ComputeFaces_MissingUID(t *testing.T) {
 	handler := createFacesHandlerForTest(testConfig())
 
-	req := httptest.NewRequest("POST", "/api/v1/photos//faces/compute", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/photos//faces/compute", nil)
 	req = requestWithChiParams(req, map[string]string{})
 
 	recorder := httptest.NewRecorder()
@@ -422,7 +423,7 @@ func TestFacesHandler_ComputeFaces_MissingUID(t *testing.T) {
 func TestFacesHandler_ComputeFaces_DatabaseNotConfigured(t *testing.T) {
 	handler := createFacesHandlerForTest(testConfig())
 
-	req := httptest.NewRequest("POST", "/api/v1/photos/photo123/faces/compute", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/photos/photo123/faces/compute", nil)
 	req = requestWithChiParams(req, map[string]string{"uid": "photo123"})
 
 	recorder := httptest.NewRecorder()

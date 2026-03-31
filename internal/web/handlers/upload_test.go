@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"mime/multipart"
@@ -70,7 +71,7 @@ func TestUploadHandler_Upload_Success(t *testing.T) {
 	fileData.Close()
 	writer.Close()
 
-	req := httptest.NewRequest("POST", "/api/v1/upload", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/upload", body)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
 	req = req.WithContext(ctx)
@@ -106,7 +107,7 @@ func TestUploadHandler_Upload_MissingAlbumUID(t *testing.T) {
 	part.Write([]byte("fake image data"))
 	writer.Close()
 
-	req := httptest.NewRequest("POST", "/api/v1/upload", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/upload", body)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
 	req = req.WithContext(ctx)
@@ -135,7 +136,7 @@ func TestUploadHandler_Upload_NoFiles(t *testing.T) {
 	writer.WriteField("album_uid", "album123")
 	writer.Close()
 
-	req := httptest.NewRequest("POST", "/api/v1/upload", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/upload", body)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
 	req = req.WithContext(ctx)
@@ -154,7 +155,7 @@ func TestUploadHandler_Upload_InvalidMultipart(t *testing.T) {
 	handler := NewUploadHandler(cfg, sm, nil)
 
 	// Send non-multipart request.
-	req := httptest.NewRequest("POST", "/api/v1/upload", bytes.NewBufferString("not multipart"))
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/upload", bytes.NewBufferString("not multipart"))
 	req.Header.Set("Content-Type", "text/plain")
 
 	recorder := httptest.NewRecorder()
@@ -178,7 +179,7 @@ func TestUploadHandler_Upload_NoPhotoPrismClient(t *testing.T) {
 	part.Write([]byte("fake image data"))
 	writer.Close()
 
-	req := httptest.NewRequest("POST", "/api/v1/upload", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/upload", body)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	// No PhotoPrism client in context.
 
@@ -222,7 +223,7 @@ func TestUploadHandler_Upload_MultipleFiles(t *testing.T) {
 	}
 	writer.Close()
 
-	req := httptest.NewRequest("POST", "/api/v1/upload", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/upload", body)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
 	req = req.WithContext(ctx)
@@ -261,7 +262,7 @@ func TestUploadHandler_Upload_EmptyAlbumUID(t *testing.T) {
 	part.Write([]byte("fake image data"))
 	writer.Close()
 
-	req := httptest.NewRequest("POST", "/api/v1/upload", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/upload", body)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
 	req = req.WithContext(ctx)

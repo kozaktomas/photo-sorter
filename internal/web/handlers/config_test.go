@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -28,7 +29,7 @@ func TestConfigHandler_Get_ReturnsJSON(t *testing.T) {
 	cfg := &config.Config{}
 	handler := NewConfigHandler(cfg)
 
-	req := httptest.NewRequest("GET", "/api/v1/config", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/config", nil)
 	recorder := httptest.NewRecorder()
 
 	handler.Get(recorder, req)
@@ -43,7 +44,7 @@ func TestConfigHandler_Get_ReturnsOK(t *testing.T) {
 	cfg := &config.Config{}
 	handler := NewConfigHandler(cfg)
 
-	req := httptest.NewRequest("GET", "/api/v1/config", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/config", nil)
 	recorder := httptest.NewRecorder()
 
 	handler.Get(recorder, req)
@@ -57,7 +58,7 @@ func TestConfigHandler_Get_ReturnsProviders(t *testing.T) {
 	cfg := &config.Config{}
 	handler := NewConfigHandler(cfg)
 
-	req := httptest.NewRequest("GET", "/api/v1/config", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/config", nil)
 	recorder := httptest.NewRecorder()
 
 	handler.Get(recorder, req)
@@ -81,7 +82,7 @@ func TestConfigHandler_Get_OpenAIAvailable(t *testing.T) {
 	}
 	handler := NewConfigHandler(cfg)
 
-	req := httptest.NewRequest("GET", "/api/v1/config", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/config", nil)
 	recorder := httptest.NewRecorder()
 
 	handler.Get(recorder, req)
@@ -119,7 +120,7 @@ func TestConfigHandler_Get_OpenAINotAvailable(t *testing.T) {
 	}
 	handler := NewConfigHandler(cfg)
 
-	req := httptest.NewRequest("GET", "/api/v1/config", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/config", nil)
 	recorder := httptest.NewRecorder()
 
 	handler.Get(recorder, req)
@@ -154,7 +155,7 @@ func TestConfigHandler_Get_GeminiAvailable(t *testing.T) {
 	}
 	handler := NewConfigHandler(cfg)
 
-	req := httptest.NewRequest("GET", "/api/v1/config", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/config", nil)
 	recorder := httptest.NewRecorder()
 
 	handler.Get(recorder, req)
@@ -189,7 +190,7 @@ func TestConfigHandler_Get_GeminiNotAvailable(t *testing.T) {
 	}
 	handler := NewConfigHandler(cfg)
 
-	req := httptest.NewRequest("GET", "/api/v1/config", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/config", nil)
 	recorder := httptest.NewRecorder()
 
 	handler.Get(recorder, req)
@@ -222,7 +223,7 @@ func TestConfigHandler_Get_LocalProvidersAlwaysAvailable(t *testing.T) {
 	cfg := &config.Config{} // Empty config
 	handler := NewConfigHandler(cfg)
 
-	req := httptest.NewRequest("GET", "/api/v1/config", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/config", nil)
 	recorder := httptest.NewRecorder()
 
 	handler.Get(recorder, req)
@@ -262,7 +263,7 @@ func TestConfigHandler_Get_PhotoPrismDomain(t *testing.T) {
 	}
 	handler := NewConfigHandler(cfg)
 
-	req := httptest.NewRequest("GET", "/api/v1/config", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/config", nil)
 	recorder := httptest.NewRecorder()
 
 	handler.Get(recorder, req)
@@ -286,7 +287,7 @@ func TestConfigHandler_Get_EmptyPhotoPrismDomain(t *testing.T) {
 	}
 	handler := NewConfigHandler(cfg)
 
-	req := httptest.NewRequest("GET", "/api/v1/config", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/config", nil)
 	recorder := httptest.NewRecorder()
 
 	handler.Get(recorder, req)
@@ -311,7 +312,7 @@ func TestConfigHandler_Get_AllProvidersConfigured(t *testing.T) {
 	}
 	handler := NewConfigHandler(cfg)
 
-	req := httptest.NewRequest("GET", "/api/v1/config", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/config", nil)
 	recorder := httptest.NewRecorder()
 
 	handler.Get(recorder, req)
@@ -334,7 +335,7 @@ func TestConfigHandler_Get_ProviderOrder(t *testing.T) {
 	cfg := &config.Config{}
 	handler := NewConfigHandler(cfg)
 
-	req := httptest.NewRequest("GET", "/api/v1/config", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/config", nil)
 	recorder := httptest.NewRecorder()
 
 	handler.Get(recorder, req)

@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -219,7 +220,7 @@ func TestRespondError_EmptyMessage(t *testing.T) {
 }
 
 func TestHealthCheck_ReturnsOK(t *testing.T) {
-	req := httptest.NewRequest("GET", "/health", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/health", nil)
 	recorder := httptest.NewRecorder()
 
 	HealthCheck(recorder, req)
@@ -230,7 +231,7 @@ func TestHealthCheck_ReturnsOK(t *testing.T) {
 }
 
 func TestHealthCheck_ReturnsJSON(t *testing.T) {
-	req := httptest.NewRequest("GET", "/health", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/health", nil)
 	recorder := httptest.NewRecorder()
 
 	HealthCheck(recorder, req)
@@ -242,7 +243,7 @@ func TestHealthCheck_ReturnsJSON(t *testing.T) {
 }
 
 func TestHealthCheck_ReturnsStatusOk(t *testing.T) {
-	req := httptest.NewRequest("GET", "/health", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/health", nil)
 	recorder := httptest.NewRecorder()
 
 	HealthCheck(recorder, req)
@@ -263,7 +264,7 @@ func TestHealthCheck_IgnoresHTTPMethod(t *testing.T) {
 
 	for _, method := range methods {
 		t.Run(method, func(t *testing.T) {
-			req := httptest.NewRequest(method, "/health", nil)
+			req := httptest.NewRequestWithContext(context.Background(), method, "/health", nil)
 			recorder := httptest.NewRecorder()
 
 			HealthCheck(recorder, req)

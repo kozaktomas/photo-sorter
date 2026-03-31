@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -129,7 +130,7 @@ func TestPhotosHandler_List_WithPagination(t *testing.T) {
 func TestPhotosHandler_List_NoClient(t *testing.T) {
 	handler := createPhotosHandlerForTest(testConfig())
 
-	req := httptest.NewRequest("GET", "/api/v1/photos", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/photos", nil)
 	recorder := httptest.NewRecorder()
 
 	handler.List(recorder, req)
@@ -196,7 +197,7 @@ func TestPhotosHandler_Get_Success(t *testing.T) {
 func TestPhotosHandler_Get_MissingUID(t *testing.T) {
 	handler := createPhotosHandlerForTest(testConfig())
 
-	req := httptest.NewRequest("GET", "/api/v1/photos/", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/photos/", nil)
 	req = requestWithChiParams(req, map[string]string{})
 	recorder := httptest.NewRecorder()
 
@@ -250,7 +251,7 @@ func TestPhotosHandler_Update_Success(t *testing.T) {
 	handler := createPhotosHandlerForTest(testConfig())
 
 	body := bytes.NewBufferString(`{"title": "Updated Title", "description": "New description"}`)
-	req := httptest.NewRequest("PUT", "/api/v1/photos/photo123", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/photos/photo123", body)
 	req.Header.Set("Content-Type", "application/json")
 	ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
 	req = req.WithContext(ctx)
@@ -275,7 +276,7 @@ func TestPhotosHandler_Update_MissingUID(t *testing.T) {
 	handler := createPhotosHandlerForTest(testConfig())
 
 	body := bytes.NewBufferString(`{"title": "Updated"}`)
-	req := httptest.NewRequest("PUT", "/api/v1/photos/", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/photos/", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{})
 
@@ -291,7 +292,7 @@ func TestPhotosHandler_Update_InvalidJSON(t *testing.T) {
 	handler := createPhotosHandlerForTest(testConfig())
 
 	body := bytes.NewBufferString(`{invalid json}`)
-	req := httptest.NewRequest("PUT", "/api/v1/photos/photo123", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/photos/photo123", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"uid": "photo123"})
 
@@ -341,7 +342,7 @@ func TestPhotosHandler_Thumbnail_Success(t *testing.T) {
 func TestPhotosHandler_Thumbnail_InvalidSize(t *testing.T) {
 	handler := createPhotosHandlerForTest(testConfig())
 
-	req := httptest.NewRequest("GET", "/api/v1/photos/photo123/thumb/invalid_size", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/photos/photo123/thumb/invalid_size", nil)
 	req = requestWithChiParams(req, map[string]string{"uid": "photo123", "size": "invalid_size"})
 	recorder := httptest.NewRecorder()
 
@@ -354,7 +355,7 @@ func TestPhotosHandler_Thumbnail_InvalidSize(t *testing.T) {
 func TestPhotosHandler_Thumbnail_MissingParams(t *testing.T) {
 	handler := createPhotosHandlerForTest(testConfig())
 
-	req := httptest.NewRequest("GET", "/api/v1/photos//thumb/", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/photos//thumb/", nil)
 	req = requestWithChiParams(req, map[string]string{})
 	recorder := httptest.NewRecorder()
 
@@ -411,7 +412,7 @@ func TestPhotosHandler_BatchAddLabels_Success(t *testing.T) {
 	handler := createPhotosHandlerForTest(testConfig())
 
 	body := bytes.NewBufferString(`{"photo_uids": ["photo1", "photo2"], "label": "vacation"}`)
-	req := httptest.NewRequest("POST", "/api/v1/photos/batch/labels", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/photos/batch/labels", body)
 	req.Header.Set("Content-Type", "application/json")
 	ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
 	req = req.WithContext(ctx)
@@ -434,7 +435,7 @@ func TestPhotosHandler_BatchAddLabels_MissingPhotoUIDs(t *testing.T) {
 	handler := createPhotosHandlerForTest(testConfig())
 
 	body := bytes.NewBufferString(`{"label": "vacation"}`)
-	req := httptest.NewRequest("POST", "/api/v1/photos/batch/labels", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/photos/batch/labels", body)
 	req.Header.Set("Content-Type", "application/json")
 
 	recorder := httptest.NewRecorder()
@@ -449,7 +450,7 @@ func TestPhotosHandler_BatchAddLabels_MissingLabel(t *testing.T) {
 	handler := createPhotosHandlerForTest(testConfig())
 
 	body := bytes.NewBufferString(`{"photo_uids": ["photo1"]}`)
-	req := httptest.NewRequest("POST", "/api/v1/photos/batch/labels", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/photos/batch/labels", body)
 	req.Header.Set("Content-Type", "application/json")
 
 	recorder := httptest.NewRecorder()
@@ -464,7 +465,7 @@ func TestPhotosHandler_BatchAddLabels_InvalidJSON(t *testing.T) {
 	handler := createPhotosHandlerForTest(testConfig())
 
 	body := bytes.NewBufferString(`{invalid}`)
-	req := httptest.NewRequest("POST", "/api/v1/photos/batch/labels", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/photos/batch/labels", body)
 	req.Header.Set("Content-Type", "application/json")
 
 	recorder := httptest.NewRecorder()
@@ -479,7 +480,7 @@ func TestPhotosHandler_FindSimilar_NoEmbedding(t *testing.T) {
 	handler := createPhotosHandlerForTest(testConfig())
 
 	body := bytes.NewBufferString(`{"photo_uid": "photo123"}`)
-	req := httptest.NewRequest("POST", "/api/v1/photos/similar", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/photos/similar", body)
 	req.Header.Set("Content-Type", "application/json")
 
 	recorder := httptest.NewRecorder()
@@ -495,7 +496,7 @@ func TestPhotosHandler_FindSimilar_MissingPhotoUID(t *testing.T) {
 	handler := createPhotosHandlerWithEmbeddings(testConfig(), mockReader)
 
 	body := bytes.NewBufferString(`{}`)
-	req := httptest.NewRequest("POST", "/api/v1/photos/similar", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/photos/similar", body)
 	req.Header.Set("Content-Type", "application/json")
 
 	recorder := httptest.NewRecorder()
@@ -511,7 +512,7 @@ func TestPhotosHandler_FindSimilar_PhotoNotFound(t *testing.T) {
 	handler := createPhotosHandlerWithEmbeddings(testConfig(), mockReader)
 
 	body := bytes.NewBufferString(`{"photo_uid": "nonexistent"}`)
-	req := httptest.NewRequest("POST", "/api/v1/photos/similar", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/photos/similar", body)
 	req.Header.Set("Content-Type", "application/json")
 
 	recorder := httptest.NewRecorder()
@@ -537,7 +538,7 @@ func TestPhotosHandler_FindSimilar_Success(t *testing.T) {
 	handler := createPhotosHandlerWithEmbeddings(testConfig(), mockReader)
 
 	body := bytes.NewBufferString(`{"photo_uid": "photo1", "limit": 10, "threshold": 0.5}`)
-	req := httptest.NewRequest("POST", "/api/v1/photos/similar", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/photos/similar", body)
 	req.Header.Set("Content-Type", "application/json")
 
 	recorder := httptest.NewRecorder()
@@ -558,7 +559,7 @@ func TestPhotosHandler_FindSimilar_InvalidJSON(t *testing.T) {
 	handler := createPhotosHandlerForTest(testConfig())
 
 	body := bytes.NewBufferString(`{invalid}`)
-	req := httptest.NewRequest("POST", "/api/v1/photos/similar", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/photos/similar", body)
 	req.Header.Set("Content-Type", "application/json")
 
 	recorder := httptest.NewRecorder()
@@ -573,7 +574,7 @@ func TestPhotosHandler_SearchByText_EmptyText(t *testing.T) {
 	handler := createPhotosHandlerForTest(testConfig())
 
 	body := bytes.NewBufferString(`{"text": ""}`)
-	req := httptest.NewRequest("POST", "/api/v1/photos/search-by-text", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/photos/search-by-text", body)
 	req.Header.Set("Content-Type", "application/json")
 
 	recorder := httptest.NewRecorder()
@@ -588,7 +589,7 @@ func TestPhotosHandler_SearchByText_WhitespaceText(t *testing.T) {
 	handler := createPhotosHandlerForTest(testConfig())
 
 	body := bytes.NewBufferString(`{"text": "   "}`)
-	req := httptest.NewRequest("POST", "/api/v1/photos/search-by-text", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/photos/search-by-text", body)
 	req.Header.Set("Content-Type", "application/json")
 
 	recorder := httptest.NewRecorder()
@@ -603,7 +604,7 @@ func TestPhotosHandler_SearchByText_NoEmbeddings(t *testing.T) {
 	handler := createPhotosHandlerForTest(testConfig())
 
 	body := bytes.NewBufferString(`{"text": "sunset beach"}`)
-	req := httptest.NewRequest("POST", "/api/v1/photos/search-by-text", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/photos/search-by-text", body)
 	req.Header.Set("Content-Type", "application/json")
 
 	recorder := httptest.NewRecorder()
@@ -618,7 +619,7 @@ func TestPhotosHandler_SearchByText_InvalidJSON(t *testing.T) {
 	handler := createPhotosHandlerForTest(testConfig())
 
 	body := bytes.NewBufferString(`{invalid}`)
-	req := httptest.NewRequest("POST", "/api/v1/photos/search-by-text", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/photos/search-by-text", body)
 	req.Header.Set("Content-Type", "application/json")
 
 	recorder := httptest.NewRecorder()
@@ -633,7 +634,7 @@ func TestPhotosHandler_FindSimilarToCollection_InvalidJSON(t *testing.T) {
 	handler := createPhotosHandlerForTest(testConfig())
 
 	body := bytes.NewBufferString(`{invalid}`)
-	req := httptest.NewRequest("POST", "/api/v1/photos/similar-to-collection", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/photos/similar-to-collection", body)
 	req.Header.Set("Content-Type", "application/json")
 
 	recorder := httptest.NewRecorder()
@@ -648,7 +649,7 @@ func TestPhotosHandler_FindSimilarToCollection_MissingSourceType(t *testing.T) {
 	handler := createPhotosHandlerForTest(testConfig())
 
 	body := bytes.NewBufferString(`{"source_id": "vacation"}`)
-	req := httptest.NewRequest("POST", "/api/v1/photos/similar-to-collection", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/photos/similar-to-collection", body)
 	req.Header.Set("Content-Type", "application/json")
 
 	recorder := httptest.NewRecorder()
@@ -663,7 +664,7 @@ func TestPhotosHandler_FindSimilarToCollection_MissingSourceID(t *testing.T) {
 	handler := createPhotosHandlerForTest(testConfig())
 
 	body := bytes.NewBufferString(`{"source_type": "label"}`)
-	req := httptest.NewRequest("POST", "/api/v1/photos/similar-to-collection", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/photos/similar-to-collection", body)
 	req.Header.Set("Content-Type", "application/json")
 
 	recorder := httptest.NewRecorder()
@@ -678,7 +679,7 @@ func TestPhotosHandler_FindSimilarToCollection_InvalidSourceType(t *testing.T) {
 	handler := createPhotosHandlerForTest(testConfig())
 
 	body := bytes.NewBufferString(`{"source_type": "invalid", "source_id": "test"}`)
-	req := httptest.NewRequest("POST", "/api/v1/photos/similar-to-collection", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/photos/similar-to-collection", body)
 	req.Header.Set("Content-Type", "application/json")
 
 	recorder := httptest.NewRecorder()

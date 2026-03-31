@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -47,7 +48,7 @@ func TestStatsHandler_Get_Success(t *testing.T) {
 func TestStatsHandler_Get_NoClient(t *testing.T) {
 	handler := NewStatsHandler(testConfig(), nil)
 
-	req := httptest.NewRequest("GET", "/api/v1/stats", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/stats", nil)
 	recorder := httptest.NewRecorder()
 
 	handler.Get(recorder, req)

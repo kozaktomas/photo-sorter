@@ -26,7 +26,7 @@ func TestFacesHandler_Match_NoFaceReader(t *testing.T) {
 	handler := createFacesHandlerWithMocks(nil, nil)
 
 	body := bytes.NewBufferString(`{"person_name": "john-doe"}`)
-	req := httptest.NewRequest("POST", "/api/v1/faces/match", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/faces/match", body)
 	req.Header.Set("Content-Type", "application/json")
 
 	recorder := httptest.NewRecorder()
@@ -42,7 +42,7 @@ func TestFacesHandler_Match_InvalidJSON(t *testing.T) {
 	handler := createFacesHandlerWithMocks(mockReader, nil)
 
 	body := bytes.NewBufferString(`{invalid json}`)
-	req := httptest.NewRequest("POST", "/api/v1/faces/match", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/faces/match", body)
 	req.Header.Set("Content-Type", "application/json")
 
 	recorder := httptest.NewRecorder()
@@ -58,7 +58,7 @@ func TestFacesHandler_Match_MissingPersonName(t *testing.T) {
 	handler := createFacesHandlerWithMocks(mockReader, nil)
 
 	body := bytes.NewBufferString(`{"threshold": 0.5}`)
-	req := httptest.NewRequest("POST", "/api/v1/faces/match", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/faces/match", body)
 	req.Header.Set("Content-Type", "application/json")
 
 	recorder := httptest.NewRecorder()
@@ -74,7 +74,7 @@ func TestFacesHandler_Match_EmptyPersonName(t *testing.T) {
 	handler := createFacesHandlerWithMocks(mockReader, nil)
 
 	body := bytes.NewBufferString(`{"person_name": ""}`)
-	req := httptest.NewRequest("POST", "/api/v1/faces/match", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/faces/match", body)
 	req.Header.Set("Content-Type", "application/json")
 
 	recorder := httptest.NewRecorder()
@@ -90,7 +90,7 @@ func TestFacesHandler_Match_NoPhotoPrismClient(t *testing.T) {
 	handler := createFacesHandlerWithMocks(mockReader, nil)
 
 	body := bytes.NewBufferString(`{"person_name": "john-doe"}`)
-	req := httptest.NewRequest("POST", "/api/v1/faces/match", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/faces/match", body)
 	req.Header.Set("Content-Type", "application/json")
 
 	recorder := httptest.NewRecorder()
@@ -112,7 +112,7 @@ func TestFacesHandler_Match_NoFacesForPerson(t *testing.T) {
 	pp := createPhotoPrismClient(t, server)
 
 	body := bytes.NewBufferString(`{"person_name": "john-doe"}`)
-	req := httptest.NewRequest("POST", "/api/v1/faces/match", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/faces/match", body)
 	req.Header.Set("Content-Type", "application/json")
 	ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
 	req = req.WithContext(ctx)
@@ -170,7 +170,7 @@ func TestFacesHandler_Match_WithThresholdAndLimit(t *testing.T) {
 	pp := createPhotoPrismClient(t, server)
 
 	body := bytes.NewBufferString(`{"person_name": "john-doe", "threshold": 0.3, "limit": 10}`)
-	req := httptest.NewRequest("POST", "/api/v1/faces/match", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/faces/match", body)
 	req.Header.Set("Content-Type", "application/json")
 	ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
 	req = req.WithContext(ctx)
@@ -209,7 +209,7 @@ func TestFacesHandler_Match_DefaultThreshold(t *testing.T) {
 
 	// Request without threshold - should use default 0.5.
 	body := bytes.NewBufferString(`{"person_name": "john-doe"}`)
-	req := httptest.NewRequest("POST", "/api/v1/faces/match", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/faces/match", body)
 	req.Header.Set("Content-Type", "application/json")
 	ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
 	req = req.WithContext(ctx)
@@ -233,7 +233,7 @@ func TestFacesHandler_Match_GetFacesBySubjectError(t *testing.T) {
 	pp := createPhotoPrismClient(t, server)
 
 	body := bytes.NewBufferString(`{"person_name": "john-doe"}`)
-	req := httptest.NewRequest("POST", "/api/v1/faces/match", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/faces/match", body)
 	req.Header.Set("Content-Type", "application/json")
 	ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
 	req = req.WithContext(ctx)
@@ -298,7 +298,7 @@ func TestMatchRequest_Validation(t *testing.T) {
 			pp := createPhotoPrismClient(t, server)
 
 			body := bytes.NewBufferString(tc.body)
-			req := httptest.NewRequest("POST", "/api/v1/faces/match", body)
+			req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/faces/match", body)
 			req.Header.Set("Content-Type", "application/json")
 			ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
 			req = req.WithContext(ctx)

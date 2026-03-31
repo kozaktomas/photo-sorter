@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -19,7 +20,7 @@ func TestAuthHandler_Login_Success(t *testing.T) {
 	handler := NewAuthHandler(cfg, sm)
 
 	body := bytes.NewBufferString(`{"username": "testuser", "password": "testpass"}`)
-	req := httptest.NewRequest("POST", "/api/v1/auth/login", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/auth/login", body)
 	req.Header.Set("Content-Type", "application/json")
 	recorder := httptest.NewRecorder()
 
@@ -61,7 +62,7 @@ func TestAuthHandler_Login_MissingCredentials(t *testing.T) {
 			handler := NewAuthHandler(cfg, sm)
 
 			body := bytes.NewBufferString(tt.body)
-			req := httptest.NewRequest("POST", "/api/v1/auth/login", body)
+			req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/auth/login", body)
 			req.Header.Set("Content-Type", "application/json")
 			recorder := httptest.NewRecorder()
 
@@ -79,7 +80,7 @@ func TestAuthHandler_Login_InvalidJSON(t *testing.T) {
 	handler := NewAuthHandler(cfg, sm)
 
 	body := bytes.NewBufferString(`{invalid json}`)
-	req := httptest.NewRequest("POST", "/api/v1/auth/login", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/auth/login", body)
 	req.Header.Set("Content-Type", "application/json")
 	recorder := httptest.NewRecorder()
 
@@ -105,7 +106,7 @@ func TestAuthHandler_Login_AuthFailure(t *testing.T) {
 	handler := NewAuthHandler(cfg, sm)
 
 	body := bytes.NewBufferString(`{"username": "baduser", "password": "badpass"}`)
-	req := httptest.NewRequest("POST", "/api/v1/auth/login", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/auth/login", body)
 	req.Header.Set("Content-Type", "application/json")
 	recorder := httptest.NewRecorder()
 
@@ -144,7 +145,7 @@ func TestAuthHandler_Logout_Success(t *testing.T) {
 	// Create a session first.
 	session, _ := sm.CreateSession("test-token", "test-download-token", "test-user-uid")
 
-	req := httptest.NewRequest("POST", "/api/v1/auth/logout", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/auth/logout", nil)
 	// Add session cookie.
 	cookie := &http.Cookie{
 		Name:  "photo_sorter_session",
@@ -175,7 +176,7 @@ func TestAuthHandler_Logout_NoSession(t *testing.T) {
 	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := NewAuthHandler(cfg, sm)
 
-	req := httptest.NewRequest("POST", "/api/v1/auth/logout", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/auth/logout", nil)
 	recorder := httptest.NewRecorder()
 
 	handler.Logout(recorder, req)
@@ -198,7 +199,7 @@ func TestAuthHandler_Status_Authenticated(t *testing.T) {
 	// Create a session.
 	session, _ := sm.CreateSession("test-token", "test-download-token", "test-user-uid")
 
-	req := httptest.NewRequest("GET", "/api/v1/auth/status", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/auth/status", nil)
 	// Add session cookie.
 	cookie := &http.Cookie{
 		Name:  "photo_sorter_session",
@@ -229,7 +230,7 @@ func TestAuthHandler_Status_Unauthenticated(t *testing.T) {
 	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := NewAuthHandler(cfg, sm)
 
-	req := httptest.NewRequest("GET", "/api/v1/auth/status", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/auth/status", nil)
 	recorder := httptest.NewRecorder()
 
 	handler.Status(recorder, req)
@@ -255,7 +256,7 @@ func TestAuthHandler_Status_ExpiredSession(t *testing.T) {
 
 	// Create a session but don't add it to the manager.
 	// This simulates an invalid/expired session.
-	req := httptest.NewRequest("GET", "/api/v1/auth/status", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/auth/status", nil)
 	cookie := &http.Cookie{
 		Name:  "photo_sorter_session",
 		Value: "invalid-session-id.invalid-signature",
@@ -281,7 +282,7 @@ func signSessionID(sm *middleware.SessionManager, sessionID string) string {
 	// For testing, we'll create a response recorder and extract the cookie.
 	w := httptest.NewRecorder()
 	session := &middleware.Session{ID: sessionID}
-	r := httptest.NewRequest("GET", "/", nil)
+	r := httptest.NewRequestWithContext(context.Background(), "GET", "/", nil)
 	sm.SetSessionCookie(w, r, session)
 	cookies := w.Result().Cookies()
 	for _, c := range cookies {

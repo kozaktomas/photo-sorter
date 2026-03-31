@@ -71,6 +71,7 @@ func saveUploadedFiles(files []*multipart.FileHeader, tempDir string) ([]string,
 
 // Upload handles multipart file uploads.
 func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, constants.MaxUploadSize)
 	if err := r.ParseMultipartForm(constants.MaxUploadSize); err != nil {
 		respondError(w, http.StatusBadRequest, "failed to parse multipart form")
 		return
@@ -160,6 +161,7 @@ func (h *UploadHandler) StartJob(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	r.Body = http.MaxBytesReader(w, r.Body, constants.MaxUploadJobSize)
 	if err := r.ParseMultipartForm(constants.MaxUploadJobSize); err != nil {
 		respondError(w, http.StatusBadRequest, "failed to parse multipart form")
 		return
@@ -200,7 +202,7 @@ func (h *UploadHandler) StartJob(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.jobManager.SetActiveJob(job)
-	go h.runUploadJob(job, session, tempDir)
+	go h.runUploadJob(job, session, tempDir) //nolint:gosec // G118 - background job outlives HTTP request
 
 	respondJSON(w, http.StatusAccepted, map[string]string{
 		"job_id": jobID,

@@ -435,7 +435,7 @@ func (h *UploadHandler) autoProcessPhotos(
 		return
 	}
 
-	var processed int64
+	var processed atomic.Int64
 	total := len(photoUIDs)
 	sem := make(chan struct{}, opts.Concurrency)
 	var wg sync.WaitGroup
@@ -460,7 +460,7 @@ func (h *UploadHandler) autoProcessPhotos(
 				clients.embClient, clients.faceClient,
 				repos, photoUID, counters,
 			)
-			count := atomic.AddInt64(&processed, 1)
+			count := processed.Add(1)
 			job.SendEvent(JobEvent{
 				Type: "process_progress",
 				Data: map[string]any{

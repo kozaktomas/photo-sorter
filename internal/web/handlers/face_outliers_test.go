@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -135,7 +136,7 @@ func TestFacesHandler_FindOutliers_MissingPersonName(t *testing.T) {
 	}
 
 	body := bytes.NewBufferString(`{"person_name": "", "threshold": 0.1}`)
-	req := httptest.NewRequest("POST", "/api/v1/faces/outliers", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/faces/outliers", body)
 	req.Header.Set("Content-Type", "application/json")
 	recorder := httptest.NewRecorder()
 
@@ -156,7 +157,7 @@ func TestFacesHandler_FindOutliers_InvalidJSON(t *testing.T) {
 	}
 
 	body := bytes.NewBufferString(`{invalid json}`)
-	req := httptest.NewRequest("POST", "/api/v1/faces/outliers", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/faces/outliers", body)
 	req.Header.Set("Content-Type", "application/json")
 	recorder := httptest.NewRecorder()
 
@@ -176,7 +177,7 @@ func TestFacesHandler_FindOutliers_NoFaceReader(t *testing.T) {
 	}
 
 	body := bytes.NewBufferString(`{"person_name": "john-doe"}`)
-	req := httptest.NewRequest("POST", "/api/v1/faces/outliers", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/faces/outliers", body)
 	req.Header.Set("Content-Type", "application/json")
 	recorder := httptest.NewRecorder()
 

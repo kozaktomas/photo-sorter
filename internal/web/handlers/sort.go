@@ -100,8 +100,8 @@ func (h *SortHandler) Start(w http.ResponseWriter, r *http.Request) {
 	}
 	job := h.jobManager.CreateJob(jobID, req.AlbumUID, album.Title, options)
 
-	// Start job in background.
-	go h.runSortJob(job, session)
+	// Start job in background (intentionally outlives request).
+	go h.runSortJob(job, session) //nolint:gosec // G118 - background job outlives HTTP request
 
 	respondJSON(w, http.StatusAccepted, map[string]string{
 		"job_id":      jobID,

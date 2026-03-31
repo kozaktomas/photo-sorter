@@ -48,7 +48,7 @@ func TestBooksHandler_ListBooks_Success(t *testing.T) {
 		{SectionID: "s1", PhotoUID: "p2"},
 	})
 
-	req := httptest.NewRequest("GET", "/api/v1/books", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/books", nil)
 	recorder := httptest.NewRecorder()
 	handler.ListBooks(recorder, req)
 
@@ -65,7 +65,7 @@ func TestBooksHandler_ListBooks_Success(t *testing.T) {
 func TestBooksHandler_ListBooks_Empty(t *testing.T) {
 	_, handler := setupBookTest(t)
 
-	req := httptest.NewRequest("GET", "/api/v1/books", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/books", nil)
 	recorder := httptest.NewRecorder()
 	handler.ListBooks(recorder, req)
 
@@ -82,7 +82,7 @@ func TestBooksHandler_ListBooks_BackendError(t *testing.T) {
 	mockBW, handler := setupBookTest(t)
 	mockBW.ListBooksError = errMock
 
-	req := httptest.NewRequest("GET", "/api/v1/books", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/books", nil)
 	recorder := httptest.NewRecorder()
 	handler.ListBooks(recorder, req)
 
@@ -94,7 +94,7 @@ func TestBooksHandler_CreateBook_Success(t *testing.T) {
 	_, handler := setupBookTest(t)
 
 	body := bytes.NewBufferString(`{"title":"My Book","description":"A description"}`)
-	req := httptest.NewRequest("POST", "/api/v1/books", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/books", body)
 	req.Header.Set("Content-Type", "application/json")
 	recorder := httptest.NewRecorder()
 	handler.CreateBook(recorder, req)
@@ -119,7 +119,7 @@ func TestBooksHandler_CreateBook_MissingTitle(t *testing.T) {
 	_, handler := setupBookTest(t)
 
 	body := bytes.NewBufferString(`{"description":"no title"}`)
-	req := httptest.NewRequest("POST", "/api/v1/books", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/books", body)
 	req.Header.Set("Content-Type", "application/json")
 	recorder := httptest.NewRecorder()
 	handler.CreateBook(recorder, req)
@@ -132,7 +132,7 @@ func TestBooksHandler_CreateBook_InvalidJSON(t *testing.T) {
 	_, handler := setupBookTest(t)
 
 	body := bytes.NewBufferString(`{invalid}`)
-	req := httptest.NewRequest("POST", "/api/v1/books", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/books", body)
 	req.Header.Set("Content-Type", "application/json")
 	recorder := httptest.NewRecorder()
 	handler.CreateBook(recorder, req)
@@ -146,7 +146,7 @@ func TestBooksHandler_CreateBook_BackendError(t *testing.T) {
 	mockBW.CreateBookError = errMock
 
 	body := bytes.NewBufferString(`{"title":"Book"}`)
-	req := httptest.NewRequest("POST", "/api/v1/books", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/books", body)
 	req.Header.Set("Content-Type", "application/json")
 	recorder := httptest.NewRecorder()
 	handler.CreateBook(recorder, req)
@@ -162,7 +162,7 @@ func TestBooksHandler_GetBook_Success(t *testing.T) {
 	mockBW.AddSection(database.BookSection{ID: "s1", BookID: "b1", Title: "Sec 1"})
 	mockBW.AddPage(database.BookPage{ID: "p1", BookID: "b1", SectionID: "s1", Format: "4_landscape"})
 
-	req := httptest.NewRequest("GET", "/api/v1/books/b1", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/books/b1", nil)
 	req = requestWithChiParams(req, map[string]string{"id": "b1"})
 	recorder := httptest.NewRecorder()
 	handler.GetBook(recorder, req)
@@ -186,7 +186,7 @@ func TestBooksHandler_GetBook_Success(t *testing.T) {
 func TestBooksHandler_GetBook_NotFound(t *testing.T) {
 	_, handler := setupBookTest(t)
 
-	req := httptest.NewRequest("GET", "/api/v1/books/nonexistent", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/books/nonexistent", nil)
 	req = requestWithChiParams(req, map[string]string{"id": "nonexistent"})
 	recorder := httptest.NewRecorder()
 	handler.GetBook(recorder, req)
@@ -200,7 +200,7 @@ func TestBooksHandler_UpdateBook_Success(t *testing.T) {
 	mockBW.AddBook(database.PhotoBook{ID: "b1", Title: "Old Title"})
 
 	body := bytes.NewBufferString(`{"title":"New Title"}`)
-	req := httptest.NewRequest("PUT", "/api/v1/books/b1", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/books/b1", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "b1"})
 	recorder := httptest.NewRecorder()
@@ -219,7 +219,7 @@ func TestBooksHandler_UpdateBook_NotFound(t *testing.T) {
 	_, handler := setupBookTest(t)
 
 	body := bytes.NewBufferString(`{"title":"New Title"}`)
-	req := httptest.NewRequest("PUT", "/api/v1/books/nonexistent", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/books/nonexistent", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "nonexistent"})
 	recorder := httptest.NewRecorder()
@@ -234,7 +234,7 @@ func TestBooksHandler_UpdateBook_InvalidJSON(t *testing.T) {
 	mockBW.AddBook(database.PhotoBook{ID: "b1", Title: "Book"})
 
 	body := bytes.NewBufferString(`{invalid}`)
-	req := httptest.NewRequest("PUT", "/api/v1/books/b1", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/books/b1", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "b1"})
 	recorder := httptest.NewRecorder()
@@ -250,7 +250,7 @@ func TestBooksHandler_UpdateBook_BackendError(t *testing.T) {
 	mockBW.UpdateBookError = errMock
 
 	body := bytes.NewBufferString(`{"title":"Updated"}`)
-	req := httptest.NewRequest("PUT", "/api/v1/books/b1", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/books/b1", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "b1"})
 	recorder := httptest.NewRecorder()
@@ -264,7 +264,7 @@ func TestBooksHandler_DeleteBook_Success(t *testing.T) {
 	mockBW, handler := setupBookTest(t)
 	mockBW.AddBook(database.PhotoBook{ID: "b1", Title: "Book"})
 
-	req := httptest.NewRequest("DELETE", "/api/v1/books/b1", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "DELETE", "/api/v1/books/b1", nil)
 	req = requestWithChiParams(req, map[string]string{"id": "b1"})
 	recorder := httptest.NewRecorder()
 	handler.DeleteBook(recorder, req)
@@ -282,7 +282,7 @@ func TestBooksHandler_DeleteBook_BackendError(t *testing.T) {
 	mockBW, handler := setupBookTest(t)
 	mockBW.DeleteBookError = errMock
 
-	req := httptest.NewRequest("DELETE", "/api/v1/books/b1", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "DELETE", "/api/v1/books/b1", nil)
 	req = requestWithChiParams(req, map[string]string{"id": "b1"})
 	recorder := httptest.NewRecorder()
 	handler.DeleteBook(recorder, req)
@@ -297,7 +297,7 @@ func TestBooksHandler_CreateSection_Success(t *testing.T) {
 	_, handler := setupBookTest(t)
 
 	body := bytes.NewBufferString(`{"title":"New Section"}`)
-	req := httptest.NewRequest("POST", "/api/v1/books/b1/sections", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/books/b1/sections", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "b1"})
 	recorder := httptest.NewRecorder()
@@ -320,7 +320,7 @@ func TestBooksHandler_CreateSection_MissingTitle(t *testing.T) {
 	_, handler := setupBookTest(t)
 
 	body := bytes.NewBufferString(`{}`)
-	req := httptest.NewRequest("POST", "/api/v1/books/b1/sections", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/books/b1/sections", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "b1"})
 	recorder := httptest.NewRecorder()
@@ -334,7 +334,7 @@ func TestBooksHandler_CreateSection_InvalidJSON(t *testing.T) {
 	_, handler := setupBookTest(t)
 
 	body := bytes.NewBufferString(`{invalid}`)
-	req := httptest.NewRequest("POST", "/api/v1/books/b1/sections", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/books/b1/sections", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "b1"})
 	recorder := httptest.NewRecorder()
@@ -349,7 +349,7 @@ func TestBooksHandler_CreateSection_BackendError(t *testing.T) {
 	mockBW.CreateSectionError = errMock
 
 	body := bytes.NewBufferString(`{"title":"Section"}`)
-	req := httptest.NewRequest("POST", "/api/v1/books/b1/sections", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/books/b1/sections", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "b1"})
 	recorder := httptest.NewRecorder()
@@ -364,7 +364,7 @@ func TestBooksHandler_UpdateSection_Success(t *testing.T) {
 	mockBW.AddSection(database.BookSection{ID: "s1", BookID: "b1", Title: "Old"})
 
 	body := bytes.NewBufferString(`{"title":"Updated Section"}`)
-	req := httptest.NewRequest("PUT", "/api/v1/sections/s1", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/sections/s1", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "s1"})
 	recorder := httptest.NewRecorder()
@@ -383,7 +383,7 @@ func TestBooksHandler_UpdateSection_InvalidJSON(t *testing.T) {
 	_, handler := setupBookTest(t)
 
 	body := bytes.NewBufferString(`{invalid}`)
-	req := httptest.NewRequest("PUT", "/api/v1/sections/s1", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/sections/s1", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "s1"})
 	recorder := httptest.NewRecorder()
@@ -399,7 +399,7 @@ func TestBooksHandler_UpdateSection_BackendError(t *testing.T) {
 	mockBW.UpdateSectionError = errMock
 
 	body := bytes.NewBufferString(`{"title":"Updated"}`)
-	req := httptest.NewRequest("PUT", "/api/v1/sections/s1", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/sections/s1", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "s1"})
 	recorder := httptest.NewRecorder()
@@ -413,7 +413,7 @@ func TestBooksHandler_DeleteSection_Success(t *testing.T) {
 	mockBW, handler := setupBookTest(t)
 	mockBW.AddSection(database.BookSection{ID: "s1", BookID: "b1"})
 
-	req := httptest.NewRequest("DELETE", "/api/v1/sections/s1", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "DELETE", "/api/v1/sections/s1", nil)
 	req = requestWithChiParams(req, map[string]string{"id": "s1"})
 	recorder := httptest.NewRecorder()
 	handler.DeleteSection(recorder, req)
@@ -431,7 +431,7 @@ func TestBooksHandler_DeleteSection_BackendError(t *testing.T) {
 	mockBW, handler := setupBookTest(t)
 	mockBW.DeleteSectionError = errMock
 
-	req := httptest.NewRequest("DELETE", "/api/v1/sections/s1", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "DELETE", "/api/v1/sections/s1", nil)
 	req = requestWithChiParams(req, map[string]string{"id": "s1"})
 	recorder := httptest.NewRecorder()
 	handler.DeleteSection(recorder, req)
@@ -444,7 +444,7 @@ func TestBooksHandler_ReorderSections_Success(t *testing.T) {
 	_, handler := setupBookTest(t)
 
 	body := bytes.NewBufferString(`{"section_ids":["s2","s1","s3"]}`)
-	req := httptest.NewRequest("PUT", "/api/v1/books/b1/sections/reorder", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/books/b1/sections/reorder", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "b1"})
 	recorder := httptest.NewRecorder()
@@ -463,7 +463,7 @@ func TestBooksHandler_ReorderSections_InvalidJSON(t *testing.T) {
 	_, handler := setupBookTest(t)
 
 	body := bytes.NewBufferString(`{invalid}`)
-	req := httptest.NewRequest("PUT", "/api/v1/books/b1/sections/reorder", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/books/b1/sections/reorder", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "b1"})
 	recorder := httptest.NewRecorder()
@@ -478,7 +478,7 @@ func TestBooksHandler_ReorderSections_BackendError(t *testing.T) {
 	mockBW.ReorderSectionsError = errMock
 
 	body := bytes.NewBufferString(`{"section_ids":["s1"]}`)
-	req := httptest.NewRequest("PUT", "/api/v1/books/b1/sections/reorder", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/books/b1/sections/reorder", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "b1"})
 	recorder := httptest.NewRecorder()
@@ -498,7 +498,7 @@ func TestBooksHandler_GetSectionPhotos_Success(t *testing.T) {
 		{SectionID: "s1", PhotoUID: "p2", Description: "desc2", AddedAt: now},
 	})
 
-	req := httptest.NewRequest("GET", "/api/v1/sections/s1/photos", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/sections/s1/photos", nil)
 	req = requestWithChiParams(req, map[string]string{"id": "s1"})
 	recorder := httptest.NewRecorder()
 	handler.GetSectionPhotos(recorder, req)
@@ -519,7 +519,7 @@ func TestBooksHandler_GetSectionPhotos_Success(t *testing.T) {
 func TestBooksHandler_GetSectionPhotos_Empty(t *testing.T) {
 	_, handler := setupBookTest(t)
 
-	req := httptest.NewRequest("GET", "/api/v1/sections/s1/photos", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/sections/s1/photos", nil)
 	req = requestWithChiParams(req, map[string]string{"id": "s1"})
 	recorder := httptest.NewRecorder()
 	handler.GetSectionPhotos(recorder, req)
@@ -537,7 +537,7 @@ func TestBooksHandler_GetSectionPhotos_BackendError(t *testing.T) {
 	mockBW, handler := setupBookTest(t)
 	mockBW.GetSectionPhotosError = errMock
 
-	req := httptest.NewRequest("GET", "/api/v1/sections/s1/photos", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/sections/s1/photos", nil)
 	req = requestWithChiParams(req, map[string]string{"id": "s1"})
 	recorder := httptest.NewRecorder()
 	handler.GetSectionPhotos(recorder, req)
@@ -550,7 +550,7 @@ func TestBooksHandler_AddSectionPhotos_Success(t *testing.T) {
 	_, handler := setupBookTest(t)
 
 	body := bytes.NewBufferString(`{"photo_uids":["p1","p2","p3"]}`)
-	req := httptest.NewRequest("POST", "/api/v1/sections/s1/photos", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/sections/s1/photos", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "s1"})
 	recorder := httptest.NewRecorder()
@@ -569,7 +569,7 @@ func TestBooksHandler_AddSectionPhotos_EmptyUIDs(t *testing.T) {
 	_, handler := setupBookTest(t)
 
 	body := bytes.NewBufferString(`{"photo_uids":[]}`)
-	req := httptest.NewRequest("POST", "/api/v1/sections/s1/photos", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/sections/s1/photos", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "s1"})
 	recorder := httptest.NewRecorder()
@@ -583,7 +583,7 @@ func TestBooksHandler_AddSectionPhotos_InvalidJSON(t *testing.T) {
 	_, handler := setupBookTest(t)
 
 	body := bytes.NewBufferString(`{invalid}`)
-	req := httptest.NewRequest("POST", "/api/v1/sections/s1/photos", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/sections/s1/photos", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "s1"})
 	recorder := httptest.NewRecorder()
@@ -598,7 +598,7 @@ func TestBooksHandler_AddSectionPhotos_BackendError(t *testing.T) {
 	mockBW.AddSectionPhotosError = errMock
 
 	body := bytes.NewBufferString(`{"photo_uids":["p1"]}`)
-	req := httptest.NewRequest("POST", "/api/v1/sections/s1/photos", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/sections/s1/photos", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "s1"})
 	recorder := httptest.NewRecorder()
@@ -612,7 +612,7 @@ func TestBooksHandler_RemoveSectionPhotos_Success(t *testing.T) {
 	_, handler := setupBookTest(t)
 
 	body := bytes.NewBufferString(`{"photo_uids":["p1","p2"]}`)
-	req := httptest.NewRequest("DELETE", "/api/v1/sections/s1/photos", body)
+	req := httptest.NewRequestWithContext(context.Background(), "DELETE", "/api/v1/sections/s1/photos", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "s1"})
 	recorder := httptest.NewRecorder()
@@ -631,7 +631,7 @@ func TestBooksHandler_RemoveSectionPhotos_InvalidJSON(t *testing.T) {
 	_, handler := setupBookTest(t)
 
 	body := bytes.NewBufferString(`{invalid}`)
-	req := httptest.NewRequest("DELETE", "/api/v1/sections/s1/photos", body)
+	req := httptest.NewRequestWithContext(context.Background(), "DELETE", "/api/v1/sections/s1/photos", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "s1"})
 	recorder := httptest.NewRecorder()
@@ -646,7 +646,7 @@ func TestBooksHandler_RemoveSectionPhotos_BackendError(t *testing.T) {
 	mockBW.RemoveSectionPhotosError = errMock
 
 	body := bytes.NewBufferString(`{"photo_uids":["p1"]}`)
-	req := httptest.NewRequest("DELETE", "/api/v1/sections/s1/photos", body)
+	req := httptest.NewRequestWithContext(context.Background(), "DELETE", "/api/v1/sections/s1/photos", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "s1"})
 	recorder := httptest.NewRecorder()
@@ -663,7 +663,7 @@ func TestBooksHandler_UpdatePhotoDescription_Success(t *testing.T) {
 	})
 
 	body := bytes.NewBufferString(`{"description":"new desc","note":"a note"}`)
-	req := httptest.NewRequest("PUT", "/api/v1/sections/s1/photos/p1/description", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/sections/s1/photos/p1/description", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "s1", "photoUid": "p1"})
 	recorder := httptest.NewRecorder()
@@ -682,7 +682,7 @@ func TestBooksHandler_UpdatePhotoDescription_InvalidJSON(t *testing.T) {
 	_, handler := setupBookTest(t)
 
 	body := bytes.NewBufferString(`{invalid}`)
-	req := httptest.NewRequest("PUT", "/api/v1/sections/s1/photos/p1/description", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/sections/s1/photos/p1/description", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "s1", "photoUid": "p1"})
 	recorder := httptest.NewRecorder()
@@ -697,7 +697,7 @@ func TestBooksHandler_UpdatePhotoDescription_BackendError(t *testing.T) {
 	mockBW.UpdateSectionPhotoError = errMock
 
 	body := bytes.NewBufferString(`{"description":"desc"}`)
-	req := httptest.NewRequest("PUT", "/api/v1/sections/s1/photos/p1/description", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/sections/s1/photos/p1/description", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "s1", "photoUid": "p1"})
 	recorder := httptest.NewRecorder()
@@ -713,7 +713,7 @@ func TestBooksHandler_CreatePage_Success(t *testing.T) {
 	_, handler := setupBookTest(t)
 
 	body := bytes.NewBufferString(`{"format":"4_landscape","section_id":"s1"}`)
-	req := httptest.NewRequest("POST", "/api/v1/books/b1/pages", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/books/b1/pages", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "b1"})
 	recorder := httptest.NewRecorder()
@@ -742,7 +742,7 @@ func TestBooksHandler_CreatePage_InvalidFormat(t *testing.T) {
 	_, handler := setupBookTest(t)
 
 	body := bytes.NewBufferString(`{"format":"invalid_fmt","section_id":"s1"}`)
-	req := httptest.NewRequest("POST", "/api/v1/books/b1/pages", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/books/b1/pages", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "b1"})
 	recorder := httptest.NewRecorder()
@@ -756,7 +756,7 @@ func TestBooksHandler_CreatePage_MissingSectionID(t *testing.T) {
 	_, handler := setupBookTest(t)
 
 	body := bytes.NewBufferString(`{"format":"4_landscape"}`)
-	req := httptest.NewRequest("POST", "/api/v1/books/b1/pages", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/books/b1/pages", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "b1"})
 	recorder := httptest.NewRecorder()
@@ -770,7 +770,7 @@ func TestBooksHandler_CreatePage_InvalidJSON(t *testing.T) {
 	_, handler := setupBookTest(t)
 
 	body := bytes.NewBufferString(`{invalid}`)
-	req := httptest.NewRequest("POST", "/api/v1/books/b1/pages", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/books/b1/pages", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "b1"})
 	recorder := httptest.NewRecorder()
@@ -785,7 +785,7 @@ func TestBooksHandler_CreatePage_BackendError(t *testing.T) {
 	mockBW.CreatePageError = errMock
 
 	body := bytes.NewBufferString(`{"format":"2_portrait","section_id":"s1"}`)
-	req := httptest.NewRequest("POST", "/api/v1/books/b1/pages", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/books/b1/pages", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "b1"})
 	recorder := httptest.NewRecorder()
@@ -800,7 +800,7 @@ func TestBooksHandler_UpdatePage_Success(t *testing.T) {
 	mockBW.AddPage(database.BookPage{ID: "p1", BookID: "b1", SectionID: "s1", Format: "4_landscape"})
 
 	body := bytes.NewBufferString(`{"description":"new desc"}`)
-	req := httptest.NewRequest("PUT", "/api/v1/pages/p1", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/pages/p1", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "p1"})
 	recorder := httptest.NewRecorder()
@@ -819,7 +819,7 @@ func TestBooksHandler_UpdatePage_NotFound(t *testing.T) {
 	_, handler := setupBookTest(t)
 
 	body := bytes.NewBufferString(`{"description":"desc"}`)
-	req := httptest.NewRequest("PUT", "/api/v1/pages/nonexistent", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/pages/nonexistent", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "nonexistent"})
 	recorder := httptest.NewRecorder()
@@ -834,7 +834,7 @@ func TestBooksHandler_UpdatePage_InvalidFormat(t *testing.T) {
 	mockBW.AddPage(database.BookPage{ID: "p1", BookID: "b1", SectionID: "s1", Format: "4_landscape"})
 
 	body := bytes.NewBufferString(`{"format":"bad_format"}`)
-	req := httptest.NewRequest("PUT", "/api/v1/pages/p1", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/pages/p1", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "p1"})
 	recorder := httptest.NewRecorder()
@@ -849,7 +849,7 @@ func TestBooksHandler_UpdatePage_EmptySectionID(t *testing.T) {
 	mockBW.AddPage(database.BookPage{ID: "p1", BookID: "b1", SectionID: "s1", Format: "4_landscape"})
 
 	body := bytes.NewBufferString(`{"section_id":""}`)
-	req := httptest.NewRequest("PUT", "/api/v1/pages/p1", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/pages/p1", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "p1"})
 	recorder := httptest.NewRecorder()
@@ -864,7 +864,7 @@ func TestBooksHandler_UpdatePage_InvalidJSON(t *testing.T) {
 	mockBW.AddPage(database.BookPage{ID: "p1", BookID: "b1", SectionID: "s1", Format: "4_landscape"})
 
 	body := bytes.NewBufferString(`{invalid}`)
-	req := httptest.NewRequest("PUT", "/api/v1/pages/p1", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/pages/p1", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "p1"})
 	recorder := httptest.NewRecorder()
@@ -880,7 +880,7 @@ func TestBooksHandler_UpdatePage_BackendError(t *testing.T) {
 	mockBW.UpdatePageError = errMock
 
 	body := bytes.NewBufferString(`{"description":"desc"}`)
-	req := httptest.NewRequest("PUT", "/api/v1/pages/p1", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/pages/p1", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "p1"})
 	recorder := httptest.NewRecorder()
@@ -901,7 +901,7 @@ func TestBooksHandler_UpdatePage_FormatDownsizeClearsExcessSlots(t *testing.T) {
 
 	// Change format to 2_portrait (2 slots) — slots 2 and 3 should be cleared.
 	body := bytes.NewBufferString(`{"format":"2_portrait"}`)
-	req := httptest.NewRequest("PUT", "/api/v1/pages/p1", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/pages/p1", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "p1"})
 	recorder := httptest.NewRecorder()
@@ -937,7 +937,7 @@ func TestBooksHandler_UpdatePage_FormatUpsizePreservesSlots(t *testing.T) {
 
 	// Change format to 4_landscape (4 slots) — both existing slots should be preserved.
 	body := bytes.NewBufferString(`{"format":"4_landscape"}`)
-	req := httptest.NewRequest("PUT", "/api/v1/pages/p1", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/pages/p1", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "p1"})
 	recorder := httptest.NewRecorder()
@@ -971,7 +971,7 @@ func TestBooksHandler_DeletePage_Success(t *testing.T) {
 	mockBW, handler := setupBookTest(t)
 	mockBW.AddPage(database.BookPage{ID: "p1", BookID: "b1"})
 
-	req := httptest.NewRequest("DELETE", "/api/v1/pages/p1", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "DELETE", "/api/v1/pages/p1", nil)
 	req = requestWithChiParams(req, map[string]string{"id": "p1"})
 	recorder := httptest.NewRecorder()
 	handler.DeletePage(recorder, req)
@@ -989,7 +989,7 @@ func TestBooksHandler_DeletePage_BackendError(t *testing.T) {
 	mockBW, handler := setupBookTest(t)
 	mockBW.DeletePageError = errMock
 
-	req := httptest.NewRequest("DELETE", "/api/v1/pages/p1", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "DELETE", "/api/v1/pages/p1", nil)
 	req = requestWithChiParams(req, map[string]string{"id": "p1"})
 	recorder := httptest.NewRecorder()
 	handler.DeletePage(recorder, req)
@@ -1002,7 +1002,7 @@ func TestBooksHandler_ReorderPages_Success(t *testing.T) {
 	_, handler := setupBookTest(t)
 
 	body := bytes.NewBufferString(`{"page_ids":["p3","p1","p2"]}`)
-	req := httptest.NewRequest("PUT", "/api/v1/books/b1/pages/reorder", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/books/b1/pages/reorder", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "b1"})
 	recorder := httptest.NewRecorder()
@@ -1021,7 +1021,7 @@ func TestBooksHandler_ReorderPages_InvalidJSON(t *testing.T) {
 	_, handler := setupBookTest(t)
 
 	body := bytes.NewBufferString(`{invalid}`)
-	req := httptest.NewRequest("PUT", "/api/v1/books/b1/pages/reorder", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/books/b1/pages/reorder", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "b1"})
 	recorder := httptest.NewRecorder()
@@ -1036,7 +1036,7 @@ func TestBooksHandler_ReorderPages_BackendError(t *testing.T) {
 	mockBW.ReorderPagesError = errMock
 
 	body := bytes.NewBufferString(`{"page_ids":["p1"]}`)
-	req := httptest.NewRequest("PUT", "/api/v1/books/b1/pages/reorder", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/books/b1/pages/reorder", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "b1"})
 	recorder := httptest.NewRecorder()
@@ -1052,7 +1052,7 @@ func TestBooksHandler_AssignSlot_Success(t *testing.T) {
 	_, handler := setupBookTest(t)
 
 	body := bytes.NewBufferString(`{"photo_uid":"photo1"}`)
-	req := httptest.NewRequest("PUT", "/api/v1/pages/p1/slots/0", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/pages/p1/slots/0", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "p1", "index": "0"})
 	recorder := httptest.NewRecorder()
@@ -1071,7 +1071,7 @@ func TestBooksHandler_AssignSlot_InvalidSlotIndex(t *testing.T) {
 	_, handler := setupBookTest(t)
 
 	body := bytes.NewBufferString(`{"photo_uid":"photo1"}`)
-	req := httptest.NewRequest("PUT", "/api/v1/pages/p1/slots/abc", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/pages/p1/slots/abc", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "p1", "index": "abc"})
 	recorder := httptest.NewRecorder()
@@ -1085,7 +1085,7 @@ func TestBooksHandler_AssignSlot_MissingPhotoUID(t *testing.T) {
 	_, handler := setupBookTest(t)
 
 	body := bytes.NewBufferString(`{}`)
-	req := httptest.NewRequest("PUT", "/api/v1/pages/p1/slots/0", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/pages/p1/slots/0", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "p1", "index": "0"})
 	recorder := httptest.NewRecorder()
@@ -1099,7 +1099,7 @@ func TestBooksHandler_AssignSlot_InvalidJSON(t *testing.T) {
 	_, handler := setupBookTest(t)
 
 	body := bytes.NewBufferString(`{invalid}`)
-	req := httptest.NewRequest("PUT", "/api/v1/pages/p1/slots/0", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/pages/p1/slots/0", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "p1", "index": "0"})
 	recorder := httptest.NewRecorder()
@@ -1114,7 +1114,7 @@ func TestBooksHandler_AssignSlot_BackendError(t *testing.T) {
 	mockBW.AssignSlotError = errMock
 
 	body := bytes.NewBufferString(`{"photo_uid":"photo1"}`)
-	req := httptest.NewRequest("PUT", "/api/v1/pages/p1/slots/0", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/pages/p1/slots/0", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "p1", "index": "0"})
 	recorder := httptest.NewRecorder()
@@ -1128,7 +1128,7 @@ func TestBooksHandler_SwapSlots_Success(t *testing.T) {
 	_, handler := setupBookTest(t)
 
 	body := bytes.NewBufferString(`{"slot_a":0,"slot_b":1}`)
-	req := httptest.NewRequest("POST", "/api/v1/pages/p1/slots/swap", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/pages/p1/slots/swap", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "p1"})
 	recorder := httptest.NewRecorder()
@@ -1147,7 +1147,7 @@ func TestBooksHandler_SwapSlots_SameSlot(t *testing.T) {
 	_, handler := setupBookTest(t)
 
 	body := bytes.NewBufferString(`{"slot_a":1,"slot_b":1}`)
-	req := httptest.NewRequest("POST", "/api/v1/pages/p1/slots/swap", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/pages/p1/slots/swap", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "p1"})
 	recorder := httptest.NewRecorder()
@@ -1161,7 +1161,7 @@ func TestBooksHandler_SwapSlots_InvalidJSON(t *testing.T) {
 	_, handler := setupBookTest(t)
 
 	body := bytes.NewBufferString(`{invalid}`)
-	req := httptest.NewRequest("POST", "/api/v1/pages/p1/slots/swap", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/pages/p1/slots/swap", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "p1"})
 	recorder := httptest.NewRecorder()
@@ -1176,7 +1176,7 @@ func TestBooksHandler_SwapSlots_BackendError(t *testing.T) {
 	mockBW.SwapSlotsError = errMock
 
 	body := bytes.NewBufferString(`{"slot_a":0,"slot_b":1}`)
-	req := httptest.NewRequest("POST", "/api/v1/pages/p1/slots/swap", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/pages/p1/slots/swap", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "p1"})
 	recorder := httptest.NewRecorder()
@@ -1189,7 +1189,7 @@ func TestBooksHandler_SwapSlots_BackendError(t *testing.T) {
 func TestBooksHandler_ClearSlot_Success(t *testing.T) {
 	_, handler := setupBookTest(t)
 
-	req := httptest.NewRequest("DELETE", "/api/v1/pages/p1/slots/2", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "DELETE", "/api/v1/pages/p1/slots/2", nil)
 	req = requestWithChiParams(req, map[string]string{"id": "p1", "index": "2"})
 	recorder := httptest.NewRecorder()
 	handler.ClearSlot(recorder, req)
@@ -1206,7 +1206,7 @@ func TestBooksHandler_ClearSlot_Success(t *testing.T) {
 func TestBooksHandler_ClearSlot_InvalidSlotIndex(t *testing.T) {
 	_, handler := setupBookTest(t)
 
-	req := httptest.NewRequest("DELETE", "/api/v1/pages/p1/slots/xyz", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "DELETE", "/api/v1/pages/p1/slots/xyz", nil)
 	req = requestWithChiParams(req, map[string]string{"id": "p1", "index": "xyz"})
 	recorder := httptest.NewRecorder()
 	handler.ClearSlot(recorder, req)
@@ -1219,7 +1219,7 @@ func TestBooksHandler_ClearSlot_BackendError(t *testing.T) {
 	mockBW, handler := setupBookTest(t)
 	mockBW.ClearSlotError = errMock
 
-	req := httptest.NewRequest("DELETE", "/api/v1/pages/p1/slots/0", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "DELETE", "/api/v1/pages/p1/slots/0", nil)
 	req = requestWithChiParams(req, map[string]string{"id": "p1", "index": "0"})
 	recorder := httptest.NewRecorder()
 	handler.ClearSlot(recorder, req)
@@ -1237,7 +1237,7 @@ func TestBooksHandler_GetPhotoBookMemberships_Success(t *testing.T) {
 		{BookID: "b2", BookTitle: "Book 2", SectionID: "s2", SectionTitle: "Section 2"},
 	})
 
-	req := httptest.NewRequest("GET", "/api/v1/photos/photo1/books", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/photos/photo1/books", nil)
 	req = requestWithChiParams(req, map[string]string{"uid": "photo1"})
 	recorder := httptest.NewRecorder()
 	handler.GetPhotoBookMemberships(recorder, req)
@@ -1261,7 +1261,7 @@ func TestBooksHandler_GetPhotoBookMemberships_Success(t *testing.T) {
 func TestBooksHandler_GetPhotoBookMemberships_Empty(t *testing.T) {
 	_, handler := setupBookTest(t)
 
-	req := httptest.NewRequest("GET", "/api/v1/photos/photo1/books", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/photos/photo1/books", nil)
 	req = requestWithChiParams(req, map[string]string{"uid": "photo1"})
 	recorder := httptest.NewRecorder()
 	handler.GetPhotoBookMemberships(recorder, req)
@@ -1279,7 +1279,7 @@ func TestBooksHandler_GetPhotoBookMemberships_BackendError(t *testing.T) {
 	mockBW, handler := setupBookTest(t)
 	mockBW.GetPhotoBookMembershipsError = errMock
 
-	req := httptest.NewRequest("GET", "/api/v1/photos/photo1/books", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/photos/photo1/books", nil)
 	req = requestWithChiParams(req, map[string]string{"uid": "photo1"})
 	recorder := httptest.NewRecorder()
 	handler.GetPhotoBookMemberships(recorder, req)
@@ -1300,7 +1300,7 @@ func TestBooksHandler_WriterNotAvailable(t *testing.T) {
 
 	handler := NewBooksHandler(testConfig(), nil)
 
-	req := httptest.NewRequest("GET", "/api/v1/books", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/books", nil)
 	recorder := httptest.NewRecorder()
 	handler.ListBooks(recorder, req)
 
@@ -1314,7 +1314,7 @@ func TestBooksHandler_CreatePage_WithStyle(t *testing.T) {
 	_, handler := setupBookTest(t)
 
 	body := bytes.NewBufferString(`{"format":"4_landscape","section_id":"s1","style":"archival"}`)
-	req := httptest.NewRequest("POST", "/api/v1/books/b1/pages", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/books/b1/pages", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "b1"})
 	recorder := httptest.NewRecorder()
@@ -1333,7 +1333,7 @@ func TestBooksHandler_CreatePage_InvalidStyle(t *testing.T) {
 	_, handler := setupBookTest(t)
 
 	body := bytes.NewBufferString(`{"format":"4_landscape","section_id":"s1","style":"vintage"}`)
-	req := httptest.NewRequest("POST", "/api/v1/books/b1/pages", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/books/b1/pages", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "b1"})
 	recorder := httptest.NewRecorder()
@@ -1348,7 +1348,7 @@ func TestBooksHandler_UpdatePage_Style(t *testing.T) {
 	mockBW.AddPage(database.BookPage{ID: "p1", BookID: "b1", SectionID: "s1", Format: "4_landscape", Style: "modern"})
 
 	body := bytes.NewBufferString(`{"style":"archival"}`)
-	req := httptest.NewRequest("PUT", "/api/v1/pages/p1", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/pages/p1", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "p1"})
 	recorder := httptest.NewRecorder()
@@ -1367,7 +1367,7 @@ func TestBooksHandler_UpdatePage_InvalidStyle(t *testing.T) {
 	mockBW.AddPage(database.BookPage{ID: "p1", BookID: "b1", SectionID: "s1", Format: "4_landscape", Style: "modern"})
 
 	body := bytes.NewBufferString(`{"style":"vintage"}`)
-	req := httptest.NewRequest("PUT", "/api/v1/pages/p1", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/pages/p1", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "p1"})
 	recorder := httptest.NewRecorder()
@@ -1384,7 +1384,7 @@ func TestBooksHandler_GetBook_PageStyleInResponse(t *testing.T) {
 	mockBW.AddSection(database.BookSection{ID: "s1", BookID: "b1", Title: "Sec 1"})
 	mockBW.AddPage(database.BookPage{ID: "p1", BookID: "b1", SectionID: "s1", Format: "4_landscape", Style: "archival"})
 
-	req := httptest.NewRequest("GET", "/api/v1/books/b1", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/books/b1", nil)
 	req = requestWithChiParams(req, map[string]string{"id": "b1"})
 	recorder := httptest.NewRecorder()
 	handler.GetBook(recorder, req)
@@ -1409,7 +1409,7 @@ func TestBooksHandler_UpdateSlotCrop_Success(t *testing.T) {
 	mockBW.SetPageSlots("p1", []database.PageSlot{{SlotIndex: 0, PhotoUID: "photo1", CropX: 0.5, CropY: 0.5, CropScale: 1.0}})
 
 	body := bytes.NewBufferString(`{"crop_x":0.3,"crop_y":0.7,"crop_scale":0.8}`)
-	req := httptest.NewRequest("PUT", "/api/v1/pages/p1/slots/0/crop", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/pages/p1/slots/0/crop", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "p1", "index": "0"})
 	recorder := httptest.NewRecorder()
@@ -1442,7 +1442,7 @@ func TestBooksHandler_UpdateSlotCrop_InvalidValues(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			body := bytes.NewBufferString(tt.body)
-			req := httptest.NewRequest("PUT", "/api/v1/pages/p1/slots/0/crop", body)
+			req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/pages/p1/slots/0/crop", body)
 			req.Header.Set("Content-Type", "application/json")
 			req = requestWithChiParams(req, map[string]string{"id": "p1", "index": "0"})
 			recorder := httptest.NewRecorder()
@@ -1458,7 +1458,7 @@ func TestBooksHandler_UpdateSlotCrop_InvalidSlotIndex(t *testing.T) {
 	_, handler := setupBookTest(t)
 
 	body := bytes.NewBufferString(`{"crop_x":0.5,"crop_y":0.5}`)
-	req := httptest.NewRequest("PUT", "/api/v1/pages/p1/slots/abc/crop", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/pages/p1/slots/abc/crop", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "p1", "index": "abc"})
 	recorder := httptest.NewRecorder()
@@ -1472,7 +1472,7 @@ func TestBooksHandler_UpdateSlotCrop_InvalidJSON(t *testing.T) {
 	_, handler := setupBookTest(t)
 
 	body := bytes.NewBufferString(`{invalid}`)
-	req := httptest.NewRequest("PUT", "/api/v1/pages/p1/slots/0/crop", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/pages/p1/slots/0/crop", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "p1", "index": "0"})
 	recorder := httptest.NewRecorder()
@@ -1487,7 +1487,7 @@ func TestBooksHandler_UpdateSlotCrop_BackendError(t *testing.T) {
 	mockBW.UpdateSlotCropError = errMock
 
 	body := bytes.NewBufferString(`{"crop_x":0.5,"crop_y":0.5}`)
-	req := httptest.NewRequest("PUT", "/api/v1/pages/p1/slots/0/crop", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/pages/p1/slots/0/crop", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "p1", "index": "0"})
 	recorder := httptest.NewRecorder()
@@ -1512,7 +1512,7 @@ func TestBooksHandler_UpdateSlotCrop_BoundaryValues(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			body := bytes.NewBufferString(tt.body)
-			req := httptest.NewRequest("PUT", "/api/v1/pages/p1/slots/0/crop", body)
+			req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/pages/p1/slots/0/crop", body)
 			req.Header.Set("Content-Type", "application/json")
 			req = requestWithChiParams(req, map[string]string{"id": "p1", "index": "0"})
 			recorder := httptest.NewRecorder()
@@ -1529,7 +1529,7 @@ func TestBooksHandler_AssignSlot_TextContent(t *testing.T) {
 	_, handler := setupBookTest(t)
 
 	body := bytes.NewBufferString(`{"text_content":"Hello, this is some text for the page."}`)
-	req := httptest.NewRequest("PUT", "/api/v1/pages/p1/slots/0", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/pages/p1/slots/0", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "p1", "index": "0"})
 	recorder := httptest.NewRecorder()
@@ -1548,7 +1548,7 @@ func TestBooksHandler_AssignSlot_BothPhotoAndText(t *testing.T) {
 	_, handler := setupBookTest(t)
 
 	body := bytes.NewBufferString(`{"photo_uid":"photo1","text_content":"some text"}`)
-	req := httptest.NewRequest("PUT", "/api/v1/pages/p1/slots/0", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/pages/p1/slots/0", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"id": "p1", "index": "0"})
 	recorder := httptest.NewRecorder()
@@ -1566,7 +1566,7 @@ func TestBooksHandler_UpdatePage_SplitPosition(t *testing.T) {
 		mockBW.AddPage(database.BookPage{ID: "p1", BookID: "b1", SectionID: "s1", Format: "2l_1p"})
 
 		body := bytes.NewBufferString(`{"split_position":0.6}`)
-		req := httptest.NewRequest("PUT", "/api/v1/pages/p1", body)
+		req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/pages/p1", body)
 		req.Header.Set("Content-Type", "application/json")
 		req = requestWithChiParams(req, map[string]string{"id": "p1"})
 		recorder := httptest.NewRecorder()
@@ -1586,7 +1586,7 @@ func TestBooksHandler_UpdatePage_SplitPosition(t *testing.T) {
 		mockBW.AddPage(database.BookPage{ID: "p1", BookID: "b1", SectionID: "s1", Format: "2l_1p", SplitPosition: &sp})
 
 		body := bytes.NewBufferString(`{"split_position":null}`)
-		req := httptest.NewRequest("PUT", "/api/v1/pages/p1", body)
+		req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/pages/p1", body)
 		req.Header.Set("Content-Type", "application/json")
 		req = requestWithChiParams(req, map[string]string{"id": "p1"})
 		recorder := httptest.NewRecorder()
@@ -1605,7 +1605,7 @@ func TestBooksHandler_UpdatePage_SplitPosition(t *testing.T) {
 		mockBW.AddPage(database.BookPage{ID: "p1", BookID: "b1", SectionID: "s1", Format: "2l_1p"})
 
 		body := bytes.NewBufferString(`{"split_position":0.1}`)
-		req := httptest.NewRequest("PUT", "/api/v1/pages/p1", body)
+		req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/pages/p1", body)
 		req.Header.Set("Content-Type", "application/json")
 		req = requestWithChiParams(req, map[string]string{"id": "p1"})
 		recorder := httptest.NewRecorder()
@@ -1620,7 +1620,7 @@ func TestBooksHandler_UpdatePage_SplitPosition(t *testing.T) {
 		mockBW.AddPage(database.BookPage{ID: "p1", BookID: "b1", SectionID: "s1", Format: "2l_1p"})
 
 		body := bytes.NewBufferString(`{"split_position":0.9}`)
-		req := httptest.NewRequest("PUT", "/api/v1/pages/p1", body)
+		req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/pages/p1", body)
 		req.Header.Set("Content-Type", "application/json")
 		req = requestWithChiParams(req, map[string]string{"id": "p1"})
 		recorder := httptest.NewRecorder()
@@ -1636,7 +1636,7 @@ func TestBooksHandler_UpdatePage_SplitPosition(t *testing.T) {
 
 		// 0.2 is valid
 		body := bytes.NewBufferString(`{"split_position":0.2}`)
-		req := httptest.NewRequest("PUT", "/api/v1/pages/p1", body)
+		req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/pages/p1", body)
 		req.Header.Set("Content-Type", "application/json")
 		req = requestWithChiParams(req, map[string]string{"id": "p1"})
 		recorder := httptest.NewRecorder()
@@ -1645,7 +1645,7 @@ func TestBooksHandler_UpdatePage_SplitPosition(t *testing.T) {
 
 		// 0.8 is valid
 		body = bytes.NewBufferString(`{"split_position":0.8}`)
-		req = httptest.NewRequest("PUT", "/api/v1/pages/p1", body)
+		req = httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/pages/p1", body)
 		req.Header.Set("Content-Type", "application/json")
 		req = requestWithChiParams(req, map[string]string{"id": "p1"})
 		recorder = httptest.NewRecorder()

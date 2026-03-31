@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -144,7 +145,7 @@ func TestProcessHandler_Start_InvalidJSON(t *testing.T) {
 	handler := NewProcessHandler(cfg, sm, nil, nil, nil)
 
 	body := bytes.NewBufferString(`{invalid json}`)
-	req := httptest.NewRequest("POST", "/api/v1/process", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/process", body)
 	req.Header.Set("Content-Type", "application/json")
 	recorder := httptest.NewRecorder()
 
@@ -163,7 +164,7 @@ func TestProcessHandler_Start_SkipBothOptions(t *testing.T) {
 	// This test would need database to be initialized.
 	// For now, we test the validation logic by checking the error.
 	body := bytes.NewBufferString(`{"no_faces": true, "no_embeddings": true}`)
-	req := httptest.NewRequest("POST", "/api/v1/process", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/process", body)
 	req.Header.Set("Content-Type", "application/json")
 	recorder := httptest.NewRecorder()
 
@@ -178,7 +179,7 @@ func TestProcessHandler_Cancel_MissingJobID(t *testing.T) {
 	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := NewProcessHandler(cfg, sm, nil, nil, nil)
 
-	req := httptest.NewRequest("DELETE", "/api/v1/process/", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "DELETE", "/api/v1/process/", nil)
 	req = requestWithChiParams(req, map[string]string{})
 	recorder := httptest.NewRecorder()
 
@@ -193,7 +194,7 @@ func TestProcessHandler_Cancel_JobNotFound(t *testing.T) {
 	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := NewProcessHandler(cfg, sm, nil, nil, nil)
 
-	req := httptest.NewRequest("DELETE", "/api/v1/process/nonexistent", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "DELETE", "/api/v1/process/nonexistent", nil)
 	req = requestWithChiParams(req, map[string]string{"jobId": "nonexistent"})
 	recorder := httptest.NewRecorder()
 
@@ -215,7 +216,7 @@ func TestProcessHandler_Cancel_Success(t *testing.T) {
 	}
 	handler.jobManager.SetActiveJob(job)
 
-	req := httptest.NewRequest("DELETE", "/api/v1/process/cancel-test-job", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "DELETE", "/api/v1/process/cancel-test-job", nil)
 	req = requestWithChiParams(req, map[string]string{"jobId": "cancel-test-job"})
 	recorder := httptest.NewRecorder()
 
@@ -240,7 +241,7 @@ func TestProcessHandler_Events_MissingJobID(t *testing.T) {
 	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := NewProcessHandler(cfg, sm, nil, nil, nil)
 
-	req := httptest.NewRequest("GET", "/api/v1/process//events", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/process//events", nil)
 	req = requestWithChiParams(req, map[string]string{})
 	recorder := httptest.NewRecorder()
 
@@ -255,7 +256,7 @@ func TestProcessHandler_Events_JobNotFound(t *testing.T) {
 	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := NewProcessHandler(cfg, sm, nil, nil, nil)
 
-	req := httptest.NewRequest("GET", "/api/v1/process/nonexistent/events", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/process/nonexistent/events", nil)
 	req = requestWithChiParams(req, map[string]string{"jobId": "nonexistent"})
 	recorder := httptest.NewRecorder()
 
@@ -270,7 +271,7 @@ func TestProcessHandler_RebuildIndex_NoRebuilder(t *testing.T) {
 	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := NewProcessHandler(cfg, sm, nil, nil, nil)
 
-	req := httptest.NewRequest("POST", "/api/v1/process/rebuild-index", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/process/rebuild-index", nil)
 	recorder := httptest.NewRecorder()
 
 	handler.RebuildIndex(recorder, req)
@@ -283,7 +284,7 @@ func TestProcessHandler_SyncCache_NoClient(t *testing.T) {
 	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := NewProcessHandler(cfg, sm, nil, nil, nil)
 
-	req := httptest.NewRequest("POST", "/api/v1/process/sync-cache", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/process/sync-cache", nil)
 	recorder := httptest.NewRecorder()
 
 	handler.SyncCache(recorder, req)

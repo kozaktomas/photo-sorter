@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -41,7 +42,7 @@ func TestSortHandler_Start_Success(t *testing.T) {
 		"provider": "openai",
 		"dry_run": true
 	}`)
-	req := httptest.NewRequest("POST", "/api/v1/sort", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/sort", body)
 	req.Header.Set("Content-Type", "application/json")
 	ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
 	ctx = middleware.SetSessionInContext(ctx, &middleware.Session{
@@ -81,7 +82,7 @@ func TestSortHandler_Start_MissingAlbumUID(t *testing.T) {
 	handler := createSortHandlerForTest(testConfig())
 
 	body := bytes.NewBufferString(`{"provider": "openai"}`)
-	req := httptest.NewRequest("POST", "/api/v1/sort", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/sort", body)
 	req.Header.Set("Content-Type", "application/json")
 
 	recorder := httptest.NewRecorder()
@@ -96,7 +97,7 @@ func TestSortHandler_Start_InvalidJSON(t *testing.T) {
 	handler := createSortHandlerForTest(testConfig())
 
 	body := bytes.NewBufferString(`{invalid json}`)
-	req := httptest.NewRequest("POST", "/api/v1/sort", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/sort", body)
 	req.Header.Set("Content-Type", "application/json")
 
 	recorder := httptest.NewRecorder()
@@ -111,7 +112,7 @@ func TestSortHandler_Start_NoPhotoPrismClient(t *testing.T) {
 	handler := createSortHandlerForTest(testConfig())
 
 	body := bytes.NewBufferString(`{"album_uid": "album123"}`)
-	req := httptest.NewRequest("POST", "/api/v1/sort", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/sort", body)
 	req.Header.Set("Content-Type", "application/json")
 
 	recorder := httptest.NewRecorder()
@@ -134,7 +135,7 @@ func TestSortHandler_Start_AlbumNotFound(t *testing.T) {
 	handler := createSortHandlerForTest(testConfig())
 
 	body := bytes.NewBufferString(`{"album_uid": "nonexistent"}`)
-	req := httptest.NewRequest("POST", "/api/v1/sort", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/sort", body)
 	req.Header.Set("Content-Type", "application/json")
 	ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
 	req = req.WithContext(ctx)
@@ -166,7 +167,7 @@ func TestSortHandler_Start_DefaultProvider(t *testing.T) {
 
 	// Request without provider - should default to openai.
 	body := bytes.NewBufferString(`{"album_uid": "album123"}`)
-	req := httptest.NewRequest("POST", "/api/v1/sort", body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/sort", body)
 	req.Header.Set("Content-Type", "application/json")
 	ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
 	ctx = middleware.SetSessionInContext(ctx, &middleware.Session{
@@ -189,7 +190,7 @@ func TestSortHandler_Status_Success(t *testing.T) {
 	options := SortJobOptions{DryRun: true}
 	job := handler.jobManager.CreateJob("test-job-id", "album123", "Test Album", options)
 
-	req := httptest.NewRequest("GET", "/api/v1/sort/test-job-id/status", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/sort/test-job-id/status", nil)
 	req = requestWithChiParams(req, map[string]string{"jobId": "test-job-id"})
 	recorder := httptest.NewRecorder()
 
@@ -213,7 +214,7 @@ func TestSortHandler_Status_Success(t *testing.T) {
 func TestSortHandler_Status_MissingJobID(t *testing.T) {
 	handler := createSortHandlerForTest(testConfig())
 
-	req := httptest.NewRequest("GET", "/api/v1/sort//status", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/sort//status", nil)
 	req = requestWithChiParams(req, map[string]string{})
 	recorder := httptest.NewRecorder()
 
@@ -226,7 +227,7 @@ func TestSortHandler_Status_MissingJobID(t *testing.T) {
 func TestSortHandler_Status_NotFound(t *testing.T) {
 	handler := createSortHandlerForTest(testConfig())
 
-	req := httptest.NewRequest("GET", "/api/v1/sort/nonexistent/status", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/sort/nonexistent/status", nil)
 	req = requestWithChiParams(req, map[string]string{"jobId": "nonexistent"})
 	recorder := httptest.NewRecorder()
 
@@ -243,7 +244,7 @@ func TestSortHandler_Cancel_Success(t *testing.T) {
 	options := SortJobOptions{DryRun: true}
 	handler.jobManager.CreateJob("test-job-id", "album123", "Test Album", options)
 
-	req := httptest.NewRequest("DELETE", "/api/v1/sort/test-job-id", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "DELETE", "/api/v1/sort/test-job-id", nil)
 	req = requestWithChiParams(req, map[string]string{"jobId": "test-job-id"})
 	recorder := httptest.NewRecorder()
 
@@ -263,7 +264,7 @@ func TestSortHandler_Cancel_Success(t *testing.T) {
 func TestSortHandler_Cancel_MissingJobID(t *testing.T) {
 	handler := createSortHandlerForTest(testConfig())
 
-	req := httptest.NewRequest("DELETE", "/api/v1/sort/", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "DELETE", "/api/v1/sort/", nil)
 	req = requestWithChiParams(req, map[string]string{})
 	recorder := httptest.NewRecorder()
 
@@ -276,7 +277,7 @@ func TestSortHandler_Cancel_MissingJobID(t *testing.T) {
 func TestSortHandler_Cancel_NotFound(t *testing.T) {
 	handler := createSortHandlerForTest(testConfig())
 
-	req := httptest.NewRequest("DELETE", "/api/v1/sort/nonexistent", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "DELETE", "/api/v1/sort/nonexistent", nil)
 	req = requestWithChiParams(req, map[string]string{"jobId": "nonexistent"})
 	recorder := httptest.NewRecorder()
 
@@ -289,7 +290,7 @@ func TestSortHandler_Cancel_NotFound(t *testing.T) {
 func TestSortHandler_Events_MissingJobID(t *testing.T) {
 	handler := createSortHandlerForTest(testConfig())
 
-	req := httptest.NewRequest("GET", "/api/v1/sort//events", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/sort//events", nil)
 	req = requestWithChiParams(req, map[string]string{})
 	recorder := httptest.NewRecorder()
 
@@ -302,7 +303,7 @@ func TestSortHandler_Events_MissingJobID(t *testing.T) {
 func TestSortHandler_Events_NotFound(t *testing.T) {
 	handler := createSortHandlerForTest(testConfig())
 
-	req := httptest.NewRequest("GET", "/api/v1/sort/nonexistent/events", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/sort/nonexistent/events", nil)
 	req = requestWithChiParams(req, map[string]string{"jobId": "nonexistent"})
 	recorder := httptest.NewRecorder()
 
@@ -373,7 +374,7 @@ func TestStartRequest_Validation(t *testing.T) {
 			handler := createSortHandlerForTest(cfg)
 
 			body := bytes.NewBufferString(tc.body)
-			req := httptest.NewRequest("POST", "/api/v1/sort", body)
+			req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/sort", body)
 			req.Header.Set("Content-Type", "application/json")
 			ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
 			ctx = middleware.SetSessionInContext(ctx, &middleware.Session{

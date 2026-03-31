@@ -25,7 +25,7 @@ func testConfig() *config.Config {
 // requestWithPhotoPrism creates a request with a PhotoPrism client in context.
 func requestWithPhotoPrism(t *testing.T, method, path string, pp *photoprism.PhotoPrism) *http.Request {
 	t.Helper()
-	req := httptest.NewRequest(method, path, nil)
+	req := httptest.NewRequestWithContext(context.Background(), method, path, nil)
 	ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
 	return req.WithContext(ctx)
 }

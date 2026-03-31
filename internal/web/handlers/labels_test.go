@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -109,7 +110,7 @@ func TestLabelsHandler_List_WithAllFlag(t *testing.T) {
 func TestLabelsHandler_List_NoClient(t *testing.T) {
 	handler := NewLabelsHandler(testConfig(), nil)
 
-	req := httptest.NewRequest("GET", "/api/v1/labels", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/labels", nil)
 	recorder := httptest.NewRecorder()
 
 	handler.List(recorder, req)
@@ -179,7 +180,7 @@ func TestLabelsHandler_Get_Success(t *testing.T) {
 func TestLabelsHandler_Get_MissingUID(t *testing.T) {
 	handler := NewLabelsHandler(testConfig(), nil)
 
-	req := httptest.NewRequest("GET", "/api/v1/labels/", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/labels/", nil)
 	req = requestWithChiParams(req, map[string]string{})
 	recorder := httptest.NewRecorder()
 
@@ -237,7 +238,7 @@ func TestLabelsHandler_Update_Success(t *testing.T) {
 	handler := NewLabelsHandler(testConfig(), nil)
 
 	body := bytes.NewBufferString(`{"name": "Updated Name", "favorite": true}`)
-	req := httptest.NewRequest("PUT", "/api/v1/labels/label123", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/labels/label123", body)
 	req.Header.Set("Content-Type", "application/json")
 	ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
 	req = req.WithContext(ctx)
@@ -288,7 +289,7 @@ func TestLabelsHandler_Update_PartialUpdate(t *testing.T) {
 	handler := NewLabelsHandler(testConfig(), nil)
 
 	body := bytes.NewBufferString(`{"description": "New Description"}`)
-	req := httptest.NewRequest("PUT", "/api/v1/labels/label123", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/labels/label123", body)
 	req.Header.Set("Content-Type", "application/json")
 	ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
 	req = req.WithContext(ctx)
@@ -305,7 +306,7 @@ func TestLabelsHandler_Update_MissingUID(t *testing.T) {
 	handler := NewLabelsHandler(testConfig(), nil)
 
 	body := bytes.NewBufferString(`{"name": "Updated"}`)
-	req := httptest.NewRequest("PUT", "/api/v1/labels/", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/labels/", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{})
 
@@ -321,7 +322,7 @@ func TestLabelsHandler_Update_InvalidJSON(t *testing.T) {
 	handler := NewLabelsHandler(testConfig(), nil)
 
 	body := bytes.NewBufferString(`{invalid json}`)
-	req := httptest.NewRequest("PUT", "/api/v1/labels/label123", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/labels/label123", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"uid": "label123"})
 
@@ -362,7 +363,7 @@ func TestLabelsHandler_BatchDelete_Success(t *testing.T) {
 	handler := NewLabelsHandler(testConfig(), nil)
 
 	body := bytes.NewBufferString(`{"uids": ["label1", "label2", "label3"]}`)
-	req := httptest.NewRequest("DELETE", "/api/v1/labels", body)
+	req := httptest.NewRequestWithContext(context.Background(), "DELETE", "/api/v1/labels", body)
 	req.Header.Set("Content-Type", "application/json")
 	ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
 	req = req.WithContext(ctx)
@@ -385,7 +386,7 @@ func TestLabelsHandler_BatchDelete_EmptyList(t *testing.T) {
 	handler := NewLabelsHandler(testConfig(), nil)
 
 	body := bytes.NewBufferString(`{"uids": []}`)
-	req := httptest.NewRequest("DELETE", "/api/v1/labels", body)
+	req := httptest.NewRequestWithContext(context.Background(), "DELETE", "/api/v1/labels", body)
 	req.Header.Set("Content-Type", "application/json")
 
 	recorder := httptest.NewRecorder()
@@ -400,7 +401,7 @@ func TestLabelsHandler_BatchDelete_InvalidJSON(t *testing.T) {
 	handler := NewLabelsHandler(testConfig(), nil)
 
 	body := bytes.NewBufferString(`{invalid}`)
-	req := httptest.NewRequest("DELETE", "/api/v1/labels", body)
+	req := httptest.NewRequestWithContext(context.Background(), "DELETE", "/api/v1/labels", body)
 	req.Header.Set("Content-Type", "application/json")
 
 	recorder := httptest.NewRecorder()
@@ -415,7 +416,7 @@ func TestLabelsHandler_BatchDelete_NoClient(t *testing.T) {
 	handler := NewLabelsHandler(testConfig(), nil)
 
 	body := bytes.NewBufferString(`{"uids": ["label1"]}`)
-	req := httptest.NewRequest("DELETE", "/api/v1/labels", body)
+	req := httptest.NewRequestWithContext(context.Background(), "DELETE", "/api/v1/labels", body)
 	req.Header.Set("Content-Type", "application/json")
 
 	recorder := httptest.NewRecorder()

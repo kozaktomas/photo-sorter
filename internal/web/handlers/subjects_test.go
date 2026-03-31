@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -100,7 +101,7 @@ func TestFacesHandler_ListSubjects_WithPagination(t *testing.T) {
 func TestFacesHandler_ListSubjects_NoClient(t *testing.T) {
 	handler := createFacesHandlerForTest(testConfig())
 
-	req := httptest.NewRequest("GET", "/api/v1/subjects", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/subjects", nil)
 	recorder := httptest.NewRecorder()
 
 	handler.ListSubjects(recorder, req)
@@ -182,7 +183,7 @@ func TestFacesHandler_GetSubject_Success(t *testing.T) {
 func TestFacesHandler_GetSubject_MissingUID(t *testing.T) {
 	handler := createFacesHandlerForTest(testConfig())
 
-	req := httptest.NewRequest("GET", "/api/v1/subjects/", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/subjects/", nil)
 	req = requestWithChiParams(req, map[string]string{})
 	recorder := httptest.NewRecorder()
 
@@ -236,7 +237,7 @@ func TestFacesHandler_UpdateSubject_Success(t *testing.T) {
 	handler := createFacesHandlerForTest(testConfig())
 
 	body := bytes.NewBufferString(`{"name": "Updated Name", "favorite": true}`)
-	req := httptest.NewRequest("PUT", "/api/v1/subjects/subj123", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/subjects/subj123", body)
 	req.Header.Set("Content-Type", "application/json")
 	ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
 	req = req.WithContext(ctx)
@@ -291,7 +292,7 @@ func TestFacesHandler_UpdateSubject_PartialUpdate(t *testing.T) {
 	handler := createFacesHandlerForTest(testConfig())
 
 	body := bytes.NewBufferString(`{"about": "New about text"}`)
-	req := httptest.NewRequest("PUT", "/api/v1/subjects/subj123", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/subjects/subj123", body)
 	req.Header.Set("Content-Type", "application/json")
 	ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
 	req = req.WithContext(ctx)
@@ -308,7 +309,7 @@ func TestFacesHandler_UpdateSubject_MissingUID(t *testing.T) {
 	handler := createFacesHandlerForTest(testConfig())
 
 	body := bytes.NewBufferString(`{"name": "Updated"}`)
-	req := httptest.NewRequest("PUT", "/api/v1/subjects/", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/subjects/", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{})
 
@@ -324,7 +325,7 @@ func TestFacesHandler_UpdateSubject_InvalidJSON(t *testing.T) {
 	handler := createFacesHandlerForTest(testConfig())
 
 	body := bytes.NewBufferString(`{invalid json}`)
-	req := httptest.NewRequest("PUT", "/api/v1/subjects/subj123", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/subjects/subj123", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"uid": "subj123"})
 
@@ -340,7 +341,7 @@ func TestFacesHandler_UpdateSubject_NoClient(t *testing.T) {
 	handler := createFacesHandlerForTest(testConfig())
 
 	body := bytes.NewBufferString(`{"name": "Updated"}`)
-	req := httptest.NewRequest("PUT", "/api/v1/subjects/subj123", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/subjects/subj123", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{"uid": "subj123"})
 
@@ -364,7 +365,7 @@ func TestFacesHandler_UpdateSubject_PhotoPrismError(t *testing.T) {
 	handler := createFacesHandlerForTest(testConfig())
 
 	body := bytes.NewBufferString(`{"name": "Updated"}`)
-	req := httptest.NewRequest("PUT", "/api/v1/subjects/subj123", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/subjects/subj123", body)
 	req.Header.Set("Content-Type", "application/json")
 	ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
 	req = req.WithContext(ctx)

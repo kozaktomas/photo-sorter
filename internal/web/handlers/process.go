@@ -190,8 +190,8 @@ func (h *ProcessHandler) Start(w http.ResponseWriter, r *http.Request) {
 
 	h.jobManager.SetActiveJob(job)
 
-	// Launch processing goroutine.
-	go h.runProcessJob(job, session)
+	// Launch processing goroutine (intentionally outlives request).
+	go h.runProcessJob(job, session) //nolint:gosec // G118 - background job outlives HTTP request
 
 	respondJSON(w, http.StatusAccepted, map[string]string{
 		"job_id": jobID,
@@ -246,7 +246,7 @@ type processJobCounters struct {
 	faceSuccess    int64
 	faceError      int64
 	totalNewFaces  int64
-	processedCount int64
+	processedCount atomic.Int64
 }
 
 // initProcessJobRepos initializes the repositories needed for the process job.
@@ -472,7 +472,7 @@ func (h *ProcessHandler) processPhotosWorkerPool(
 				return
 			}
 			processOnePhoto(ctx, pp, embClient, faceClient, repos, p.UID, counters)
-			count := atomic.AddInt64(&counters.processedCount, 1)
+			count := counters.processedCount.Add(1)
 			h.sendProgress(job, int(count))
 		}(photo)
 	}

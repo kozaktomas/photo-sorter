@@ -84,7 +84,7 @@ func TestSessionManager_SetAndGetSessionCookie(t *testing.T) {
 
 	// Create a test response to capture the cookie.
 	w := httptest.NewRecorder()
-	r := httptest.NewRequest("GET", "/", nil)
+	r := httptest.NewRequestWithContext(context.Background(), "GET", "/", nil)
 	sm.SetSessionCookie(w, r, session)
 
 	// Get the cookie from the response.
@@ -106,7 +106,7 @@ func TestSessionManager_SetAndGetSessionCookie(t *testing.T) {
 	}
 
 	// Create a request with the cookie.
-	req := httptest.NewRequest("GET", "/", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/", nil)
 	req.AddCookie(sessionCookie)
 
 	// Verify the session can be retrieved from the request.
@@ -124,7 +124,7 @@ func TestSessionManager_InvalidCookie(t *testing.T) {
 	sm := NewSessionManager("test-secret", nil)
 
 	// Request with invalid cookie signature.
-	req := httptest.NewRequest("GET", "/", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/", nil)
 	req.AddCookie(&http.Cookie{
 		Name:  sessionCookieName,
 		Value: "invalid-session.invalid-signature",
@@ -141,7 +141,7 @@ func TestSessionManager_BearerAuth(t *testing.T) {
 	session, _ := sm.CreateSession("token123", "download456", "user123")
 
 	// Request with Bearer token.
-	req := httptest.NewRequest("GET", "/", nil)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/", nil)
 	req.Header.Set("Authorization", "Bearer "+session.ID)
 
 	retrieved := sm.GetSessionFromRequest(req)
@@ -176,7 +176,7 @@ func TestRequireAuth(t *testing.T) {
 	t.Run("valid session", func(t *testing.T) {
 		handlerCalled = false
 		w := httptest.NewRecorder()
-		req := httptest.NewRequest("GET", "/protected", nil)
+		req := httptest.NewRequestWithContext(context.Background(), "GET", "/protected", nil)
 		req.Header.Set("Authorization", "Bearer "+session.ID)
 
 		protectedHandler.ServeHTTP(w, req)
@@ -193,7 +193,7 @@ func TestRequireAuth(t *testing.T) {
 	t.Run("no session", func(t *testing.T) {
 		handlerCalled = false
 		w := httptest.NewRecorder()
-		req := httptest.NewRequest("GET", "/protected", nil)
+		req := httptest.NewRequestWithContext(context.Background(), "GET", "/protected", nil)
 
 		protectedHandler.ServeHTTP(w, req)
 

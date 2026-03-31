@@ -74,11 +74,11 @@ export function PhotoDescriptionDialog({ sectionId, photoUid, description, note,
   }, [sourceId]);
 
   useEffect(() => {
-    if (showDescHistory) loadDescHistory();
+    if (showDescHistory) void loadDescHistory();
   }, [showDescHistory, loadDescHistory]);
 
   useEffect(() => {
-    if (showNoteHistory) loadNoteHistory();
+    if (showNoteHistory) void loadNoteHistory();
   }, [showNoteHistory, loadNoteHistory]);
 
   const handleRestore = async (id: number, target: 'desc' | 'note') => {
@@ -86,10 +86,10 @@ export function PhotoDescriptionDialog({ sectionId, photoUid, description, note,
       const result = await restoreTextVersion(id);
       if (target === 'desc') {
         setDesc(result.content);
-        loadDescHistory();
+        void loadDescHistory();
       } else {
         setNoteText(result.content);
-        loadNoteHistory();
+        void loadNoteHistory();
       }
     } catch { /* silent */ }
   };

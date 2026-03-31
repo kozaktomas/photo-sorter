@@ -116,14 +116,14 @@ function TextSlotDialog({ text, pageId, slotIndex, pageFormat, pageSlots, splitP
   }, [sourceId]);
 
   useEffect(() => {
-    if (showHistory) loadHistory();
+    if (showHistory) void loadHistory();
   }, [showHistory, loadHistory]);
 
   const handleHistoryRestore = async (id: number) => {
     try {
       const result = await restoreTextVersion(id);
       setValue(result.content);
-      loadHistory();
+      void loadHistory();
     } catch { /* silent */ }
   };
 
