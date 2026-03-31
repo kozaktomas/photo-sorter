@@ -5,6 +5,7 @@ import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { Type, Heading1, Heading2, Bold, Italic, List, ListOrdered, LayoutGrid, Wand2, Loader2, SpellCheck, ArrowLeftRight, Check, DollarSign, History, Maximize2, Minimize2 } from 'lucide-react';
 import { assignSlot, assignTextSlot, clearSlot, swapSlots, updatePage, updateSlotCrop, reorderPages, getThumbnailUrl, autoLayoutSection, checkTextAndSave, rewriteText, listTextVersions, restoreTextVersion } from '../../api/client';
 import { MarkdownContent } from '../../utils/markdown';
+import { handleMarkdownPaste } from '../../utils/paste';
 import { useBookKeyboardNav } from '../../hooks/useBookKeyboardNav';
 import { useUndoRedo, type SlotContent, type UndoEntry } from './hooks/useUndoRedo';
 import { PageSidebar } from './PageSidebar';
@@ -282,6 +283,7 @@ function TextSlotDialog({ text, pageId, slotIndex, pageFormat, pageSlots, splitP
                 ref={textareaRef}
                 value={value}
                 onChange={e => setValue(e.target.value)}
+                onPaste={e => handleMarkdownPaste(e, setValue)}
                 className={`w-full px-3 py-2 bg-slate-900 border border-slate-600 rounded text-sm text-white font-mono focus:outline-none focus-visible:ring-1 focus-visible:ring-rose-500 resize-none ${isFullscreen ? 'h-[70vh]' : 'h-80'}`}
                 placeholder={t('books.editor.textPlaceholder')}
                 autoFocus

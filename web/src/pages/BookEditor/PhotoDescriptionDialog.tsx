@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X, SpellCheck, ArrowLeftRight, Check, Loader2, DollarSign, History } from 'lucide-react';
 import { getThumbnailUrl, updateSectionPhoto, checkTextAndSave, rewriteText, listTextVersions, restoreTextVersion } from '../../api/client';
+import { handleMarkdownPaste } from '../../utils/paste';
 import type { TextVersion } from '../../types';
 
 interface Props {
@@ -234,6 +235,7 @@ export function PhotoDescriptionDialog({ sectionId, photoUid, description, note,
             <textarea
               value={desc}
               onChange={(e) => setDesc(e.target.value)}
+              onPaste={e => handleMarkdownPaste(e, setDesc)}
               placeholder={t('books.editor.descriptionPlaceholder')}
               className="w-full px-3 py-2 bg-slate-900 border border-slate-600 rounded text-sm text-white resize-none focus:outline-none focus-visible:ring-1 focus-visible:ring-rose-500"
               rows={8}
@@ -397,6 +399,7 @@ export function PhotoDescriptionDialog({ sectionId, photoUid, description, note,
             <textarea
               value={noteText}
               onChange={(e) => setNoteText(e.target.value)}
+              onPaste={e => handleMarkdownPaste(e, setNoteText)}
               placeholder={t('books.editor.notePlaceholder')}
               className="w-full px-3 py-2 bg-slate-900 border border-slate-600 rounded text-sm text-white resize-none focus:outline-none focus-visible:ring-1 focus-visible:ring-amber-500"
               rows={2}
