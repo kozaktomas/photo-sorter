@@ -21,20 +21,21 @@ func NewSessionRepository(pool *Pool) *SessionRepository {
 
 // Save stores a session in the database.
 func (r *SessionRepository) Save(
-	ctx context.Context, id, token, downloadToken string,
+	ctx context.Context, id, token, downloadToken, userUID string,
 	createdAt, expiresAt time.Time,
 ) error {
 	query := `
-		INSERT INTO sessions (id, token, download_token, created_at, expires_at)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO sessions (id, token, download_token, user_uid, created_at, expires_at)
+		VALUES ($1, $2, $3, $4, $5, $6)
 		ON CONFLICT (id) DO UPDATE SET
 			token = EXCLUDED.token,
 			download_token = EXCLUDED.download_token,
+			user_uid = EXCLUDED.user_uid,
 			created_at = EXCLUDED.created_at,
 			expires_at = EXCLUDED.expires_at
 	`
 
-	_, err := r.pool.Exec(ctx, query, id, token, downloadToken, createdAt, expiresAt)
+	_, err := r.pool.Exec(ctx, query, id, token, downloadToken, userUID, createdAt, expiresAt)
 	if err != nil {
 		return fmt.Errorf("save session: %w", err)
 	}
@@ -44,7 +45,7 @@ func (r *SessionRepository) Save(
 // Get retrieves a session by ID, returns nil if not found or expired.
 func (r *SessionRepository) Get(ctx context.Context, sessionID string) (*middleware.StoredSession, error) {
 	query := `
-		SELECT id, token, download_token, created_at, expires_at
+		SELECT id, token, download_token, user_uid, created_at, expires_at
 		FROM sessions
 		WHERE id = $1 AND expires_at > NOW()
 	`
@@ -54,6 +55,7 @@ func (r *SessionRepository) Get(ctx context.Context, sessionID string) (*middlew
 		&s.ID,
 		&s.Token,
 		&s.DownloadToken,
+		&s.UserUID,
 		&s.CreatedAt,
 		&s.ExpiresAt,
 	)

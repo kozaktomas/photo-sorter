@@ -33,7 +33,7 @@ type Session struct {
 
 // SessionRepository defines the interface for persistent session storage.
 type SessionRepository interface {
-	Save(ctx context.Context, id, token, downloadToken string, createdAt, expiresAt time.Time) error
+	Save(ctx context.Context, id, token, downloadToken, userUID string, createdAt, expiresAt time.Time) error
 	Get(ctx context.Context, sessionID string) (*StoredSession, error)
 	Delete(ctx context.Context, sessionID string) error
 	DeleteExpired(ctx context.Context) (int64, error)
@@ -44,6 +44,7 @@ type StoredSession struct {
 	ID            string
 	Token         string
 	DownloadToken string
+	UserUID       string
 	CreatedAt     time.Time
 	ExpiresAt     time.Time
 }
@@ -138,7 +139,7 @@ func (sm *SessionManager) CreateSession(token, downloadToken, userUID string) (*
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if err := sm.repo.Save(
-			ctx, session.ID, session.Token, session.DownloadToken,
+			ctx, session.ID, session.Token, session.DownloadToken, session.UserUID,
 			session.CreatedAt, session.ExpiresAt,
 		); err != nil {
 			log.Printf("Warning: failed to persist session to database: %v", err)
@@ -184,6 +185,7 @@ func (sm *SessionManager) GetSession(sessionID string) *Session {
 			ID:            stored.ID,
 			Token:         stored.Token,
 			DownloadToken: stored.DownloadToken,
+			UserUID:       stored.UserUID,
 			CreatedAt:     stored.CreatedAt,
 			ExpiresAt:     stored.ExpiresAt,
 		}
