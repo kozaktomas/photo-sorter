@@ -122,6 +122,55 @@ func (h *TextHandler) Check(w http.ResponseWriter, r *http.Request) {
 	h.setCache(key, resp)
 }
 
+// Consistency handles POST /api/v1/text/consistency.
+func (h *TextHandler) Consistency(w http.ResponseWriter, r *http.Request) {
+	if h.config.OpenAI.Token == "" {
+		respondError(w, http.StatusServiceUnavailable, "OpenAI not configured")
+		return
+	}
+
+	var req struct {
+		Texts []ai.ConsistencyTextEntry `json:"texts"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
+		return
+	}
+
+	if len(req.Texts) < 2 {
+		respondError(w, http.StatusBadRequest, "at least 2 texts are required")
+		return
+	}
+
+	// Build cache key from all text contents
+	parts := make([]string, 0, len(req.Texts)+1)
+	parts = append(parts, "consistency")
+	for _, t := range req.Texts {
+		parts = append(parts, t.ID+":"+t.Content)
+	}
+	key := cacheKey(parts...)
+	if cached, ok := h.getCache(key); ok {
+		respondJSON(w, http.StatusOK, cached)
+		return
+	}
+
+	result, err := ai.CheckConsistency(r.Context(), h.config.OpenAI.Token, req.Texts)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "consistency check failed: "+err.Error())
+		return
+	}
+
+	resp := map[string]any{
+		"consistency_score": result.ConsistencyScore,
+		"tone":              result.Tone,
+		"issues":            result.Issues,
+		"cost_czk":          h.computeCostCZK(result.Usage),
+		"cached":            false,
+	}
+	respondJSON(w, http.StatusOK, resp)
+	h.setCache(key, resp)
+}
+
 // Rewrite handles POST /api/v1/text/rewrite.
 func (h *TextHandler) Rewrite(w http.ResponseWriter, r *http.Request) {
 	if h.config.OpenAI.Token == "" {

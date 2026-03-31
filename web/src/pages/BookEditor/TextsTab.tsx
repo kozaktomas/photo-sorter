@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { SpellCheck, ArrowLeftRight, Loader2, Check, DollarSign, ChevronDown, ChevronUp, ExternalLink, X } from 'lucide-react';
-import { checkText, rewriteText, updateSectionPhoto, assignTextSlot } from '../../api/client';
+import { SpellCheck, ArrowLeftRight, Loader2, Check, DollarSign, ChevronDown, ChevronUp, ExternalLink, X, BarChart3 } from 'lucide-react';
+import { checkText, rewriteText, checkTextConsistency, updateSectionPhoto, assignTextSlot } from '../../api/client';
 import { StatsGrid } from '../../components/StatsGrid';
 import type { BookDetail, SectionPhoto } from '../../types';
 
@@ -84,6 +84,16 @@ export function TextsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, on
   const [batchTotal, setBatchTotal] = useState(0);
   const [batchTotalCost, setBatchTotalCost] = useState<number | null>(null);
   const batchCancelledRef = useRef(false);
+
+  // Consistency check state
+  const [isConsistencyChecking, setIsConsistencyChecking] = useState(false);
+  const [consistencyResult, setConsistencyResult] = useState<{
+    consistency_score: number;
+    tone: string;
+    issues: { text_id: string; problem: string; suggestion: string }[];
+    cost_czk: number;
+    cached: boolean;
+  } | null>(null);
 
   // Build text entries from book data
   const textEntries = useMemo<TextEntry[]>(() => {
@@ -245,6 +255,27 @@ export function TextsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, on
     batchCancelledRef.current = true;
   }, []);
 
+  const handleConsistencyCheck = useCallback(async () => {
+    if (textEntries.length < 2) return;
+    setIsConsistencyChecking(true);
+    setConsistencyResult(null);
+    try {
+      const texts = textEntries.map(e => ({
+        id: e.id,
+        source: e.source === 'section_photo'
+          ? `${e.sectionTitle || '?'} — fotka`
+          : `Stránka ${e.pageNumber}, slot ${(e.slotIndex ?? 0) + 1}`,
+        content: e.text,
+      }));
+      const result = await checkTextConsistency(texts);
+      setConsistencyResult(result);
+    } catch (err) {
+      setErrors(prev => ({ ...prev, __consistency: err instanceof Error ? err.message : 'Consistency check failed' }));
+    } finally {
+      setIsConsistencyChecking(false);
+    }
+  }, [textEntries]);
+
   const getStatusIndicator = (entryId: string) => {
     const status = checkStatuses[entryId] || 'unchecked';
     switch (status) {
@@ -272,7 +303,7 @@ export function TextsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, on
   ];
 
   const allChecked = textEntries.length > 0 && textEntries.every(e => checkStatuses[e.id] === 'clean' || checkStatuses[e.id] === 'has_errors');
-  const isAnyLoading = checking !== null || rewriting !== null;
+  const isAnyLoading = checking !== null || rewriting !== null || isConsistencyChecking;
 
   return (
     <div className="space-y-6">
@@ -315,12 +346,21 @@ export function TextsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, on
             <>
               <button
                 onClick={() => void handleBatchCheck()}
-                disabled={allChecked || isAnyLoading}
+                disabled={allChecked || isAnyLoading || isConsistencyChecking}
                 className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors"
               >
                 <SpellCheck className="h-4 w-4" />
                 <DollarSign className="h-3.5 w-3.5 -ml-1 opacity-60" />
                 {t('books.editor.checkAll')}
+              </button>
+              <button
+                onClick={() => void handleConsistencyCheck()}
+                disabled={textEntries.length < 2 || isAnyLoading || isBatchChecking || isConsistencyChecking}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded bg-violet-600 hover:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-colors"
+              >
+                {isConsistencyChecking ? <Loader2 className="h-4 w-4 animate-spin" /> : <BarChart3 className="h-4 w-4" />}
+                <DollarSign className="h-3.5 w-3.5 -ml-1 opacity-60" />
+                {t('books.editor.consistencyCheck')}
               </button>
               {batchTotalCost !== null && (
                 <span className="text-sm text-slate-400">
@@ -332,6 +372,90 @@ export function TextsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, on
             </>
           )}
         </div>
+      )}
+
+      {/* Consistency result panel */}
+      {consistencyResult && (
+        <div className="rounded-lg border border-violet-500/30 bg-violet-950/20 p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-slate-300">{t('books.editor.consistencyScore')}:</span>
+                <span className={`text-lg font-bold ${
+                  consistencyResult.consistency_score > 80 ? 'text-emerald-400' :
+                  consistencyResult.consistency_score >= 50 ? 'text-yellow-400' :
+                  'text-red-400'
+                }`}>
+                  {consistencyResult.consistency_score}%
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-slate-300">{t('books.editor.tone')}:</span>
+                <span className="text-sm text-slate-200">{consistencyResult.tone}</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-500">
+                {t('books.editor.cost', { amount: consistencyResult.cost_czk.toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) })}
+                {consistencyResult.cached && <span className="ml-1 text-emerald-500">({t('books.editor.cachedResult')})</span>}
+              </span>
+              <button
+                onClick={() => setConsistencyResult(null)}
+                className="text-slate-500 hover:text-white transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+
+          {consistencyResult.issues.length === 0 ? (
+            <div className="flex items-center gap-2 text-sm text-emerald-400">
+              <Check className="h-4 w-4" />
+              {t('books.editor.noIssues')}
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-sm font-medium text-slate-300">{t('books.editor.issues')} ({consistencyResult.issues.length})</p>
+              {consistencyResult.issues.map((issue, i) => {
+                const entry = textEntries.find(e => e.id === issue.text_id);
+                return (
+                  <div key={i} className="bg-slate-800/60 rounded p-3 space-y-1.5">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs text-slate-400 truncate">
+                          {entry ? (entry.text.length > 80 ? entry.text.slice(0, 80) + '...' : entry.text) : issue.text_id}
+                        </p>
+                        {entry && (
+                          <p className="text-xs text-slate-500 mt-0.5">{getSourceLabel(entry)}</p>
+                        )}
+                      </div>
+                      {entry && (
+                        <button
+                          onClick={() => {
+                            if (entry.source === 'text_slot' && entry.pageId) onNavigateToPage(entry.pageId);
+                            else if (entry.source === 'section_photo' && entry.sectionId) onNavigateToSection(entry.sectionId);
+                          }}
+                          className="text-xs text-violet-400 hover:text-violet-300 flex-shrink-0 transition-colors"
+                        >
+                          {t('books.editor.goToText')}
+                        </button>
+                      )}
+                    </div>
+                    <p className="text-xs text-red-300">{issue.problem}</p>
+                    <p className="text-xs text-slate-300">
+                      <span className="text-slate-500">{t('books.editor.suggestion')}:</span> {issue.suggestion}
+                    </p>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Consistency error */}
+      {errors.__consistency && (
+        <p className="text-xs text-red-400">{errors.__consistency}</p>
       )}
 
       {/* Text list */}

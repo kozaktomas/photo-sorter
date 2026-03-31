@@ -779,6 +779,19 @@ export async function rewriteText(text: string, targetLength: string): Promise<{
   });
 }
 
+export async function checkTextConsistency(texts: { id: string; source: string; content: string }[]): Promise<{
+  consistency_score: number;
+  tone: string;
+  issues: { text_id: string; problem: string; suggestion: string }[];
+  cost_czk: number;
+  cached: boolean;
+}> {
+  return request('/text/consistency', {
+    method: 'POST',
+    body: JSON.stringify({ texts }),
+  });
+}
+
 // Text version history
 export async function listTextVersions(
   sourceType: string, sourceId: string, field: string,

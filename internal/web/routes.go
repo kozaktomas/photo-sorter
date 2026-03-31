@@ -142,6 +142,7 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 			// Text AI operations.
 			r.Post("/text/check", textHandler.Check)
 			r.Post("/text/rewrite", textHandler.Rewrite)
+			r.Post("/text/consistency", textHandler.Consistency)
 
 			// Text version history.
 			r.Get("/text-versions", textVersionsHandler.List)

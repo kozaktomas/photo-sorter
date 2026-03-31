@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/openai/openai-go"
 	"github.com/openai/openai-go/option"
@@ -17,6 +18,9 @@ var textCheckPrompt string
 
 //go:embed prompts/text_rewrite.txt
 var textRewritePrompt string
+
+//go:embed prompts/text_consistency.txt
+var textConsistencyPrompt string
 
 // TokenUsage holds token counts from an API call.
 type TokenUsage struct {
@@ -36,6 +40,21 @@ type TextCheckResult struct {
 type TextRewriteResult struct {
 	RewrittenText string     `json:"rewritten_text"`
 	Usage         TokenUsage `json:"usage"`
+}
+
+// ConsistencyIssue represents a single text flagged as inconsistent.
+type ConsistencyIssue struct {
+	TextID     string `json:"text_id"`
+	Problem    string `json:"problem"`
+	Suggestion string `json:"suggestion"`
+}
+
+// TextConsistencyResult contains the result of a style consistency check.
+type TextConsistencyResult struct {
+	ConsistencyScore int                `json:"consistency_score"`
+	Tone             string             `json:"tone"`
+	Issues           []ConsistencyIssue `json:"issues"`
+	Usage            TokenUsage         `json:"usage"`
 }
 
 // CheckText sends text to GPT-4.1-mini for spelling, diacritics, and grammar checking.
@@ -102,6 +121,57 @@ func RewriteText(ctx context.Context, apiKey string, text string, targetLength s
 	var result TextRewriteResult
 	if err := json.Unmarshal([]byte(resp.Choices[0].Message.Content), &result); err != nil {
 		return nil, fmt.Errorf("failed to parse text rewrite response: %w", err)
+	}
+
+	result.Usage = TokenUsage{
+		PromptTokens:     resp.Usage.PromptTokens,
+		CompletionTokens: resp.Usage.CompletionTokens,
+	}
+
+	return &result, nil
+}
+
+// ConsistencyTextEntry represents a single text entry for consistency checking.
+type ConsistencyTextEntry struct {
+	ID      string `json:"id"`
+	Source  string `json:"source"`
+	Content string `json:"content"`
+}
+
+// CheckConsistency sends all book texts to GPT-4.1-mini for style consistency analysis.
+func CheckConsistency(
+	ctx context.Context, apiKey string, texts []ConsistencyTextEntry,
+) (*TextConsistencyResult, error) {
+	client := openai.NewClient(option.WithAPIKey(apiKey))
+
+	// Build user message with all texts
+	var sb strings.Builder
+	for _, t := range texts {
+		fmt.Fprintf(&sb, "[%s] (%s)\n%s\n\n", t.ID, t.Source, t.Content)
+	}
+
+	resp, err := client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
+		Model: openai.ChatModelGPT4_1Mini,
+		Messages: []openai.ChatCompletionMessageParamUnion{
+			openai.SystemMessage(textConsistencyPrompt),
+			openai.UserMessage(sb.String()),
+		},
+		ResponseFormat: openai.ChatCompletionNewParamsResponseFormatUnion{
+			OfJSONObject: &shared.ResponseFormatJSONObjectParam{},
+		},
+		MaxTokens: openai.Int(4000),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("OpenAI API error: %w", err)
+	}
+
+	if len(resp.Choices) == 0 {
+		return nil, errors.New("no response from OpenAI")
+	}
+
+	var result TextConsistencyResult
+	if err := json.Unmarshal([]byte(resp.Choices[0].Message.Content), &result); err != nil {
+		return nil, fmt.Errorf("failed to parse consistency check response: %w", err)
 	}
 
 	result.Usage = TokenUsage{

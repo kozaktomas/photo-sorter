@@ -315,6 +315,7 @@ Located in `internal/ai/prompts/` (embedded at compile time):
 - `clip_translate.txt` - Czech to CLIP-optimized English translation for text search
 - `text_check.txt` - Czech text spelling, diacritics, and grammar checking
 - `text_rewrite.txt` - Czech text length adjustment (shorter/longer)
+- `text_consistency.txt` - Czech text style consistency analysis across book texts
 
 **Language:** Czech (descriptions are generated in Czech)
 
@@ -460,6 +461,7 @@ Session cookies use `HttpOnly`, `SameSite=Strict`, and auto-detect `Secure` flag
 - `GET /api/v1/books/{id}/export-pdf` - Export book as PDF (requires lualatex)
 - `POST /api/v1/text/check` - AI text check (spelling, grammar, diacritics) via GPT-4.1-mini
 - `POST /api/v1/text/rewrite` - AI text rewrite (length adjustment) via GPT-4.1-mini
+- `POST /api/v1/text/consistency` - AI style consistency check across all book texts via GPT-4.1-mini
 
 **Frontend Structure:**
 ```
