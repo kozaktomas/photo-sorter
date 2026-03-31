@@ -162,3 +162,20 @@ type TextVersionStore interface {
 	ListTextVersions(ctx context.Context, sourceType, sourceID, field string, limit int) ([]TextVersion, error)
 	GetTextVersion(ctx context.Context, id int) (*TextVersion, error)
 }
+
+// TextCheckStore provides access to text check results.
+type TextCheckStore interface {
+	// SaveTextCheckResult upserts a text check result (by source_type, source_id, field).
+	SaveTextCheckResult(ctx context.Context, result *TextCheckResult) error
+	// GetTextCheckResults returns all check results for the given book's texts.
+	// The caller provides (sourceType, sourceID, field) tuples and gets back
+	// results keyed by "sourceType:sourceID:field".
+	GetTextCheckResults(ctx context.Context, keys []TextCheckKey) (map[string]TextCheckResult, error)
+}
+
+// TextCheckKey identifies a specific text field for check result lookup.
+type TextCheckKey struct {
+	SourceType string
+	SourceID   string
+	Field      string
+}

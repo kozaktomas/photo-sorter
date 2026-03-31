@@ -92,6 +92,9 @@ func registerServeBackends(
 	tvRepo := postgres.NewTextVersionRepository(pool)
 	database.RegisterTextVersionStore(func() database.TextVersionStore { return tvRepo })
 
+	tcRepo := postgres.NewTextCheckRepository(pool)
+	database.RegisterTextCheckStore(func() database.TextCheckStore { return tcRepo })
+
 	sessionRepo := postgres.NewSessionRepository(pool)
 	fmt.Printf("Session persistence enabled (PostgreSQL)\n")
 	return sessionRepo

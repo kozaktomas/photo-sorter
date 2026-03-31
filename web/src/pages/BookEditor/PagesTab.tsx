@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, pointerWithin, useSensor, useSensors, type DragEndEvent, type DragStartEvent, type Modifier } from '@dnd-kit/core';
 import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { Type, Heading1, Heading2, Bold, Italic, List, ListOrdered, LayoutGrid, Wand2, Loader2, SpellCheck, ArrowLeftRight, Check, DollarSign, History, Maximize2, Minimize2 } from 'lucide-react';
-import { assignSlot, assignTextSlot, clearSlot, swapSlots, updatePage, updateSlotCrop, reorderPages, getThumbnailUrl, autoLayoutSection, checkText, rewriteText, listTextVersions, restoreTextVersion } from '../../api/client';
+import { assignSlot, assignTextSlot, clearSlot, swapSlots, updatePage, updateSlotCrop, reorderPages, getThumbnailUrl, autoLayoutSection, checkTextAndSave, rewriteText, listTextVersions, restoreTextVersion } from '../../api/client';
 import { MarkdownContent } from '../../utils/markdown';
 import { useBookKeyboardNav } from '../../hooks/useBookKeyboardNav';
 import { useUndoRedo, type SlotContent, type UndoEntry } from './hooks/useUndoRedo';
@@ -136,7 +136,7 @@ function TextSlotDialog({ text, pageId, slotIndex, pageFormat, pageSlots, splitP
     setCheckError('');
     setRewriteResult(null);
     try {
-      const result = await checkText(value);
+      const result = await checkTextAndSave('page_slot', sourceId, 'text_content', value);
       setCheckResult(result);
     } catch (err) {
       setCheckError(err instanceof Error ? err.message : 'Check failed');

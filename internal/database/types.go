@@ -161,6 +161,21 @@ type TextVersion struct {
 	CreatedAt  time.Time
 }
 
+// TextCheckResult stores the result of an AI text check for a specific text field.
+type TextCheckResult struct {
+	ID               int
+	SourceType       string    // "section_photo" or "page_slot"
+	SourceID         string    // "sectionID:photoUID" or "pageID:slotIndex"
+	Field            string    // "description", "note", or "text_content"
+	ContentHash      string    // SHA-256 of the text that was checked
+	Status           string    // "clean" or "has_errors"
+	ReadabilityScore *int      // 0-100, nil if not applicable
+	CorrectedText    string    // corrected version (if errors found)
+	Changes          []string  // array of change descriptions
+	CostCZK          float64   // cost of the check
+	CheckedAt        time.Time // when the check was performed
+}
+
 // PhotoBookMembership represents a book+section that contains a photo.
 type PhotoBookMembership struct {
 	BookID       string

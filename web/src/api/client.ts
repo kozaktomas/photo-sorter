@@ -779,6 +779,39 @@ export async function rewriteText(text: string, targetLength: string): Promise<{
   });
 }
 
+export interface CheckAndSaveResponse {
+  corrected_text: string;
+  readability_score: number;
+  changes: string[];
+  cost_czk: number;
+  cached: boolean;
+  status: 'clean' | 'has_errors';
+  content_hash: string;
+  checked_at: string;
+}
+
+export async function checkTextAndSave(
+  sourceType: string, sourceId: string, field: string, text: string,
+): Promise<CheckAndSaveResponse> {
+  return request<CheckAndSaveResponse>('/text/check-and-save', {
+    method: 'POST',
+    body: JSON.stringify({ source_type: sourceType, source_id: sourceId, field, text }),
+  });
+}
+
+export interface TextCheckStatusEntry {
+  status: 'clean' | 'has_errors';
+  readability_score?: number;
+  checked_at: string;
+  is_stale: boolean;
+  corrected_text?: string;
+  changes?: string[];
+}
+
+export async function getTextCheckStatus(bookId: string): Promise<Record<string, TextCheckStatusEntry>> {
+  return request<Record<string, TextCheckStatusEntry>>(`/books/${bookId}/text-check-status`);
+}
+
 export async function checkTextConsistency(texts: { id: string; source: string; content: string }[]): Promise<{
   consistency_score: number;
   tone: string;

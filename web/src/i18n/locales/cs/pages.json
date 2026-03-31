@@ -511,6 +511,7 @@
       "unchecked": "Nezkontrolováno",
       "clean": "V pořádku",
       "hasErrors": "Obsahuje chyby",
+      "staleCheck": "Změněno od kontroly",
       "checkAll": "Zkontrolovat vše",
       "checkingProgress": "Kontroluji {{current}}/{{total}}...",
       "batchComplete": "Kontrola dokončena",

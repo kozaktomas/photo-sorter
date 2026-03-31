@@ -1,14 +1,15 @@
-import { useState, useMemo, useCallback, useRef } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { SpellCheck, ArrowLeftRight, Loader2, Check, DollarSign, ChevronDown, ChevronUp, ExternalLink, X, BarChart3, Copy, Search } from 'lucide-react';
-import { checkText, rewriteText, checkTextConsistency, updateSectionPhoto, assignTextSlot } from '../../api/client';
+import { checkTextAndSave, rewriteText, checkTextConsistency, updateSectionPhoto, assignTextSlot, getTextCheckStatus } from '../../api/client';
+import type { TextCheckStatusEntry } from '../../api/client';
 import { StatsGrid } from '../../components/StatsGrid';
 import { findDuplicateTexts } from '../../utils/textSimilarity';
 import type { BookDetail, SectionPhoto } from '../../types';
 
 type TargetLength = 'much_shorter' | 'shorter' | 'longer' | 'much_longer';
 
-type CheckStatus = 'unchecked' | 'clean' | 'has_errors';
+type CheckStatus = 'unchecked' | 'clean' | 'has_errors' | 'stale';
 
 interface TextEntry {
   id: string;
@@ -65,8 +66,19 @@ export function TextsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, on
     }
   });
 
-  // In-memory check status tracking
+  // Persisted check status from the database
   const [checkStatuses, setCheckStatuses] = useState<Record<string, CheckStatus>>({});
+  const [persistedResults, setPersistedResults] = useState<Record<string, TextCheckStatusEntry>>({});
+
+  // Load persisted check status on mount and after book changes
+  useEffect(() => {
+    void (async () => {
+      try {
+        const status = await getTextCheckStatus(book.id);
+        setPersistedResults(status);
+      } catch { /* silent */ }
+    })();
+  }, [book.id]);
 
   // Expanded row state
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -98,6 +110,28 @@ export function TextsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, on
     cost_czk: number;
     cached: boolean;
   } | null>(null);
+
+  // Helper to compute the persisted status key for a text entry
+  const getPersistedKey = useCallback((entry: TextEntry): string => {
+    if (entry.source === 'section_photo' && entry.sectionId && entry.photoUid) {
+      return `section_photo:${entry.sectionId}:${entry.photoUid}:description`;
+    }
+    if (entry.source === 'text_slot' && entry.pageId != null && entry.slotIndex != null) {
+      return `page_slot:${entry.pageId}:${entry.slotIndex}:text_content`;
+    }
+    return '';
+  }, []);
+
+  // Helper to get source info for check-and-save API
+  const getSourceInfo = useCallback((entry: TextEntry): { sourceType: string; sourceId: string; field: string } | null => {
+    if (entry.source === 'section_photo' && entry.sectionId && entry.photoUid) {
+      return { sourceType: 'section_photo', sourceId: `${entry.sectionId}:${entry.photoUid}`, field: 'description' };
+    }
+    if (entry.source === 'text_slot' && entry.pageId != null && entry.slotIndex != null) {
+      return { sourceType: 'page_slot', sourceId: `${entry.pageId}:${entry.slotIndex}`, field: 'text_content' };
+    }
+    return null;
+  }, []);
 
   // Build text entries from book data
   const textEntries = useMemo<TextEntry[]>(() => {
@@ -143,10 +177,33 @@ export function TextsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, on
     return entries;
   }, [book, sectionPhotos]);
 
+  // Merge persisted results into check statuses
+  useEffect(() => {
+    if (Object.keys(persistedResults).length === 0) return;
+    setCheckStatuses(prev => {
+      const next = { ...prev };
+      for (const entry of textEntries) {
+        // Skip entries that already have a session-based status
+        if (next[entry.id]) continue;
+        const persistedKey = getPersistedKey(entry);
+        const persisted = persistedResults[persistedKey];
+        if (persisted) {
+          if (persisted.is_stale) {
+            next[entry.id] = 'stale';
+          } else {
+            next[entry.id] = persisted.status;
+          }
+        }
+      }
+      return next;
+    });
+  }, [persistedResults, textEntries, getPersistedKey]);
+
   // Stats
   const totalTexts = textEntries.length;
   const checkedCount = Object.values(checkStatuses).filter(s => s === 'clean').length;
   const errorCount = Object.values(checkStatuses).filter(s => s === 'has_errors').length;
+  const staleCount = Object.values(checkStatuses).filter(s => s === 'stale').length;
   const totalReadingTime = useMemo(() => {
     let total = 0;
     for (const e of textEntries) {
@@ -197,7 +254,14 @@ export function TextsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, on
     setRewriteResults(prev => omit(prev, entry.id));
     setExpandedId(entry.id);
     try {
-      const result = await checkText(entry.text);
+      const source = getSourceInfo(entry);
+      let result: { corrected_text: string; readability_score: number; changes: string[]; cost_czk: number; cached: boolean };
+      if (source) {
+        result = await checkTextAndSave(source.sourceType, source.sourceId, source.field, entry.text);
+      } else {
+        // Fallback (shouldn't happen) — import is already removed, use check-and-save with empty source
+        result = await checkTextAndSave('', '', '', entry.text);
+      }
       setCheckResults(prev => ({ ...prev, [entry.id]: result }));
       setCheckStatuses(prev => ({
         ...prev,
@@ -208,7 +272,7 @@ export function TextsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, on
     } finally {
       setChecking(null);
     }
-  }, []);
+  }, [getSourceInfo]);
 
   const handleRewrite = useCallback(async (entry: TextEntry) => {
     const length = targetLengths[entry.id] || 'shorter';
@@ -260,27 +324,37 @@ export function TextsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, on
   }, [rewriteResults, onRefresh]);
 
   const handleBatchCheck = useCallback(async () => {
-    const unchecked = textEntries.filter(e => !checkStatuses[e.id] || checkStatuses[e.id] === 'unchecked');
-    if (unchecked.length === 0) return;
+    // Skip texts that are already checked and not stale
+    const needsCheck = textEntries.filter(e => {
+      const status = checkStatuses[e.id];
+      return !status || status === 'unchecked' || status === 'stale';
+    });
+    if (needsCheck.length === 0) return;
 
     batchCancelledRef.current = false;
     setIsBatchChecking(true);
     setBatchProgress(0);
-    setBatchTotal(unchecked.length);
+    setBatchTotal(needsCheck.length);
     setBatchTotalCost(null);
 
     let totalCost = 0;
 
-    for (let i = 0; i < unchecked.length; i++) {
+    for (let i = 0; i < needsCheck.length; i++) {
       if (batchCancelledRef.current) break;
 
-      const entry = unchecked[i];
+      const entry = needsCheck[i];
       setBatchProgress(i + 1);
       setChecking(entry.id);
       setErrors(prev => ({ ...prev, [entry.id]: '' }));
 
       try {
-        const result = await checkText(entry.text);
+        const source = getSourceInfo(entry);
+        let result: { corrected_text: string; readability_score: number; changes: string[]; cost_czk: number; cached: boolean };
+        if (source) {
+          result = await checkTextAndSave(source.sourceType, source.sourceId, source.field, entry.text);
+        } else {
+          result = await checkTextAndSave('', '', '', entry.text);
+        }
         setCheckResults(prev => ({ ...prev, [entry.id]: result }));
         setCheckStatuses(prev => ({
           ...prev,
@@ -296,7 +370,7 @@ export function TextsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, on
 
     setBatchTotalCost(totalCost);
     setIsBatchChecking(false);
-  }, [textEntries, checkStatuses]);
+  }, [textEntries, checkStatuses, getSourceInfo]);
 
   const handleCancelBatch = useCallback(() => {
     batchCancelledRef.current = true;
@@ -330,6 +404,8 @@ export function TextsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, on
         return <span className="inline-flex items-center gap-1 text-xs text-emerald-400"><span className="w-2 h-2 rounded-full bg-emerald-400" />{t('books.editor.clean')}</span>;
       case 'has_errors':
         return <span className="inline-flex items-center gap-1 text-xs text-red-400"><span className="w-2 h-2 rounded-full bg-red-400" />{t('books.editor.hasErrors')}</span>;
+      case 'stale':
+        return <span className="inline-flex items-center gap-1 text-xs text-amber-400"><span className="w-2 h-2 rounded-full bg-amber-400" />{t('books.editor.staleCheck')}</span>;
       default:
         return <span className="inline-flex items-center gap-1 text-xs text-slate-500"><span className="w-2 h-2 rounded-full bg-slate-500" />{t('books.editor.unchecked')}</span>;
     }
@@ -349,18 +425,22 @@ export function TextsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, on
     { value: 'much_longer', labelKey: 'books.editor.muchLonger' },
   ];
 
-  const allChecked = textEntries.length > 0 && textEntries.every(e => checkStatuses[e.id] === 'clean' || checkStatuses[e.id] === 'has_errors');
+  const allChecked = textEntries.length > 0 && textEntries.every(e => {
+    const s = checkStatuses[e.id];
+    return s === 'clean' || s === 'has_errors';
+  });
   const isAnyLoading = checking !== null || rewriting !== null || isConsistencyChecking;
 
   return (
     <div className="space-y-6">
       {/* Stats */}
       <StatsGrid
-        columns={5}
+        columns={6}
         items={[
           { value: totalTexts, label: t('books.editor.totalTexts'), color: 'white' },
           { value: checkedCount, label: t('books.editor.checkedTexts'), color: 'green' },
           { value: errorCount, label: t('books.editor.textsWithErrors'), color: 'red' },
+          { value: staleCount, label: t('books.editor.staleCheck'), color: staleCount > 0 ? 'yellow' : 'white' },
           { value: duplicatePairs.length, label: t('books.editor.duplicateTexts'), color: duplicatePairs.length > 0 ? 'yellow' : 'white' },
           { value: `~${totalReadingTime} min`, label: t('books.editor.totalReadingTime'), color: 'white' },
         ]}

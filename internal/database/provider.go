@@ -27,6 +27,7 @@ var (
 	postgresFaceHNSW           HNSWRebuilder // Singleton for face HNSW rebuilding
 	postgresEmbeddingHNSW      HNSWRebuilder // Singleton for embedding HNSW rebuilding
 	postgresTextVersionStore   func() TextVersionStore
+	postgresTextCheckStore     func() TextCheckStore
 	postgresInitialized        bool
 )
 
@@ -41,6 +42,7 @@ func ResetForTesting() {
 	postgresFaceHNSW = nil
 	postgresEmbeddingHNSW = nil
 	postgresTextVersionStore = nil
+	postgresTextCheckStore = nil
 	postgresInitialized = false
 }
 
@@ -202,4 +204,20 @@ func GetTextVersionStore(ctx context.Context) (TextVersionStore, error) {
 		return nil, errors.New("PostgreSQL text version store not registered")
 	}
 	return postgresTextVersionStore(), nil
+}
+
+// RegisterTextCheckStore registers the TextCheckStore constructor.
+func RegisterTextCheckStore(store func() TextCheckStore) {
+	postgresTextCheckStore = store
+}
+
+// GetTextCheckStore returns a TextCheckStore from the PostgreSQL backend.
+func GetTextCheckStore(ctx context.Context) (TextCheckStore, error) {
+	if !postgresInitialized {
+		return nil, errors.New("PostgreSQL backend not initialized: DATABASE_URL is required")
+	}
+	if postgresTextCheckStore == nil {
+		return nil, errors.New("PostgreSQL text check store not registered")
+	}
+	return postgresTextCheckStore(), nil
 }

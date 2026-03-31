@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X, SpellCheck, ArrowLeftRight, Check, Loader2, DollarSign, History } from 'lucide-react';
-import { getThumbnailUrl, updateSectionPhoto, checkText, rewriteText, listTextVersions, restoreTextVersion } from '../../api/client';
+import { getThumbnailUrl, updateSectionPhoto, checkTextAndSave, rewriteText, listTextVersions, restoreTextVersion } from '../../api/client';
 import type { TextVersion } from '../../types';
 
 interface Props {
@@ -112,7 +112,8 @@ export function PhotoDescriptionDialog({ sectionId, photoUid, description, note,
     setCheckError('');
     setRewriteResult(null);
     try {
-      const result = await checkText(desc);
+      const sourceId = `${sectionId}:${photoUid}`;
+      const result = await checkTextAndSave('section_photo', sourceId, 'description', desc);
       setCheckResult(result);
     } catch (err) {
       setCheckError(err instanceof Error ? err.message : 'Check failed');

@@ -138,9 +138,11 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 			r.Post("/books/{id}/sections/{sectionId}/auto-layout", booksHandler.AutoLayout)
 			r.Get("/books/{id}/preflight", booksHandler.Preflight)
 			r.Get("/books/{id}/export-pdf", booksHandler.ExportPDF)
+			r.Get("/books/{id}/text-check-status", textHandler.TextCheckStatus)
 
 			// Text AI operations.
 			r.Post("/text/check", textHandler.Check)
+			r.Post("/text/check-and-save", textHandler.CheckAndSave)
 			r.Post("/text/rewrite", textHandler.Rewrite)
 			r.Post("/text/consistency", textHandler.Consistency)
 

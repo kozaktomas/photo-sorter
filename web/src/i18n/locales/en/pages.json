@@ -525,6 +525,7 @@
       "unchecked": "Unchecked",
       "clean": "Clean",
       "hasErrors": "Has errors",
+      "staleCheck": "Changed since check",
       "checkAll": "Check all",
       "checkingProgress": "Checking {{current}}/{{total}}...",
       "batchComplete": "Check complete",
