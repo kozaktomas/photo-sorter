@@ -281,8 +281,9 @@ func (h *UploadHandler) findUploadedPhotoUIDs(
 		if ctx.Err() != nil {
 			break
 		}
-		// Search by original filename (without extension) in PhotoPrism.
-		baseName := strings.TrimSuffix(name, filepath.Ext(name))
+		// Strip duplicate suffix like "(0)", "(1)" that PhotoPrism adds,
+		// and search by the base original filename.
+		baseName := stripDupSuffix(strings.TrimSuffix(name, filepath.Ext(name)))
 		photos, err := pp.GetPhotosWithQuery(10, 0, "original:"+baseName, 0)
 		if err != nil {
 			log.Printf("Warning: search for uploaded file %s: %v", name, err)
@@ -292,9 +293,9 @@ func (h *UploadHandler) findUploadedPhotoUIDs(
 			if _, ok := seen[p.UID]; ok {
 				continue
 			}
-			// Verify exact filename match (search may return partial matches).
-			origName := strings.ToLower(filepath.Base(p.OriginalName))
-			if strings.EqualFold(origName, name) {
+			origName := filepath.Base(p.OriginalName)
+			origBase := stripDupSuffix(strings.TrimSuffix(origName, filepath.Ext(origName)))
+			if strings.EqualFold(origBase, baseName) {
 				matched = append(matched, p.UID)
 				seen[p.UID] = struct{}{}
 			}
@@ -395,6 +396,26 @@ func getAlbumPhotoUIDSet(
 		uids[p.UID] = struct{}{}
 	}
 	return uids, nil
+}
+
+// stripDupSuffix removes PhotoPrism's duplicate suffix like "(0)", "(1)" from
+// a filename base (without extension). E.g. "photo(0)" → "photo".
+func stripDupSuffix(base string) string {
+	if !strings.HasSuffix(base, ")") {
+		return base
+	}
+	idx := strings.LastIndex(base, "(")
+	if idx < 1 {
+		return base
+	}
+	// Check that content between parens is all digits.
+	inner := base[idx+1 : len(base)-1]
+	for _, c := range inner {
+		if c < '0' || c > '9' {
+			return base
+		}
+	}
+	return base[:idx]
 }
 
 // listFilesInDir returns all file paths in a directory.
