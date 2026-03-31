@@ -55,5 +55,5 @@ const (
 	MaxUploadJobSize = 500 << 20
 
 	// UploadProcessConcurrency is the number of parallel workers for upload processing.
-	UploadProcessConcurrency = 8
+	UploadProcessConcurrency = 2
 )

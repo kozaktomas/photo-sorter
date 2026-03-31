@@ -136,8 +136,12 @@ func (h *UploadHandler) runUploadJob(
 
 	job.SendEvent(JobEvent{
 		Type: "processing_upload", Message: "Processing uploads",
+		Data: map[string]any{"current": 0, "total": len(uploadTokens)},
 	})
-	processUploadTokens(ctx, pp, uploadTokens, job.Options.AlbumUIDs)
+	processed, timedOut := processUploadTokens(ctx, pp, uploadTokens, job.Options.AlbumUIDs, job)
+	if timedOut > 0 {
+		log.Printf("Upload processing: %d/%d succeeded, %d timed out", processed, len(uploadTokens), timedOut)
+	}
 
 	if ctx.Err() != nil {
 		h.cancelUploadJob(job)
@@ -351,13 +355,18 @@ func listFilesInDir(dir string) ([]string, error) {
 	return paths, nil
 }
 
-// processUploadTokens processes upload tokens with concurrency.
+// processUploadTokens processes upload tokens with concurrency and progress events.
+// Returns the number of successfully processed and timed-out tokens.
 func processUploadTokens(
 	ctx context.Context, pp *photoprism.PhotoPrism,
-	tokens []string, albumUIDs []string,
-) {
+	tokens []string, albumUIDs []string, job *UploadJob,
+) (processed, timedOut int) {
 	sem := make(chan struct{}, constants.UploadProcessConcurrency)
 	var wg sync.WaitGroup
+	var processedCount atomic.Int64
+	var timedOutCount atomic.Int64
+	total := len(tokens)
+
 	for _, token := range tokens {
 		if ctx.Err() != nil {
 			break
@@ -368,11 +377,26 @@ func processUploadTokens(
 			sem <- struct{}{}
 			defer func() { <-sem }()
 			if err := pp.ProcessUpload(t, albumUIDs[:1]); err != nil {
-				log.Printf("Warning: process upload %s: %v", t, err)
+				if ctx.Err() == nil {
+					// Timeout or other error — log warning but continue.
+					log.Printf("Warning: process upload %s: %v", t, err)
+					timedOutCount.Add(1)
+				}
+			} else {
+				processedCount.Add(1)
 			}
+			current := processedCount.Load() + timedOutCount.Load()
+			job.SendEvent(JobEvent{
+				Type: "processing_upload",
+				Data: map[string]any{
+					"current": current,
+					"total":   total,
+				},
+			})
 		}(token)
 	}
 	wg.Wait()
+	return int(processedCount.Load()), int(timedOutCount.Load())
 }
 
 // applyLabels applies labels to photos with progress events.

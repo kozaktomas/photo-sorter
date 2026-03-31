@@ -60,7 +60,7 @@ func (pp *PhotoPrism) UploadFile(filePath string) (string, error) {
 	req.Header.Set("Authorization", "Bearer "+pp.token)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := pp.httpClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("could not send request: %w", err)
 	}
@@ -133,7 +133,7 @@ func (pp *PhotoPrism) UploadFiles(filePaths []string) (string, error) {
 	req.Header.Set("Authorization", "Bearer "+pp.token)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := pp.httpClient.Do(req)
 	if err != nil {
 		return "", fmt.Errorf("could not send request: %w", err)
 	}
@@ -148,6 +148,7 @@ func (pp *PhotoPrism) UploadFiles(filePaths []string) (string, error) {
 }
 
 // ProcessUpload processes previously uploaded files and optionally adds them to albums.
+// Uses a longer HTTP timeout since PhotoPrism's import+indexing pipeline can be slow.
 func (pp *PhotoPrism) ProcessUpload(uploadToken string, albumUIDs []string) error {
 	if pp.userUID == "" {
 		return errors.New("user UID not available")
@@ -159,5 +160,6 @@ func (pp *PhotoPrism) ProcessUpload(uploadToken string, albumUIDs []string) erro
 		Albums: albumUIDs,
 	}
 
-	return doRequestRaw(pp, "PUT", fmt.Sprintf("users/%s/upload/%s", pp.userUID, uploadToken), options)
+	endpoint := fmt.Sprintf("users/%s/upload/%s", pp.userUID, uploadToken)
+	return doRequestRawWithClient(pp, pp.processClient, "PUT", endpoint, options)
 }

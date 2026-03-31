@@ -160,7 +160,7 @@ func (pp *PhotoPrism) GetPhotoThumbnail(thumbHash string, size string) ([]byte, 
 		return nil, "", fmt.Errorf("could not create request: %w", err)
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := pp.httpClient.Do(req)
 	if err != nil {
 		return nil, "", fmt.Errorf("could not send request: %w", err)
 	}
@@ -193,7 +193,7 @@ func (pp *PhotoPrism) GetFileDownload(fileHash string) ([]byte, string, error) {
 	}
 
 	// Try without Authorization header first, as this endpoint might use token in URL.
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := pp.httpClient.Do(req)
 	if err != nil {
 		return nil, "", fmt.Errorf("could not send request: %w", err)
 	}

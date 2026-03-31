@@ -67,9 +67,18 @@ export function useUploadJob() {
         break;
       }
 
-      case 'processing_upload':
-        setState(prev => ({ ...prev, phase: 'processing', progress: null }));
+      case 'processing_upload': {
+        const data = eventData?.data as { current?: number; total?: number } | undefined;
+        setState(prev => ({
+          ...prev,
+          phase: 'processing',
+          progress: data ? {
+            current: data.current ?? 0,
+            total: data.total ?? 0,
+          } : prev.progress,
+        }));
         break;
+      }
 
       case 'detecting_photos':
         setState(prev => ({ ...prev, phase: 'detecting', progress: null }));

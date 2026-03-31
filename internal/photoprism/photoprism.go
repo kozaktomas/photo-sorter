@@ -10,8 +10,19 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
+)
+
+// Default HTTP client timeouts.
+const (
+	// DefaultHTTPTimeout is the default timeout for regular API calls.
+	DefaultHTTPTimeout = 5 * time.Minute
+
+	// DefaultProcessTimeout is the default timeout for ProcessUpload calls
+	// which trigger PhotoPrism's import+indexing pipeline.
+	DefaultProcessTimeout = 10 * time.Minute
 )
 
 // PhotoPrism represents a client for the PhotoPrism API.
@@ -22,6 +33,8 @@ type PhotoPrism struct {
 	downloadToken string
 	userUID       string
 	captureDir    string
+	httpClient    *http.Client
+	processClient *http.Client
 }
 
 // resolveURL builds a full URL from the base API URL and the given path segments.
@@ -130,6 +143,23 @@ func (pp *PhotoPrism) captureResponse(endpoint string, body []byte) {
 	}
 }
 
+// getProcessTimeout returns the process timeout from PHOTOPRISM_PROCESS_TIMEOUT env var
+// (in seconds) or the default.
+func getProcessTimeout() time.Duration {
+	if v := os.Getenv("PHOTOPRISM_PROCESS_TIMEOUT"); v != "" {
+		if secs, err := strconv.Atoi(v); err == nil && secs > 0 {
+			return time.Duration(secs) * time.Second
+		}
+	}
+	return DefaultProcessTimeout
+}
+
+// newHTTPClients creates the standard and process HTTP clients.
+func newHTTPClients() (*http.Client, *http.Client) {
+	return &http.Client{Timeout: DefaultHTTPTimeout},
+		&http.Client{Timeout: getProcessTimeout()}
+}
+
 // NewPhotoPrism creates a new PhotoPrism client.
 func NewPhotoPrism(url, username, password string) (*PhotoPrism, error) {
 	return NewPhotoPrismWithCapture(url, username, password, "")
@@ -143,7 +173,8 @@ func NewPhotoPrismWithCapture(rawURL, username, password, captureDir string) (*P
 	if err != nil {
 		return nil, fmt.Errorf("invalid PhotoPrism URL: %w", err)
 	}
-	pp := &PhotoPrism{Url: apiURL, parsedURL: parsed}
+	httpClient, processClient := newHTTPClients()
+	pp := &PhotoPrism{Url: apiURL, parsedURL: parsed, httpClient: httpClient, processClient: processClient}
 	if captureDir != "" {
 		if err := pp.SetCaptureDir(captureDir); err != nil {
 			return nil, err
@@ -163,7 +194,12 @@ func NewPhotoPrismFromToken(rawURL, token, downloadToken, userUID string) (*Phot
 	if err != nil {
 		return nil, fmt.Errorf("invalid PhotoPrism URL: %w", err)
 	}
-	return &PhotoPrism{Url: apiURL, parsedURL: parsed, token: token, downloadToken: downloadToken, userUID: userUID}, nil
+	httpClient, processClient := newHTTPClients()
+	return &PhotoPrism{
+		Url: apiURL, parsedURL: parsed,
+		token: token, downloadToken: downloadToken, userUID: userUID,
+		httpClient: httpClient, processClient: processClient,
+	}, nil
 }
 
 func (pp *PhotoPrism) auth(username, password string) error {
@@ -185,7 +221,7 @@ func (pp *PhotoPrism) auth(username, password string) error {
 
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := pp.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("could not send request: %w", err)
 	}
@@ -224,7 +260,7 @@ func (pp *PhotoPrism) Logout() error {
 
 	req.Header.Set("Authorization", "Bearer "+pp.token)
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := pp.httpClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("could not send request: %w", err)
 	}

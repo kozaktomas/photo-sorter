@@ -23,7 +23,7 @@ func doGetJSON[T any](pp *PhotoPrism, endpoint string) (*T, error) {
 
 	req.Header.Set("Authorization", "Bearer "+pp.token)
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := pp.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("could not send request: %w", err)
 	}
@@ -96,7 +96,7 @@ func doRequestJSON[T any](
 		req.Header.Set("Content-Type", "application/json")
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := pp.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("could not send request: %w", err)
 	}
@@ -123,6 +123,11 @@ func doRequestJSON[T any](
 
 // doRequestRaw performs an HTTP request without JSON unmarshaling the response.
 func doRequestRaw(pp *PhotoPrism, method, endpoint string, requestBody any) error {
+	return doRequestRawWithClient(pp, pp.httpClient, method, endpoint, requestBody)
+}
+
+// doRequestRawWithClient performs an HTTP request using a specific HTTP client.
+func doRequestRawWithClient(pp *PhotoPrism, client *http.Client, method, endpoint string, requestBody any) error {
 	url := pp.resolveURL(endpoint)
 
 	var bodyReader io.Reader
@@ -144,7 +149,7 @@ func doRequestRaw(pp *PhotoPrism, method, endpoint string, requestBody any) erro
 		req.Header.Set("Content-Type", "application/json")
 	}
 
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := client.Do(req)
 	if err != nil {
 		return fmt.Errorf("could not send request: %w", err)
 	}
