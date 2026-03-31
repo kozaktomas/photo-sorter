@@ -161,7 +161,7 @@ func (h *UploadHandler) runUploadJob(
 	// For book section: find all uploaded photos by filename (new + duplicates).
 	var bookUIDs []string
 	if job.Options.BookSectionID != "" {
-		bookUIDs = h.findUploadedPhotoUIDs(ctx, pp, primaryAlbumUID, uploaded.fileNames)
+		bookUIDs = h.findUploadedPhotoUIDs(ctx, pp, uploaded.fileNames)
 	}
 	h.applyPostUploadActions(ctx, job, pp, session, newUIDs, bookUIDs, jobResult)
 
@@ -263,34 +263,41 @@ func (h *UploadHandler) detectNewPhotos(
 	return newUIDs
 }
 
-// findUploadedPhotoUIDs searches the album for photos matching the uploaded filenames.
-// This finds both new photos and duplicates that PhotoPrism recognized.
+// findUploadedPhotoUIDs searches PhotoPrism globally for photos matching the
+// uploaded filenames. This finds both new photos and duplicates that PhotoPrism
+// recognized, even if the duplicate was not added to the target album.
 func (h *UploadHandler) findUploadedPhotoUIDs(
 	ctx context.Context,
-	pp *photoprism.PhotoPrism, albumUID string,
+	pp *photoprism.PhotoPrism,
 	fileNames []string,
 ) []string {
 	if len(fileNames) == 0 {
 		return nil
 	}
-	// Build a set of uploaded filenames (without extension, lowercased) for matching.
-	nameSet := make(map[string]struct{}, len(fileNames))
-	for _, name := range fileNames {
-		nameSet[strings.ToLower(name)] = struct{}{}
-	}
 
-	// Fetch all photos in the album and match by OriginalName.
-	allPhotos, err := getAllAlbumPhotos(ctx, pp, albumUID)
-	if err != nil {
-		log.Printf("Warning: failed to fetch album photos for book matching: %v", err)
-		return nil
-	}
-
+	seen := make(map[string]struct{})
 	var matched []string
-	for _, p := range allPhotos {
-		origName := strings.ToLower(filepath.Base(p.OriginalName))
-		if _, ok := nameSet[origName]; ok {
-			matched = append(matched, p.UID)
+	for _, name := range fileNames {
+		if ctx.Err() != nil {
+			break
+		}
+		// Search by original filename (without extension) in PhotoPrism.
+		baseName := strings.TrimSuffix(name, filepath.Ext(name))
+		photos, err := pp.GetPhotosWithQuery(10, 0, "original:"+baseName, 0)
+		if err != nil {
+			log.Printf("Warning: search for uploaded file %s: %v", name, err)
+			continue
+		}
+		for _, p := range photos {
+			if _, ok := seen[p.UID]; ok {
+				continue
+			}
+			// Verify exact filename match (search may return partial matches).
+			origName := strings.ToLower(filepath.Base(p.OriginalName))
+			if strings.EqualFold(origName, name) {
+				matched = append(matched, p.UID)
+				seen[p.UID] = struct{}{}
+			}
 		}
 	}
 	return matched
@@ -388,34 +395,6 @@ func getAlbumPhotoUIDSet(
 		uids[p.UID] = struct{}{}
 	}
 	return uids, nil
-}
-
-// getAllAlbumPhotos fetches all photos in an album with full metadata.
-func getAllAlbumPhotos(
-	ctx context.Context,
-	pp *photoprism.PhotoPrism, albumUID string,
-) ([]photoprism.Photo, error) {
-	var allPhotos []photoprism.Photo
-	pageSize := constants.DefaultPageSize
-	offset := 0
-	for {
-		if ctx.Err() != nil {
-			return nil, fmt.Errorf("cancelled: %w", ctx.Err())
-		}
-		photos, err := pp.GetAlbumPhotos(albumUID, pageSize, offset)
-		if err != nil {
-			return nil, fmt.Errorf("fetching album photos: %w", err)
-		}
-		if len(photos) == 0 {
-			break
-		}
-		allPhotos = append(allPhotos, photos...)
-		if len(photos) < pageSize {
-			break
-		}
-		offset += len(photos)
-	}
-	return allPhotos, nil
 }
 
 // listFilesInDir returns all file paths in a directory.
