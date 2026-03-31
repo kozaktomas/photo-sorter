@@ -144,6 +144,15 @@ export function TextsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, on
   const totalTexts = textEntries.length;
   const checkedCount = Object.values(checkStatuses).filter(s => s === 'clean').length;
   const errorCount = Object.values(checkStatuses).filter(s => s === 'has_errors').length;
+  const totalReadingTime = useMemo(() => {
+    let total = 0;
+    for (const e of textEntries) {
+      const wc = e.text.trim().split(/\s+/).filter(Boolean).length;
+      if (wc >= 10) total += Math.ceil((wc / 200) * 2) / 2;
+      else if (wc > 0) total += 0.5;
+    }
+    return Math.ceil(total * 2) / 2;
+  }, [textEntries]);
 
   // Duplicate detection
   const duplicatePairs = useMemo(
@@ -316,12 +325,13 @@ export function TextsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, on
     <div className="space-y-6">
       {/* Stats */}
       <StatsGrid
-        columns={4}
+        columns={5}
         items={[
           { value: totalTexts, label: t('books.editor.totalTexts'), color: 'white' },
           { value: checkedCount, label: t('books.editor.checkedTexts'), color: 'green' },
           { value: errorCount, label: t('books.editor.textsWithErrors'), color: 'red' },
           { value: duplicatePairs.length, label: t('books.editor.duplicateTexts'), color: duplicatePairs.length > 0 ? 'yellow' : 'white' },
+          { value: `~${totalReadingTime} min`, label: t('books.editor.totalReadingTime'), color: 'white' },
         ]}
       />
 
@@ -491,7 +501,15 @@ export function TextsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, on
                     <p className="text-sm text-slate-200 truncate">
                       {entry.text.length > 100 ? entry.text.slice(0, 100) + '...' : entry.text}
                     </p>
-                    <p className="text-xs text-slate-500 mt-0.5">{getSourceLabel(entry)}</p>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      {getSourceLabel(entry)}
+                      {(() => {
+                        const wc = entry.text.trim().split(/\s+/).filter(Boolean).length;
+                        if (wc === 0) return null;
+                        const rt = wc < 10 ? null : Math.ceil((wc / 200) * 2) / 2;
+                        return <> · {rt === null ? t('books.editor.readingTimeShort') : t('books.editor.readingTime', { time: rt })}</>;
+                      })()}
+                    </p>
                   </div>
                   <div className="flex items-center gap-3 flex-shrink-0">
                     {getStatusIndicator(entry.id)}

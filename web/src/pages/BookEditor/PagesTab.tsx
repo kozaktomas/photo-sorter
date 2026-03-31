@@ -238,7 +238,16 @@ function TextSlotDialog({ text, pageId, slotIndex, onSave, onClose }: { text: st
           <div className="flex items-center justify-between">
             <p className="text-xs text-slate-500">{t('books.editor.markdownHelp')}</p>
             <p className="text-xs text-slate-500">
-              {t('books.editor.charCount', { count: value.length })} · {t('books.editor.wordCount', { count: value.trim().split(/\s+/).filter(Boolean).length })}
+              {(() => {
+                const wc = value.trim().split(/\s+/).filter(Boolean).length;
+                const rt = wc < 10 ? null : Math.ceil((wc / 200) * 2) / 2;
+                return (
+                  <>
+                    {t('books.editor.charCount', { count: value.length })} · {t('books.editor.wordCount', { count: wc })}
+                    {wc > 0 && <> · {rt === null ? t('books.editor.readingTimeShort') : t('books.editor.readingTime', { time: rt })}</>}
+                  </>
+                );
+              })()}
             </p>
           </div>
 

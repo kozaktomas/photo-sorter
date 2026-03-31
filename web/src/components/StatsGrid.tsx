@@ -8,7 +8,7 @@ export interface StatItem {
 
 interface StatsGridProps {
   items: StatItem[];
-  columns?: 2 | 3 | 4;
+  columns?: 2 | 3 | 4 | 5;
 }
 
 const colorClasses = {
@@ -24,6 +24,7 @@ const gridColsClasses = {
   2: 'md:grid-cols-2',
   3: 'md:grid-cols-3',
   4: 'md:grid-cols-4',
+  5: 'md:grid-cols-5',
 };
 
 export function StatsGrid({ items, columns = 4 }: StatsGridProps) {

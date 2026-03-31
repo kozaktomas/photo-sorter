@@ -214,7 +214,16 @@ export function PhotoDescriptionDialog({ sectionId, photoUid, description, note,
             <div className="flex items-center justify-between mt-1">
               <p className="text-xs text-slate-500">{t('books.editor.descriptionHelp')}</p>
               <p className="text-xs text-slate-500">
-                {t('books.editor.charCount', { count: desc.length })} · {t('books.editor.wordCount', { count: desc.trim().split(/\s+/).filter(Boolean).length })}
+                {(() => {
+                  const wc = desc.trim().split(/\s+/).filter(Boolean).length;
+                  const rt = wc < 10 ? null : Math.ceil((wc / 200) * 2) / 2;
+                  return (
+                    <>
+                      {t('books.editor.charCount', { count: desc.length })} · {t('books.editor.wordCount', { count: wc })}
+                      {wc > 0 && <> · {rt === null ? t('books.editor.readingTimeShort') : t('books.editor.readingTime', { time: rt })}</>}
+                    </>
+                  );
+                })()}
               </p>
             </div>
           </div>
