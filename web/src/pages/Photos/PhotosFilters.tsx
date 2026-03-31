@@ -93,7 +93,7 @@ export function PhotosFilters({
             >
               {SORT_OPTIONS.map(option => (
                 <option key={option.value} value={option.value}>
-                  {option.label}
+                  {t(option.label)}
                 </option>
               ))}
             </select>

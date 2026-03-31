@@ -7,12 +7,12 @@ export interface SortOption {
 }
 
 export const SORT_OPTIONS: SortOption[] = [
-  { value: 'newest', label: 'Date (Newest)' },
-  { value: 'oldest', label: 'Date (Oldest)' },
-  { value: 'added', label: 'Recently Added' },
-  { value: 'edited', label: 'Recently Edited' },
-  { value: 'name', label: 'File Name' },
-  { value: 'title', label: 'Title' },
+  { value: 'newest', label: 'photos.sortNewest' },
+  { value: 'oldest', label: 'photos.sortOldest' },
+  { value: 'added', label: 'photos.sortAdded' },
+  { value: 'edited', label: 'photos.sortEdited' },
+  { value: 'name', label: 'photos.sortFileName' },
+  { value: 'title', label: 'photos.sortTitle' },
 ];
 
 export interface UsePhotosFiltersReturn {

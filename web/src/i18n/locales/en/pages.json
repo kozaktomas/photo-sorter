@@ -38,9 +38,12 @@
     "allYears": "All Years",
     "allLabels": "All Labels",
     "allAlbums": "All Albums",
-    "sortNewest": "Newest first",
-    "sortOldest": "Oldest first",
-    "sortName": "By name"
+    "sortNewest": "Date (Newest)",
+    "sortOldest": "Date (Oldest)",
+    "sortAdded": "Recently Added",
+    "sortEdited": "Recently Edited",
+    "sortFileName": "File Name",
+    "sortTitle": "Title"
   },
   "labels": {
     "title": "Labels",

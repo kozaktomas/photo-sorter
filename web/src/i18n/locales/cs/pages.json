@@ -38,9 +38,12 @@
     "allYears": "Všechny roky",
     "allLabels": "Všechny štítky",
     "allAlbums": "Všechna alba",
-    "sortNewest": "Nejnovější",
-    "sortOldest": "Nejstarší",
-    "sortName": "Podle názvu"
+    "sortNewest": "Datum (nejnovější)",
+    "sortOldest": "Datum (nejstarší)",
+    "sortAdded": "Naposledy přidané",
+    "sortEdited": "Naposledy upravené",
+    "sortFileName": "Název souboru",
+    "sortTitle": "Název"
   },
   "labels": {
     "title": "Štítky",
