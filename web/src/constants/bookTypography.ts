@@ -8,6 +8,7 @@ export const BOOK_TYPOGRAPHY = {
     fontSize: '12pt',       // LaTeX \fontsize{12}{14.4}
     lineHeight: '14.4pt',
   },
+  headingFontFamily: "'Source Sans 3', sans-serif",  // LaTeX \setsansfont{SourceSans3}
   h1: {
     fontSize: '17.28pt',    // LaTeX \Large at 12pt base
     fontWeight: 700,

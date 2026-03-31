@@ -112,12 +112,23 @@ body {
   line-height: 1.5;
 }
 .markdown-content h1 {
+  font-family: 'Source Sans 3', sans-serif;
   font-size: 1.25rem;
   font-weight: 700;
   color: #f8fafc; /* slate-50 */
   margin: 0 0 0.5rem;
 }
+/* Chapter color override for H1 headings */
+.markdown-content[style*="--chapter-color"] h1 {
+  background-color: var(--chapter-color);
+  color: #ffffff;
+  font-family: 'Source Sans 3', sans-serif;
+  padding: 4px 12px;
+  width: 100%;
+  box-sizing: border-box;
+}
 .markdown-content h2 {
+  font-family: 'Source Sans 3', sans-serif;
   font-size: 1.1rem;
   font-weight: 600;
   color: #f1f5f9; /* slate-100 */
@@ -185,12 +196,23 @@ body {
   word-wrap: break-word;
 }
 .wysiwyg-preview h1 {
+  font-family: 'Source Sans 3', sans-serif;
   font-size: 17.28pt;
   font-weight: 700;
   line-height: 1.2;
   margin: 0 0 4mm;
 }
+/* Chapter color override for H1 headings in print preview */
+.wysiwyg-preview[style*="--chapter-color"] h1 {
+  background-color: var(--chapter-color);
+  color: #ffffff;
+  font-family: 'Source Sans 3', sans-serif;
+  padding: 4px 12px;
+  width: 100%;
+  box-sizing: border-box;
+}
 .wysiwyg-preview h2 {
+  font-family: 'Source Sans 3', sans-serif;
   font-size: 14.4pt;
   font-weight: 700;
   line-height: 1.2;

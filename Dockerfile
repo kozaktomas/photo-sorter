@@ -29,6 +29,12 @@ RUN apk update && \
       curl -fsSL -o /usr/share/fonts/opentype/ebgaramond/$f \
         https://mirrors.ctan.org/fonts/ebgaramond/opentype/$f; \
     done && \
+    # Install SourceSans3 fonts from CTAN (package: sourcesans)
+    mkdir -p /usr/share/fonts/opentype/sourcesans3 && \
+    for f in SourceSans3-Regular.otf SourceSans3-Semibold.otf SourceSans3-RegularIt.otf SourceSans3-SemiboldIt.otf; do \
+      curl -fsSL -o /usr/share/fonts/opentype/sourcesans3/$f \
+        https://mirrors.ctan.org/fonts/sourcesans/fonts/$f; \
+    done && \
     # Install enumitem.sty from CTAN (avoids pulling huge texmf-dist-latexextra)
     mkdir -p /usr/share/texmf-dist/tex/latex/enumitem && \
     curl -fsSL -o /usr/share/texmf-dist/tex/latex/enumitem/enumitem.sty \

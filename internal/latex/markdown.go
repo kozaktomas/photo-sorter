@@ -17,7 +17,7 @@ var (
 // MarkdownToLatex converts a subset of Markdown to LaTeX.
 //
 // Supported syntax:.
-//   - # Heading       → {\Large\bfseries Heading}\par\vspace{4mm}
+//   - # Heading       → {\Large\sffamily\bfseries Heading}\par\vspace{4mm}
 //   - ## Subheading   → {\large\bfseries Subheading}\par\vspace{4mm}
 //   - **bold**        → \textbf{bold}
 //   - *italic*        → \textit{italic}
@@ -106,10 +106,15 @@ func MarkdownToLatex(md string) string {
 }
 
 // formatHeading formats a heading line with the given LaTeX size command.
+// H1 (\Large) uses \sffamily to render in Source Sans 3 (the sans-serif font).
 func formatHeading(text, sizeCmd string) string {
 	text = inlineFormat(latexEscapeRaw(text))
 	text = czechTypography(text)
-	return `{` + sizeCmd + `\bfseries ` + text + `}\par\vspace{4mm}`
+	fontCmd := `\bfseries `
+	if sizeCmd == `\Large` {
+		fontCmd = `\sffamily\bfseries `
+	}
+	return `{` + sizeCmd + fontCmd + text + `}\par\vspace{4mm}`
 }
 
 // collectListItems consumes consecutive list items and returns formatted LaTeX items.
