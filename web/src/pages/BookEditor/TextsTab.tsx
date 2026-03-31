@@ -1,6 +1,6 @@
 import { useState, useMemo, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { SpellCheck, ArrowLeftRight, Loader2, Check, DollarSign, ChevronDown, ChevronUp, ExternalLink, X, BarChart3, Copy } from 'lucide-react';
+import { SpellCheck, ArrowLeftRight, Loader2, Check, DollarSign, ChevronDown, ChevronUp, ExternalLink, X, BarChart3, Copy, Search } from 'lucide-react';
 import { checkText, rewriteText, checkTextConsistency, updateSectionPhoto, assignTextSlot } from '../../api/client';
 import { StatsGrid } from '../../components/StatsGrid';
 import { findDuplicateTexts } from '../../utils/textSimilarity';
@@ -86,6 +86,9 @@ export function TextsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, on
   const [batchTotalCost, setBatchTotalCost] = useState<number | null>(null);
   const batchCancelledRef = useRef(false);
 
+  // Search state
+  const [searchQuery, setSearchQuery] = useState('');
+
   // Consistency check state
   const [isConsistencyChecking, setIsConsistencyChecking] = useState(false);
   const [consistencyResult, setConsistencyResult] = useState<{
@@ -159,6 +162,34 @@ export function TextsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, on
     () => findDuplicateTexts(textEntries.map(e => ({ id: e.id, text: e.text }))),
     [textEntries],
   );
+
+  // Filtered entries based on search
+  const filteredEntries = useMemo(() => {
+    if (!searchQuery.trim()) return textEntries;
+    const q = searchQuery.toLowerCase();
+    return textEntries.filter(entry => {
+      const source = entry.source === 'section_photo'
+        ? (entry.sectionTitle || '').toLowerCase()
+        : `page ${entry.pageNumber} slot ${(entry.slotIndex ?? 0) + 1}`.toLowerCase();
+      return entry.text.toLowerCase().includes(q) || source.includes(q);
+    });
+  }, [textEntries, searchQuery]);
+
+  // Highlight matching substring in text
+  const highlightMatch = useCallback((text: string, maxLen?: number) => {
+    const display = maxLen && text.length > maxLen ? text.slice(0, maxLen) + '...' : text;
+    if (!searchQuery.trim()) return <>{display}</>;
+    const q = searchQuery.trim();
+    const idx = display.toLowerCase().indexOf(q.toLowerCase());
+    if (idx === -1) return <>{display}</>;
+    return (
+      <>
+        {display.slice(0, idx)}
+        <mark className="bg-yellow-500/30 text-inherit rounded-sm px-0.5">{display.slice(idx, idx + q.length)}</mark>
+        {display.slice(idx + q.length)}
+      </>
+    );
+  }, [searchQuery]);
 
   const handleCheck = useCallback(async (entry: TextEntry) => {
     setChecking(entry.id);
@@ -476,12 +507,41 @@ export function TextsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, on
         <p className="text-xs text-red-400">{errors.__consistency}</p>
       )}
 
+      {/* Search */}
+      {textEntries.length > 0 && (
+        <div className="space-y-1">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-500" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder={t('books.editor.searchTexts')}
+              className="w-full pl-9 pr-9 py-2 text-sm bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500 transition-colors"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-white transition-colors"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+          {searchQuery.trim() && (
+            <p className="text-xs text-slate-500">
+              {t('books.editor.searchResults', { count: filteredEntries.length, total: textEntries.length })}
+            </p>
+          )}
+        </div>
+      )}
+
       {/* Text list */}
       {textEntries.length === 0 ? (
         <p className="text-sm text-slate-500 text-center py-8">{t('books.editor.totalTexts')}: 0</p>
       ) : (
         <div className="space-y-2">
-          {textEntries.map(entry => {
+          {filteredEntries.map(entry => {
             const isExpanded = expandedId === entry.id;
             const checkResult = checkResults[entry.id];
             const rewriteResult = rewriteResults[entry.id];
@@ -499,7 +559,7 @@ export function TextsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, on
                 >
                   <div className="flex-1 min-w-0">
                     <p className="text-sm text-slate-200 truncate">
-                      {entry.text.length > 100 ? entry.text.slice(0, 100) + '...' : entry.text}
+                      {highlightMatch(entry.text, 100)}
                     </p>
                     <p className="text-xs text-slate-500 mt-0.5">
                       {getSourceLabel(entry)}

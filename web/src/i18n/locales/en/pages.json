@@ -546,6 +546,8 @@
       "duplicateTexts": "Possible duplicates",
       "noDuplicates": "No duplicates",
       "similarity": "{{percent}}% similarity",
+      "searchTexts": "Search texts...",
+      "searchResults": "{{count}} of {{total}} texts",
       "duplicateTextsCount": "Possible duplicates: {{count}}",
       "keyboardShortcuts": "Keyboard shortcuts",
       "pressForHelp": "Press ? for help",

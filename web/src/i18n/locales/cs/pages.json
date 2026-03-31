@@ -532,6 +532,8 @@
       "duplicateTexts": "Možné duplikáty",
       "noDuplicates": "Žádné duplikáty",
       "similarity": "{{percent}}% podobnost",
+      "searchTexts": "Hledat v textech...",
+      "searchResults": "{{count}} z {{total}} textů",
       "duplicateTextsCount": "Možné duplikáty: {{count}}",
       "keyboardShortcuts": "Klávesové zkratky",
       "pressForHelp": "Stiskněte ? pro nápovědu",
