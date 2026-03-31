@@ -46,6 +46,8 @@ func NewServer(
 	s.registerChapterTools()
 	s.registerSectionTools()
 	s.registerSectionPhotoTools()
+	s.registerPageTools()
+	s.registerSlotTools()
 
 	return s
 }
