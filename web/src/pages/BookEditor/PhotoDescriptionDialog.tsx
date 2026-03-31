@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X, SpellCheck, ArrowLeftRight, Check, Loader2, DollarSign, History } from 'lucide-react';
 import { getThumbnailUrl, updateSectionPhoto, checkText, rewriteText, listTextVersions, restoreTextVersion } from '../../api/client';
@@ -152,6 +152,33 @@ export function PhotoDescriptionDialog({ sectionId, photoUid, description, note,
 
   const descEmpty = desc.trim() === '';
   const aiLoading = checking || rewriting;
+
+  // Keyboard shortcuts: Ctrl+Enter to save, Ctrl+Shift+C to check, Escape to close
+  const handlersRef = useRef({ handleSave, handleCheck, onClose, descEmpty, aiLoading });
+  handlersRef.current = { handleSave, handleCheck, onClose, descEmpty, aiLoading };
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const { handleSave, handleCheck, onClose, descEmpty, aiLoading } = handlersRef.current;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+        return;
+      }
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        void handleSave();
+        return;
+      }
+      if (e.key === 'c' && (e.ctrlKey || e.metaKey) && e.shiftKey) {
+        e.preventDefault();
+        if (!descEmpty && !aiLoading) void handleCheck();
+        return;
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
 
   const lengthOptions: { value: TargetLength; labelKey: string }[] = [
     { value: 'much_shorter', labelKey: 'books.editor.muchShorter' },

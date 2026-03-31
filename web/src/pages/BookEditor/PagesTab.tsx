@@ -173,6 +173,33 @@ function TextSlotDialog({ text, pageId, slotIndex, pageFormat, pageSlots, splitP
     }
   };
 
+  // Keyboard shortcuts: Ctrl+Enter to save, Ctrl+Shift+C to check, Escape to close
+  const textDialogRef = useRef({ value, valueEmpty, aiLoading, onSave, onClose, handleCheck });
+  textDialogRef.current = { value, valueEmpty, aiLoading, onSave, onClose, handleCheck };
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const { value, valueEmpty, aiLoading, onSave, onClose, handleCheck } = textDialogRef.current;
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+        return;
+      }
+      if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        if (value.trim()) onSave(value);
+        return;
+      }
+      if (e.key === 'c' && (e.ctrlKey || e.metaKey) && e.shiftKey) {
+        e.preventDefault();
+        if (!valueEmpty && !aiLoading) void handleCheck();
+        return;
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   const lengthOptions: { value: TargetLength; labelKey: string }[] = [
     { value: 'much_shorter', labelKey: 'books.editor.muchShorter' },
     { value: 'shorter', labelKey: 'books.editor.shorter' },
@@ -797,7 +824,27 @@ export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRe
     }
   }, [selectedPage, autoLayoutLoading, book.id, onRefresh, t]);
 
-  // Keyboard navigation: W/S = prev/next page, E/D = prev/next section
+  // Enter: open edit dialog for the first filled slot on the selected page
+  const handleEnterKey = useCallback(() => {
+    if (!selectedPage) return;
+    for (const slot of selectedPage.slots) {
+      if (slot.text_content) {
+        setEditingTextSlot({ slotIndex: slot.slot_index, text: slot.text_content, pageId: selectedPage.id });
+        return;
+      }
+      if (slot.photo_uid && selectedPage.section_id) {
+        setEditingPhoto({ sectionId: selectedPage.section_id, photoUid: slot.photo_uid });
+        return;
+      }
+    }
+  }, [selectedPage]);
+
+  // Escape: deselect current page
+  const handleEscapeKey = useCallback(() => {
+    setSelectedId(null);
+  }, []);
+
+  // Keyboard navigation: W/S = prev/next page, E/D = prev/next section, Enter/Escape
   useBookKeyboardNav({
     items: book.pages,
     selectedId,
@@ -806,6 +853,8 @@ export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRe
     getChapterId: page => page.section_id || '',
     chapters: book.sections.map(s => ({ id: s.id })),
     enabled: !editingPhoto && !editingTextSlot && !editingCrop,
+    onEnter: handleEnterKey,
+    onEscape: handleEscapeKey,
   });
 
   // Load section photos for the selected page's section

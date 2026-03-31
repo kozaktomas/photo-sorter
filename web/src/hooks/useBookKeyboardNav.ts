@@ -8,6 +8,8 @@ interface Options<T> {
   getChapterId: (item: T) => string;
   chapters: { id: string }[];
   enabled?: boolean;
+  onEnter?: () => void;
+  onEscape?: () => void;
 }
 
 /**
@@ -22,6 +24,8 @@ export function useBookKeyboardNav<T>({
   getChapterId,
   chapters,
   enabled = true,
+  onEnter,
+  onEscape,
 }: Options<T>) {
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     if (!enabled || items.length === 0) return;
@@ -31,6 +35,18 @@ export function useBookKeyboardNav<T>({
     if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
     // Also skip contenteditable elements
     if (document.activeElement instanceof HTMLElement && document.activeElement.isContentEditable) return;
+
+    if (e.key === 'Enter' && onEnter) {
+      e.preventDefault();
+      onEnter();
+      return;
+    }
+
+    if (e.key === 'Escape' && onEscape) {
+      e.preventDefault();
+      onEscape();
+      return;
+    }
 
     const key = e.key.toLowerCase();
     if (key !== 'w' && key !== 's' && key !== 'e' && key !== 'd') return;
@@ -81,7 +97,7 @@ export function useBookKeyboardNav<T>({
         onSelect(getId(firstItem));
       }
     }
-  }, [enabled, items, selectedId, onSelect, getId, getChapterId, chapters]);
+  }, [enabled, items, selectedId, onSelect, getId, getChapterId, chapters, onEnter, onEscape]);
 
   useEffect(() => {
     window.addEventListener('keydown', handleKeyDown);

@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus, Trash2, CheckSquare, Square } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
@@ -8,6 +8,8 @@ import { PhotoInfoOverlay } from './PhotoInfoOverlay';
 import { PhotoBrowserModal } from './PhotoBrowserModal';
 import { PhotoDescriptionDialog } from './PhotoDescriptionDialog';
 import type { SectionPhoto } from '../../types';
+
+const GRID_COLS = 3;
 
 function DraggablePhoto({ photo, sectionId, selected, onToggleSelect, children }: {
   photo: SectionPhoto;
@@ -73,10 +75,19 @@ export function SectionPhotoPool({ sectionId, photos, onRefresh, onReloadPhotos 
   const [addByIdError, setAddByIdError] = useState('');
   const [addByIdLoading, setAddByIdLoading] = useState(false);
 
-  // Clear selection when switching sections
+  const [focusIndex, setFocusIndex] = useState(-1);
+  const gridRef = useRef<HTMLDivElement>(null);
+
+  // Clear selection and focus when switching sections
   useEffect(() => {
     setSelected(new Set());
+    setFocusIndex(-1);
   }, [sectionId]);
+
+  // Reset focus if it's out of bounds
+  useEffect(() => {
+    if (focusIndex >= photos.length) setFocusIndex(photos.length - 1);
+  }, [photos.length, focusIndex]);
 
   const toggleSelect = useCallback((uid: string) => {
     setSelected(prev => {
@@ -87,7 +98,7 @@ export function SectionPhotoPool({ sectionId, photos, onRefresh, onReloadPhotos 
     });
   }, []);
 
-  const handleRemoveSelected = async () => {
+  const handleRemoveSelected = useCallback(async () => {
     if (selected.size === 0) return;
     try {
       await removeSectionPhotos(sectionId, Array.from(selected));
@@ -95,7 +106,54 @@ export function SectionPhotoPool({ sectionId, photos, onRefresh, onReloadPhotos 
       onReloadPhotos();
       onRefresh();
     } catch { /* silent */ }
-  };
+  }, [selected, sectionId, onReloadPhotos, onRefresh]);
+
+  // Grid keyboard navigation
+  useEffect(() => {
+    if (editingPhoto || showBrowser) return;
+
+    const handler = (e: KeyboardEvent) => {
+      const tag = (document.activeElement?.tagName ?? '').toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+      if (document.activeElement instanceof HTMLElement && document.activeElement.isContentEditable) return;
+      if (photos.length === 0) return;
+
+      const { key } = e;
+
+      if (key === 'ArrowRight' || key === 'ArrowLeft' || key === 'ArrowDown' || key === 'ArrowUp') {
+        e.preventDefault();
+        setFocusIndex(prev => {
+          const cur = prev < 0 ? 0 : prev;
+          if (key === 'ArrowRight') return Math.min(cur + 1, photos.length - 1);
+          if (key === 'ArrowLeft') return Math.max(cur - 1, 0);
+          if (key === 'ArrowDown') return Math.min(cur + GRID_COLS, photos.length - 1);
+          if (key === 'ArrowUp') return Math.max(cur - GRID_COLS, 0);
+          return cur;
+        });
+        return;
+      }
+
+      if (key === 'Enter' && focusIndex >= 0 && focusIndex < photos.length) {
+        e.preventDefault();
+        setEditingPhoto(photos[focusIndex]);
+        return;
+      }
+
+      if (key === ' ' && focusIndex >= 0 && focusIndex < photos.length) {
+        e.preventDefault();
+        toggleSelect(photos[focusIndex].photo_uid);
+        return;
+      }
+
+      if (key === 'Delete' && selected.size > 0) {
+        e.preventDefault();
+        void handleRemoveSelected();
+        return;
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [editingPhoto, showBrowser, photos, focusIndex, selected, toggleSelect, handleRemoveSelected]);
 
   const handleDescriptionSaved = () => {
     setEditingPhoto(null);
@@ -220,24 +278,25 @@ export function SectionPhotoPool({ sectionId, photos, onRefresh, onReloadPhotos 
         </div>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
-        {photos.map((photo) => (
-          <DraggablePhoto
-            key={photo.photo_uid}
-            photo={photo}
-            sectionId={sectionId}
-            selected={selected}
-            onToggleSelect={() => toggleSelect(photo.photo_uid)}
-          >
-            <div
-              className="px-2 py-1.5 cursor-pointer hover:bg-slate-700/50 transition-colors text-center"
-              onClick={() => setEditingPhoto(photo)}
+      <div ref={gridRef} className="grid grid-cols-3 gap-3">
+        {photos.map((photo, idx) => (
+          <div key={photo.photo_uid} className={`rounded-lg ${idx === focusIndex ? 'ring-2 ring-rose-500' : ''}`}>
+            <DraggablePhoto
+              photo={photo}
+              sectionId={sectionId}
+              selected={selected}
+              onToggleSelect={() => toggleSelect(photo.photo_uid)}
             >
-              <span className="text-xs text-slate-500 hover:text-slate-300">
-                {t('books.editor.editDescription')}
-              </span>
-            </div>
-          </DraggablePhoto>
+              <div
+                className="px-2 py-1.5 cursor-pointer hover:bg-slate-700/50 transition-colors text-center"
+                onClick={() => setEditingPhoto(photo)}
+              >
+                <span className="text-xs text-slate-500 hover:text-slate-300">
+                  {t('books.editor.editDescription')}
+                </span>
+              </div>
+            </DraggablePhoto>
+          </div>
         ))}
       </div>
 

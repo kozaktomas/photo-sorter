@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { BookOpen, ArrowLeft, Pencil, Trash2, Check, X, Download, BarChart3 } from 'lucide-react';
@@ -14,6 +14,7 @@ import { PreviewTab } from './PreviewTab';
 import { DuplicatesTab } from './DuplicatesTab';
 import { TextsTab } from './TextsTab';
 import { PreflightModal } from './PreflightModal';
+import { KeyboardShortcutsHelp } from './KeyboardShortcutsHelp';
 
 type Tab = 'sections' | 'pages' | 'preview' | 'duplicates' | 'texts';
 
@@ -57,6 +58,34 @@ export function BookEditorPage() {
       return next;
     }, { replace: true });
   }, [setSearchParams]);
+
+  const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
+
+  // Global keyboard shortcuts: 1-5 for tabs, ? for help
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (document.activeElement?.tagName ?? '').toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+      if (document.activeElement instanceof HTMLElement && document.activeElement.isContentEditable) return;
+
+      // Tab switching: 1-5
+      const tabIndex = parseInt(e.key) - 1;
+      if (tabIndex >= 0 && tabIndex < VALID_TABS.length) {
+        e.preventDefault();
+        handleTabChange(VALID_TABS[tabIndex]);
+        return;
+      }
+
+      // ? for help (Shift+/ on US layout, or just ?)
+      if (e.key === '?') {
+        e.preventDefault();
+        setShowShortcutsHelp(true);
+        return;
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [handleTabChange]);
 
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState('');
@@ -239,8 +268,8 @@ export function BookEditorPage() {
               </div>
             </div>
 
-            <div className="flex border-b border-slate-700 mb-6">
-              {tabs.map(({ key, label }) => (
+            <div className="flex items-center border-b border-slate-700 mb-6">
+              {tabs.map(({ key, label }, idx) => (
                 <button
                   key={key}
                   onClick={() => handleTabChange(key)}
@@ -249,10 +278,18 @@ export function BookEditorPage() {
                       ? 'border-rose-500 text-rose-400'
                       : 'border-transparent text-slate-400 hover:text-white'
                   }`}
+                  title={`${idx + 1}`}
                 >
                   {label}
                 </button>
               ))}
+              <button
+                onClick={() => setShowShortcutsHelp(true)}
+                className="ml-auto px-2 py-1 text-xs text-slate-500 hover:text-slate-300 transition-colors"
+                title={t('books.editor.keyboardShortcuts')}
+              >
+                {t('books.editor.pressForHelp')}
+              </button>
             </div>
 
             {showStats && <BookStatsPanel book={book} sectionPhotos={sectionPhotos} />}
@@ -310,6 +347,11 @@ export function BookEditorPage() {
         variant="danger"
         onConfirm={confirmDelete}
         onCancel={() => setShowDeleteConfirm(false)}
+      />
+
+      <KeyboardShortcutsHelp
+        open={showShortcutsHelp}
+        onClose={() => setShowShortcutsHelp(false)}
       />
 
       {showPreflight && (
