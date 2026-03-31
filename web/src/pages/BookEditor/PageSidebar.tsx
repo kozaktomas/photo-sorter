@@ -47,19 +47,24 @@ function SlotThumbnail({ slot }: { slot?: { photo_uid: string; text_content: str
   );
 }
 
-function SortablePageItem({ page, globalIndex, isSelected, onSelect, onDelete, isPhotoDragActive }: {
+function SortablePageItem({ page, globalIndex, isSelected, onSelect, onDelete, isPhotoDragActive, scrollRef }: {
   page: BookPage;
   globalIndex: number;
   isSelected: boolean;
   onSelect: () => void;
   onDelete: () => void;
   isPhotoDragActive?: boolean;
+  scrollRef?: (el: HTMLDivElement | null) => void;
 }) {
   const { t } = useTranslation('pages');
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
     id: page.id,
     data: { type: 'page-reorder', pageId: page.id, sectionId: page.section_id },
   });
+  const combinedRef = useCallback((el: HTMLDivElement | null) => {
+    setNodeRef(el);
+    scrollRef?.(el);
+  }, [setNodeRef, scrollRef]);
   const { over } = useDndContext();
   const isOver = over?.id === page.id;
   const style = { transform: CSS.Transform.toString(transform), transition };
@@ -93,7 +98,7 @@ function SortablePageItem({ page, globalIndex, isSelected, onSelect, onDelete, i
 
   return (
     <div
-      ref={setNodeRef}
+      ref={combinedRef}
       style={style}
       className={`flex items-center gap-1.5 p-1.5 rounded-md cursor-pointer transition-colors ${boxClass}`}
       onClick={onSelect}
@@ -210,6 +215,16 @@ export function PageSidebar({ bookId, pages, chapters, sections, selectedId, onS
     onRefresh();
     onSelect(pageId);
   }, [onRefresh, onSelect]);
+  const selectedItemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+
+  // Scroll selected item into view
+  useEffect(() => {
+    if (!selectedId) return;
+    const el = selectedItemRefs.current.get(selectedId);
+    if (el) {
+      el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }, [selectedId]);
   const storageKey = `page-sidebar-collapsed:${bookId}`;
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>(() => {
     try {
@@ -323,63 +338,69 @@ export function PageSidebar({ bookId, pages, chapters, sections, selectedId, onS
   };
 
   return (
-    <div className="w-64 shrink-0 flex flex-col gap-2">
-      {sectionGroups.map(group => {
-        const sectionId = group.section.id;
-        const isCollapsed = collapsedSections[sectionId];
-        const pageIds = group.pages.map(p => p.id);
+    <div className="w-64 shrink-0 flex flex-col gap-2 max-h-[calc(100vh-12rem)]">
+      <div className="flex-1 overflow-y-auto min-h-0 flex flex-col gap-2 pr-1">
+        {sectionGroups.map(group => {
+          const sectionId = group.section.id;
+          const isCollapsed = collapsedSections[sectionId];
+          const pageIds = group.pages.map(p => p.id);
 
-        return (
-          <div key={sectionId}>
-            {/* Section header */}
-            <div
-              onClick={() => toggleSection(sectionId)}
-              className="w-full flex items-center gap-1.5 px-1 py-1.5 text-left group cursor-pointer"
-            >
-              {isCollapsed
-                ? <ChevronRight className="h-3.5 w-3.5 text-slate-500 shrink-0" />
-                : <ChevronDown className="h-3.5 w-3.5 text-slate-500 shrink-0" />
-              }
-              <span className="text-xs font-medium text-rose-400 truncate flex-1">
-                {sectionDisplayTitle(group.section)}
-              </span>
-              {sectionId !== '__unassigned__' && (
-                <QuickAddButton
-                  bookId={bookId}
-                  sectionId={sectionId}
-                  openSectionId={openQuickAdd}
-                  onToggle={handleQuickAddToggle}
-                  onCreated={handleQuickAddCreated}
-                />
+          return (
+            <div key={sectionId}>
+              {/* Section header */}
+              <div
+                onClick={() => toggleSection(sectionId)}
+                className="w-full flex items-center gap-1.5 px-1 py-1.5 text-left group cursor-pointer"
+              >
+                {isCollapsed
+                  ? <ChevronRight className="h-3.5 w-3.5 text-slate-500 shrink-0" />
+                  : <ChevronDown className="h-3.5 w-3.5 text-slate-500 shrink-0" />
+                }
+                <span className="text-xs font-medium text-rose-400 truncate flex-1">
+                  {sectionDisplayTitle(group.section)}
+                </span>
+                {sectionId !== '__unassigned__' && (
+                  <QuickAddButton
+                    bookId={bookId}
+                    sectionId={sectionId}
+                    openSectionId={openQuickAdd}
+                    onToggle={handleQuickAddToggle}
+                    onCreated={handleQuickAddCreated}
+                  />
+                )}
+                <span className="text-xs text-slate-500 shrink-0">
+                  {t('books.editor.sectionPageCount', { count: group.pages.length })}
+                </span>
+              </div>
+
+              {/* Pages (collapsible) */}
+              {!isCollapsed && (
+                <SortableContext items={pageIds} strategy={verticalListSortingStrategy}>
+                  <div className="flex flex-col gap-1 ml-2">
+                    {group.pages.map((page) => (
+                      <SortablePageItem
+                        key={page.id}
+                        page={page}
+                        globalIndex={pageNumberMap.get(page.id) ?? 0}
+                        isSelected={page.id === selectedId}
+                        onSelect={() => onSelect(page.id)}
+                        onDelete={() => handleDelete(page.id)}
+                        isPhotoDragActive={isPhotoDragActive}
+                        scrollRef={page.id === selectedId ? (el) => {
+                          if (el) selectedItemRefs.current.set(page.id, el);
+                          else selectedItemRefs.current.delete(page.id);
+                        } : undefined}
+                      />
+                    ))}
+                  </div>
+                </SortableContext>
               )}
-              <span className="text-xs text-slate-500 shrink-0">
-                {t('books.editor.sectionPageCount', { count: group.pages.length })}
-              </span>
             </div>
+          );
+        })}
+      </div>
 
-            {/* Pages (collapsible) */}
-            {!isCollapsed && (
-              <SortableContext items={pageIds} strategy={verticalListSortingStrategy}>
-                <div className="flex flex-col gap-1 ml-2">
-                  {group.pages.map((page) => (
-                    <SortablePageItem
-                      key={page.id}
-                      page={page}
-                      globalIndex={pageNumberMap.get(page.id) ?? 0}
-                      isSelected={page.id === selectedId}
-                      onSelect={() => onSelect(page.id)}
-                      onDelete={() => handleDelete(page.id)}
-                      isPhotoDragActive={isPhotoDragActive}
-                    />
-                  ))}
-                </div>
-              </SortableContext>
-            )}
-          </div>
-        );
-      })}
-
-      <div className="mt-2 space-y-1.5">
+      <div className="shrink-0 space-y-1.5">
         <select
           value={newFormat}
           onChange={(e) => setNewFormat(e.target.value as PageFormat)}

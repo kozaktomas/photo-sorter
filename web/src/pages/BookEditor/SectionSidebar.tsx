@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { GripVertical, Plus, Trash2, Image, Pencil, Check, X, ChevronDown, ChevronRight, BookOpen, Palette } from 'lucide-react';
 import {
@@ -27,7 +27,7 @@ interface Props {
   overSectionId: string | null;
 }
 
-function SortableItem({ section, isSelected, isDropTarget, onSelect, onDelete, onRename, onMoveToChapter, chapters, placedCount, chapterColor }: {
+function SortableItem({ section, isSelected, isDropTarget, onSelect, onDelete, onRename, onMoveToChapter, chapters, placedCount, chapterColor, scrollRef }: {
   section: BookSection;
   isSelected: boolean;
   isDropTarget: boolean;
@@ -38,6 +38,7 @@ function SortableItem({ section, isSelected, isDropTarget, onSelect, onDelete, o
   chapters: BookChapter[];
   placedCount: number;
   chapterColor?: string;
+  scrollRef?: (el: HTMLDivElement | null) => void;
 }) {
   const { t } = useTranslation(['common']);
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: `section-${section.id}` });
@@ -45,6 +46,11 @@ function SortableItem({ section, isSelected, isDropTarget, onSelect, onDelete, o
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(section.title);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const combinedRef = useCallback((el: HTMLDivElement | null) => {
+    setNodeRef(el);
+    scrollRef?.(el);
+  }, [setNodeRef, scrollRef]);
 
   useEffect(() => {
     if (editing) inputRef.current?.focus();
@@ -65,7 +71,7 @@ function SortableItem({ section, isSelected, isDropTarget, onSelect, onDelete, o
 
   return (
     <div
-      ref={setNodeRef}
+      ref={combinedRef}
       style={{
         ...style,
         ...(chapterColor && !isDropTarget && !isSelected ? { borderLeftColor: chapterColor, borderLeftWidth: 3 } : {}),
@@ -287,6 +293,17 @@ function AddInput({ placeholder, onAdd }: { placeholder: string; onAdd: (title: 
 
 export function SectionSidebar({ bookId, chapters, sections, pages, selectedId, onSelect, onRefresh, isPhotoDragging, dragSourceSectionId, overSectionId }: Props) {
   const { t } = useTranslation(['pages', 'common']);
+  const selectedItemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // Scroll selected item into view
+  useEffect(() => {
+    if (!selectedId) return;
+    const el = selectedItemRefs.current.get(selectedId);
+    if (el) {
+      el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    }
+  }, [selectedId]);
 
   // Compute placed photo counts per section
   const placedBySection = useMemo(() => {
@@ -416,57 +433,65 @@ export function SectionSidebar({ bookId, chapters, sections, pages, selectedId, 
           chapters={chapters}
           placedCount={placedBySection.get(section.id) || 0}
           chapterColor={section.chapter_id ? chapterColorMap.get(section.chapter_id) : undefined}
+          scrollRef={section.id === selectedId ? (el) => {
+            if (el) selectedItemRefs.current.set(section.id, el);
+            else selectedItemRefs.current.delete(section.id);
+          } : undefined}
         />
       ))}
     </SortableContext>
   );
 
   return (
-    <div className="w-64 shrink-0 flex flex-col gap-2">
+    <div className="w-64 shrink-0 flex flex-col gap-2 max-h-[calc(100vh-12rem)]">
       {/* Chapter add input */}
-      <AddInput
-        placeholder={t('books.editor.chapterTitle')}
-        onAdd={handleAddChapter}
-      />
+      <div className="shrink-0">
+        <AddInput
+          placeholder={t('books.editor.chapterTitle')}
+          onAdd={handleAddChapter}
+        />
+      </div>
 
-      <SortableContext items={allSortableIds} strategy={verticalListSortingStrategy}>
-        {hasChapters && chapters.map((chapter) => {
-          const chapterSections = sectionsByChapter.get(chapter.id) || [];
-          return (
-            <SortableChapter
-              key={chapter.id}
-              chapter={chapter}
-              onDelete={() => handleDeleteChapter(chapter.id)}
-              onRename={(title) => handleRenameChapter(chapter.id, title)}
-              onColorChange={(color) => handleChapterColorChange(chapter.id, color)}
-            >
-              {renderSectionList(chapterSections)}
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto min-h-0 flex flex-col gap-2 pr-1">
+        <SortableContext items={allSortableIds} strategy={verticalListSortingStrategy}>
+          {hasChapters && chapters.map((chapter) => {
+            const chapterSections = sectionsByChapter.get(chapter.id) || [];
+            return (
+              <SortableChapter
+                key={chapter.id}
+                chapter={chapter}
+                onDelete={() => handleDeleteChapter(chapter.id)}
+                onRename={(title) => handleRenameChapter(chapter.id, title)}
+                onColorChange={(color) => handleChapterColorChange(chapter.id, color)}
+              >
+                {renderSectionList(chapterSections)}
+                <AddInput
+                  placeholder={t('books.editor.sectionTitle')}
+                  onAdd={(title) => handleAddSection(title, chapter.id)}
+                />
+              </SortableChapter>
+            );
+          })}
+        </SortableContext>
+
+        {/* Orphan sections (no chapter) */}
+        {(orphanSections.length > 0 || !hasChapters) && (
+          <div>
+            {hasChapters && orphanSections.length > 0 && (
+              <div className="text-xs text-slate-500 uppercase tracking-wide px-1 py-1 mt-1">
+                {t('books.editor.noChapter')}
+              </div>
+            )}
+            {renderSectionList(orphanSections)}
+            <div className="mt-1">
               <AddInput
                 placeholder={t('books.editor.sectionTitle')}
-                onAdd={(title) => handleAddSection(title, chapter.id)}
+                onAdd={(title) => handleAddSection(title)}
               />
-            </SortableChapter>
-          );
-        })}
-      </SortableContext>
-
-      {/* Orphan sections (no chapter) */}
-      {(orphanSections.length > 0 || !hasChapters) && (
-        <div>
-          {hasChapters && orphanSections.length > 0 && (
-            <div className="text-xs text-slate-500 uppercase tracking-wide px-1 py-1 mt-1">
-              {t('books.editor.noChapter')}
             </div>
-          )}
-          {renderSectionList(orphanSections)}
-          <div className="mt-1">
-            <AddInput
-              placeholder={t('books.editor.sectionTitle')}
-              onAdd={(title) => handleAddSection(title)}
-            />
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
       <ConfirmDialog
         open={deleteTarget !== null}
