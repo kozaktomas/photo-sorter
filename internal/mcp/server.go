@@ -21,6 +21,7 @@ type Server struct {
 	bookWriter       database.BookWriter
 	textVersionStore database.TextVersionStore
 	textCheckStore   database.TextCheckStore
+	embeddingReader  database.EmbeddingReader
 	pp               *photoprism.PhotoPrism
 	config           *config.Config
 	apiToken         string
@@ -32,6 +33,7 @@ func NewServer(
 	bookWriter database.BookWriter,
 	textVersionStore database.TextVersionStore,
 	textCheckStore database.TextCheckStore,
+	embeddingReader database.EmbeddingReader,
 	pp *photoprism.PhotoPrism,
 	cfg *config.Config,
 	apiToken string,
@@ -40,6 +42,7 @@ func NewServer(
 		bookWriter:       bookWriter,
 		textVersionStore: textVersionStore,
 		textCheckStore:   textCheckStore,
+		embeddingReader:  embeddingReader,
 		pp:               pp,
 		config:           cfg,
 		apiToken:         apiToken,
@@ -59,6 +62,7 @@ func NewServer(
 	s.registerPageTools()
 	s.registerSlotTools()
 	s.registerTextTools()
+	s.registerPhotoTools()
 
 	return s
 }
