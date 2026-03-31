@@ -161,9 +161,8 @@ func (h *UploadHandler) runUploadJob(
 	// For book section: find all uploaded photos by filename (new + duplicates).
 	var bookUIDs []string
 	if job.Options.BookSectionID != "" {
-		bookUIDs = h.findUploadedPhotoUIDs(ctx, job, pp, primaryAlbumUID, uploaded.fileNames)
+		bookUIDs = h.findUploadedPhotoUIDs(ctx, pp, primaryAlbumUID, uploaded.fileNames)
 	}
-
 	h.applyPostUploadActions(ctx, job, pp, session, newUIDs, bookUIDs, jobResult)
 
 	if ctx.Err() != nil {
@@ -267,7 +266,7 @@ func (h *UploadHandler) detectNewPhotos(
 // findUploadedPhotoUIDs searches the album for photos matching the uploaded filenames.
 // This finds both new photos and duplicates that PhotoPrism recognized.
 func (h *UploadHandler) findUploadedPhotoUIDs(
-	ctx context.Context, job *UploadJob,
+	ctx context.Context,
 	pp *photoprism.PhotoPrism, albumUID string,
 	fileNames []string,
 ) []string {
