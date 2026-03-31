@@ -419,6 +419,7 @@ export interface PhotoBook {
 export interface BookChapter {
   id: string;
   title: string;
+  color: string;
   sort_order: number;
 }
 

@@ -87,6 +87,7 @@ type BookChapter struct {
 	ID        string
 	BookID    string
 	Title     string
+	Color     string
 	SortOrder int
 	CreatedAt time.Time
 	UpdatedAt time.Time

@@ -26,9 +26,18 @@ var (
 //   - > quote         → \begin{quote}\itshape ... \end{quote}
 //   - blank line      → \par\vspace{4mm}
 //   - plain text      → escaped text (backward compatible)
-//
-//nolint:funlen,gocognit,cyclop // Sequential markdown transformation pipeline.
 func MarkdownToLatex(md string) string {
+	return markdownToLatexInternal(md, "")
+}
+
+// MarkdownToLatexWithColor converts Markdown to LaTeX with chapter color applied to H1 headings.
+// The color parameter is a hex color without # prefix (e.g. "8B0000"). Empty means no color.
+func MarkdownToLatexWithColor(md, chapterColor string) string {
+	return markdownToLatexInternal(md, chapterColor)
+}
+
+//nolint:funlen,gocognit,cyclop // Sequential markdown transformation pipeline.
+func markdownToLatexInternal(md, chapterColor string) string {
 	lines := strings.Split(md, "\n")
 	var out []string
 	i := 0
@@ -45,14 +54,14 @@ func MarkdownToLatex(md string) string {
 
 		// Heading ## (must check before #).
 		if text, ok := strings.CutPrefix(trimmed, "## "); ok {
-			out = append(out, formatHeading(text, `\large`))
+			out = append(out, formatHeading(text, `\large`, ""))
 			i++
 			continue
 		}
 
 		// Heading #.
 		if text, ok := strings.CutPrefix(trimmed, "# "); ok {
-			out = append(out, formatHeading(text, `\Large`))
+			out = append(out, formatHeading(text, `\Large`, chapterColor))
 			i++
 			continue
 		}
@@ -107,12 +116,20 @@ func MarkdownToLatex(md string) string {
 
 // formatHeading formats a heading line with the given LaTeX size command.
 // H1 (\Large) uses \sffamily to render in Source Sans 3 (the sans-serif font).
-func formatHeading(text, sizeCmd string) string {
+// If chapterColor is non-empty (hex without #), H1 renders with a colored background and white text.
+func formatHeading(text, sizeCmd, chapterColor string) string {
 	text = inlineFormat(latexEscapeRaw(text))
 	text = czechTypography(text)
 	fontCmd := `\bfseries `
 	if sizeCmd == `\Large` {
 		fontCmd = `\sffamily\bfseries `
+	}
+	if sizeCmd == `\Large` && chapterColor != "" {
+		return fmt.Sprintf(
+			`\definecolor{chaptercolor}{HTML}{%s}`+"\n"+
+				`\noindent\colorbox{chaptercolor}{\parbox{\dimexpr\linewidth-2\fboxsep}{%s\textcolor{white}{%s}}}\par\vspace{4mm}`,
+			chapterColor, fontCmd, text,
+		)
 	}
 	return `{` + sizeCmd + fontCmd + text + `}\par\vspace{4mm}`
 }

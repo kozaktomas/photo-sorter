@@ -79,10 +79,11 @@ function insertMarkdown(textarea: HTMLTextAreaElement, prefix: string, suffix: s
 // Inline text slot editing dialog with markdown toolbar and preview
 type TargetLength = 'much_shorter' | 'shorter' | 'longer' | 'much_longer';
 
-function TextSlotDialog({ text, pageId, slotIndex, pageFormat, pageSlots, splitPosition, onSave, onClose }: {
+function TextSlotDialog({ text, pageId, slotIndex, pageFormat, pageSlots, splitPosition, chapterColor, onSave, onClose }: {
   text: string; pageId: string; slotIndex: number;
   pageFormat: PageFormat; pageSlots: PageSlot[];
   splitPosition: number | null;
+  chapterColor?: string;
   onSave: (text: string) => void; onClose: () => void;
 }) {
   const { t } = useTranslation('pages');
@@ -372,6 +373,7 @@ function TextSlotDialog({ text, pageId, slotIndex, pageFormat, pageSlots, splitP
                               fontFamily: BOOK_TYPOGRAPHY.textSlot.fontFamily,
                               fontSize: BOOK_TYPOGRAPHY.textSlot.fontSize,
                               lineHeight: BOOK_TYPOGRAPHY.textSlot.lineHeight,
+                              ...(chapterColor ? { '--chapter-color': chapterColor } as React.CSSProperties : {}),
                             }}
                             dangerouslySetInnerHTML={{ __html: renderMarkdown(value) }}
                           />
@@ -1479,6 +1481,8 @@ export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRe
 
         {editingTextSlot !== null && (() => {
           const editPage = book.pages.find(p => p.id === editingTextSlot.pageId);
+          const editSection = editPage ? book.sections.find(s => s.id === editPage.section_id) : undefined;
+          const editChapter = editSection?.chapter_id ? book.chapters.find(c => c.id === editSection.chapter_id) : undefined;
           return (
             <TextSlotDialog
               text={editingTextSlot.text}
@@ -1487,6 +1491,7 @@ export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRe
               pageFormat={editPage?.format ?? '1_fullscreen'}
               pageSlots={editPage?.slots ?? []}
               splitPosition={editPage?.split_position ?? null}
+              chapterColor={editChapter?.color || undefined}
               onSave={handleSaveText}
               onClose={() => setEditingTextSlot(null)}
             />

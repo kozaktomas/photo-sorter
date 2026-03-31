@@ -124,7 +124,7 @@ func TestGroupPagesBySection(t *testing.T) {
 			{SectionID: "s1"},
 		}
 		sections := []database.BookSection{{ID: "s1", Title: "Section 1"}}
-		groups := groupPagesBySection(pages, sections)
+		groups := groupPagesBySection(pages, sections, nil)
 		if len(groups) != 1 {
 			t.Fatalf("expected 1 group, got %d", len(groups))
 		}
@@ -142,7 +142,7 @@ func TestGroupPagesBySection(t *testing.T) {
 			{SectionID: "s2"},
 		}
 		sections := []database.BookSection{{ID: "s1", Title: "A"}, {ID: "s2", Title: "B"}}
-		groups := groupPagesBySection(pages, sections)
+		groups := groupPagesBySection(pages, sections, nil)
 		if len(groups) != 2 {
 			t.Fatalf("expected 2 groups, got %d", len(groups))
 		}
@@ -158,14 +158,14 @@ func TestGroupPagesBySection(t *testing.T) {
 			{SectionID: "s1"},
 		}
 		sections := []database.BookSection{{ID: "s1", Title: "A"}, {ID: "s2", Title: "B"}}
-		groups := groupPagesBySection(pages, sections)
+		groups := groupPagesBySection(pages, sections, nil)
 		if len(groups) != 3 {
 			t.Fatalf("expected 3 groups (alternating), got %d", len(groups))
 		}
 	})
 
 	t.Run("empty", func(t *testing.T) {
-		groups := groupPagesBySection(nil, nil)
+		groups := groupPagesBySection(nil, nil, nil)
 		if len(groups) != 0 {
 			t.Errorf("expected 0 groups, got %d", len(groups))
 		}
@@ -173,7 +173,7 @@ func TestGroupPagesBySection(t *testing.T) {
 
 	t.Run("missing title", func(t *testing.T) {
 		pages := []database.BookPage{{SectionID: "s1"}}
-		groups := groupPagesBySection(pages, nil) // no sections with titles
+		groups := groupPagesBySection(pages, nil, nil) // no sections with titles
 		if len(groups) != 1 {
 			t.Fatalf("expected 1 group, got %d", len(groups))
 		}

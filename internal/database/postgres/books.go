@@ -137,7 +137,7 @@ func (r *BookRepository) DeleteBook(ctx context.Context, id string) error {
 // GetChapters retrieves all chapters for a book, ordered by sort order.
 func (r *BookRepository) GetChapters(ctx context.Context, bookID string) ([]database.BookChapter, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, book_id, title, sort_order, created_at, updated_at
+		`SELECT id, book_id, title, color, sort_order, created_at, updated_at
 		 FROM book_chapters WHERE book_id = $1 ORDER BY sort_order`, bookID)
 	if err != nil {
 		return nil, fmt.Errorf("get chapters: %w", err)
@@ -146,7 +146,7 @@ func (r *BookRepository) GetChapters(ctx context.Context, bookID string) ([]data
 	var chapters []database.BookChapter
 	for rows.Next() {
 		var c database.BookChapter
-		if err := rows.Scan(&c.ID, &c.BookID, &c.Title, &c.SortOrder, &c.CreatedAt, &c.UpdatedAt); err != nil {
+		if err := rows.Scan(&c.ID, &c.BookID, &c.Title, &c.Color, &c.SortOrder, &c.CreatedAt, &c.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan chapter: %w", err)
 		}
 		chapters = append(chapters, c)
@@ -178,20 +178,22 @@ func (r *BookRepository) CreateChapter(ctx context.Context, chapter *database.Bo
 	}
 
 	_, err := r.pool.Exec(ctx,
-		`INSERT INTO book_chapters (id, book_id, title, sort_order, created_at, updated_at) VALUES ($1, $2, $3, $4, $5, $6)`,
-		chapter.ID, chapter.BookID, chapter.Title, chapter.SortOrder, chapter.CreatedAt, chapter.UpdatedAt)
+		`INSERT INTO book_chapters (id, book_id, title, color, sort_order, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+		chapter.ID, chapter.BookID, chapter.Title, chapter.Color,
+		chapter.SortOrder, chapter.CreatedAt, chapter.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("create chapter: %w", err)
 	}
 	return nil
 }
 
-// UpdateChapter updates a chapter's title.
+// UpdateChapter updates a chapter's title and color.
 func (r *BookRepository) UpdateChapter(ctx context.Context, chapter *database.BookChapter) error {
 	chapter.UpdatedAt = time.Now()
 	_, err := r.pool.Exec(ctx,
-		`UPDATE book_chapters SET title = $1, updated_at = $2 WHERE id = $3`,
-		chapter.Title, chapter.UpdatedAt, chapter.ID)
+		`UPDATE book_chapters SET title = $1, color = $2, updated_at = $3 WHERE id = $4`,
+		chapter.Title, chapter.Color, chapter.UpdatedAt, chapter.ID)
 	if err != nil {
 		return fmt.Errorf("update chapter: %w", err)
 	}

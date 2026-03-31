@@ -576,10 +576,10 @@ export async function createChapter(bookId: string, title: string): Promise<Book
   });
 }
 
-export async function updateChapter(chapterId: string, title: string): Promise<void> {
+export async function updateChapter(chapterId: string, data: { title?: string; color?: string }): Promise<void> {
   await request(`/chapters/${chapterId}`, {
     method: 'PUT',
-    body: JSON.stringify({ title }),
+    body: JSON.stringify(data),
   });
 }
 

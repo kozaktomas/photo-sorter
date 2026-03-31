@@ -27,6 +27,7 @@
   ItalicFont     = *-RegularIt,
   BoldItalicFont = *-SemiboldIt,
 ]
+\usepackage[dvipsnames]{xcolor}
 \usepackage{enumitem}
 \usepackage{tabularx}
 \usepackage{microtype}
@@ -92,7 +93,7 @@
     at ({{printf "%.2f" $slot.ClipX}},{{printf "%.2f" (addFloat $slot.ClipY $slot.ClipH)}})
     {\parbox{{print "{"}}{{printf "%.2f" $slot.ClipW}}mm}{%
       \parskip=0pt\parindent=0pt\fontsize{12}{14.4}\selectfont%
-      {{markdownToLatex $slot.TextContent}}%
+      {{markdownToLatexColor $slot.TextContent $slot.ChapterColor}}%
     }};
 {{- end}}
 {{- end}}

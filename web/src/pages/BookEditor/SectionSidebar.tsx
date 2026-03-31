@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { GripVertical, Plus, Trash2, Image, Pencil, Check, X, ChevronDown, ChevronRight, BookOpen } from 'lucide-react';
+import { GripVertical, Plus, Trash2, Image, Pencil, Check, X, ChevronDown, ChevronRight, BookOpen, Palette } from 'lucide-react';
 import {
   SortableContext,
   useSortable,
@@ -27,7 +27,7 @@ interface Props {
   overSectionId: string | null;
 }
 
-function SortableItem({ section, isSelected, isDropTarget, onSelect, onDelete, onRename, onMoveToChapter, chapters, placedCount }: {
+function SortableItem({ section, isSelected, isDropTarget, onSelect, onDelete, onRename, onMoveToChapter, chapters, placedCount, chapterColor }: {
   section: BookSection;
   isSelected: boolean;
   isDropTarget: boolean;
@@ -37,6 +37,7 @@ function SortableItem({ section, isSelected, isDropTarget, onSelect, onDelete, o
   onMoveToChapter: (chapterId: string) => void;
   chapters: BookChapter[];
   placedCount: number;
+  chapterColor?: string;
 }) {
   const { t } = useTranslation(['common']);
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: `section-${section.id}` });
@@ -65,7 +66,10 @@ function SortableItem({ section, isSelected, isDropTarget, onSelect, onDelete, o
   return (
     <div
       ref={setNodeRef}
-      style={style}
+      style={{
+        ...style,
+        ...(chapterColor && !isDropTarget && !isSelected ? { borderLeftColor: chapterColor, borderLeftWidth: 3 } : {}),
+      }}
       className={`flex items-center gap-2 p-2 rounded-md cursor-pointer transition-colors ${
         isDropTarget
           ? 'border border-rose-400 bg-rose-500/10'
@@ -142,11 +146,12 @@ function SortableItem({ section, isSelected, isDropTarget, onSelect, onDelete, o
   );
 }
 
-function SortableChapter({ chapter, children, onDelete, onRename }: {
+function SortableChapter({ chapter, children, onDelete, onRename, onColorChange }: {
   chapter: BookChapter;
   children: React.ReactNode;
   onDelete: () => void;
   onRename: (title: string) => void;
+  onColorChange: (color: string) => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: `chapter-${chapter.id}` });
   const style = { transform: CSS.Transform.toString(transform), transition };
@@ -154,6 +159,7 @@ function SortableChapter({ chapter, children, onDelete, onRename }: {
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(chapter.title);
   const inputRef = useRef<HTMLInputElement>(null);
+  const colorInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (editing) inputRef.current?.focus();
@@ -174,14 +180,33 @@ function SortableChapter({ chapter, children, onDelete, onRename }: {
 
   return (
     <div ref={setNodeRef} style={style}>
-      <div className="flex items-center gap-1 p-1.5 rounded-md bg-slate-700/50 border border-slate-600">
+      <div
+        className="flex items-center gap-1 p-1.5 rounded-md bg-slate-700/50 border border-slate-600"
+        style={chapter.color ? { borderLeftColor: chapter.color, borderLeftWidth: 3 } : undefined}
+      >
         <button {...attributes} {...listeners} className="text-slate-500 hover:text-slate-300 cursor-grab">
           <GripVertical className="h-3.5 w-3.5" />
         </button>
         <button onClick={() => setCollapsed(!collapsed)} className="text-slate-400 hover:text-slate-200">
           {collapsed ? <ChevronRight className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
         </button>
-        <BookOpen className="h-3.5 w-3.5 text-amber-500/70" />
+        {chapter.color ? (
+          <button
+            onClick={() => colorInputRef.current?.click()}
+            className="shrink-0 w-3.5 h-3.5 rounded-sm border border-white/20"
+            style={{ backgroundColor: chapter.color }}
+            title={chapter.color}
+          />
+        ) : (
+          <BookOpen className="h-3.5 w-3.5 text-amber-500/70" />
+        )}
+        <input
+          ref={colorInputRef}
+          type="color"
+          value={chapter.color || '#8B0000'}
+          onChange={(e) => onColorChange(e.target.value)}
+          className="sr-only"
+        />
         {editing ? (
           <div className="flex-1 flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
             <input
@@ -210,6 +235,13 @@ function SortableChapter({ chapter, children, onDelete, onRename }: {
               className="text-slate-600 hover:text-slate-300 p-0.5 opacity-0 group-hover/chtitle:opacity-100 transition-opacity"
             >
               <Pencil className="h-2.5 w-2.5" />
+            </button>
+            <button
+              onClick={() => colorInputRef.current?.click()}
+              className="text-slate-600 hover:text-slate-300 p-0.5 opacity-0 group-hover/chtitle:opacity-100 transition-opacity"
+              title="Chapter color"
+            >
+              <Palette className="h-2.5 w-2.5" />
             </button>
           </div>
         )}
@@ -327,7 +359,14 @@ export function SectionSidebar({ bookId, chapters, sections, pages, selectedId, 
 
   const handleRenameChapter = async (id: string, title: string) => {
     try {
-      await updateChapter(id, title);
+      await updateChapter(id, { title });
+      onRefresh();
+    } catch { /* silent */ }
+  };
+
+  const handleChapterColorChange = async (id: string, color: string) => {
+    try {
+      await updateChapter(id, { color });
       onRefresh();
     } catch { /* silent */ }
   };
@@ -353,6 +392,15 @@ export function SectionSidebar({ bookId, chapters, sections, pages, selectedId, 
     ...sections.map(s => `section-${s.id}`),
   ];
 
+  // Map chapter ID to color for quick lookup
+  const chapterColorMap = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const ch of chapters) {
+      if (ch.color) map.set(ch.id, ch.color);
+    }
+    return map;
+  }, [chapters]);
+
   const renderSectionList = (sectionList: BookSection[]) => (
     <SortableContext items={sectionList.map(s => `section-${s.id}`)} strategy={verticalListSortingStrategy}>
       {sectionList.map((section) => (
@@ -367,6 +415,7 @@ export function SectionSidebar({ bookId, chapters, sections, pages, selectedId, 
           onMoveToChapter={(chapterId) => handleMoveToChapter(section.id, chapterId)}
           chapters={chapters}
           placedCount={placedBySection.get(section.id) || 0}
+          chapterColor={section.chapter_id ? chapterColorMap.get(section.chapter_id) : undefined}
         />
       ))}
     </SortableContext>
@@ -389,6 +438,7 @@ export function SectionSidebar({ bookId, chapters, sections, pages, selectedId, 
               chapter={chapter}
               onDelete={() => handleDeleteChapter(chapter.id)}
               onRename={(title) => handleRenameChapter(chapter.id, title)}
+              onColorChange={(color) => handleChapterColorChange(chapter.id, color)}
             >
               {renderSectionList(chapterSections)}
               <AddInput

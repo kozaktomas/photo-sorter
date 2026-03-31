@@ -68,6 +68,7 @@ type bookDetailResponse struct {
 type chapterResponse struct {
 	ID        string `json:"id"`
 	Title     string `json:"title"`
+	Color     string `json:"color"`
 	SortOrder int    `json:"sort_order"`
 }
 
@@ -243,6 +244,7 @@ func buildBookDetailResponse(
 		chapterResps[i] = chapterResponse{
 			ID:        c.ID,
 			Title:     c.Title,
+			Color:     c.Color,
 			SortOrder: c.SortOrder,
 		}
 	}
@@ -371,6 +373,7 @@ func (h *BooksHandler) CreateChapter(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusCreated, chapterResponse{
 		ID:        chapter.ID,
 		Title:     chapter.Title,
+		Color:     chapter.Color,
 		SortOrder: chapter.SortOrder,
 	})
 }
@@ -384,12 +387,13 @@ func (h *BooksHandler) UpdateChapter(w http.ResponseWriter, r *http.Request) {
 	id := chi.URLParam(r, "id")
 	var req struct {
 		Title string `json:"title"`
+		Color string `json:"color"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return
 	}
-	chapter := &database.BookChapter{ID: id, Title: req.Title}
+	chapter := &database.BookChapter{ID: id, Title: req.Title, Color: req.Color}
 	if err := bw.UpdateChapter(r.Context(), chapter); err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to update chapter")
 		return

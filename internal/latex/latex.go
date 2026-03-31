@@ -87,8 +87,9 @@ type TemplateSlot struct {
 	// Border rect (for archival — same as clip for modern).
 	BorderX, BorderY, BorderW, BorderH float64
 	// Text type: "T1", "T2", "T3".
-	TextContent string
-	TextType    string
+	TextContent  string
+	TextType     string
+	ChapterColor string // hex color e.g. "8B0000" (without #), empty = no color
 	// Caption marker (1-based; 0 = no marker).
 	CaptionMarker        int
 	CaptionMarkerX       float64 // bottom-left X of marker rect
@@ -150,9 +151,10 @@ type photoImage struct {
 
 // sectionGroup groups pages belonging to the same section.
 type sectionGroup struct {
-	sectionID string
-	title     string
-	pages     []database.BookPage
+	sectionID    string
+	title        string
+	chapterColor string // hex color without # (e.g. "8B0000"), empty = no color
+	pages        []database.BookPage
 }
 
 // captionMap is a nested map: sectionID -> photoUID -> caption text.
@@ -185,6 +187,8 @@ func GeneratePDF(
 }
 
 // GeneratePDFWithOptions renders a photo book to PDF with optional debug overlay.
+//
+//nolint:cyclop // Orchestration function that fetches multiple resources.
 func GeneratePDFWithOptions(
 	ctx context.Context, pp *photoprism.PhotoPrism,
 	br database.BookReader, bookID string, debug bool,
@@ -197,6 +201,11 @@ func GeneratePDFWithOptions(
 	sections, err := br.GetSections(ctx, bookID)
 	if err != nil {
 		return nil, nil, fmt.Errorf("failed to get sections: %w", err)
+	}
+
+	chapters, err := br.GetChapters(ctx, bookID)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to get chapters: %w", err)
 	}
 
 	pages, err := br.GetPages(ctx, bookID)
@@ -219,7 +228,7 @@ func GeneratePDFWithOptions(
 	defer os.RemoveAll(tmpDir)
 
 	photos := downloadPhotos(ctx, pp, uidSet, tmpDir)
-	groups := groupPagesBySection(pages, sections)
+	groups := groupPagesBySection(pages, sections, chapters)
 	config := DefaultLayoutConfig()
 	data, report := buildTemplateData(groups, photos, captions, config, book.Title)
 
@@ -326,10 +335,21 @@ func sortPagesBySectionOrder(pages []database.BookPage, sections []database.Book
 }
 
 // groupPagesBySection groups consecutive pages by their section ID.
-func groupPagesBySection(pages []database.BookPage, sections []database.BookSection) []sectionGroup {
+func groupPagesBySection(
+	pages []database.BookPage, sections []database.BookSection, chapters []database.BookChapter,
+) []sectionGroup {
 	sectionTitles := make(map[string]string, len(sections))
+	sectionChapters := make(map[string]string, len(sections))
 	for _, s := range sections {
 		sectionTitles[s.ID] = s.Title
+		sectionChapters[s.ID] = s.ChapterID
+	}
+
+	chapterColors := make(map[string]string, len(chapters))
+	for _, c := range chapters {
+		if c.Color != "" {
+			chapterColors[c.ID] = strings.TrimPrefix(c.Color, "#")
+		}
 	}
 
 	var groups []sectionGroup
@@ -337,9 +357,10 @@ func groupPagesBySection(pages []database.BookPage, sections []database.BookSect
 	for _, p := range pages {
 		if p.SectionID != lastSectionID {
 			groups = append(groups, sectionGroup{
-				sectionID: p.SectionID,
-				title:     sectionTitles[p.SectionID],
-				pages:     []database.BookPage{p},
+				sectionID:    p.SectionID,
+				title:        sectionTitles[p.SectionID],
+				chapterColor: chapterColors[sectionChapters[p.SectionID]],
+				pages:        []database.BookPage{p},
 			})
 			lastSectionID = p.SectionID
 		} else {
@@ -398,7 +419,7 @@ func (pb *pageBuilder) buildSection(g sectionGroup) TemplateSection {
 	for _, p := range g.pages {
 		pb.contentPageIdx++
 		pb.pageNumber++
-		tmplPages = append(tmplPages, pb.buildContentPage(p))
+		tmplPages = append(tmplPages, pb.buildContentPage(p, g.chapterColor))
 	}
 
 	return TemplateSection{
@@ -443,7 +464,7 @@ func (pb *pageBuilder) computeZones(isRecto bool) (
 }
 
 // buildContentPage builds a single TemplatePage with slots and accumulates report data.
-func (pb *pageBuilder) buildContentPage(p database.BookPage) TemplatePage {
+func (pb *pageBuilder) buildContentPage(p database.BookPage, chapterColor string) TemplatePage {
 	isLast := pb.contentPageIdx == pb.totalContentPages
 	isRecto := pb.pageNumber%2 == 1
 	style := p.Style
@@ -458,7 +479,9 @@ func (pb *pageBuilder) buildContentPage(p database.BookPage) TemplatePage {
 
 	// Build slots using grid system.
 	slots := FormatSlotsGridWithSplit(p.Format, pb.config, p.SplitPosition)
-	tmplSlots, reportPhotos, footerCaptions := pb.buildSlots(p, slots, contentLeftX, canvasTopY, style, isRecto)
+	tmplSlots, reportPhotos, footerCaptions := pb.buildSlots(
+		p, slots, contentLeftX, canvasTopY, style, isRecto, chapterColor,
+	)
 
 	pb.reportPages = append(pb.reportPages, ReportPage{
 		PageNumber: pb.pageNumber,
@@ -653,7 +676,7 @@ func formatRange(start, end int) string {
 // buildSlots builds template slots, report photos, and footer captions for a page.
 func (pb *pageBuilder) buildSlots(
 	p database.BookPage, slots []SlotRect,
-	contentLeftX, canvasTopY float64, style string, isRecto bool,
+	contentLeftX, canvasTopY float64, style string, isRecto bool, chapterColor string,
 ) ([]TemplateSlot, []ReportPhoto, []FooterCaption) {
 	isArchival := style == "archival"
 	cfg := pb.config
@@ -666,7 +689,9 @@ func (pb *pageBuilder) buildSlots(
 		ps := getPageSlot(p, i)
 
 		if ps.IsTextSlot() {
-			tmplSlots[i] = buildTextSlotNew(slot, ps, contentLeftX, canvasTopY)
+			ts := buildTextSlotNew(slot, ps, contentLeftX, canvasTopY)
+			ts.ChapterColor = chapterColor
+			tmplSlots[i] = ts
 			continue
 		}
 
@@ -737,12 +762,13 @@ func latexEscape(s string) string {
 // compileLatex writes the template and runs lualatex, returning the PDF bytes.
 func compileLatex(ctx context.Context, data TemplateData, tmpDir string) ([]byte, error) {
 	funcMap := template.FuncMap{
-		"latexEscape":     latexEscape,
-		"markdownToLatex": MarkdownToLatex,
-		"addFloat":        func(a, b float64) float64 { return a + b },
-		"subtractFloat":   func(a, b float64) float64 { return a - b },
-		"mulFloat":        func(a, b float64) float64 { return a * b },
-		"divFloat":        func(a, b float64) float64 { return a / b },
+		"latexEscape":          latexEscape,
+		"markdownToLatex":      MarkdownToLatex,
+		"markdownToLatexColor": MarkdownToLatexWithColor,
+		"addFloat":             func(a, b float64) float64 { return a + b },
+		"subtractFloat":        func(a, b float64) float64 { return a - b },
+		"mulFloat":             func(a, b float64) float64 { return a * b },
+		"divFloat":             func(a, b float64) float64 { return a / b },
 	}
 	tmpl, err := template.New("book.tex").Funcs(funcMap).ParseFS(templateFS, "templates/book.tex")
 	if err != nil {
