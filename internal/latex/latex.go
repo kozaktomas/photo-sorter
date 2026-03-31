@@ -17,6 +17,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"text/template"
@@ -59,8 +60,9 @@ type ReportPhoto struct {
 // --- Template Types ---
 
 // FooterCaption holds a numbered caption for the footer zone.
+// Marker is a formatted string like "1", "1–3", or "1, 3" for merged captions.
 type FooterCaption struct {
-	Marker  int
+	Marker  string
 	Caption string
 }
 
@@ -561,12 +563,91 @@ func placeCaptionMarker(ts *TemplateSlot, markerNum int, cfg LayoutConfig, isRec
 func buildFooterCaptions(ct captionTracking) []FooterCaption {
 	footerCaptions := make([]FooterCaption, 0, len(ct.captions))
 	for _, sc := range ct.captions {
+		marker := ct.markerMap[sc.slotIdx]
+		markerStr := ""
+		if marker > 0 {
+			markerStr = strconv.Itoa(marker)
+		}
 		footerCaptions = append(footerCaptions, FooterCaption{
-			Marker:  ct.markerMap[sc.slotIdx],
+			Marker:  markerStr,
 			Caption: sc.caption,
 		})
 	}
-	return footerCaptions
+	return mergeFooterCaptions(footerCaptions)
+}
+
+// mergeFooterCaptions groups footer captions by identical text and merges their
+// marker numbers into ranges (e.g. "1–3") or comma-separated lists (e.g. "1, 3").
+// Order is preserved by first occurrence.
+func mergeFooterCaptions(caps []FooterCaption) []FooterCaption {
+	if len(caps) <= 1 {
+		return caps
+	}
+
+	type group struct {
+		caption string
+		markers []int
+	}
+
+	var groups []group
+	seen := make(map[string]int) // caption text -> index in groups
+
+	for _, c := range caps {
+		num, _ := strconv.Atoi(c.Marker)
+		idx, ok := seen[c.Caption]
+		if ok {
+			groups[idx].markers = append(groups[idx].markers, num)
+		} else {
+			seen[c.Caption] = len(groups)
+			groups = append(groups, group{caption: c.Caption, markers: []int{num}})
+		}
+	}
+
+	result := make([]FooterCaption, 0, len(groups))
+	for _, g := range groups {
+		sort.Ints(g.markers)
+		result = append(result, FooterCaption{
+			Marker:  formatSlotNumbers(g.markers),
+			Caption: g.caption,
+		})
+	}
+	return result
+}
+
+// formatSlotNumbers formats a sorted slice of marker numbers into a compact
+// string using en-dashes for consecutive ranges and commas otherwise.
+// Examples: [1] -> "1", [1,2,3] -> "1–3", [1,3] -> "1, 3", [1,2,3,5] -> "1–3, 5".
+func formatSlotNumbers(nums []int) string {
+	if len(nums) == 0 {
+		return ""
+	}
+	if len(nums) == 1 {
+		return strconv.Itoa(nums[0])
+	}
+
+	var parts []string
+	rangeStart := nums[0]
+	rangeEnd := nums[0]
+
+	for i := 1; i < len(nums); i++ {
+		if nums[i] == rangeEnd+1 {
+			rangeEnd = nums[i]
+		} else {
+			parts = append(parts, formatRange(rangeStart, rangeEnd))
+			rangeStart = nums[i]
+			rangeEnd = nums[i]
+		}
+	}
+	parts = append(parts, formatRange(rangeStart, rangeEnd))
+	return strings.Join(parts, ", ")
+}
+
+// formatRange formats a single range: "1" for a single number, "1–3" for a range.
+func formatRange(start, end int) string {
+	if start == end {
+		return strconv.Itoa(start)
+	}
+	return strconv.Itoa(start) + "\u2013" + strconv.Itoa(end)
 }
 
 // buildSlots builds template slots, report photos, and footer captions for a page.

@@ -857,3 +857,132 @@ func TestComputeZones(t *testing.T) {
 		}
 	})
 }
+
+// --- formatSlotNumbers ---
+
+func TestFormatSlotNumbers(t *testing.T) {
+	tests := []struct {
+		name string
+		nums []int
+		want string
+	}{
+		{"empty", nil, ""},
+		{"single", []int{1}, "1"},
+		{"two consecutive", []int{1, 2}, "1\u20132"},
+		{"three consecutive", []int{1, 2, 3}, "1\u20133"},
+		{"two non-consecutive", []int{1, 3}, "1, 3"},
+		{"range then single", []int{1, 2, 3, 5}, "1\u20133, 5"},
+		{"single then range", []int{1, 3, 4, 5}, "1, 3\u20135"},
+		{"mixed", []int{1, 2, 4, 6, 7, 8}, "1\u20132, 4, 6\u20138"},
+		{"all separate", []int{1, 3, 5}, "1, 3, 5"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := formatSlotNumbers(tt.nums)
+			if got != tt.want {
+				t.Errorf("formatSlotNumbers(%v) = %q, want %q", tt.nums, got, tt.want)
+			}
+		})
+	}
+}
+
+// --- mergeFooterCaptions ---
+
+func TestMergeFooterCaptions(t *testing.T) {
+	t.Run("empty", func(t *testing.T) {
+		got := mergeFooterCaptions(nil)
+		if got != nil {
+			t.Errorf("expected nil, got %v", got)
+		}
+	})
+
+	t.Run("single caption", func(t *testing.T) {
+		caps := []FooterCaption{{Marker: "1", Caption: "Photo A"}}
+		got := mergeFooterCaptions(caps)
+		if len(got) != 1 || got[0].Marker != "1" || got[0].Caption != "Photo A" {
+			t.Errorf("unexpected result: %v", got)
+		}
+	})
+
+	t.Run("all same caption", func(t *testing.T) {
+		caps := []FooterCaption{
+			{Marker: "1", Caption: "Same"},
+			{Marker: "2", Caption: "Same"},
+			{Marker: "3", Caption: "Same"},
+		}
+		got := mergeFooterCaptions(caps)
+		if len(got) != 1 {
+			t.Fatalf("expected 1 merged caption, got %d", len(got))
+		}
+		if got[0].Marker != "1\u20133" {
+			t.Errorf("marker = %q, want %q", got[0].Marker, "1\u20133")
+		}
+		if got[0].Caption != "Same" {
+			t.Errorf("caption = %q, want %q", got[0].Caption, "Same")
+		}
+	})
+
+	t.Run("all different captions", func(t *testing.T) {
+		caps := []FooterCaption{
+			{Marker: "1", Caption: "A"},
+			{Marker: "2", Caption: "B"},
+			{Marker: "3", Caption: "C"},
+		}
+		got := mergeFooterCaptions(caps)
+		if len(got) != 3 {
+			t.Fatalf("expected 3 captions, got %d", len(got))
+		}
+		for i, want := range []string{"1", "2", "3"} {
+			if got[i].Marker != want {
+				t.Errorf("got[%d].Marker = %q, want %q", i, got[i].Marker, want)
+			}
+		}
+	})
+
+	t.Run("partial merge non-consecutive", func(t *testing.T) {
+		caps := []FooterCaption{
+			{Marker: "1", Caption: "Same"},
+			{Marker: "2", Caption: "Different"},
+			{Marker: "3", Caption: "Same"},
+		}
+		got := mergeFooterCaptions(caps)
+		if len(got) != 2 {
+			t.Fatalf("expected 2 captions, got %d", len(got))
+		}
+		if got[0].Marker != "1, 3" || got[0].Caption != "Same" {
+			t.Errorf("got[0] = {%q, %q}, want {%q, %q}", got[0].Marker, got[0].Caption, "1, 3", "Same")
+		}
+		if got[1].Marker != "2" || got[1].Caption != "Different" {
+			t.Errorf("got[1] = {%q, %q}, want {%q, %q}", got[1].Marker, got[1].Caption, "2", "Different")
+		}
+	})
+
+	t.Run("preserves first occurrence order", func(t *testing.T) {
+		caps := []FooterCaption{
+			{Marker: "1", Caption: "B"},
+			{Marker: "2", Caption: "A"},
+			{Marker: "3", Caption: "B"},
+		}
+		got := mergeFooterCaptions(caps)
+		if len(got) != 2 {
+			t.Fatalf("expected 2 captions, got %d", len(got))
+		}
+		// B appeared first, so it should come first
+		if got[0].Caption != "B" {
+			t.Errorf("expected first caption to be B, got %q", got[0].Caption)
+		}
+		if got[1].Caption != "A" {
+			t.Errorf("expected second caption to be A, got %q", got[1].Caption)
+		}
+	})
+
+	t.Run("no markers", func(t *testing.T) {
+		caps := []FooterCaption{
+			{Marker: "", Caption: "Solo"},
+		}
+		got := mergeFooterCaptions(caps)
+		if len(got) != 1 || got[0].Marker != "" {
+			t.Errorf("unexpected result: %v", got)
+		}
+	})
+}

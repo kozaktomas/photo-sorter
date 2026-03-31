@@ -102,7 +102,7 @@
   \node[anchor=north west,inner sep=0,text width={{printf "%.2f" $page.CaptionBlockW}}mm,
     font=\fontsize{8}{10}\selectfont,text=black!70]
     at ({{printf "%.2f" $page.CaptionBlockX}},{{printf "%.2f" $page.CaptionBlockY}})
-    {{print "{"}}{{- range $ci, $cap := $page.Captions}}{{- if gt $ci 0}}\enspace {{end}}{{- if gt $cap.Marker 0}}\textbf{{print "{"}}{{$cap.Marker}}{{print "}"}} {{end}}{{latexEscape $cap.Caption}}{{- end}}{{print "}"}};
+    {{print "{"}}{{- range $ci, $cap := $page.Captions}}{{- if gt $ci 0}}\enspace {{end}}{{- if $cap.Marker}}\textbf{{print "{"}}{{$cap.Marker}}{{print "}"}} {{end}}{{latexEscape $cap.Caption}}{{- end}}{{print "}"}};
 {{- end}}
   \node[anchor={{$page.FolioAnchor}},inner sep=0,font=\fontsize{8.5}{10}\selectfont,text=black!35]
     at ({{printf "%.2f" $page.FolioX}},{{printf "%.2f" $page.FolioY}})
