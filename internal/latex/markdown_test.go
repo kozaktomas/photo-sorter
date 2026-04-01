@@ -14,12 +14,12 @@ func TestMarkdownToLatex_Headings(t *testing.T) {
 		{
 			name:     "h1",
 			input:    "# Hello World",
-			contains: []string{`{\fontsize{16}{19.2}\selectfont\sffamily\bfseries Hello World}\par\vspace{4mm}`},
+			contains: []string{`{\fontsize{18}{22}\selectfont\sffamily\bfseries Hello World}\par\vspace{4mm}`},
 		},
 		{
 			name:     "h2",
 			input:    "## Subheading",
-			contains: []string{`{\fontsize{13}{15.6}\selectfont\bfseries Subheading}\par\vspace{4mm}`},
+			contains: []string{`{\fontsize{15}{18}\selectfont\bfseries Subheading}\par\vspace{4mm}`},
 		},
 	}
 
@@ -118,7 +118,7 @@ func TestMarkdownToLatex_Paragraphs(t *testing.T) {
 func TestMarkdownToLatex_MixedContent(t *testing.T) {
 	input := "# Title\n\nSome **bold** text\n\n- item one\n- item two"
 	got := MarkdownToLatex(input)
-	if !strings.Contains(got, `\fontsize{16}{19.2}\selectfont\sffamily\bfseries Title}`) {
+	if !strings.Contains(got, `\fontsize{18}{22}\selectfont\sffamily\bfseries Title}`) {
 		t.Errorf("expected heading, got %q", got)
 	}
 	if !strings.Contains(got, `\textbf{bold}`) {
@@ -166,7 +166,7 @@ func TestMarkdownToLatex_CzechTypography(t *testing.T) {
 func TestMarkdownToLatex_HeadingWithSpecialChars(t *testing.T) {
 	input := "# Price & Cost: 100%"
 	got := MarkdownToLatex(input)
-	if !strings.Contains(got, `\fontsize{16}{19.2}\selectfont\sffamily\bfseries`) {
+	if !strings.Contains(got, `\fontsize{18}{22}\selectfont\sffamily\bfseries`) {
 		t.Errorf("expected heading markup, got %q", got)
 	}
 	if !strings.Contains(got, `\&`) {
@@ -284,7 +284,7 @@ func TestMarkdownToLatex_TableWithPartialWidths(t *testing.T) {
 func TestMarkdownToLatex_TableInMixedContent(t *testing.T) {
 	input := "# Title\n\n| A | B |\n| --- | --- |\n| 1 | 2 |\n\nSome text after"
 	got := MarkdownToLatex(input)
-	if !strings.Contains(got, `\fontsize{16}{19.2}\selectfont\sffamily\bfseries Title}`) {
+	if !strings.Contains(got, `\fontsize{18}{22}\selectfont\sffamily\bfseries Title}`) {
 		t.Errorf("expected heading before table, got %q", got)
 	}
 	if !strings.Contains(got, `\begin{tabularx}`) {

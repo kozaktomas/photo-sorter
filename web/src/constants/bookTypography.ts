@@ -5,12 +5,12 @@
 export const BOOK_TYPOGRAPHY = {
   textSlot: {
     fontFamily: "'EB Garamond', serif",
-    fontSize: '12pt',       // LaTeX \fontsize{12}{14.4}
-    lineHeight: '14.4pt',
+    fontSize: '13pt',       // LaTeX \fontsize{13}{16}
+    lineHeight: '16pt',
   },
   headingFontFamily: "'Source Sans 3', sans-serif",  // LaTeX \setsansfont{SourceSans3}
   h1: {
-    fontSize: '16pt',       // LaTeX \fontsize{16}{19.2}
+    fontSize: '18pt',       // LaTeX \fontsize{18}{22}
     fontWeight: 700,
     color: undefined as string | undefined,
     backgroundColor: undefined as string | undefined,
@@ -19,7 +19,7 @@ export const BOOK_TYPOGRAPHY = {
     marginBottom: '4mm',    // LaTeX \vspace{4mm}
   },
   h2: {
-    fontSize: '13pt',       // LaTeX \fontsize{13}{15.6}
+    fontSize: '15pt',       // LaTeX \fontsize{15}{18}
     fontWeight: 700,
     color: undefined as string | undefined,
     backgroundColor: undefined as string | undefined,
@@ -28,7 +28,7 @@ export const BOOK_TYPOGRAPHY = {
     marginBottom: '4mm',
   },
   h3: {
-    fontSize: '12pt',
+    fontSize: '13pt',
     fontWeight: 700,
     marginBottom: '2mm',
   },

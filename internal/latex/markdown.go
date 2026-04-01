@@ -32,8 +32,8 @@ var (
 // MarkdownToLatex converts a subset of Markdown to LaTeX.
 //
 // Supported syntax:.
-//   - # Heading       → {\fontsize{16}{19.2}\selectfont\sffamily\bfseries Heading}\par\vspace{4mm}
-//   - ## Subheading   → {\fontsize{13}{15.6}\selectfont\bfseries Subheading}\par\vspace{4mm}
+//   - # Heading       → {\fontsize{18}{22}\selectfont\sffamily\bfseries Heading}\par\vspace{4mm}
+//   - ## Subheading   → {\fontsize{15}{18}\selectfont\bfseries Subheading}\par\vspace{4mm}
 //   - **bold**        → \textbf{bold}
 //   - *italic*        → \textit{italic}
 //   - - item / * item → \begin{itemize}[nosep,leftmargin=1.5em] ... \end{itemize}
@@ -157,17 +157,17 @@ func markdownToLatexInternal(md, chapterColor string) string {
 }
 
 // formatHeading formats a heading line with an explicit font size.
-// H1 (level 1) = 16pt, H2 (level 2) = 13pt. Line spacing is 1.2× the font size.
+// H1 (level 1) = 18pt, H2 (level 2) = 15pt. Line spacing is 1.2× the font size.
 // H1 uses \sffamily to render in Source Sans 3 (the sans-serif font).
 // If chapterColor is non-empty (hex without #), H1 renders with a colored background and white text.
 func formatHeading(text string, level int, chapterColor string) string {
 	text = inlineFormat(latexEscapeRaw(text))
 	text = czechTypography(text)
 
-	sizeCmd := `\fontsize{13}{15.6}\selectfont`
+	sizeCmd := `\fontsize{15}{18}\selectfont`
 	fontCmd := `\bfseries `
 	if level == 1 {
-		sizeCmd = `\fontsize{16}{19.2}\selectfont`
+		sizeCmd = `\fontsize{18}{22}\selectfont`
 		fontCmd = `\sffamily\bfseries `
 	}
 

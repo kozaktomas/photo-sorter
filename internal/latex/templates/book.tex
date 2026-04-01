@@ -49,7 +49,7 @@
 \begin{tikzpicture}[remember picture,overlay,shift={(current page.south west)},x=1mm,y=1mm]
   \draw[black!30,line width=0.4pt] (73.50,128.00) -- (223.50,128.00);
   \node[anchor=north,inner sep=0,text width=150mm,align=center,
-    font=\fontsize{30}{36}\selectfont\ebgaramondsb] at (148.50,126.00) {%
+    font=\fontsize{32}{38}\selectfont\ebgaramondsb] at (148.50,126.00) {%
     {{latexEscape .BookTitle}}%
   };
 \end{tikzpicture}
@@ -92,7 +92,7 @@
   \node[anchor=north west,inner sep=0]
     at ({{printf "%.2f" $slot.ClipX}},{{printf "%.2f" (addFloat $slot.ClipY $slot.ClipH)}})
     {\parbox{{print "{"}}{{printf "%.2f" $slot.ClipW}}mm}{%
-      \parskip=0pt\parindent=0pt\fontsize{12}{14.4}\selectfont%
+      \parskip=0pt\parindent=0pt\fontsize{13}{16}\selectfont%
       {{markdownToLatexColor $slot.TextContent $slot.ChapterColor}}%
     }};
 {{- end}}
@@ -101,11 +101,11 @@
 % --- Footer zone ---
 {{- if $page.HasCaptions}}
   \node[anchor=north west,inner sep=0,text width={{printf "%.2f" $page.CaptionBlockW}}mm,
-    font=\fontsize{8}{10}\selectfont,text=black!70]
+    font=\fontsize{9}{11}\selectfont,text=black!70]
     at ({{printf "%.2f" $page.CaptionBlockX}},{{printf "%.2f" $page.CaptionBlockY}})
     {{print "{"}}{{- range $ci, $cap := $page.Captions}}{{- if gt $ci 0}}\enspace {{end}}{{- if $cap.Marker}}\textbf{{print "{"}}{{$cap.Marker}}{{print "}"}} {{end}}{{latexEscape $cap.Caption}}{{- end}}{{print "}"}};
 {{- end}}
-  \node[anchor={{$page.FolioAnchor}},inner sep=0,font=\fontsize{8.5}{10}\selectfont,text=black!35]
+  \node[anchor={{$page.FolioAnchor}},inner sep=0,font=\fontsize{9}{11}\selectfont,text=black!35]
     at ({{printf "%.2f" $page.FolioX}},{{printf "%.2f" $page.FolioY}})
     {{print "{"}}{{$page.PageNumber}}{{print "}"}};
 {{- if $.DebugOverlay}}
