@@ -330,3 +330,67 @@ func TestDetectTextType_T3_MixedWithBlockquote(t *testing.T) {
 		t.Errorf("expected T3 when blockquote present, got %q", got)
 	}
 }
+
+func TestMarkdownToLatex_AlignCenter(t *testing.T) {
+	got := MarkdownToLatex("->Centered text<-")
+	want := `{\centering Centered text\par}`
+	if got != want {
+		t.Errorf("center alignment: got %q, want %q", got, want)
+	}
+}
+
+func TestMarkdownToLatex_AlignRight(t *testing.T) {
+	got := MarkdownToLatex("->Right aligned->")
+	want := `{\raggedleft Right aligned\par}`
+	if got != want {
+		t.Errorf("right alignment: got %q, want %q", got, want)
+	}
+}
+
+func TestMarkdownToLatex_AlignCenterWithBold(t *testing.T) {
+	got := MarkdownToLatex("->**bold centered**<-")
+	want := `{\centering \textbf{bold centered}\par}`
+	if got != want {
+		t.Errorf("center+bold: got %q, want %q", got, want)
+	}
+}
+
+func TestMarkdownToLatex_AlignRightWithItalic(t *testing.T) {
+	got := MarkdownToLatex("->*italic right*->")
+	want := `{\raggedleft \textit{italic right}\par}`
+	if got != want {
+		t.Errorf("right+italic: got %q, want %q", got, want)
+	}
+}
+
+func TestMarkdownToLatex_AlignCenterWithSpecialChars(t *testing.T) {
+	got := MarkdownToLatex("->Price & 100%<-")
+	if !strings.Contains(got, `{\centering`) {
+		t.Errorf("expected centering, got %q", got)
+	}
+	if !strings.Contains(got, `Price \& 100\%`) {
+		t.Errorf("expected escaped chars, got %q", got)
+	}
+}
+
+func TestMarkdownToLatex_AlignInMixedContent(t *testing.T) {
+	input := "Normal text\n\n->Centered<-\n\nMore text"
+	got := MarkdownToLatex(input)
+	if !strings.Contains(got, `{\centering Centered\par}`) {
+		t.Errorf("expected centered in mixed content, got %q", got)
+	}
+	if !strings.Contains(got, "Normal text") {
+		t.Errorf("expected normal text, got %q", got)
+	}
+	if !strings.Contains(got, "More text") {
+		t.Errorf("expected more text, got %q", got)
+	}
+}
+
+func TestMarkdownToLatex_ArrowInMiddleNotMacro(t *testing.T) {
+	// Arrows in middle of text should NOT be treated as alignment macros.
+	got := MarkdownToLatex("Go from A -> B -> C")
+	if strings.Contains(got, `\centering`) || strings.Contains(got, `\raggedleft`) {
+		t.Errorf("should not detect alignment in middle-of-text arrows, got %q", got)
+	}
+}

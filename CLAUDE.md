@@ -607,7 +607,7 @@ Tables: `photo_books`, `book_chapters` (with optional `color` for per-chapter th
 
 Page formats: `4_landscape` (4 slots), `2l_1p` (3 slots), `1p_2l` (3 slots), `2_portrait` (2 slots), `1_fullscreen` (1 slot). Layout uses a 12-column grid with 3 fixed zones (header 4mm / canvas 172mm / footer 8mm) and asymmetric margins (inside 20mm / outside 12mm). Mixed formats support adjustable split position via `split_position`.
 
-**Text Slot Markdown:** Text slots support GFM markdown: headings (`#`/`##`), bold, italic, lists, blockquotes, and tables (GFM pipe syntax). Tables support optional column width percentages in the separator row (e.g., `|--- 60% ---|--- 40% ---|`). Frontend renders via `marked.js` + DOMPurify with `<colgroup>` width injection; PDF uses `tabularx` with `\hsize`-scaled `X` columns. Text type auto-detection: T1 (explanation), T2 (fact box/list), T3 (oral history/blockquote).
+**Text Slot Markdown:** Text slots support GFM markdown: headings (`#`/`##`), bold, italic, lists, blockquotes, alignment macros (`->text<-` for center, `->text->` for right-align), and tables (GFM pipe syntax). Tables support optional column width percentages in the separator row (e.g., `|--- 60% ---|--- 40% ---|`). Frontend renders via `marked.js` + DOMPurify with `<colgroup>` width injection; PDF uses `tabularx` with `\hsize`-scaled `X` columns. Text type auto-detection: T1 (explanation), T2 (fact box/list), T3 (oral history/blockquote).
 
 **PhotoPrism Client Middleware:**
 

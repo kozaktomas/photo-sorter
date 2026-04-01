@@ -14,6 +14,13 @@ var (
 	italicRe = regexp.MustCompile(`\*(.+?)\*`)
 )
 
+// Alignment macros — detected on trimmed lines before inline formatting.
+// ->text<- → center, ->text-> → right-align.
+var (
+	alignCenterRe = regexp.MustCompile(`^->\s*(.*?)\s*<-$`)
+	alignRightRe  = regexp.MustCompile(`^->\s*(.*?)\s*->$`)
+)
+
 // MarkdownToLatex converts a subset of Markdown to LaTeX.
 //
 // Supported syntax:.
@@ -24,6 +31,8 @@ var (
 //   - - item / * item → \begin{itemize}[nosep,leftmargin=1.5em] ... \end{itemize}
 //   - 1. item         → \begin{enumerate}[nosep,leftmargin=1.5em] ... \end{enumerate}
 //   - > quote         → \begin{quote}\itshape ... \end{quote}
+//   - ->text<-        → {\centering text\par}
+//   - ->text->        → {\raggedleft text\par}
 //   - blank line      → \par\vspace{4mm}
 //   - plain text      → escaped text (backward compatible)
 func MarkdownToLatex(md string) string {
@@ -101,6 +110,24 @@ func markdownToLatexInternal(md, chapterColor string) string {
 			tableLines, newI := collectTable(lines, i)
 			out = append(out, tableLines...)
 			i = newI
+			continue
+		}
+
+		// Center alignment: ->text<-
+		if m := alignCenterRe.FindStringSubmatch(trimmed); m != nil {
+			text := inlineFormat(latexEscapeRaw(m[1]))
+			text = czechTypography(text)
+			out = append(out, `{\centering `+text+`\par}`)
+			i++
+			continue
+		}
+
+		// Right alignment: ->text->
+		if m := alignRightRe.FindStringSubmatch(trimmed); m != nil {
+			text := inlineFormat(latexEscapeRaw(m[1]))
+			text = czechTypography(text)
+			out = append(out, `{\raggedleft `+text+`\par}`)
+			i++
 			continue
 		}
 

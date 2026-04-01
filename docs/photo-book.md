@@ -358,6 +358,8 @@ Text slots support Markdown formatting with auto-detected rendering types:
 | `- item` | Bulleted list |
 | `1. item` | Numbered list |
 | `> quote` | Blockquote (italic) |
+| `->text<-` | Center-aligned paragraph |
+| `->text->` | Right-aligned paragraph |
 | `\| A \| B \|` | Table (GFM pipe syntax) |
 | Blank line | Paragraph break |
 

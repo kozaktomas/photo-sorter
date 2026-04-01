@@ -47,11 +47,40 @@ function applyTableWidths(html: string, widths: number[][]): string {
   });
 }
 
+// Alignment macros: ->text<- (center), ->text-> (right-align).
+// Applied per-line as a pre-processing step before marked.js.
+const alignCenterRe = /^->\s*(.*?)\s*<-$/;
+const alignRightRe = /^->\s*(.*?)\s*->$/;
+
+function processAlignmentMacros(md: string): string {
+  return md
+    .split('\n')
+    .map((line) => {
+      const trimmed = line.trim();
+      const centerMatch = alignCenterRe.exec(trimmed);
+      if (centerMatch) {
+        // Use parseInline so **bold**/*italic* inside the macro get rendered.
+        // marked.parse would treat <p> as an HTML block and skip inline processing.
+        const inner = marked.parseInline(centerMatch[1]) as string;
+        return `<p style="text-align:center">${inner}</p>`;
+      }
+      const rightMatch = alignRightRe.exec(trimmed);
+      if (rightMatch) {
+        const inner = marked.parseInline(rightMatch[1]) as string;
+        return `<p style="text-align:right">${inner}</p>`;
+      }
+      return line;
+    })
+    .join('\n');
+}
+
 export function renderMarkdown(md: string): string {
   const widths = extractTableWidths(md);
-  const html = marked.parse(stripTableWidthHints(md)) as string;
+  const html = marked.parse(processAlignmentMacros(stripTableWidthHints(md))) as string;
   const withWidths = widths.length > 0 ? applyTableWidths(html, widths) : html;
-  return DOMPurify.sanitize(withWidths);
+  return DOMPurify.sanitize(withWidths, {
+    ADD_ATTR: ['style'],
+  });
 }
 
 interface MarkdownContentProps {
