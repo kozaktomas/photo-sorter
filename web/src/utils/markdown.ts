@@ -78,20 +78,12 @@ function processAlignmentMacros(md: string): string {
 const smallCapsRe = /\^\^(.+?)\^\^/g;
 
 // Inline macro post-processing applied after marked.js rendering.
-// Handles: ^^small caps^^, \n (line break), ~ (non-breaking space), \~ (literal tilde).
+// Handles: ^^small caps^^, \n (line break).
+// Note: ~ (non-breaking space) and \~ (literal tilde) are handled via pre/post-processing
+// around marked.parse() to prevent GFM strikethrough from consuming ~~ pairs.
 function processInlineMacros(html: string): string {
   // Small caps.
   html = html.replace(smallCapsRe, '<span style="font-variant:small-caps">$1</span>');
-
-  // Escaped tilde \~ → placeholder (must come before ~ → &nbsp;).
-  const tildePlaceholder = '\x00TILDE\x00';
-  html = html.replace(/\\~/g, tildePlaceholder);
-
-  // Tilde ~ → non-breaking space.
-  html = html.replace(/~/g, '&nbsp;');
-
-  // Restore escaped tildes as literal ~.
-  html = html.replaceAll(tildePlaceholder, '~');
 
   // Forced line break: literal \n → <br />.
   html = html.replace(/\\n/g, '<br />');
@@ -99,9 +91,24 @@ function processInlineMacros(html: string): string {
   return html;
 }
 
+// Placeholders for tilde pre-processing (protect from GFM strikethrough).
+const ESCAPED_TILDE = '\x00ESC_TILDE\x00';
+const TILDE_PLACEHOLDER = '\x00TILDE\x00';
+
 export function renderMarkdown(md: string): string {
   const widths = extractTableWidths(md);
-  const html = marked.parse(processAlignmentMacros(stripTableWidthHints(md))) as string;
+
+  // Pre-process: protect tildes from GFM strikethrough (~~text~~ → <del>).
+  // Escaped \~ first, then bare ~, so marked.js never sees ~~ pairs.
+  let preprocessed = md.replace(/\\~/g, ESCAPED_TILDE);
+  preprocessed = preprocessed.replace(/~/g, TILDE_PLACEHOLDER);
+
+  let html = marked.parse(processAlignmentMacros(stripTableWidthHints(preprocessed))) as string;
+
+  // Post-process: restore tildes as &nbsp; (or literal ~ for escaped).
+  html = html.replaceAll(TILDE_PLACEHOLDER, '&nbsp;');
+  html = html.replaceAll(ESCAPED_TILDE, '~');
+
   const withWidths = widths.length > 0 ? applyTableWidths(html, widths) : html;
   const withMacros = processInlineMacros(withWidths);
   return DOMPurify.sanitize(withMacros, {
