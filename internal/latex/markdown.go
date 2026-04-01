@@ -17,8 +17,8 @@ var (
 // MarkdownToLatex converts a subset of Markdown to LaTeX.
 //
 // Supported syntax:.
-//   - # Heading       → {\Large\sffamily\bfseries Heading}\par\vspace{4mm}
-//   - ## Subheading   → {\large\bfseries Subheading}\par\vspace{4mm}
+//   - # Heading       → {\fontsize{16}{19.2}\selectfont\sffamily\bfseries Heading}\par\vspace{4mm}
+//   - ## Subheading   → {\fontsize{13}{15.6}\selectfont\bfseries Subheading}\par\vspace{4mm}
 //   - **bold**        → \textbf{bold}
 //   - *italic*        → \textit{italic}
 //   - - item / * item → \begin{itemize}[nosep,leftmargin=1.5em] ... \end{itemize}
@@ -54,14 +54,14 @@ func markdownToLatexInternal(md, chapterColor string) string {
 
 		// Heading ## (must check before #).
 		if text, ok := strings.CutPrefix(trimmed, "## "); ok {
-			out = append(out, formatHeading(text, `\large`, ""))
+			out = append(out, formatHeading(text, 2, ""))
 			i++
 			continue
 		}
 
 		// Heading #.
 		if text, ok := strings.CutPrefix(trimmed, "# "); ok {
-			out = append(out, formatHeading(text, `\Large`, chapterColor))
+			out = append(out, formatHeading(text, 1, chapterColor))
 			i++
 			continue
 		}
@@ -114,22 +114,28 @@ func markdownToLatexInternal(md, chapterColor string) string {
 	return strings.Join(out, "\n")
 }
 
-// formatHeading formats a heading line with the given LaTeX size command.
-// H1 (\Large) uses \sffamily to render in Source Sans 3 (the sans-serif font).
+// formatHeading formats a heading line with an explicit font size.
+// H1 (level 1) = 16pt, H2 (level 2) = 13pt. Line spacing is 1.2× the font size.
+// H1 uses \sffamily to render in Source Sans 3 (the sans-serif font).
 // If chapterColor is non-empty (hex without #), H1 renders with a colored background and white text.
-func formatHeading(text, sizeCmd, chapterColor string) string {
+func formatHeading(text string, level int, chapterColor string) string {
 	text = inlineFormat(latexEscapeRaw(text))
 	text = czechTypography(text)
+
+	sizeCmd := `\fontsize{13}{15.6}\selectfont`
 	fontCmd := `\bfseries `
-	if sizeCmd == `\Large` {
+	if level == 1 {
+		sizeCmd = `\fontsize{16}{19.2}\selectfont`
 		fontCmd = `\sffamily\bfseries `
 	}
-	if sizeCmd == `\Large` && chapterColor != "" {
-		return fmt.Sprintf(
-			`\definecolor{chaptercolor}{HTML}{%s}`+"\n"+
-				`\noindent\colorbox{chaptercolor}{\parbox{\dimexpr\linewidth-2\fboxsep}{%s\textcolor{white}{%s}}}\par\vspace{4mm}`,
-			chapterColor, fontCmd, text,
+
+	if level == 1 && chapterColor != "" {
+		colorDef := fmt.Sprintf(`\definecolor{chaptercolor}{HTML}{%s}`, chapterColor)
+		box := fmt.Sprintf(
+			`\noindent\colorbox{chaptercolor}{\parbox{\dimexpr\linewidth-2\fboxsep}{%s%s\textcolor{white}{%s}}}`,
+			sizeCmd, fontCmd, text,
 		)
+		return colorDef + "\n" + box + `\par\vspace{4mm}`
 	}
 	return `{` + sizeCmd + fontCmd + text + `}\par\vspace{4mm}`
 }
