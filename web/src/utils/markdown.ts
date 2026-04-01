@@ -112,12 +112,14 @@ export function renderMarkdown(md: string): string {
 interface MarkdownContentProps {
   content: string;
   className?: string;
+  chapterColor?: string;
 }
 
-export function MarkdownContent({ content, className }: MarkdownContentProps) {
+export function MarkdownContent({ content, className, chapterColor }: MarkdownContentProps) {
   const html = renderMarkdown(content);
   return React.createElement('div', {
     className: `markdown-content ${className || ''}`,
+    style: chapterColor ? { '--chapter-color': chapterColor } as React.CSSProperties : undefined,
     dangerouslySetInnerHTML: { __html: html },
   });
 }

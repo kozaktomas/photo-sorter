@@ -928,6 +928,15 @@ export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRe
 
   const selectedPage = book.pages.find(p => p.id === selectedId);
 
+  // Resolve chapter color for the selected page
+  const selectedChapterColor = useMemo(() => {
+    if (!selectedPage) return undefined;
+    const section = book.sections.find(s => s.id === selectedPage.section_id);
+    if (!section?.chapter_id) return undefined;
+    const chapter = book.chapters.find(c => c.id === section.chapter_id);
+    return chapter?.color || undefined;
+  }, [selectedPage, book.sections, book.chapters]);
+
   // Persist minimap state
   useEffect(() => {
     try { localStorage.setItem(`book-minimap-${book.id}`, String(minimapOpen)); } catch { /* silent */ }
@@ -1442,6 +1451,7 @@ export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRe
                 onAddText={handleAddText}
                 onEditCrop={handleEditCrop}
                 onChangeSplitPosition={handleChangeSplitPosition}
+                chapterColor={selectedChapterColor}
               />
               <UnassignedPool
                 photoUids={unassignedPhotos}

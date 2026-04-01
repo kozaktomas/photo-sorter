@@ -14,7 +14,7 @@ interface Props {
   initialPageId?: string | null;
 }
 
-function PreviewPageSlot({ photoUid, textContent, description, note, cropX, cropY, cropScale, className }: {
+function PreviewPageSlot({ photoUid, textContent, description, note, cropX, cropY, cropScale, chapterColor, className }: {
   photoUid: string;
   textContent: string;
   description: string;
@@ -22,6 +22,7 @@ function PreviewPageSlot({ photoUid, textContent, description, note, cropX, crop
   cropX?: number;
   cropY?: number;
   cropScale?: number;
+  chapterColor?: string;
   className?: string;
 }) {
   const [orientation, setOrientation] = useState<'L' | 'P' | null>(null);
@@ -51,7 +52,7 @@ function PreviewPageSlot({ photoUid, textContent, description, note, cropX, crop
         </div>
       ) : textContent ? (
         <div className="w-full h-full rounded p-4">
-          <MarkdownContent content={textContent} />
+          <MarkdownContent content={textContent} chapterColor={chapterColor} />
         </div>
       ) : (
         <div className="w-full h-full bg-slate-800 rounded flex items-center justify-center text-slate-600 text-xs">
@@ -62,9 +63,10 @@ function PreviewPageSlot({ photoUid, textContent, description, note, cropX, crop
   );
 }
 
-function PreviewPageContent({ page, photoInfo, className }: {
+function PreviewPageContent({ page, photoInfo, chapterColor, className }: {
   page: BookPage;
   photoInfo: Record<string, { description: string; note: string }>;
+  chapterColor?: string;
   className?: string;
 }) {
   const slotCount = pageFormatSlotCount(page.format);
@@ -90,6 +92,7 @@ function PreviewPageContent({ page, photoInfo, className }: {
             cropX={cropX}
             cropY={cropY}
             cropScale={cropScale}
+            chapterColor={chapterColor}
             className={getSlotClasses(page.format, i)}
           />
         );
@@ -98,11 +101,12 @@ function PreviewPageContent({ page, photoInfo, className }: {
   );
 }
 
-function PreviewPage({ page, pageNumber, sectionTitle, photoInfo }: {
+function PreviewPage({ page, pageNumber, sectionTitle, photoInfo, chapterColor }: {
   page: BookPage;
   pageNumber: number;
   sectionTitle?: string;
   photoInfo: Record<string, { description: string; note: string }>;
+  chapterColor?: string;
 }) {
   const { t } = useTranslation('pages');
 
@@ -120,7 +124,7 @@ function PreviewPage({ page, pageNumber, sectionTitle, photoInfo }: {
       {page.description && (
         <p className="text-sm italic text-slate-300 mb-2">{page.description}</p>
       )}
-      <PreviewPageContent page={page} photoInfo={photoInfo} />
+      <PreviewPageContent page={page} photoInfo={photoInfo} chapterColor={chapterColor} />
     </div>
   );
 }
@@ -131,9 +135,10 @@ interface Spread {
   sectionDivider?: string;
 }
 
-function SpreadView({ orderedPages, sectionMap, photoInfo }: {
+function SpreadView({ orderedPages, sectionMap, sectionColorMap, photoInfo }: {
   orderedPages: BookPage[];
   sectionMap: Record<string, string>;
+  sectionColorMap: Record<string, string>;
   photoInfo: Record<string, { description: string; note: string }>;
 }) {
   const { t } = useTranslation('pages');
@@ -229,7 +234,7 @@ function SpreadView({ orderedPages, sectionMap, photoInfo }: {
               {/* Left page (verso) */}
               {spread.left ? (
                 <div className="flex-1 pr-0.5" id={`preview-page-${spread.left.page.id}`}>
-                  <PreviewPageContent page={spread.left.page} photoInfo={photoInfo} className="h-full rounded-none border-0" />
+                  <PreviewPageContent page={spread.left.page} photoInfo={photoInfo} chapterColor={sectionColorMap[spread.left.page.section_id]} className="h-full rounded-none border-0" />
                 </div>
               ) : (
                 <div className="flex-1 bg-slate-900 flex items-center justify-center text-slate-700 text-sm pr-0.5">
@@ -241,7 +246,7 @@ function SpreadView({ orderedPages, sectionMap, photoInfo }: {
               {/* Right page (recto) */}
               {spread.right ? (
                 <div className="flex-1 pl-0.5" id={`preview-page-${spread.right.page.id}`}>
-                  <PreviewPageContent page={spread.right.page} photoInfo={photoInfo} className="h-full rounded-none border-0" />
+                  <PreviewPageContent page={spread.right.page} photoInfo={photoInfo} chapterColor={sectionColorMap[spread.right.page.section_id]} className="h-full rounded-none border-0" />
                 </div>
               ) : (
                 <div className="flex-1 bg-slate-900 flex items-center justify-center text-slate-700 text-sm pl-0.5">
@@ -316,6 +321,19 @@ export function PreviewTab({ book, sectionPhotos, loadSectionPhotos, initialPage
     return map;
   }, [book.sections, book.chapters]);
 
+  // Map section_id → chapter color for text slot rendering
+  const sectionColorMap = useMemo(() => {
+    const chapterColorMap: Record<string, string> = {};
+    book.chapters.forEach(ch => { if (ch.color) chapterColorMap[ch.id] = ch.color; });
+    const map: Record<string, string> = {};
+    book.sections.forEach(s => {
+      if (s.chapter_id && chapterColorMap[s.chapter_id]) {
+        map[s.id] = chapterColorMap[s.chapter_id];
+      }
+    });
+    return map;
+  }, [book.sections, book.chapters]);
+
   // Order pages section-by-section for consistent numbering (1..n)
   const orderedPages = useMemo(() => {
     const sectionOrder = new Map(book.sections.map((s, i) => [s.id, i]));
@@ -352,17 +370,18 @@ export function PreviewTab({ book, sectionPhotos, loadSectionPhotos, initialPage
       </div>
 
       {spreadMode ? (
-        <SpreadView orderedPages={orderedPages} sectionMap={sectionMap} photoInfo={photoInfo} />
+        <SpreadView orderedPages={orderedPages} sectionMap={sectionMap} sectionColorMap={sectionColorMap} photoInfo={photoInfo} />
       ) : (
-        <SinglePageView orderedPages={orderedPages} sectionMap={sectionMap} photoInfo={photoInfo} />
+        <SinglePageView orderedPages={orderedPages} sectionMap={sectionMap} sectionColorMap={sectionColorMap} photoInfo={photoInfo} />
       )}
     </div>
   );
 }
 
-function SinglePageView({ orderedPages, sectionMap, photoInfo }: {
+function SinglePageView({ orderedPages, sectionMap, sectionColorMap, photoInfo }: {
   orderedPages: BookPage[];
   sectionMap: Record<string, string>;
+  sectionColorMap: Record<string, string>;
   photoInfo: Record<string, { description: string; note: string }>;
 }) {
   let lastSectionId = '';
@@ -389,6 +408,7 @@ function SinglePageView({ orderedPages, sectionMap, photoInfo }: {
               pageNumber={i + 1}
               sectionTitle={sectionMap[page.section_id]}
               photoInfo={photoInfo}
+              chapterColor={sectionColorMap[page.section_id]}
             />
           </div>
         );

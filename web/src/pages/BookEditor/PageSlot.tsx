@@ -26,10 +26,11 @@ interface Props {
   onEditDescription?: () => void;
   onEditText?: () => void;
   onAddText?: () => void;
+  chapterColor?: string;
   className?: string;
 }
 
-export function PageSlotComponent({ pageId, slotIndex, photoUid, textContent, cropX, cropY, cropScale, format, splitPosition, onClear, onEditCrop, description, note, onEditDescription, onEditText, onAddText, className }: Props) {
+export function PageSlotComponent({ pageId, slotIndex, photoUid, textContent, cropX, cropY, cropScale, format, splitPosition, onClear, onEditCrop, description, note, onEditDescription, onEditText, onAddText, chapterColor, className }: Props) {
   const { t } = useTranslation('pages');
   const [orientation, setOrientation] = useState<'L' | 'P' | null>(null);
   const [dpi, setDpi] = useState<number | null>(null);
@@ -140,7 +141,7 @@ export function PageSlotComponent({ pageId, slotIndex, photoUid, textContent, cr
         </div>
       ) : textContent ? (
         <div className="group relative w-full h-full p-3">
-          <MarkdownContent content={textContent} className="line-clamp-6" />
+          <MarkdownContent content={textContent} className="line-clamp-6" chapterColor={chapterColor} />
           <button
             onClick={onClear}
             onPointerDown={(e) => e.stopPropagation()}

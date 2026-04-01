@@ -26,9 +26,10 @@ interface Props {
   onAddText?: (slotIndex: number) => void;
   onEditCrop?: (slotIndex: number) => void;
   onChangeSplitPosition?: (split: number | null) => void;
+  chapterColor?: string;
 }
 
-export function PageTemplate({ page, onClearSlot, sectionPhotos, onEditDescription, onUpdatePageDescription, onChangeFormat, onChangeStyle, onEditText, onAddText, onEditCrop, onChangeSplitPosition }: Props) {
+export function PageTemplate({ page, onClearSlot, sectionPhotos, onEditDescription, onUpdatePageDescription, onChangeFormat, onChangeStyle, onEditText, onAddText, onEditCrop, onChangeSplitPosition, chapterColor }: Props) {
   const { t } = useTranslation('pages');
   const slotCount = pageFormatSlotCount(page.format);
   const gridClasses = getGridClasses(page.format);
@@ -169,6 +170,7 @@ export function PageTemplate({ page, onClearSlot, sectionPhotos, onEditDescripti
               onEditDescription={uid && onEditDescription ? () => onEditDescription(uid) : undefined}
               onEditText={textContent && onEditText ? () => onEditText(i) : undefined}
               onAddText={!uid && !textContent && onAddText ? () => onAddText(i) : undefined}
+              chapterColor={chapterColor}
               className={getSlotClasses(page.format, i)}
             />
           );
