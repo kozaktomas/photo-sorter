@@ -541,6 +541,49 @@ photo-sorter cache push-embeddings --json
 
 ---
 
+### mcp-serve
+
+Start the MCP (Model Context Protocol) server for AI agent integration. Exposes photo book management, photo/album/label operations, and AI text tools as MCP tools over HTTP SSE.
+
+```bash
+photo-sorter mcp-serve [flags]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--port` | int | 8086 | Server port |
+| `--host` | string | 0.0.0.0 | Server host |
+
+**Environment Variables:**
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `MCP_API_TOKEN` | Yes | Bearer token for MCP client authentication |
+| `DATABASE_URL` | Yes | PostgreSQL connection string |
+| `PHOTOPRISM_URL` | Yes | PhotoPrism instance URL |
+| `PHOTOPRISM_USERNAME` | Yes | PhotoPrism login username |
+| `PHOTOPRISM_PASSWORD` | Yes | PhotoPrism login password |
+
+**Example:**
+```bash
+export MCP_API_TOKEN=my-secret-token
+photo-sorter mcp-serve --port 8086
+```
+
+**Available Tools (48 total):**
+- **Books** (5): `list_books`, `get_book`, `create_book`, `update_book`, `delete_book`
+- **Chapters** (4): `create_chapter`, `update_chapter`, `delete_chapter`, `reorder_chapters`
+- **Sections** (8): `create_section`, `update_section`, `delete_section`, `reorder_sections`, `list_section_photos`, `add_photos_to_section`, `remove_photos_from_section`, `update_section_photo`
+- **Pages & Slots** (9): `create_page`, `update_page`, `delete_page`, `reorder_pages`, `assign_photo_to_slot`, `assign_text_to_slot`, `clear_slot`, `swap_slots`, `update_slot_crop`
+- **Photos** (7): `list_photos`, `get_photo`, `get_photo_thumbnail`, `update_photo`, `get_photo_faces`, `find_similar_photos`, `search_photos_by_text`
+- **Albums** (6): `list_albums`, `get_album`, `create_album`, `get_album_photos`, `add_photos_to_album`, `remove_photos_from_album`
+- **Labels** (6): `list_labels`, `get_label`, `update_label`, `delete_labels`, `add_photo_label`, `remove_photo_label`
+- **Text & AI** (5): `check_text`, `rewrite_text`, `check_consistency`, `list_text_versions`, `restore_text_version`
+
+See [API Reference — MCP Server](API.md#mcp-server) for detailed parameter documentation.
+
+---
+
 ### version
 
 Print the version number.

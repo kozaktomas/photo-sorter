@@ -6,7 +6,7 @@ const turndown = new TurndownService({
   bulletListMarker: '-',
   codeBlockStyle: 'fenced',
 });
-turndown.use(gfm as TurndownService.Plugin);
+turndown.use(gfm);
 
 /**
  * Handle paste events on textareas, converting HTML clipboard content to Markdown.

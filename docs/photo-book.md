@@ -66,6 +66,7 @@ Page style (modern/archival): `internal/database/postgres/migrations/013_add_pag
 Crop position + split: `internal/database/postgres/migrations/014_add_crop_and_split.sql`
 Crop scale (zoom): `internal/database/postgres/migrations/015_add_crop_scale.sql`
 Chapters: `internal/database/postgres/migrations/016_create_book_chapters.sql`
+Chapter color: `internal/database/postgres/migrations/020_add_chapter_color.sql`
 
 ### Tables
 
@@ -81,6 +82,7 @@ book_chapters
 ├── id (PK)
 ├── book_id (FK → photo_books, CASCADE)
 ├── title
+├── color (TEXT, optional hex color e.g. '#8B0000' for chapter theme)
 ├── sort_order
 ├── created_at
 └── updated_at
@@ -147,9 +149,9 @@ Deleting a book cascades to all chapters, sections, pages, and slots.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/v1/books/:id/chapters` | Create chapter (`{ title }`) |
+| POST | `/api/v1/books/:id/chapters` | Create chapter (`{ title, color? }`) |
 | PUT | `/api/v1/books/:id/chapters/reorder` | Reorder chapters (`{ chapter_ids: [...] }`) |
-| PUT | `/api/v1/chapters/:id` | Update chapter (`{ title }`) |
+| PUT | `/api/v1/chapters/:id` | Update chapter (`{ title?, color? }`) |
 | DELETE | `/api/v1/chapters/:id` | Delete chapter |
 
 ### Sections

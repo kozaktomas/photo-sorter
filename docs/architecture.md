@@ -18,6 +18,7 @@ flowchart TB
         Handlers["REST API Handlers"]
         SSE["SSE Event Streams"]
         SPA["Embedded React SPA"]
+        MCP["MCP Server\n(HTTP SSE, Bearer auth)"]
     end
 
     subgraph Core["Core Logic"]
@@ -58,6 +59,11 @@ flowchart TB
     Handlers --> PG
     Handlers --> HNSW
 
+    MCP --> PG
+    MCP --> HNSW
+    MCP --> PhotoPrism
+    MCP --> AI
+
     Sorter --> AI
     Sorter --> PhotoPrism
 
@@ -83,6 +89,7 @@ flowchart TB
 | `internal/photoprism/` | PhotoPrism REST API client, split by domain (albums, photos, labels, markers, subjects, faces, upload) | `PhotoPrism`, `Album`, `Photo`, `Label`, `Marker`, `Subject` |
 | `internal/sorter/` | Orchestrates photo fetching, AI analysis, and label application | `Sorter` |
 | `internal/latex/` | PDF export via LaTeX — markdown-to-LaTeX conversion, layout validation, 12-column grid system | `LayoutConfig`, `FormatSlotsGrid`, markdown converter |
+| `internal/mcp/` | MCP (Model Context Protocol) server exposing photo book, photo, album, label, and text tools for AI agents | `Server`, tool handlers (books, sections, pages, photos, albums, labels, text) |
 | `internal/web/` | Web server setup and route registration | `Server` |
 | `internal/web/middleware/` | HTTP middleware: auth, CORS, session management, PhotoPrism client injection | `SessionManager`, `RequireAuth`, `WithPhotoPrismClient` |
 | `internal/web/handlers/` | REST API handlers for all endpoints (albums, photos, faces, books, text AI, text versions, sort jobs, SSE) | `FacesHandler`, `BooksHandler`, `TextHandler`, `TextVersionsHandler`, handler functions |
@@ -230,6 +237,11 @@ Environment variables grouped by service:
 | `WEB_HOST` | No | Server host (default: `0.0.0.0`) |
 | `WEB_SESSION_SECRET` | No | Secret for signing session cookies (warns if unset) |
 | `WEB_ALLOWED_ORIGINS` | No | Comma-separated CORS allowed origins |
+
+### MCP Server
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `MCP_API_TOKEN` | Yes* | Bearer token for MCP client authentication (*required for `mcp-serve` command) |
 
 ## Error Handling Strategy
 

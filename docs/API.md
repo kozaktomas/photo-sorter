@@ -1729,11 +1729,17 @@ POST /books/{id}/chapters
 **Request:**
 ```json
 {
-  "title": "Part One"
+  "title": "Part One",
+  "color": "#8B0000"
 }
 ```
 
-**Response (201):** Created chapter object with `id`, `title`, `sort_order`.
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `title` | string | Yes | Chapter title |
+| `color` | string | No | Hex color for chapter theme (e.g. `#8B0000`) |
+
+**Response (201):** Created chapter object with `id`, `title`, `color`, `sort_order`.
 
 #### Update Chapter
 
@@ -1744,9 +1750,15 @@ PUT /chapters/{id}
 **Request:**
 ```json
 {
-  "title": "Updated Chapter Title"
+  "title": "Updated Chapter Title",
+  "color": "#2E5090"
 }
 ```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `title` | string | No | New chapter title |
+| `color` | string | No | New hex color for chapter theme |
 
 **Response (200):** Updated chapter object.
 
@@ -2477,3 +2489,74 @@ A separate MCP (Model Context Protocol) server exposes photo book management as 
 | `update_chapter` | Update chapter title/color | `chapter_id` (string, required), `title` (string, optional), `color` (string, optional) |
 | `delete_chapter` | Delete a chapter | `chapter_id` (string, required) |
 | `reorder_chapters` | Reorder chapters in a book | `book_id` (string, required), `chapter_ids` (array of strings, required) |
+
+### MCP Tools — Sections
+
+| Tool | Description | Parameters |
+|------|-------------|------------|
+| `create_section` | Create a section in a book | `book_id` (string, required), `title` (string, required), `chapter_id` (string, optional) |
+| `update_section` | Update section title/chapter | `section_id` (string, required), `title` (string, optional), `chapter_id` (string, optional) |
+| `delete_section` | Delete a section | `section_id` (string, required) |
+| `reorder_sections` | Reorder sections in a book | `book_id` (string, required), `section_ids` (array of strings, required) |
+| `list_section_photos` | List photos in a section | `section_id` (string, required) |
+| `add_photos_to_section` | Add photos to a section | `section_id` (string, required), `photo_uids` (array of strings, required) |
+| `remove_photos_from_section` | Remove photos from a section | `section_id` (string, required), `photo_uids` (array of strings, required) |
+| `update_section_photo` | Update photo description/note | `section_id` (string, required), `photo_uid` (string, required), `description` (string, optional), `note` (string, optional) |
+
+### MCP Tools — Pages & Slots
+
+| Tool | Description | Parameters |
+|------|-------------|------------|
+| `create_page` | Create a page in a book | `book_id` (string, required), `format` (string, required — `4_landscape`, `2l_1p`, `1p_2l`, `2_portrait`, `1_fullscreen`), `section_id` (string, optional), `style` (string, optional — `modern`, `archival`) |
+| `update_page` | Update page format/section/description | `page_id` (string, required), `format` (string, optional), `section_id` (string, optional), `description` (string, optional), `style` (string, optional), `split_position` (number, optional — 0.2-0.8) |
+| `delete_page` | Delete a page and all slots | `page_id` (string, required) |
+| `reorder_pages` | Reorder pages in a book | `book_id` (string, required), `page_ids` (array of strings, required) |
+| `assign_photo_to_slot` | Assign a photo to a page slot | `page_id` (string, required), `slot_index` (number, required), `photo_uid` (string, required) |
+| `assign_text_to_slot` | Assign markdown text to a slot | `page_id` (string, required), `slot_index` (number, required), `text_content` (string, required) |
+| `clear_slot` | Clear a page slot | `page_id` (string, required), `slot_index` (number, required) |
+| `swap_slots` | Swap two slots on a page | `page_id` (string, required), `slot_a` (number, required), `slot_b` (number, required) |
+| `update_slot_crop` | Update crop position and zoom | `page_id` (string, required), `slot_index` (number, required), `crop_x` (number, required — 0.0-1.0), `crop_y` (number, required — 0.0-1.0), `crop_scale` (number, optional — 0.1-1.0) |
+
+### MCP Tools — Photos
+
+| Tool | Description | Parameters |
+|------|-------------|------------|
+| `list_photos` | List photos with filtering/pagination | `query` (string, optional — supports `label:`, `person:`, `year:`), `count` (number, optional — default 20, max 100), `offset` (number, optional) |
+| `get_photo` | Get photo metadata (title, date, GPS, camera, faces, labels) | `photo_uid` (string, required) |
+| `get_photo_thumbnail` | Get base64-encoded JPEG thumbnail | `photo_uid` (string, required), `size` (string, optional — `fit_720`, `fit_1280`, `fit_2048`, `tile_500`, `tile_224`) |
+| `update_photo` | Update photo metadata | `photo_uid` (string, required), `title` (string, optional), `description` (string, optional), `taken_at` (string, optional), `favorite` (boolean, optional), `private` (boolean, optional), `lat` (number, optional), `lng` (number, optional) |
+| `get_photo_faces` | Get face markers with positions and names | `photo_uid` (string, required) |
+| `find_similar_photos` | Find visually similar photos using CLIP embeddings | `photo_uid` (string, required), `count` (number, optional — default 10), `max_distance` (number, optional — default 0.3), `book_id` (string, optional — include book placement info), `exclude_album` (string, optional), `exclude_label` (string, optional) |
+| `search_photos_by_text` | Search photos by text description (auto-translates Czech) | `query` (string, required), `count` (number, optional — default 10), `max_distance` (number, optional — default 0.5) |
+
+### MCP Tools — Albums
+
+| Tool | Description | Parameters |
+|------|-------------|------------|
+| `list_albums` | List PhotoPrism albums | `type` (string, optional — `album`, `folder`, `moment`, `month`, `state`), `order` (string, optional), `query` (string, optional), `count` (number, optional — default 50, max 500), `offset` (number, optional) |
+| `get_album` | Get album details by UID | `album_uid` (string, required) |
+| `create_album` | Create a new album | `title` (string, required) |
+| `get_album_photos` | Get photos in an album with pagination | `album_uid` (string, required), `count` (number, optional — default 50, max 500), `offset` (number, optional) |
+| `add_photos_to_album` | Add photos to an album | `album_uid` (string, required), `photo_uids` (array of strings, required) |
+| `remove_photos_from_album` | Remove photos from an album | `album_uid` (string, required), `photo_uids` (array of strings, required) |
+
+### MCP Tools — Labels
+
+| Tool | Description | Parameters |
+|------|-------------|------------|
+| `list_labels` | List PhotoPrism labels | `count` (number, optional — default 100, max 1000), `offset` (number, optional), `all` (boolean, optional — include empty labels) |
+| `get_label` | Get label details by UID | `label_uid` (string, required) |
+| `update_label` | Update label properties | `label_uid` (string, required), `name` (string, optional), `description` (string, optional), `notes` (string, optional), `priority` (number, optional), `favorite` (boolean, optional) |
+| `delete_labels` | Delete labels by UIDs | `label_uids` (array of strings, required) |
+| `add_photo_label` | Add label to a photo | `photo_uid` (string, required), `label_uid` (string, required), `uncertainty` (number, optional — 0-100), `priority` (number, optional) |
+| `remove_photo_label` | Remove label from a photo | `photo_uid` (string, required), `label_id` (number, required) |
+
+### MCP Tools — Text & AI
+
+| Tool | Description | Parameters |
+|------|-------------|------------|
+| `check_text` | AI text check (spelling, grammar, diacritics for Czech) | `text` (string, required), `source_type` (string, optional — for persistence), `source_id` (string, optional), `field` (string, optional) |
+| `rewrite_text` | AI text rewrite (length adjustment) | `text` (string, required), `target_length` (string, required — `much_shorter`, `shorter`, `longer`, `much_longer`) |
+| `check_consistency` | AI style consistency check across all book texts | `book_id` (string, required) |
+| `list_text_versions` | List version history for a text field | `source_type` (string, required), `source_id` (string, required), `field` (string, required) |
+| `restore_text_version` | Restore a previous text version | `version_id` (number, required) |

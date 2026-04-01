@@ -282,13 +282,19 @@ go run . mcp-serve [flags]                    # Start MCP server for AI agents
   --host 0.0.0.0  Host to bind to (default: 0.0.0.0)
 ```
 
-Requires `MCP_API_TOKEN` environment variable. Exposes photo book and chapter management as MCP tools over HTTP SSE. Server name: `photo-sorter-books`.
+Requires `MCP_API_TOKEN` environment variable. Exposes 48 MCP tools for photo book management, photo/album/label operations, and AI text tools over HTTP SSE. Server name: `photo-sorter-books`.
 
 **Package structure:**
 ```
 internal/mcp/
 ├── server.go          # MCP server setup, auth middleware, lifecycle
 ├── books.go           # Book and chapter tool handlers
+├── sections.go        # Section and section photo tool handlers
+├── pages.go           # Page and slot tool handlers
+├── photos.go          # Photo metadata, thumbnails, similarity, text search
+├── albums.go          # PhotoPrism album management tools
+├── labels.go          # PhotoPrism label management tools
+├── text.go            # AI text check, rewrite, consistency, version history
 ```
 
 ### Database Package
@@ -320,7 +326,7 @@ internal/database/
     └── migrations/     # SQL migrations 001-019 (embedded)
 ```
 
-**Tables:** `embeddings` (768-dim CLIP), `faces` (512-dim ResNet100 with cached PhotoPrism marker data), `era_embeddings` (768-dim CLIP text centroids), `faces_processed` (tracking), `sessions` (with `user_uid` for upload support across restarts), `photo_books`, `book_chapters` (migration 016), `book_sections` (with optional `chapter_id`), `section_photos`, `book_pages` (with `split_position` for adjustable column splits in mixed formats), `page_slots` (with `text_content` for text-only slots, `crop_x`/`crop_y`/`crop_scale` for per-photo crop control, mutually exclusive with `photo_uid`), `text_versions` (migration 017, version history for text fields), `text_check_results` (migration 019, persisted AI text check results with content hash for stale detection).
+**Tables:** `embeddings` (768-dim CLIP), `faces` (512-dim ResNet100 with cached PhotoPrism marker data), `era_embeddings` (768-dim CLIP text centroids), `faces_processed` (tracking), `sessions` (with `user_uid` for upload support across restarts), `photo_books`, `book_chapters` (migration 016, with `color` column added in migration 020 for per-chapter color themes), `book_sections` (with optional `chapter_id`), `section_photos`, `book_pages` (with `split_position` for adjustable column splits in mixed formats), `page_slots` (with `text_content` for text-only slots, `crop_x`/`crop_y`/`crop_scale` for per-photo crop control, mutually exclusive with `photo_uid`), `text_versions` (migration 017, version history for text fields), `text_check_results` (migration 019, persisted AI text check results with content hash for stale detection).
 
 **Face name normalization:** `GetFacesBySubjectName` normalizes names via `facematch.NormalizePersonName` (remove diacritics, lowercase, dashes→spaces) using the `unaccent` PostgreSQL extension.
 
@@ -597,7 +603,7 @@ internal/web/handlers/
 
 **Photo Book Database:**
 
-Tables: `photo_books`, `book_chapters`, `book_sections` (with optional `chapter_id`), `section_photos`, `book_pages`, `page_slots` (migration 008, extended by 009-013, 015, plus crop/split/chapter features). Hierarchy: Book > Chapters (optional) > Sections > Pages > Slots. Slots hold either `photo_uid` or `text_content` (mutually exclusive via CHECK constraint) with `crop_x`/`crop_y` for crop positioning (0.0-1.0, default 0.5) and `crop_scale` for zoom level (0.1-1.0, default 1.0). Pages have a `style` field (`modern`/`archival`, migration 013) and `split_position` for adjustable column splits in `2l_1p`/`1p_2l` formats (0.2-0.8, default 0.5).
+Tables: `photo_books`, `book_chapters` (with optional `color` for per-chapter theme, migration 020), `book_sections` (with optional `chapter_id`), `section_photos`, `book_pages`, `page_slots` (migration 008, extended by 009-013, 015, plus crop/split/chapter features). Hierarchy: Book > Chapters (optional) > Sections > Pages > Slots. Slots hold either `photo_uid` or `text_content` (mutually exclusive via CHECK constraint) with `crop_x`/`crop_y` for crop positioning (0.0-1.0, default 0.5) and `crop_scale` for zoom level (0.1-1.0, default 1.0). Pages have a `style` field (`modern`/`archival`, migration 013) and `split_position` for adjustable column splits in `2l_1p`/`1p_2l` formats (0.2-0.8, default 0.5).
 
 Page formats: `4_landscape` (4 slots), `2l_1p` (3 slots), `1p_2l` (3 slots), `2_portrait` (2 slots), `1_fullscreen` (1 slot). Layout uses a 12-column grid with 3 fixed zones (header 4mm / canvas 172mm / footer 8mm) and asymmetric margins (inside 20mm / outside 12mm). Mixed formats support adjustable split position via `split_position`.
 
