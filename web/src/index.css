@@ -123,8 +123,10 @@ body {
   background-color: var(--chapter-color);
   color: #ffffff;
   font-family: 'Source Sans 3', sans-serif;
-  padding: 4px 12px;
-  width: 100%;
+  padding: 4px 16px;
+  margin-left: -4mm;
+  margin-right: -4mm;
+  width: calc(100% + 8mm);
   box-sizing: border-box;
 }
 .markdown-content h2 {
@@ -207,8 +209,10 @@ body {
   background-color: var(--chapter-color);
   color: #ffffff;
   font-family: 'Source Sans 3', sans-serif;
-  padding: 4px 12px;
-  width: 100%;
+  padding: 4px 16px;
+  margin-left: -4mm;
+  margin-right: -4mm;
+  width: calc(100% + 8mm);
   box-sizing: border-box;
 }
 .wysiwyg-preview h2 {
