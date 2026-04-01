@@ -10,7 +10,7 @@ export const BOOK_TYPOGRAPHY = {
   },
   headingFontFamily: "'Source Sans 3', sans-serif",  // LaTeX \setsansfont{SourceSans3}
   h1: {
-    fontSize: '17.28pt',    // LaTeX \Large at 12pt base
+    fontSize: '16pt',       // LaTeX \fontsize{16}{19.2}
     fontWeight: 700,
     color: undefined as string | undefined,
     backgroundColor: undefined as string | undefined,
@@ -19,7 +19,7 @@ export const BOOK_TYPOGRAPHY = {
     marginBottom: '4mm',    // LaTeX \vspace{4mm}
   },
   h2: {
-    fontSize: '14.4pt',     // LaTeX \large at 12pt base
+    fontSize: '13pt',       // LaTeX \fontsize{13}{15.6}
     fontWeight: 700,
     color: undefined as string | undefined,
     backgroundColor: undefined as string | undefined,

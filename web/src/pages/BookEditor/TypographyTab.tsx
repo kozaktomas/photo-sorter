@@ -201,6 +201,12 @@ const STYLE_EXAMPLES = [
     label: 'Table',
     md: '| Column A | Column B |\n|---|---|\n| Cell 1 | Cell 2 |\n| Cell 3 | Cell 4 |',
   },
+  { label: 'Center', md: '->centered text<-' },
+  { label: 'Right', md: '->right-aligned text->' },
+  { label: 'Rule', md: 'Above the line\n\n---\n\nBelow the line' },
+  { label: 'Small Caps', md: '^^Small Caps Text^^' },
+  { label: 'Line Break', md: 'First line\\nSecond line (no new paragraph)' },
+  { label: 'Non-breaking Space', md: 'Jan~Novák (non-breaking~space, \\~ for literal tilde)' },
 ];
 
 function TextStylesSection() {
