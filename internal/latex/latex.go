@@ -93,6 +93,10 @@ type TemplateSlot struct {
 	// Text padding (mm) for text slots adjacent to photos in mixed layouts.
 	TextPadLeft  float64
 	TextPadRight float64
+	// H1 bleed (mm) — how far the colored heading box extends beyond linewidth on each side.
+	// Bleed towards the page edge (outside), not towards the gutter (adjacent photo column).
+	BleedLeftMM  float64
+	BleedRightMM float64
 	// Caption marker (1-based; 0 = no marker).
 	CaptionMarker        int
 	CaptionMarkerX       float64 // bottom-left X of marker rect
@@ -745,10 +749,22 @@ func isLeftColumn(format string, slotIndex int) bool {
 	return slotIndex <= 1
 }
 
+// setDefaultBleed sets symmetric bleed on all text slots.
+func setDefaultBleed(slots []TemplateSlot) {
+	for i := range slots {
+		if slots[i].HasText {
+			slots[i].BleedLeftMM = textPadMM
+			slots[i].BleedRightMM = textPadMM
+		}
+	}
+}
+
 // applyTextSlotPadding adds horizontal padding to text slots that are adjacent
-// to photo slots in mixed layouts (1p_2l, 2l_1p).
+// to photo slots in mixed layouts (1p_2l, 2l_1p). Also sets directional H1 bleed
+// so the colored heading box only extends towards the page edge, not into the gutter.
 func applyTextSlotPadding(slots []TemplateSlot, format string) {
 	if format != Format1P2L && format != Format2L1P {
+		setDefaultBleed(slots)
 		return
 	}
 	hasPhoto := false
@@ -759,6 +775,7 @@ func applyTextSlotPadding(slots []TemplateSlot, format string) {
 		}
 	}
 	if !hasPhoto {
+		setDefaultBleed(slots)
 		return
 	}
 	for i := range slots {
@@ -766,9 +783,15 @@ func applyTextSlotPadding(slots []TemplateSlot, format string) {
 			continue
 		}
 		if isLeftColumn(format, i) {
+			// Left column text: bleed left (page edge), not right (gutter).
 			slots[i].TextPadRight = textPadMM
+			slots[i].BleedLeftMM = textPadMM
+			slots[i].BleedRightMM = 0
 		} else {
+			// Right column text: bleed right (page edge), not left (gutter).
 			slots[i].TextPadLeft = textPadMM
+			slots[i].BleedLeftMM = 0
+			slots[i].BleedRightMM = textPadMM
 		}
 	}
 }

@@ -93,7 +93,7 @@
     at ({{printf "%.2f" (addFloat $slot.ClipX $slot.TextPadLeft)}},{{printf "%.2f" (addFloat $slot.ClipY $slot.ClipH)}})
     {\parbox{{print "{"}}{{printf "%.2f" (subtractFloat (subtractFloat $slot.ClipW $slot.TextPadLeft) $slot.TextPadRight)}}mm}{%
       \parskip=0pt\parindent=0pt\fontsize{13}{16}\selectfont%
-      {{markdownToLatexColor $slot.TextContent $slot.ChapterColor}}%
+      {{markdownToLatexColor $slot.TextContent $slot.ChapterColor $slot.BleedLeftMM $slot.BleedRightMM}}%
     }};
 {{- end}}
 {{- end}}

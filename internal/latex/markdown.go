@@ -50,12 +50,18 @@ func MarkdownToLatex(md string) string {
 
 // MarkdownToLatexWithColor converts Markdown to LaTeX with chapter color applied to H1 headings.
 // The color parameter is a hex color without # prefix (e.g. "8B0000"). Empty means no color.
-func MarkdownToLatexWithColor(md, chapterColor string) string {
-	return markdownToLatexInternal(md, chapterColor)
+// bleedLeftMM/bleedRightMM control how far the colored H1 box extends beyond the text column
+// on each side (mm). Use 4,4 for full-width; 4,0 for left-column text; 0,4 for right-column text.
+func MarkdownToLatexWithColor(md, chapterColor string, bleedLeftMM, bleedRightMM float64) string {
+	return markdownToLatexInternal(md, chapterColor, bleedLeftMM, bleedRightMM)
 }
 
 //nolint:funlen,gocognit,cyclop // Sequential markdown transformation pipeline.
-func markdownToLatexInternal(md, chapterColor string) string {
+func markdownToLatexInternal(md, chapterColor string, bleed ...float64) string {
+	bleedL, bleedR := 4.0, 4.0
+	if len(bleed) >= 2 {
+		bleedL, bleedR = bleed[0], bleed[1]
+	}
 	lines := strings.Split(md, "\n")
 	var out []string
 	i := 0
@@ -79,14 +85,14 @@ func markdownToLatexInternal(md, chapterColor string) string {
 
 		// Heading ## (must check before #).
 		if text, ok := strings.CutPrefix(trimmed, "## "); ok {
-			out = append(out, formatHeading(text, 2, ""))
+			out = append(out, formatHeading(text, 2, "", 0, 0))
 			i++
 			continue
 		}
 
 		// Heading #.
 		if text, ok := strings.CutPrefix(trimmed, "# "); ok {
-			out = append(out, formatHeading(text, 1, chapterColor))
+			out = append(out, formatHeading(text, 1, chapterColor, bleedL, bleedR))
 			i++
 			continue
 		}
@@ -195,7 +201,8 @@ func contrastTextColorLatex(bgHex string) string {
 // H1 uses \sffamily to render in Source Sans 3 (the sans-serif font).
 // If chapterColor is non-empty (hex without #), H1 renders with a colored background
 // and auto-selected text color based on background luminance.
-func formatHeading(text string, level int, chapterColor string) string {
+// bleedLeftMM/bleedRightMM control how far the colored box extends beyond linewidth on each side.
+func formatHeading(text string, level int, chapterColor string, bleedLeftMM, bleedRightMM float64) string {
 	text = inlineFormat(latexEscapeRaw(text))
 	text = czechTypography(text)
 
@@ -209,13 +216,26 @@ func formatHeading(text string, level int, chapterColor string) string {
 	if level == 1 && chapterColor != "" {
 		textColor := contrastTextColorLatex(chapterColor)
 		colorDef := fmt.Sprintf(`\definecolor{chaptercolor}{HTML}{%s}`, chapterColor)
+
+		// Use 16pt padding on the bleed side (margin space), 8pt on the non-bleed side
+		// so the H1 text aligns with body text.
+		leftPad := "16pt"
+		if bleedLeftMM == 0 {
+			leftPad = "8pt"
+		}
+		rightPad := "16pt"
+		if bleedRightMM == 0 {
+			rightPad = "8pt"
+		}
+
+		totalBleed := bleedLeftMM + bleedRightMM
 		inner := fmt.Sprintf(
-			`\vspace{10pt}\hspace{16pt}%s%s\textcolor{%s}{%s}\hspace{16pt}\vspace{10pt}`,
-			sizeCmd, fontCmd, textColor, text,
+			`\vspace{10pt}\hspace{%s}%s%s\textcolor{%s}{%s}\hspace{%s}\vspace{10pt}`,
+			leftPad, sizeCmd, fontCmd, textColor, text, rightPad,
 		)
 		box := fmt.Sprintf(
-			`{\fboxsep=0pt\noindent\hspace{-4mm}\colorbox{chaptercolor}{\parbox{\dimexpr\linewidth+8mm}{%s}}}`,
-			inner,
+			`{\fboxsep=0pt\noindent\hspace{-%.0fmm}\colorbox{chaptercolor}{\parbox{\dimexpr\linewidth+%.0fmm}{%s}}}`,
+			bleedLeftMM, totalBleed, inner,
 		)
 		return colorDef + "\n" + box + `\par\vspace{4mm}`
 	}
