@@ -173,9 +173,13 @@ func formatHeading(text string, level int, chapterColor string) string {
 
 	if level == 1 && chapterColor != "" {
 		colorDef := fmt.Sprintf(`\definecolor{chaptercolor}{HTML}{%s}`, chapterColor)
-		box := fmt.Sprintf(
-			`\noindent\colorbox{chaptercolor}{\parbox{\dimexpr\linewidth-2\fboxsep}{%s%s\textcolor{white}{%s}}}`,
+		inner := fmt.Sprintf(
+			`\vspace{10pt}\hspace{12pt}%s%s\textcolor{white}{%s}\hspace{12pt}\vspace{10pt}`,
 			sizeCmd, fontCmd, text,
+		)
+		box := fmt.Sprintf(
+			`{\fboxsep=0pt\noindent\colorbox{chaptercolor}{\parbox{\linewidth}{%s}}}`,
+			inner,
 		)
 		return colorDef + "\n" + box + `\par\vspace{4mm}`
 	}
