@@ -186,7 +186,7 @@ func TestGroupPagesBySection(t *testing.T) {
 // --- lookupCaption ---
 
 func TestLookupCaption(t *testing.T) {
-	captions := captionMap{
+	captions := CaptionMap{
 		"s1": {"p1": "Caption for p1"},
 	}
 
@@ -219,7 +219,7 @@ func TestLookupCaption(t *testing.T) {
 	})
 
 	t.Run("empty map", func(t *testing.T) {
-		got := lookupCaption(captionMap{}, "s1", "p1")
+		got := lookupCaption(CaptionMap{}, "s1", "p1")
 		if got != "" {
 			t.Errorf("expected empty, got '%s'", got)
 		}

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -1705,6 +1706,91 @@ func (h *BooksHandler) ExportPDF(w http.ResponseWriter, r *http.Request) {
 		suffix = "-debug"
 	}
 	writePDFResponse(w, pdfData, book.Title+suffix, report)
+}
+
+// resolveChapterColor follows section -> chapter -> color chain to find the chapter color.
+func resolveChapterColor(ctx context.Context, bw database.BookWriter, sectionID string) string {
+	if sectionID == "" {
+		return ""
+	}
+	section, err := bw.GetSection(ctx, sectionID)
+	if err != nil || section == nil || section.ChapterID == "" {
+		return ""
+	}
+	chapter, err := bw.GetChapter(ctx, section.ChapterID)
+	if err != nil || chapter == nil || chapter.Color == "" {
+		return ""
+	}
+	return strings.TrimPrefix(chapter.Color, "#")
+}
+
+// buildSectionCaptions builds a CaptionMap for a single section's photo descriptions.
+func buildSectionCaptions(ctx context.Context, bw database.BookWriter, sectionID string) latex.CaptionMap {
+	captions := make(latex.CaptionMap)
+	if sectionID == "" {
+		return captions
+	}
+	sectionPhotos, err := bw.GetSectionPhotos(ctx, sectionID)
+	if err != nil {
+		return captions
+	}
+	m := make(map[string]string, len(sectionPhotos))
+	for _, p := range sectionPhotos {
+		if p.Description != "" {
+			m[p.PhotoUID] = p.Description
+		}
+	}
+	if len(m) > 0 {
+		captions[sectionID] = m
+	}
+	return captions
+}
+
+// ExportPagePDF handles GET /api/v1/pages/:id/export-pdf and exports a single page as PDF.
+func (h *BooksHandler) ExportPagePDF(w http.ResponseWriter, r *http.Request) {
+	pp := middleware.MustGetPhotoPrism(r.Context(), w)
+	if pp == nil {
+		return
+	}
+	bw := getBookWriter(r, w)
+	if bw == nil {
+		return
+	}
+
+	pageID := chi.URLParam(r, "id")
+	page, err := bw.GetPage(r.Context(), pageID)
+	if err != nil || page == nil {
+		respondError(w, http.StatusNotFound, "page not found")
+		return
+	}
+
+	if _, err := exec.LookPath("lualatex"); err != nil {
+		respondError(w, http.StatusServiceUnavailable, "lualatex is not installed on the server")
+		return
+	}
+
+	book, err := bw.GetBook(r.Context(), page.BookID)
+	if err != nil || book == nil {
+		respondError(w, http.StatusNotFound, "book not found")
+		return
+	}
+
+	pdfData, err := latex.GenerateSinglePagePDF(r.Context(), pp, latex.SinglePageInput{
+		Page:         *page,
+		BookTitle:    book.Title,
+		ChapterColor: resolveChapterColor(r.Context(), bw, page.SectionID),
+		Captions:     buildSectionCaptions(r.Context(), bw, page.SectionID),
+	})
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("PDF generation failed: %v", err))
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/pdf")
+	w.Header().Set("Content-Disposition", "inline")
+	w.Header().Set("Content-Length", strconv.Itoa(len(pdfData)))
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	io.Copy(w, bytes.NewReader(pdfData))
 }
 
 // saveTextVersionsForSectionPhoto saves previous description/note as versions if they changed.

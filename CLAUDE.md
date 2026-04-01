@@ -485,6 +485,7 @@ Session cookies use `HttpOnly`, `SameSite=Strict`, and auto-detect `Secure` flag
 - `POST /api/v1/books/{id}/sections/{sectionId}/auto-layout` - Auto-generate pages from unassigned section photos
 - `GET /api/v1/books/{id}/preflight` - Validate book before PDF export (empty slots, low DPI, unplaced photos)
 - `GET /api/v1/books/{id}/export-pdf` - Export book as PDF (requires lualatex)
+- `GET /api/v1/pages/{id}/export-pdf` - Export single page as PDF (inline preview, requires lualatex)
 - `POST /api/v1/text/check` - AI text check (spelling, grammar, diacritics) via GPT-4.1-mini
 - `POST /api/v1/text/check-and-save` - AI text check with database persistence
 - `POST /api/v1/text/rewrite` - AI text rewrite (length adjustment) via GPT-4.1-mini

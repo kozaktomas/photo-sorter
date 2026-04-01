@@ -2196,6 +2196,25 @@ Generates and downloads a print-ready A4 landscape PDF of the book. Features inc
 | 500 | PDF generation failed (LaTeX error, photo download error) |
 | 503 | `lualatex` not installed on server |
 
+#### Export Single Page as PDF
+
+```
+GET /pages/{id}/export-pdf
+```
+
+Generates a PDF of a single book page for quick preview. Uses the same layout, fonts, margins, and styling as the full book export. The page is rendered as a recto (right-hand, odd) page.
+
+**Response (200):** Binary PDF file with headers:
+- `Content-Type: application/pdf`
+- `Content-Disposition: inline` (opens in browser PDF viewer)
+
+**Error Responses:**
+| Status | Description |
+|--------|-------------|
+| 404 | Page not found |
+| 500 | PDF generation failed |
+| 503 | `lualatex` not installed on server |
+
 ---
 
 ### ProcessJobResult

@@ -157,14 +157,14 @@ type sectionGroup struct {
 	pages        []database.BookPage
 }
 
-// captionMap is a nested map: sectionID -> photoUID -> caption text.
-type captionMap map[string]map[string]string
+// CaptionMap is a nested map: sectionID -> photoUID -> caption text.
+type CaptionMap map[string]map[string]string
 
 // pageBuilder tracks state while building pages across sections.
 type pageBuilder struct {
 	config            LayoutConfig
 	photos            map[string]photoImage
-	captions          captionMap
+	captions          CaptionMap
 	totalContentPages int
 	contentPageIdx    int
 	pageNumber        int
@@ -289,8 +289,8 @@ func applyDebugOverlay(data *TemplateData, config LayoutConfig) {
 }
 
 // buildCaptionMap loads section photos and builds a nested caption lookup.
-func buildCaptionMap(ctx context.Context, br database.BookReader, sections []database.BookSection) captionMap {
-	captions := make(captionMap, len(sections))
+func buildCaptionMap(ctx context.Context, br database.BookReader, sections []database.BookSection) CaptionMap {
+	captions := make(CaptionMap, len(sections))
 	for _, s := range sections {
 		photos, err := br.GetSectionPhotos(ctx, s.ID)
 		if err != nil {
@@ -311,7 +311,7 @@ func buildCaptionMap(ctx context.Context, br database.BookReader, sections []dat
 }
 
 // lookupCaption returns the caption for a photo in a specific section.
-func lookupCaption(captions captionMap, sectionID, photoUID string) string {
+func lookupCaption(captions CaptionMap, sectionID, photoUID string) string {
 	if sectionCaptions, ok := captions[sectionID]; ok {
 		return sectionCaptions[photoUID]
 	}
@@ -373,7 +373,7 @@ func groupPagesBySection(
 // buildTemplateData constructs the template data and export report.
 func buildTemplateData(
 	groups []sectionGroup, photos map[string]photoImage,
-	captions captionMap, config LayoutConfig, bookTitle string,
+	captions CaptionMap, config LayoutConfig, bookTitle string,
 ) (TemplateData, *ExportReport) {
 	pb := &pageBuilder{
 		config:   config,
@@ -536,7 +536,7 @@ type captionTracking struct {
 }
 
 // buildCaptionTracking collects captions and assigns marker numbers for a page.
-func buildCaptionTracking(p database.BookPage, slots []SlotRect, captions captionMap) captionTracking {
+func buildCaptionTracking(p database.BookPage, slots []SlotRect, captions CaptionMap) captionTracking {
 	photoCount := 0
 	for i := range slots {
 		if getPageSlot(p, i).PhotoUID != "" {
@@ -1028,4 +1028,59 @@ func setEnvVars(environ []string, vars map[string]string) []string {
 		result = append(result, k+"="+v)
 	}
 	return result
+}
+
+// SinglePageInput holds context needed to render a single page as PDF.
+type SinglePageInput struct {
+	Page         database.BookPage
+	BookTitle    string
+	ChapterColor string // hex without # (e.g. "8B0000"), empty = no color
+	Captions     CaptionMap
+}
+
+// GenerateSinglePagePDF renders a single book page to PDF using the same layout as full book export.
+// The page is rendered as a recto (right-hand, odd) page for consistent margin preview.
+func GenerateSinglePagePDF(
+	ctx context.Context, pp *photoprism.PhotoPrism, input SinglePageInput,
+) ([]byte, error) {
+	uidSet := collectPhotoUIDs([]database.BookPage{input.Page})
+
+	tmpDir, err := os.MkdirTemp("", "page-pdf-*")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create temp directory: %w", err)
+	}
+	defer os.RemoveAll(tmpDir)
+
+	photos := downloadPhotos(ctx, pp, uidSet, tmpDir)
+	config := DefaultLayoutConfig()
+
+	pb := &pageBuilder{
+		config:            config,
+		photos:            photos,
+		captions:          input.Captions,
+		totalContentPages: 1,
+		contentPageIdx:    0,
+		pageNumber:        0, // will become 1 (recto)
+		photoSet:          make(map[string]bool),
+	}
+
+	pb.contentPageIdx++
+	pb.pageNumber++
+	tmplPage := pb.buildContentPage(input.Page, input.ChapterColor)
+
+	data := TemplateData{
+		Sections: []TemplateSection{{
+			Title: "",
+			Pages: []TemplatePage{tmplPage},
+		}},
+		BookTitle: "", // no title page for single-page export
+		PageW:     PageW,
+		PageH:     PageH,
+	}
+
+	pdfData, err := compileLatex(ctx, data, tmpDir)
+	if err != nil {
+		return nil, err
+	}
+	return pdfData, nil
 }

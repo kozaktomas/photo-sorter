@@ -701,6 +701,10 @@ export async function clearSlot(pageId: string, slotIndex: number): Promise<void
   await request(`/pages/${pageId}/slots/${slotIndex}`, { method: 'DELETE' });
 }
 
+export function getPageExportPdfUrl(pageId: string): string {
+  return `${API_BASE}/pages/${pageId}/export-pdf`;
+}
+
 // Upload Job
 export async function startUploadJob(
   files: File[],

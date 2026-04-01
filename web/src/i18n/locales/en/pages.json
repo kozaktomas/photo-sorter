@@ -471,6 +471,7 @@
       "readingTimeShort": "< 0.5 min read",
       "totalReadingTime": "Total reading time",
       "exportPDF": "Export PDF",
+      "exportPage": "Export page as PDF",
       "exporting": "Exporting...",
       "addText": "Add text",
       "editText": "Edit text",

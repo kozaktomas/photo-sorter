@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { GripVertical, Plus, Trash2, ChevronDown, ChevronRight, Type } from 'lucide-react';
+import { GripVertical, Plus, Trash2, ChevronDown, ChevronRight, Type, FileDown } from 'lucide-react';
 import {
   SortableContext,
   useSortable,
@@ -8,7 +8,7 @@ import {
 } from '@dnd-kit/sortable';
 import { useDndContext } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
-import { createPage, deletePage, getThumbnailUrl } from '../../api/client';
+import { createPage, deletePage, getThumbnailUrl, getPageExportPdfUrl } from '../../api/client';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import type { BookChapter, BookPage, BookSection, PageFormat } from '../../types';
 import { pageFormatLabelKey, pageFormatSlotCount } from '../../types';
@@ -113,6 +113,13 @@ function SortablePageItem({ page, globalIndex, isSelected, onSelect, onDelete, i
           <SlotThumbnail key={i} slot={slot} />
         ))}
       </div>
+      <button
+        onClick={(e) => { e.stopPropagation(); window.open(getPageExportPdfUrl(page.id), '_blank'); }}
+        className="text-slate-500 hover:text-slate-300 p-0.5 shrink-0"
+        title={t('books.editor.exportPage')}
+      >
+        <FileDown className="h-3.5 w-3.5" />
+      </button>
       <button
         onClick={(e) => { e.stopPropagation(); onDelete(); }}
         className="text-slate-500 hover:text-red-400 p-0.5 shrink-0"
