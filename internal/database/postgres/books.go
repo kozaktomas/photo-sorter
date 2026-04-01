@@ -134,6 +134,19 @@ func (r *BookRepository) DeleteBook(ctx context.Context, id string) error {
 
 // --- Chapters ---
 
+// GetChapter retrieves a single chapter by ID.
+func (r *BookRepository) GetChapter(ctx context.Context, id string) (*database.BookChapter, error) {
+	var c database.BookChapter
+	err := r.pool.QueryRow(ctx,
+		`SELECT id, book_id, title, color, sort_order, created_at, updated_at
+		 FROM book_chapters WHERE id = $1`, id).
+		Scan(&c.ID, &c.BookID, &c.Title, &c.Color, &c.SortOrder, &c.CreatedAt, &c.UpdatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("get chapter: %w", err)
+	}
+	return &c, nil
+}
+
 // GetChapters retrieves all chapters for a book, ordered by sort order.
 func (r *BookRepository) GetChapters(ctx context.Context, bookID string) ([]database.BookChapter, error) {
 	rows, err := r.pool.Query(ctx,

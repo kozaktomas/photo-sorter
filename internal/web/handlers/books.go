@@ -378,7 +378,8 @@ func (h *BooksHandler) CreateChapter(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// UpdateChapter handles PUT /api/v1/chapters/:id and updates a chapter's title.
+// UpdateChapter handles PUT /api/v1/chapters/:id and updates a chapter's title and/or color.
+// Supports partial updates: only fields present in the request body are modified.
 func (h *BooksHandler) UpdateChapter(w http.ResponseWriter, r *http.Request) {
 	bw := getBookWriter(r, w)
 	if bw == nil {
@@ -386,14 +387,24 @@ func (h *BooksHandler) UpdateChapter(w http.ResponseWriter, r *http.Request) {
 	}
 	id := chi.URLParam(r, "id")
 	var req struct {
-		Title string `json:"title"`
-		Color string `json:"color"`
+		Title *string `json:"title"`
+		Color *string `json:"color"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return
 	}
-	chapter := &database.BookChapter{ID: id, Title: req.Title, Color: req.Color}
+	chapter, err := bw.GetChapter(r.Context(), id)
+	if err != nil {
+		respondError(w, http.StatusNotFound, "chapter not found")
+		return
+	}
+	if req.Title != nil {
+		chapter.Title = *req.Title
+	}
+	if req.Color != nil {
+		chapter.Color = *req.Color
+	}
 	if err := bw.UpdateChapter(r.Context(), chapter); err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to update chapter")
 		return

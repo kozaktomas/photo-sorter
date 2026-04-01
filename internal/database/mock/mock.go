@@ -743,6 +743,11 @@ func (m *MockBookWriter) DeleteBook(ctx context.Context, id string) error {
 	return nil
 }
 
+// GetChapter returns a single chapter by ID (returns a stub in the mock).
+func (m *MockBookWriter) GetChapter(_ context.Context, _ string) (*database.BookChapter, error) {
+	return &database.BookChapter{}, nil
+}
+
 // GetChapters returns all chapters for a book (always returns nil in the mock).
 func (m *MockBookWriter) GetChapters(_ context.Context, _ string) ([]database.BookChapter, error) {
 	return nil, nil

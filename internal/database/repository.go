@@ -117,6 +117,7 @@ type BookReader interface {
 	GetBook(ctx context.Context, id string) (*PhotoBook, error)
 	ListBooks(ctx context.Context) ([]PhotoBook, error)
 	ListBooksWithCounts(ctx context.Context) ([]PhotoBookWithCounts, error)
+	GetChapter(ctx context.Context, id string) (*BookChapter, error)
 	GetChapters(ctx context.Context, bookID string) ([]BookChapter, error)
 	GetSection(ctx context.Context, id string) (*BookSection, error)
 	GetSections(ctx context.Context, bookID string) ([]BookSection, error)
