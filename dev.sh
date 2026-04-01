@@ -12,6 +12,18 @@ for arg in "$@"; do
   esac
 done
 
+# --- Font check (PDF export requires these fonts for lualatex) ---
+FONT_DIR="/usr/share/fonts/opentype/sourcesans3"
+if [ ! -f "$FONT_DIR/SourceSans3-Regular.otf" ]; then
+  echo "==> Installing Source Sans 3 fonts for PDF export..."
+  sudo mkdir -p "$FONT_DIR"
+  for f in SourceSans3-Regular.otf SourceSans3-Semibold.otf SourceSans3-RegularIt.otf SourceSans3-SemiboldIt.otf; do
+    sudo curl -fsSL -o "$FONT_DIR/$f" "https://mirrors.ctan.org/fonts/sourcesans/fonts/$f"
+  done
+  sudo fc-cache -f "$FONT_DIR"
+  luaotfload-tool --update 2>/dev/null || true
+fi
+
 echo "==> Stopping existing photo-sorter..."
 pkill -f "photo-sorter serve" 2>/dev/null || true
 sleep 1
