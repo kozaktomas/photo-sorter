@@ -5,13 +5,36 @@ import (
 	"encoding/base64"
 	"fmt"
 
+	"github.com/kozaktomas/photo-sorter/internal/ai"
 	"github.com/kozaktomas/photo-sorter/internal/database"
+	"github.com/kozaktomas/photo-sorter/internal/fingerprint"
 	"github.com/kozaktomas/photo-sorter/internal/photoprism"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
-// registerPhotoTools registers read-only photo tools for the book workflow.
+// registerPhotoTools registers photo tools.
 func (s *Server) registerPhotoTools() {
+	s.registerPhotoReadTools()
+	s.registerPhotoWriteTools()
+	s.registerPhotoSearchTools()
+}
+
+// registerPhotoReadTools registers read-only photo tools.
+func (s *Server) registerPhotoReadTools() {
+	s.mcpServer.AddTool(
+		mcp.NewTool("list_photos",
+			mcp.WithDescription("List photos with filtering and pagination"),
+			mcp.WithNumber("count", mcp.Description("Number of photos to return (default 50, max 500)")),
+			mcp.WithNumber("offset", mcp.Description("Offset for pagination (default 0)")),
+			mcp.WithString("query", mcp.Description(
+				"Search query (e.g. 'label:cat', 'person:jan', 'year:2024', 'country:cz')")),
+			mcp.WithString("order", mcp.Description(
+				"Sort order: newest, oldest, added, edited, name, title, size, random")),
+			mcp.WithNumber("quality", mcp.Description("Minimum quality score 1-7 (default: none)")),
+		),
+		s.handleListPhotos,
+	)
+
 	s.mcpServer.AddTool(
 		mcp.NewTool("get_photo",
 			mcp.WithDescription("Get photo metadata (title, description, date, GPS, camera, faces, labels)"),
@@ -31,6 +54,35 @@ func (s *Server) registerPhotoTools() {
 	)
 
 	s.mcpServer.AddTool(
+		mcp.NewTool("get_photo_faces",
+			mcp.WithDescription("Get face markers on a photo with positions and names"),
+			mcp.WithString("photo_uid", mcp.Required(), mcp.Description("Photo UID")),
+		),
+		s.handleGetPhotoFaces,
+	)
+}
+
+// registerPhotoWriteTools registers photo mutation tools.
+func (s *Server) registerPhotoWriteTools() {
+	s.mcpServer.AddTool(
+		mcp.NewTool("update_photo",
+			mcp.WithDescription("Update photo metadata (description, date, favorite, private)"),
+			mcp.WithString("photo_uid", mcp.Required(), mcp.Description("Photo UID")),
+			mcp.WithString("title", mcp.Description("New title")),
+			mcp.WithString("description", mcp.Description("New description")),
+			mcp.WithString("taken_at", mcp.Description("New date in RFC3339 format (e.g. 2024-01-15T14:30:00Z)")),
+			mcp.WithBoolean("favorite", mcp.Description("Set favorite status")),
+			mcp.WithBoolean("private", mcp.Description("Set private status")),
+			mcp.WithNumber("lat", mcp.Description("GPS latitude")),
+			mcp.WithNumber("lng", mcp.Description("GPS longitude")),
+		),
+		s.handleUpdatePhoto,
+	)
+}
+
+// registerPhotoSearchTools registers photo search tools.
+func (s *Server) registerPhotoSearchTools() {
+	s.mcpServer.AddTool(
 		mcp.NewTool("find_similar_photos",
 			mcp.WithDescription(
 				"Find visually similar photos using CLIP embeddings with book placement info"),
@@ -44,6 +96,73 @@ func (s *Server) registerPhotoTools() {
 		),
 		s.handleFindSimilarPhotos,
 	)
+
+	s.mcpServer.AddTool(
+		mcp.NewTool("search_photos_by_text",
+			mcp.WithDescription(
+				"Search photos by text description using CLIP embeddings. "+
+					"Automatically translates Czech to CLIP-optimized English."),
+			mcp.WithString("text", mcp.Required(),
+				mcp.Description("Search text (Czech or English)")),
+			mcp.WithNumber("limit", mcp.Description("Max results (default 10, max 50)")),
+			mcp.WithNumber("threshold", mcp.Description(
+				"Max cosine distance, lower = more similar (default 0.5)")),
+		),
+		s.handleSearchPhotosByText,
+	)
+}
+
+// handleListPhotos lists photos with filtering and pagination.
+func (s *Server) handleListPhotos(
+	_ context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	args := req.GetArguments()
+	count := clampInt(optionalInt(args, "count", 50), 500)
+	offset := optionalInt(args, "offset", 0)
+	query := optionalStr(args, "query")
+	order := optionalStr(args, "order")
+	quality := optionalInt(args, "quality", 0)
+
+	var qualityOpt []int
+	if quality > 0 {
+		qualityOpt = []int{quality}
+	}
+
+	photos, err := s.pp.GetPhotosWithQueryAndOrder(count, offset, query, order, qualityOpt...)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to list photos: %v", err)), nil
+	}
+
+	type photoItem struct {
+		UID         string `json:"uid"`
+		Title       string `json:"title"`
+		Description string `json:"description,omitempty"`
+		TakenAt     string `json:"taken_at"`
+		Type        string `json:"type"`
+		Width       int    `json:"width"`
+		Height      int    `json:"height"`
+		Favorite    bool   `json:"favorite"`
+		Private     bool   `json:"private"`
+	}
+
+	result := make([]photoItem, len(photos))
+	for i, p := range photos {
+		result[i] = photoItem{
+			UID:         p.UID,
+			Title:       p.Title,
+			Description: p.Description,
+			TakenAt:     p.TakenAt,
+			Type:        p.Type,
+			Width:       p.Width,
+			Height:      p.Height,
+			Favorite:    p.Favorite,
+			Private:     p.Private,
+		}
+	}
+	return jsonResult(map[string]any{
+		"photos": result,
+		"count":  len(result),
+	})
 }
 
 // handleGetPhoto returns photo metadata including faces and labels.
@@ -94,6 +213,63 @@ func (s *Server) handleGetPhoto(
 		"type":           photo.Type,
 		"faces":          faces,
 		"labels":         extractLabels(details),
+	}
+	return jsonResult(result)
+}
+
+// buildPhotoUpdate extracts photo update fields from MCP args.
+func buildPhotoUpdate(args map[string]any) photoprism.PhotoUpdate {
+	var update photoprism.PhotoUpdate
+	if t := optionalStr(args, "title"); t != "" {
+		update.Title = &t
+	}
+	if d, ok := args["description"]; ok {
+		desc, _ := d.(string)
+		update.Description = &desc
+	}
+	if t := optionalStr(args, "taken_at"); t != "" {
+		update.TakenAt = &t
+		update.TakenAtLocal = &t
+	}
+	if fav, ok := optionalBool(args, "favorite"); ok {
+		update.Favorite = &fav
+	}
+	if priv, ok := optionalBool(args, "private"); ok {
+		update.Private = &priv
+	}
+	if lat, ok := optionalFloat(args, "lat"); ok {
+		update.Lat = &lat
+	}
+	if lng, ok := optionalFloat(args, "lng"); ok {
+		update.Lng = &lng
+	}
+	return update
+}
+
+// handleUpdatePhoto updates photo metadata.
+func (s *Server) handleUpdatePhoto(
+	_ context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	args := req.GetArguments()
+	photoUID, err := requiredStr(args, "photo_uid")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	photo, err := s.pp.EditPhoto(photoUID, buildPhotoUpdate(args))
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to update photo: %v", err)), nil
+	}
+
+	result := map[string]any{
+		"uid":         photo.UID,
+		"title":       photo.Title,
+		"description": photo.Description,
+		"taken_at":    photo.TakenAt,
+		"favorite":    photo.Favorite,
+		"private":     photo.Private,
+		"lat":         photo.Lat,
+		"lng":         photo.Lng,
 	}
 	return jsonResult(result)
 }
@@ -166,7 +342,7 @@ func (s *Server) handleFindSimilarPhotos(
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	limit := clampInt(optionalInt(args, "limit", 10), 1, 50)
+	limit := clampInt(optionalInt(args, "limit", 10), 50)
 	scopeSectionID := optionalStr(args, "scope_section_id")
 	scopeBookID := optionalStr(args, "scope_book_id")
 
@@ -383,7 +559,160 @@ func (s *Server) collectSectionMembership(ctx context.Context, bookID string) ma
 	return sectionMap
 }
 
+// textSearchTranslation holds translation results for text search.
+type textSearchTranslation struct {
+	queryText       string
+	translatedQuery string
+	translateCost   float64
+}
+
+// translateForTextSearch translates text to CLIP-optimized English if OpenAI is configured.
+func (s *Server) translateForTextSearch(ctx context.Context, text string) textSearchTranslation {
+	tr := textSearchTranslation{queryText: text}
+	if s.config.OpenAI.Token == "" {
+		return tr
+	}
+	translated, err := ai.TranslateForCLIP(ctx, s.config.OpenAI.Token, text)
+	if err == nil && translated.Text != text {
+		tr.queryText = translated.Text
+		tr.translatedQuery = translated.Text
+		tr.translateCost = translated.Cost
+	}
+	return tr
+}
+
+// textSearchResultItem is a single text search result.
+type textSearchResultItem struct {
+	PhotoUID   string  `json:"photo_uid"`
+	Distance   float64 `json:"distance"`
+	Similarity float64 `json:"similarity"`
+}
+
+// handleSearchPhotosByText finds photos matching a text query using CLIP embeddings.
+func (s *Server) handleSearchPhotosByText(
+	_ context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	args := req.GetArguments()
+	text, err := requiredStr(args, "text")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	limit := clampInt(optionalInt(args, "limit", 10), 50)
+	threshold := 0.5
+	if th, ok := optionalFloat(args, "threshold"); ok {
+		threshold = th
+	}
+
+	if s.embeddingReader == nil {
+		return mcp.NewToolResultError("embedding reader not available"), nil
+	}
+
+	bgCtx := s.ctx()
+	tr := s.translateForTextSearch(bgCtx, text)
+
+	embClient, err := fingerprint.NewEmbeddingClient(s.config.Embedding.URL, "")
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("invalid embedding config: %v", err)), nil
+	}
+	textEmbedding, err := embClient.ComputeTextEmbedding(bgCtx, tr.queryText)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to compute text embedding: %v", err)), nil
+	}
+
+	similar, distances, err := s.embeddingReader.FindSimilarWithDistance(
+		bgCtx, textEmbedding, limit, threshold,
+	)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to search photos: %v", err)), nil
+	}
+
+	results := make([]textSearchResultItem, 0, len(similar))
+	for i, emb := range similar {
+		sim := max(1-distances[i], 0)
+		results = append(results, textSearchResultItem{
+			PhotoUID: emb.PhotoUID, Distance: distances[i], Similarity: sim,
+		})
+	}
+
+	return jsonResult(map[string]any{
+		"query":              text,
+		"translated_query":   tr.translatedQuery,
+		"translate_cost_usd": tr.translateCost,
+		"threshold":          threshold,
+		"results":            results,
+		"count":              len(results),
+	})
+}
+
+// handleGetPhotoFaces returns face markers on a photo with positions and names.
+func (s *Server) handleGetPhotoFaces(
+	_ context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	args := req.GetArguments()
+	photoUID, err := requiredStr(args, "photo_uid")
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	markers, err := s.pp.GetPhotoMarkers(photoUID)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("failed to get photo markers: %v", err)), nil
+	}
+
+	type faceResult struct {
+		MarkerUID  string  `json:"marker_uid"`
+		Name       string  `json:"name,omitempty"`
+		SubjectUID string  `json:"subject_uid,omitempty"`
+		X          float64 `json:"x"`
+		Y          float64 `json:"y"`
+		W          float64 `json:"w"`
+		H          float64 `json:"h"`
+		Size       int     `json:"size"`
+		Score      int     `json:"score"`
+		Source     string  `json:"source"`
+	}
+
+	faces := make([]faceResult, 0)
+	for _, m := range markers {
+		if m.Type != "face" {
+			continue
+		}
+		faces = append(faces, faceResult{
+			MarkerUID:  m.UID,
+			Name:       m.Name,
+			SubjectUID: m.SubjUID,
+			X:          m.X,
+			Y:          m.Y,
+			W:          m.W,
+			H:          m.H,
+			Size:       m.Size,
+			Score:      m.Score,
+			Source:     m.Src,
+		})
+	}
+
+	return jsonResult(map[string]any{
+		"photo_uid": photoUID,
+		"faces":     faces,
+		"count":     len(faces),
+	})
+}
+
 // --- helpers ---
+
+// optionalBool extracts a bool from the args map.
+func optionalBool(args map[string]any, key string) (bool, bool) {
+	v, ok := args[key]
+	if !ok || v == nil {
+		return false, false
+	}
+	b, ok := v.(bool)
+	if !ok {
+		return false, false
+	}
+	return b, true
+}
 
 // optionalInt extracts an integer from the args map, returning defaultVal if absent.
 func optionalInt(args map[string]any, key string, defaultVal int) int {
@@ -398,10 +727,10 @@ func optionalInt(args map[string]any, key string, defaultVal int) int {
 	return int(f)
 }
 
-// clampInt clamps n to [lo, hi].
-func clampInt(n, lo, hi int) int {
-	if n < lo {
-		return lo
+// clampInt clamps n to [1, hi].
+func clampInt(n, hi int) int {
+	if n < 1 {
+		return 1
 	}
 	if n > hi {
 		return hi

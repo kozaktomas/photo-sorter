@@ -73,7 +73,7 @@ func (s *Server) handleListAlbums(
 	_ context.Context, req mcp.CallToolRequest,
 ) (*mcp.CallToolResult, error) {
 	args := req.GetArguments()
-	count := clampInt(optionalInt(args, "count", 50), 1, 500)
+	count := clampInt(optionalInt(args, "count", 50), 500)
 	offset := optionalInt(args, "offset", 0)
 	order := optionalStr(args, "order")
 	query := optionalStr(args, "query")
@@ -166,7 +166,7 @@ func (s *Server) handleGetAlbumPhotos(
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	count := clampInt(optionalInt(args, "count", 50), 1, 500)
+	count := clampInt(optionalInt(args, "count", 50), 500)
 	offset := optionalInt(args, "offset", 0)
 
 	photos, err := s.pp.GetAlbumPhotos(albumUID, count, offset)
