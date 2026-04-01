@@ -64,6 +64,7 @@ func NewServer(
 	s.registerTextTools()
 	s.registerPhotoTools()
 	s.registerAlbumTools()
+	s.registerLabelTools()
 
 	return s
 }
