@@ -27,10 +27,11 @@ interface Props {
   onEditText?: () => void;
   onAddText?: () => void;
   chapterColor?: string;
+  textPaddingClass?: string;
   className?: string;
 }
 
-export function PageSlotComponent({ pageId, slotIndex, photoUid, textContent, cropX, cropY, cropScale, format, splitPosition, onClear, onEditCrop, description, note, onEditDescription, onEditText, onAddText, chapterColor, className }: Props) {
+export function PageSlotComponent({ pageId, slotIndex, photoUid, textContent, cropX, cropY, cropScale, format, splitPosition, onClear, onEditCrop, description, note, onEditDescription, onEditText, onAddText, chapterColor, textPaddingClass, className }: Props) {
   const { t } = useTranslation('pages');
   const [orientation, setOrientation] = useState<'L' | 'P' | null>(null);
   const [dpi, setDpi] = useState<number | null>(null);
@@ -140,7 +141,7 @@ export function PageSlotComponent({ pageId, slotIndex, photoUid, textContent, cr
           <PhotoActionOverlay photoUid={photoUid} />
         </div>
       ) : textContent ? (
-        <div className="group relative w-full h-full p-3">
+        <div className={`group relative w-full h-full p-3 ${textPaddingClass ?? ''}`}>
           <MarkdownContent content={textContent} className="line-clamp-6" chapterColor={chapterColor} />
           <button
             onClick={onClear}

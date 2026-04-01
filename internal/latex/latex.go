@@ -90,6 +90,9 @@ type TemplateSlot struct {
 	TextContent  string
 	TextType     string
 	ChapterColor string // hex color e.g. "8B0000" (without #), empty = no color
+	// Text padding (mm) for text slots adjacent to photos in mixed layouts.
+	TextPadLeft  float64
+	TextPadRight float64
 	// Caption marker (1-based; 0 = no marker).
 	CaptionMarker        int
 	CaptionMarkerX       float64 // bottom-left X of marker rect
@@ -725,7 +728,49 @@ func (pb *pageBuilder) buildSlots(
 		})
 	}
 
+	applyTextSlotPadding(tmplSlots, p.Format)
+
 	return tmplSlots, reportPhotos, buildFooterCaptions(ct)
+}
+
+// textPadMM is the inner padding (mm) added to text slots adjacent to photos.
+const textPadMM = 4.0
+
+// isLeftColumn returns true if the slot index is in the left column for a given format.
+func isLeftColumn(format string, slotIndex int) bool {
+	// 1p_2l: slot 0 is left; 2l_1p: slots 0,1 are left.
+	if format == Format1P2L {
+		return slotIndex == 0
+	}
+	return slotIndex <= 1
+}
+
+// applyTextSlotPadding adds horizontal padding to text slots that are adjacent
+// to photo slots in mixed layouts (1p_2l, 2l_1p).
+func applyTextSlotPadding(slots []TemplateSlot, format string) {
+	if format != Format1P2L && format != Format2L1P {
+		return
+	}
+	hasPhoto := false
+	for i := range slots {
+		if slots[i].HasPhoto {
+			hasPhoto = true
+			break
+		}
+	}
+	if !hasPhoto {
+		return
+	}
+	for i := range slots {
+		if !slots[i].HasText {
+			continue
+		}
+		if isLeftColumn(format, i) {
+			slots[i].TextPadRight = textPadMM
+		} else {
+			slots[i].TextPadLeft = textPadMM
+		}
+	}
 }
 
 // latexEscapeRaw escapes special LaTeX characters in user text.

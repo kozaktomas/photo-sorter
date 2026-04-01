@@ -6,6 +6,12 @@ const (
 	PageH = 210.0
 )
 
+// Page format identifiers.
+const (
+	Format2L1P = "2l_1p"
+	Format1P2L = "1p_2l"
+)
+
 // LayoutConfig holds the 12-column grid and 3-zone page layout configuration.
 type LayoutConfig struct {
 	InsideMarginMM  float64 // binding side (20mm)
@@ -110,7 +116,7 @@ func FormatSlotsGrid(format string, config LayoutConfig) []SlotRect {
 			{halfW + gap, halfH + rowGap, halfW, halfH},
 		}
 
-	case "2l_1p":
+	case Format2L1P:
 		// Slots 0,1 (landscape): cols 1-8 stacked.
 		// Slot 2 (portrait): cols 9-12.
 		leftW := config.ColSpanWidth(8)
@@ -122,7 +128,7 @@ func FormatSlotsGrid(format string, config LayoutConfig) []SlotRect {
 			{rightX, 0, rightW, ch},
 		}
 
-	case "1p_2l":
+	case Format1P2L:
 		// Slot 0 (portrait): cols 1-4.
 		// Slots 1,2 (landscape): cols 5-12 stacked.
 		leftW := config.ColSpanWidth(4)
@@ -174,14 +180,14 @@ func FormatSlotsGridWithSplit(format string, config LayoutConfig, splitPosition 
 			{rightX, halfH + rowGap, rightW, halfH},
 		}
 
-	case "2l_1p":
+	case Format2L1P:
 		return []SlotRect{
 			{0, 0, leftW, halfH},
 			{0, halfH + rowGap, leftW, halfH},
 			{rightX, 0, rightW, ch},
 		}
 
-	case "1p_2l":
+	case Format1P2L:
 		return []SlotRect{
 			{0, 0, leftW, ch},
 			{rightX, 0, rightW, halfH},

@@ -81,6 +81,27 @@ export function getSlotCrop(page: BookPage, slotIndex: number): { cropX: number;
   return { cropX: slot?.crop_x ?? 0.5, cropY: slot?.crop_y ?? 0.5, cropScale: slot?.crop_scale ?? 1.0 };
 }
 
+// Returns extra padding class for text slots adjacent to photos in mixed layouts.
+// Mirrors applyTextSlotPadding in internal/latex/latex.go.
+export function getTextSlotPaddingClass(page: BookPage, slotIndex: number): string {
+  const format = page.format;
+  if (format !== '1p_2l' && format !== '2l_1p') return '';
+
+  // Only applies to text slots.
+  const slot = page.slots.find(s => s.slot_index === slotIndex);
+  if (!slot?.text_content) return '';
+
+  // Only if there's at least one photo sibling.
+  const hasPhoto = page.slots.some(s => s.photo_uid);
+  if (!hasPhoto) return '';
+
+  if (format === '1p_2l') {
+    return slotIndex === 0 ? 'pr-4' : 'pl-4';
+  }
+  // 2l_1p
+  return slotIndex <= 1 ? 'pr-4' : 'pl-4';
+}
+
 // Layout constants mirroring internal/latex/formats.go
 const CONTENT_WIDTH = 265; // 297 - 20 - 12
 const CANVAS_HEIGHT = 172;

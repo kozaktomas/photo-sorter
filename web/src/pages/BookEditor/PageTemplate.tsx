@@ -2,7 +2,7 @@ import { useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PageSlotComponent } from './PageSlot';
 import type { BookPage, SectionPhoto, PageFormat, PageStyle } from '../../types';
-import { pageFormatSlotCount, getGridClasses, getGridColumnStyle, getSlotClasses, getSlotPhotoUid, getSlotTextContent, getSlotCrop, isMultiColumn, defaultSplitPosition } from '../../utils/pageFormats';
+import { pageFormatSlotCount, getGridClasses, getGridColumnStyle, getSlotClasses, getSlotPhotoUid, getSlotTextContent, getSlotCrop, getTextSlotPaddingClass, isMultiColumn, defaultSplitPosition } from '../../utils/pageFormats';
 
 const ALL_PAGE_FORMATS: PageFormat[] = ['4_landscape', '2l_1p', '1p_2l', '2_portrait', '1_fullscreen'];
 
@@ -171,6 +171,7 @@ export function PageTemplate({ page, onClearSlot, sectionPhotos, onEditDescripti
               onEditText={textContent && onEditText ? () => onEditText(i) : undefined}
               onAddText={!uid && !textContent && onAddText ? () => onAddText(i) : undefined}
               chapterColor={chapterColor}
+              textPaddingClass={getTextSlotPaddingClass(page, i)}
               className={getSlotClasses(page.format, i)}
             />
           );

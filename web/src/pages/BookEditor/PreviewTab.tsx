@@ -5,7 +5,7 @@ import { getThumbnailUrl } from '../../api/client';
 import { PhotoInfoOverlay } from './PhotoInfoOverlay';
 import { MarkdownContent } from '../../utils/markdown';
 import type { BookDetail, BookPage, SectionPhoto } from '../../types';
-import { pageFormatLabelKey, pageFormatSlotCount, getGridClasses, getGridColumnStyle, getSlotClasses, getSlotPhotoUid, getSlotTextContent, getSlotCrop } from '../../utils/pageFormats';
+import { pageFormatLabelKey, pageFormatSlotCount, getGridClasses, getGridColumnStyle, getSlotClasses, getSlotPhotoUid, getSlotTextContent, getSlotCrop, getTextSlotPaddingClass } from '../../utils/pageFormats';
 
 interface Props {
   book: BookDetail;
@@ -14,7 +14,7 @@ interface Props {
   initialPageId?: string | null;
 }
 
-function PreviewPageSlot({ photoUid, textContent, description, note, cropX, cropY, cropScale, chapterColor, className }: {
+function PreviewPageSlot({ photoUid, textContent, description, note, cropX, cropY, cropScale, chapterColor, textPaddingClass, className }: {
   photoUid: string;
   textContent: string;
   description: string;
@@ -23,6 +23,7 @@ function PreviewPageSlot({ photoUid, textContent, description, note, cropX, crop
   cropY?: number;
   cropScale?: number;
   chapterColor?: string;
+  textPaddingClass?: string;
   className?: string;
 }) {
   const [orientation, setOrientation] = useState<'L' | 'P' | null>(null);
@@ -51,7 +52,7 @@ function PreviewPageSlot({ photoUid, textContent, description, note, cropX, crop
           />
         </div>
       ) : textContent ? (
-        <div className="w-full h-full rounded p-4">
+        <div className={`w-full h-full rounded p-4 ${textPaddingClass ?? ''}`}>
           <MarkdownContent content={textContent} chapterColor={chapterColor} />
         </div>
       ) : (
@@ -93,6 +94,7 @@ function PreviewPageContent({ page, photoInfo, chapterColor, className }: {
             cropY={cropY}
             cropScale={cropScale}
             chapterColor={chapterColor}
+            textPaddingClass={getTextSlotPaddingClass(page, i)}
             className={getSlotClasses(page.format, i)}
           />
         );
