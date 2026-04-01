@@ -2,6 +2,7 @@ package latex
 
 import (
 	"fmt"
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -156,10 +157,44 @@ func markdownToLatexInternal(md, chapterColor string) string {
 	return strings.Join(out, "\n")
 }
 
+// luminanceThreshold is the WCAG 2.0 relative luminance threshold for switching
+// between white and dark text on colored backgrounds.
+const luminanceThreshold = 0.5
+
+// RelativeLuminance computes WCAG 2.0 relative luminance from a hex color (without # prefix).
+// Returns a value between 0 (black) and 1 (white).
+func RelativeLuminance(hex string) float64 {
+	hex = strings.TrimPrefix(hex, "#")
+	if len(hex) != 6 {
+		return 0
+	}
+	r, _ := strconv.ParseInt(hex[0:2], 16, 64)
+	g, _ := strconv.ParseInt(hex[2:4], 16, 64)
+	b, _ := strconv.ParseInt(hex[4:6], 16, 64)
+
+	linearize := func(c float64) float64 {
+		c /= 255
+		if c <= 0.03928 {
+			return c / 12.92
+		}
+		return math.Pow((c+0.055)/1.055, 2.4)
+	}
+	return 0.2126*linearize(float64(r)) + 0.7152*linearize(float64(g)) + 0.0722*linearize(float64(b))
+}
+
+// contrastTextColorLatex returns "white" or "black" LaTeX color name based on background luminance.
+func contrastTextColorLatex(bgHex string) string {
+	if RelativeLuminance(bgHex) < luminanceThreshold {
+		return "white"
+	}
+	return "black"
+}
+
 // formatHeading formats a heading line with an explicit font size.
 // H1 (level 1) = 18pt, H2 (level 2) = 15pt. Line spacing is 1.2× the font size.
 // H1 uses \sffamily to render in Source Sans 3 (the sans-serif font).
-// If chapterColor is non-empty (hex without #), H1 renders with a colored background and white text.
+// If chapterColor is non-empty (hex without #), H1 renders with a colored background
+// and auto-selected text color based on background luminance.
 func formatHeading(text string, level int, chapterColor string) string {
 	text = inlineFormat(latexEscapeRaw(text))
 	text = czechTypography(text)
@@ -172,10 +207,11 @@ func formatHeading(text string, level int, chapterColor string) string {
 	}
 
 	if level == 1 && chapterColor != "" {
+		textColor := contrastTextColorLatex(chapterColor)
 		colorDef := fmt.Sprintf(`\definecolor{chaptercolor}{HTML}{%s}`, chapterColor)
 		inner := fmt.Sprintf(
-			`\vspace{10pt}\hspace{16pt}%s%s\textcolor{white}{%s}\hspace{16pt}\vspace{10pt}`,
-			sizeCmd, fontCmd, text,
+			`\vspace{10pt}\hspace{16pt}%s%s\textcolor{%s}{%s}\hspace{16pt}\vspace{10pt}`,
+			sizeCmd, fontCmd, textColor, text,
 		)
 		box := fmt.Sprintf(
 			`{\fboxsep=0pt\noindent\hspace{-4mm}\colorbox{chaptercolor}{\parbox{\dimexpr\linewidth+8mm}{%s}}}`,

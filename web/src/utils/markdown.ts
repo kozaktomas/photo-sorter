@@ -116,6 +116,25 @@ export function renderMarkdown(md: string): string {
   });
 }
 
+// Luminance threshold for switching between white and dark H1 text on chapter-colored backgrounds.
+const LUMINANCE_THRESHOLD = 0.5;
+
+// Compute WCAG 2.0 relative luminance from a hex color string (e.g. "#8B0000" or "8B0000").
+// Returns a value between 0 (black) and 1 (white).
+export function relativeLuminance(hex: string): number {
+  const h = hex.replace(/^#/, '');
+  const r = parseInt(h.slice(0, 2), 16) / 255;
+  const g = parseInt(h.slice(2, 4), 16) / 255;
+  const b = parseInt(h.slice(4, 6), 16) / 255;
+  const linearize = (c: number) => (c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4));
+  return 0.2126 * linearize(r) + 0.7152 * linearize(g) + 0.0722 * linearize(b);
+}
+
+// Return white or dark text color based on background luminance.
+export function contrastTextColor(bgHex: string): string {
+  return relativeLuminance(bgHex) < LUMINANCE_THRESHOLD ? '#ffffff' : '#1a1a1a';
+}
+
 interface MarkdownContentProps {
   content: string;
   className?: string;
@@ -124,9 +143,14 @@ interface MarkdownContentProps {
 
 export function MarkdownContent({ content, className, chapterColor }: MarkdownContentProps) {
   const html = renderMarkdown(content);
+  const style: Record<string, string> = {};
+  if (chapterColor) {
+    style['--chapter-color'] = chapterColor;
+    style['--chapter-text-color'] = contrastTextColor(chapterColor);
+  }
   return React.createElement('div', {
     className: `markdown-content ${className || ''}`,
-    style: chapterColor ? { '--chapter-color': chapterColor } as React.CSSProperties : undefined,
+    style: chapterColor ? style as unknown as React.CSSProperties : undefined,
     dangerouslySetInnerHTML: { __html: html },
   });
 }

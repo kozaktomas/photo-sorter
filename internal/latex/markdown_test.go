@@ -476,3 +476,64 @@ func TestMarkdownToLatex_MacroCombinations(t *testing.T) {
 		t.Errorf("should contain line break, got %q", got)
 	}
 }
+
+func TestRelativeLuminance(t *testing.T) {
+	tests := []struct {
+		hex  string
+		want float64
+		tol  float64
+	}{
+		{"000000", 0.0, 0.001},
+		{"FFFFFF", 1.0, 0.001},
+		{"FF0000", 0.2126, 0.001}, // pure red
+		{"00FF00", 0.7152, 0.001}, // pure green
+		{"0000FF", 0.0722, 0.001}, // pure blue
+		{"808080", 0.216, 0.01},   // mid gray
+		{"8B0000", 0.05, 0.01},    // dark red
+		{"FFFF00", 0.9278, 0.001}, // yellow (bright)
+	}
+	for _, tt := range tests {
+		t.Run(tt.hex, func(t *testing.T) {
+			got := RelativeLuminance(tt.hex)
+			if got < tt.want-tt.tol || got > tt.want+tt.tol {
+				t.Errorf("RelativeLuminance(%q) = %f, want ~%f", tt.hex, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestContrastTextColorLatex(t *testing.T) {
+	tests := []struct {
+		hex  string
+		want string
+	}{
+		{"000000", "white"}, // black bg → white text
+		{"FFFFFF", "black"}, // white bg → black text
+		{"8B0000", "white"}, // dark red → white text
+		{"FFFF00", "black"}, // yellow → black text
+		{"1a1a2e", "white"}, // dark navy → white text
+		{"F5F5DC", "black"}, // beige → black text
+	}
+	for _, tt := range tests {
+		t.Run(tt.hex, func(t *testing.T) {
+			got := contrastTextColorLatex(tt.hex)
+			if got != tt.want {
+				t.Errorf("contrastTextColorLatex(%q) = %q, want %q", tt.hex, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestMarkdownToLatexWithColor_DarkBackground(t *testing.T) {
+	got := MarkdownToLatexWithColor("# Title", "8B0000")
+	if !strings.Contains(got, `\textcolor{white}{Title}`) {
+		t.Errorf("dark bg should use white text, got %q", got)
+	}
+}
+
+func TestMarkdownToLatexWithColor_LightBackground(t *testing.T) {
+	got := MarkdownToLatexWithColor("# Title", "FFFF00")
+	if !strings.Contains(got, `\textcolor{black}{Title}`) {
+		t.Errorf("light bg should use black text, got %q", got)
+	}
+}

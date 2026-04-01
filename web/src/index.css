@@ -121,7 +121,7 @@ body {
 /* Chapter color override for H1 headings */
 .markdown-content[style*="--chapter-color"] h1 {
   background-color: var(--chapter-color);
-  color: #ffffff;
+  color: var(--chapter-text-color, #ffffff);
   font-family: 'Source Sans 3', sans-serif;
   padding: 4px 16px;
   margin-left: -4mm;
@@ -207,7 +207,7 @@ body {
 /* Chapter color override for H1 headings in print preview */
 .wysiwyg-preview[style*="--chapter-color"] h1 {
   background-color: var(--chapter-color);
-  color: #ffffff;
+  color: var(--chapter-text-color, #ffffff);
   font-family: 'Source Sans 3', sans-serif;
   padding: 4px 16px;
   margin-left: -4mm;

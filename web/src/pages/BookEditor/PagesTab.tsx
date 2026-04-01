@@ -4,7 +4,7 @@ import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, pointerWithin, 
 import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { Type, Heading1, Heading2, Bold, Italic, List, ListOrdered, LayoutGrid, Wand2, Loader2, SpellCheck, ArrowLeftRight, Check, DollarSign, History, Maximize2, Minimize2, Eye, Printer } from 'lucide-react';
 import { assignSlot, assignTextSlot, clearSlot, swapSlots, updatePage, updateSlotCrop, reorderPages, getThumbnailUrl, autoLayoutSection, checkTextAndSave, rewriteText, listTextVersions, restoreTextVersion } from '../../api/client';
-import { MarkdownContent, renderMarkdown } from '../../utils/markdown';
+import { MarkdownContent, contrastTextColor, renderMarkdown } from '../../utils/markdown';
 import { handleMarkdownPaste } from '../../utils/paste';
 import { useBookKeyboardNav } from '../../hooks/useBookKeyboardNav';
 import { useUndoRedo, type SlotContent, type UndoEntry } from './hooks/useUndoRedo';
@@ -373,7 +373,7 @@ function TextSlotDialog({ text, pageId, slotIndex, pageFormat, pageSlots, splitP
                               fontFamily: BOOK_TYPOGRAPHY.textSlot.fontFamily,
                               fontSize: BOOK_TYPOGRAPHY.textSlot.fontSize,
                               lineHeight: BOOK_TYPOGRAPHY.textSlot.lineHeight,
-                              ...(chapterColor ? { '--chapter-color': chapterColor } as React.CSSProperties : {}),
+                              ...(chapterColor ? { '--chapter-color': chapterColor, '--chapter-text-color': contrastTextColor(chapterColor) } as React.CSSProperties : {}),
                             }}
                             dangerouslySetInnerHTML={{ __html: renderMarkdown(value) }}
                           />
