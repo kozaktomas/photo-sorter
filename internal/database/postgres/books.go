@@ -305,8 +305,9 @@ func (r *BookRepository) GetSections(ctx context.Context, bookID string) ([]data
 		`SELECT s.id, s.book_id, COALESCE(s.chapter_id, ''), s.title, s.sort_order, s.created_at, s.updated_at,
 		        COALESCE((SELECT COUNT(*) FROM section_photos WHERE section_id = s.id), 0) as photo_count
 		 FROM book_sections s
+		 LEFT JOIN book_chapters c ON c.id = s.chapter_id
 		 WHERE s.book_id = $1
-		 ORDER BY s.sort_order`, bookID)
+		 ORDER BY COALESCE(c.sort_order, 2147483647), s.sort_order`, bookID)
 	if err != nil {
 		return nil, fmt.Errorf("get sections: %w", err)
 	}
@@ -541,9 +542,13 @@ func (r *BookRepository) GetPage(ctx context.Context, pageID string) (*database.
 // GetPages retrieves all pages for a book with their slots, ordered by sort order.
 func (r *BookRepository) GetPages(ctx context.Context, bookID string) ([]database.BookPage, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, book_id, COALESCE(section_id, ''), format, style,
-		        description, sort_order, split_position, created_at, updated_at
-		 FROM book_pages WHERE book_id = $1 ORDER BY sort_order`, bookID)
+		`SELECT bp.id, bp.book_id, COALESCE(bp.section_id, ''), bp.format, bp.style,
+		        bp.description, bp.sort_order, bp.split_position, bp.created_at, bp.updated_at
+		 FROM book_pages bp
+		 LEFT JOIN book_sections s ON s.id = bp.section_id
+		 LEFT JOIN book_chapters c ON c.id = s.chapter_id
+		 WHERE bp.book_id = $1
+		 ORDER BY COALESCE(c.sort_order, 2147483647), COALESCE(s.sort_order, 2147483647), bp.sort_order`, bookID)
 	if err != nil {
 		return nil, fmt.Errorf("get pages: %w", err)
 	}
