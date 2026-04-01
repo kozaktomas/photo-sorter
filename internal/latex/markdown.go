@@ -14,6 +14,14 @@ var (
 	italicRe = regexp.MustCompile(`\*(.+?)\*`)
 )
 
+// Small caps regex — matches escaped ^^ markers after latexEscapeRaw.
+// ^^text^^ becomes \textasciicircum{}\textasciicircum{}text\textasciicircum{}\textasciicircum{}.
+var smallCapsRe = regexp.MustCompile(
+	regexp.QuoteMeta(`\textasciicircum{}\textasciicircum{}`) +
+		`(.+?)` +
+		regexp.QuoteMeta(`\textasciicircum{}\textasciicircum{}`),
+)
+
 // Alignment macros — detected on trimmed lines before inline formatting.
 // ->text<- → center, ->text-> → right-align.
 var (
@@ -57,6 +65,13 @@ func markdownToLatexInternal(md, chapterColor string) string {
 		// Blank line → paragraph break.
 		if trimmed == "" {
 			out = append(out, `\par\vspace{4mm}`)
+			i++
+			continue
+		}
+
+		// Horizontal rule: standalone --- line.
+		if trimmed == "---" {
+			out = append(out, `\vspace{2mm}\noindent\rule{\linewidth}{0.4pt}\vspace{2mm}`)
 			i++
 			continue
 		}
@@ -206,12 +221,33 @@ func collectBlockquote(lines []string, start int) ([]string, int) {
 	return quoteLines, i
 }
 
-// inlineFormat applies bold and italic formatting.
+// inlineFormat applies bold, italic, small caps, line break, and tilde formatting.
 // Must be called AFTER latexEscapeRaw so that * chars (not LaTeX special) are still present.
+// Escaped sequences from latexEscapeRaw are matched for ^^, \n, ~ and \~.
 func inlineFormat(s string) string {
 	// Bold first (** before *).
 	s = boldRe.ReplaceAllString(s, `\textbf{$1}`)
 	s = italicRe.ReplaceAllString(s, `\textit{$1}`)
+
+	// Small caps: ^^text^^ (escaped form after latexEscapeRaw).
+	s = smallCapsRe.ReplaceAllString(s, `\textsc{$1}`)
+
+	// Escaped tilde \~ → placeholder (must come before ~ → non-breaking space).
+	// After latexEscapeRaw: \~ becomes \textbackslash{}\textasciitilde{}.
+	const tildePlaceholder = "\x00TILDE\x00"
+	s = strings.ReplaceAll(s, `\textbackslash{}\textasciitilde{}`, tildePlaceholder)
+
+	// Tilde ~ → LaTeX non-breaking space.
+	// After latexEscapeRaw: ~ becomes \textasciitilde{}.
+	s = strings.ReplaceAll(s, `\textasciitilde{}`, `~`)
+
+	// Restore escaped tildes as literal \textasciitilde{}.
+	s = strings.ReplaceAll(s, tildePlaceholder, `\textasciitilde{}`)
+
+	// Forced line break: literal \n in source text.
+	// After latexEscapeRaw: \n becomes \textbackslash{}n.
+	s = strings.ReplaceAll(s, `\textbackslash{}n`, `\\`)
+
 	return s
 }
 

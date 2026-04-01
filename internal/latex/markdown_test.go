@@ -394,3 +394,85 @@ func TestMarkdownToLatex_ArrowInMiddleNotMacro(t *testing.T) {
 		t.Errorf("should not detect alignment in middle-of-text arrows, got %q", got)
 	}
 }
+
+func TestMarkdownToLatex_HorizontalRule(t *testing.T) {
+	got := MarkdownToLatex("---")
+	expected := `\vspace{2mm}\noindent\rule{\linewidth}{0.4pt}\vspace{2mm}`
+	if got != expected {
+		t.Errorf("horizontal rule:\ngot:  %q\nwant: %q", got, expected)
+	}
+}
+
+func TestMarkdownToLatex_HorizontalRuleInContext(t *testing.T) {
+	got := MarkdownToLatex("Above\n\n---\n\nBelow")
+	if !strings.Contains(got, `\rule{\linewidth}{0.4pt}`) {
+		t.Errorf("should contain horizontal rule, got %q", got)
+	}
+	if !strings.Contains(got, "Above") || !strings.Contains(got, "Below") {
+		t.Errorf("should contain surrounding text, got %q", got)
+	}
+}
+
+func TestMarkdownToLatex_SmallCaps(t *testing.T) {
+	got := MarkdownToLatex("^^Prague^^")
+	expected := `\textsc{Prague}`
+	if got != expected {
+		t.Errorf("small caps:\ngot:  %q\nwant: %q", got, expected)
+	}
+}
+
+func TestMarkdownToLatex_SmallCapsWithBold(t *testing.T) {
+	got := MarkdownToLatex("^^**bold small caps**^^")
+	expected := `\textsc{\textbf{bold small caps}}`
+	if got != expected {
+		t.Errorf("bold small caps:\ngot:  %q\nwant: %q", got, expected)
+	}
+}
+
+func TestMarkdownToLatex_ForcedLineBreak(t *testing.T) {
+	got := MarkdownToLatex(`first\nsecond`)
+	expected := `first\\second`
+	if got != expected {
+		t.Errorf("line break:\ngot:  %q\nwant: %q", got, expected)
+	}
+}
+
+func TestMarkdownToLatex_Tilde(t *testing.T) {
+	got := MarkdownToLatex("k~tomu")
+	expected := `k~tomu`
+	if got != expected {
+		t.Errorf("tilde non-breaking space:\ngot:  %q\nwant: %q", got, expected)
+	}
+}
+
+func TestMarkdownToLatex_EscapedTilde(t *testing.T) {
+	got := MarkdownToLatex(`\~`)
+	expected := `\textasciitilde{}`
+	if got != expected {
+		t.Errorf("escaped tilde:\ngot:  %q\nwant: %q", got, expected)
+	}
+}
+
+func TestMarkdownToLatex_TildeMixed(t *testing.T) {
+	// \~ should produce literal tilde, ~ should produce non-breaking space.
+	got := MarkdownToLatex(`price \~100~Kč`)
+	if !strings.Contains(got, `\textasciitilde{}`) {
+		t.Errorf("should contain literal tilde, got %q", got)
+	}
+	if !strings.Contains(got, `100~Kč`) {
+		t.Errorf("should contain non-breaking space tilde, got %q", got)
+	}
+}
+
+func TestMarkdownToLatex_MacroCombinations(t *testing.T) {
+	got := MarkdownToLatex(`^^Name^^ lived k~obci\nand worked`)
+	if !strings.Contains(got, `\textsc{Name}`) {
+		t.Errorf("should contain small caps, got %q", got)
+	}
+	if !strings.Contains(got, `k~obci`) {
+		t.Errorf("should contain non-breaking space, got %q", got)
+	}
+	if !strings.Contains(got, `\\`) {
+		t.Errorf("should contain line break, got %q", got)
+	}
+}

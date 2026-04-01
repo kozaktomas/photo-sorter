@@ -74,11 +74,37 @@ function processAlignmentMacros(md: string): string {
     .join('\n');
 }
 
+// Small caps: ^^text^^ → <span style="font-variant:small-caps">text</span>
+const smallCapsRe = /\^\^(.+?)\^\^/g;
+
+// Inline macro post-processing applied after marked.js rendering.
+// Handles: ^^small caps^^, \n (line break), ~ (non-breaking space), \~ (literal tilde).
+function processInlineMacros(html: string): string {
+  // Small caps.
+  html = html.replace(smallCapsRe, '<span style="font-variant:small-caps">$1</span>');
+
+  // Escaped tilde \~ → placeholder (must come before ~ → &nbsp;).
+  const tildePlaceholder = '\x00TILDE\x00';
+  html = html.replace(/\\~/g, tildePlaceholder);
+
+  // Tilde ~ → non-breaking space.
+  html = html.replace(/~/g, '&nbsp;');
+
+  // Restore escaped tildes as literal ~.
+  html = html.replaceAll(tildePlaceholder, '~');
+
+  // Forced line break: literal \n → <br />.
+  html = html.replace(/\\n/g, '<br />');
+
+  return html;
+}
+
 export function renderMarkdown(md: string): string {
   const widths = extractTableWidths(md);
   const html = marked.parse(processAlignmentMacros(stripTableWidthHints(md))) as string;
   const withWidths = widths.length > 0 ? applyTableWidths(html, widths) : html;
-  return DOMPurify.sanitize(withWidths, {
+  const withMacros = processInlineMacros(withWidths);
+  return DOMPurify.sanitize(withMacros, {
     ADD_ATTR: ['style'],
   });
 }
