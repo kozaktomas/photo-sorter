@@ -1133,7 +1133,7 @@ export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRe
             tgtSlot.photo_uid = photoUid;
             tgtSlot.text_content = '';
           } else {
-            tgtPage.slots.push({ slot_index: emptySlotIndex, photo_uid: photoUid, text_content: '', crop_x: 0.5, crop_y: 0.5, crop_scale: 1.0 });
+            tgtPage.slots.push({ slot_index: emptySlotIndex, photo_uid: photoUid, text_content: '', crop_x: 0.5, crop_y: 0.5, crop_scale: 1.0, title: '', file_name: '' });
           }
         }
         return { ...prev, pages };

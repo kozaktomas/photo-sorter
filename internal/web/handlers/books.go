@@ -1664,7 +1664,7 @@ func fetchPhotoDimensions(pp *photoprism.PhotoPrism, uids []string) map[string][
 	for i := 0; i < len(uids); i += batchSize {
 		end := min(i+batchSize, len(uids))
 		batch := uids[i:end]
-		query := "uid:" + strings.Join(batch, "|uid:")
+		query := "uid:" + strings.Join(batch, "|")
 		photos, err := pp.GetPhotosWithQuery(len(batch), 0, query, 0)
 		if err != nil {
 			log.Printf("preflight: failed to fetch photo dimensions: %v", err)
@@ -1690,7 +1690,7 @@ func fetchPhotoNames(pp *photoprism.PhotoPrism, uids []string) map[string]photoN
 	for i := 0; i < len(uids); i += batchSize {
 		end := min(i+batchSize, len(uids))
 		batch := uids[i:end]
-		query := "uid:" + strings.Join(batch, "|uid:")
+		query := "uid:" + strings.Join(batch, "|")
 		photos, err := pp.GetPhotosWithQuery(len(batch), 0, query, 0)
 		if err != nil {
 			log.Printf("fetchPhotoNames: failed to fetch photos: %v", err)
