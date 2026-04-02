@@ -37,7 +37,7 @@ func (s *Server) registerPhotoReadTools() {
 
 	s.mcpServer.AddTool(
 		mcp.NewTool("get_photo",
-			mcp.WithDescription("Get photo metadata (title, description, date, GPS, camera, faces, labels)"),
+			mcp.WithDescription("Get photo metadata (title, description, filename, date, GPS, camera, faces, labels)"),
 			mcp.WithString("photo_uid", mcp.Required(), mcp.Description("Photo UID")),
 		),
 		s.handleGetPhoto,
@@ -208,6 +208,8 @@ func (s *Server) handleGetPhoto(
 		"camera_make":    mapStringFromDetails(details, "CameraMake"),
 		"camera_model":   photo.CameraModel,
 		"lens_model":     mapStringFromDetails(details, "LensModel"),
+		"file_name":      photo.FileName,
+		"original_name":  photo.OriginalName,
 		"favorite":       photo.Favorite,
 		"private":        photo.Private,
 		"type":           photo.Type,
