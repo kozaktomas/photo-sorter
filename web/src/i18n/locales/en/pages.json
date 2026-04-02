@@ -303,6 +303,7 @@
     "reassign": "Reassign",
     "unassign": "Unassign",
     "reassigningFrom": "Reassigning from: {{name}}",
+    "inAlbums": "In albums",
     "inBooks": "In books",
     "addToBook": "Book",
     "addToBookTitle": "Add to Book",

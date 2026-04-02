@@ -374,6 +374,21 @@ GET /photos/{uid}/thumb/{size}
 
 **Response:** Binary image data with `Content-Type: image/*`
 
+### Get Photo Album Memberships
+
+```
+GET /photos/{uid}/albums
+```
+
+Returns the list of albums that contain the given photo.
+
+**Response (200):**
+```json
+[
+  { "uid": "abc123", "title": "Album Name", "photo_count": 42 }
+]
+```
+
 ### Batch Add Labels to Photos
 
 ```

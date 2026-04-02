@@ -81,6 +81,7 @@ Browse and manage your PhotoPrism albums.
 - Click an album to view its photos
 - Quick access to analyze an album with AI
 - **Photo navigation context** - When clicking a photo from an album, navigation arrows and position counter are available in Photo Detail
+- **Bulk photo removal** - Enter selection mode to select photos and remove them from the album in bulk
 
 ### Photos
 
@@ -114,6 +115,7 @@ Detailed view of a single photo with face management capabilities.
 - Full-resolution photo display with interactive face bounding boxes
 - Photo metadata (title, date, dimensions)
 - Quick actions: Copy UID, Open in PhotoPrism, Find Similar, Add to Book, Load Faces
+- **Album membership** - If the photo belongs to any albums, an "In albums" panel is shown in the right sidebar listing each album as a clickable link to the album detail page
 - **Book membership** - If the photo belongs to any photo book sections, a "In books" panel is shown in the right sidebar (above Era Estimation) listing each book/section as a clickable link to the book editor
 - **Add to Book dropdown** - Click "Book" in the header to open a two-step picker (book → section) to quickly add the photo to a book section without leaving the page. Shows success/error feedback and auto-closes
 - **Embeddings status banner** - Automatically checks if embeddings have been calculated for the photo on page load. Shows a yellow warning banner with a "Calculate Embeddings" button if not yet processed
@@ -821,6 +823,7 @@ web/src/
 │   │   ├── FacesList.tsx
 │   │   ├── PhotoDisplay.tsx
 │   │   ├── AddToBookDropdown.tsx
+│   │   ├── AlbumMembership.tsx
 │   │   ├── BookMembership.tsx
 │   │   └── index.tsx
 │   ├── Recognition/        # Split into components

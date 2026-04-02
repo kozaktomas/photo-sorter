@@ -1,12 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { FolderOpen, ArrowLeft, Image, Sparkles, Search, Play } from 'lucide-react';
+import { FolderOpen, ArrowLeft, Image, Sparkles, Search, Play, CheckSquare } from 'lucide-react';
 import { Card, CardContent } from '../components/Card';
 import { Button } from '../components/Button';
+import { BulkActionBar } from '../components/BulkActionBar';
 import { PageHeader } from '../components/PageHeader';
 import { PAGE_CONFIGS } from '../constants/pageConfig';
 import { PhotoGrid } from '../components/PhotoGrid';
+import { usePhotoSelection } from '../hooks/usePhotoSelection';
 import { getAlbums, getAlbum, getAlbumPhotos, getThumbnailUrl, getConfig } from '../api/client';
 import { ALBUM_PHOTOS_CACHE_KEY } from '../constants';
 import type { Album, Photo, Config } from '../types';
@@ -119,6 +121,8 @@ function AlbumDetailPage({ uid }: { uid: string }) {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [config, setConfig] = useState<Config | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const selection = usePhotoSelection();
 
   const handlePhotoClick = (photo: Photo) => {
     // Cache photo UIDs for navigation in photo detail page
@@ -128,6 +132,15 @@ function AlbumDetailPage({ uid }: { uid: string }) {
     );
     void navigate(`/photos/${photo.uid}?album=${uid}`);
   };
+
+  const loadPhotos = useCallback(async () => {
+    try {
+      const photosData = await getAlbumPhotos(uid, { count: 500 });
+      setPhotos(photosData);
+    } catch (err) {
+      console.error('Failed to load album photos:', err);
+    }
+  }, [uid]);
 
   useEffect(() => {
     async function loadData() {
@@ -148,6 +161,18 @@ function AlbumDetailPage({ uid }: { uid: string }) {
     }
     void loadData();
   }, [uid]);
+
+  const handleRemoveSuccess = useCallback(() => {
+    void loadPhotos();
+    setSelectionMode(false);
+  }, [loadPhotos]);
+
+  const toggleSelectionMode = () => {
+    if (selectionMode) {
+      selection.deselectAll();
+    }
+    setSelectionMode(!selectionMode);
+  };
 
   if (isLoading) {
     return <div className="text-center py-12 text-slate-400">{t('common:status.loading')}</div>;
@@ -175,6 +200,15 @@ function AlbumDetailPage({ uid }: { uid: string }) {
           <p className="text-slate-500 mt-2">{t('common:units.photo', { count: photos.length })}</p>
         </div>
         <div className="flex items-center space-x-2">
+          {photos.length > 0 && (
+            <Button
+              variant={selectionMode ? 'primary' : 'ghost'}
+              onClick={toggleSelectionMode}
+            >
+              <CheckSquare className="h-4 w-4 mr-2" />
+              {t('common:buttons.select')}
+            </Button>
+          )}
           <Link to={`/slideshow?album=${uid}`}>
             <Button variant="ghost">
               <Play className="h-4 w-4 mr-2" />
@@ -190,9 +224,28 @@ function AlbumDetailPage({ uid }: { uid: string }) {
         </div>
       </div>
 
+      {selectionMode && (
+        <BulkActionBar
+          selection={selection}
+          showRemoveFromAlbum
+          albumUidForRemoval={uid}
+          onRemoveSuccess={handleRemoveSuccess}
+        />
+      )}
+
       <Card>
         <CardContent>
-          <PhotoGrid photos={photos} onPhotoClick={handlePhotoClick} photoprismDomain={config?.photoprism_domain} />
+          {selectionMode ? (
+            <PhotoGrid
+              photos={photos}
+              photoprismDomain={config?.photoprism_domain}
+              selectable
+              selectedPhotos={selection.selectedPhotos}
+              onSelectionChange={(photoUid) => selection.toggleSelection(photoUid)}
+            />
+          ) : (
+            <PhotoGrid photos={photos} onPhotoClick={handlePhotoClick} photoprismDomain={config?.photoprism_domain} />
+          )}
         </CardContent>
       </Card>
     </div>

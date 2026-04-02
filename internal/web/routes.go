@@ -66,6 +66,7 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 			r.Get("/photos/{uid}/faces", facesHandler.GetPhotoFaces)
 			r.Post("/photos/{uid}/faces/compute", facesHandler.ComputeFaces)
 			r.Get("/photos/{uid}/estimate-era", photosHandler.EstimateEra)
+			r.Get("/photos/{uid}/albums", albumsHandler.GetPhotoAlbums)
 			r.Get("/photos/{uid}/books", booksHandler.GetPhotoBookMemberships)
 			r.Post("/photos/similar", photosHandler.FindSimilar)
 			r.Post("/photos/similar/collection", photosHandler.FindSimilarToCollection)

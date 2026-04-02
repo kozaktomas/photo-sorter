@@ -427,6 +427,7 @@ Session cookies use `HttpOnly`, `SameSite=Strict`, and auto-detect `Secure` flag
 - `GET /api/v1/photos/{uid}/faces` - Get faces in a photo with suggestions
 - `POST /api/v1/photos/{uid}/faces/compute` - Compute face embeddings for a photo
 - `GET /api/v1/photos/{uid}/estimate-era` - Estimate photo era from CLIP embeddings vs era centroids
+- `GET /api/v1/photos/{uid}/albums` - Get album memberships for a photo
 - `GET /api/v1/photos/{uid}/books` - Get book/section memberships for a photo
 - `POST /api/v1/photos/similar` - Find similar photos by embedding
 - `POST /api/v1/photos/similar/collection` - Find similar photos across a collection
@@ -554,7 +555,7 @@ web/src/
 │   ├── Faces/                 # Face matching (hooks/useFaceSearch.ts)
 │   ├── Photos/                # Photo browsing (hooks/usePhotosFilters.ts, usePhotosPagination.ts)
 │   ├── PhotoDetail/           # Photo detail (hooks/usePhotoData.ts, useFacesData.ts, useFaceAssignment.ts, usePhotoNavigation.ts)
-│   │   ├── EraEstimate.tsx, BookMembership.tsx, AddToBookDropdown.tsx
+│   │   ├── EraEstimate.tsx, AlbumMembership.tsx, BookMembership.tsx, AddToBookDropdown.tsx
 │   │   ├── FacesList.tsx, FaceAssignmentPanel.tsx, EmbeddingsStatus.tsx
 │   │   └── PhotoDisplay.tsx
 │   ├── Recognition/           # Bulk face recognition (hooks/useScanAll.ts)

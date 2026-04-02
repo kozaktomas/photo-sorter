@@ -303,6 +303,7 @@
     "reassign": "Přeřadit",
     "unassign": "Odebrat",
     "reassigningFrom": "Přeřazení z: {{name}}",
+    "inAlbums": "V albech",
     "inBooks": "V knihách",
     "addToBook": "Kniha",
     "addToBookTitle": "Přidat do knihy",

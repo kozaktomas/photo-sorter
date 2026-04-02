@@ -69,6 +69,16 @@ func (pp *PhotoPrism) RemovePhotosFromAlbum(albumUID string, photoUIDs []string)
 	return doRequestRaw(pp, "DELETE", fmt.Sprintf("albums/%s/photos", albumUID), selection)
 }
 
+// IsPhotoInAlbum checks whether a photo (by UID) exists in a given album.
+func (pp *PhotoPrism) IsPhotoInAlbum(photoUID, albumUID string) (bool, error) {
+	endpoint := fmt.Sprintf("photos?count=1&s=%s&q=uid:%s", albumUID, photoUID)
+	result, err := doGetJSON[[]Photo](pp, endpoint)
+	if err != nil {
+		return false, err
+	}
+	return len(*result) > 0, nil
+}
+
 // GetAlbumPhotos retrieves photos from a specific album.
 // Optional quality parameter sets minimum quality score (1-7). PhotoPrism UI defaults to 3.
 func (pp *PhotoPrism) GetAlbumPhotos(albumUID string, count int, offset int, quality ...int) ([]Photo, error) {

@@ -30,6 +30,7 @@ import type {
   BookPage,
   PageFormat,
   PhotoBookMembership,
+  PhotoAlbumMembership,
   PreflightResponse,
   TextVersion,
 } from '../types';
@@ -535,6 +536,11 @@ export async function suggestAlbums(params: {
     method: 'POST',
     body: JSON.stringify(params),
   });
+}
+
+// Photo Album Memberships
+export async function getPhotoAlbumMemberships(photoUid: string): Promise<PhotoAlbumMembership[]> {
+  return request<PhotoAlbumMembership[]>(`/photos/${photoUid}/albums`);
 }
 
 // Photo Book Memberships

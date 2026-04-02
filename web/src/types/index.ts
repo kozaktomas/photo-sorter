@@ -478,6 +478,12 @@ export interface PhotoBookMembership {
   section_title: string;
 }
 
+export interface PhotoAlbumMembership {
+  uid: string;
+  title: string;
+  photo_count: number;
+}
+
 export interface TextVersion {
   id: number;
   content: string;
