@@ -85,6 +85,8 @@ type sectionPhotoResponse struct {
 	PhotoUID    string `json:"photo_uid"`
 	Description string `json:"description"`
 	Note        string `json:"note"`
+	Title       string `json:"title"`
+	FileName    string `json:"file_name"`
 	AddedAt     string `json:"added_at"`
 }
 
@@ -106,6 +108,8 @@ type slotResponse struct {
 	CropX       float64 `json:"crop_x"`
 	CropY       float64 `json:"crop_y"`
 	CropScale   float64 `json:"crop_scale"`
+	Title       string  `json:"title"`
+	FileName    string  `json:"file_name"`
 }
 
 // --- Photo Book Memberships ---
@@ -233,7 +237,19 @@ func (h *BooksHandler) GetBook(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondJSON(w, http.StatusOK, buildBookDetailResponse(book, chapters, sections, pages))
+	resp := buildBookDetailResponse(book, chapters, sections, pages)
+
+	// Enrich slot responses with photo names
+	allPhotoUIDs := collectSlotPhotoUIDs(pages)
+	if len(allPhotoUIDs) > 0 {
+		pp := middleware.MustGetPhotoPrism(r.Context(), w)
+		if pp == nil {
+			return
+		}
+		enrichSlotPhotoNames(&resp, fetchPhotoNames(pp, allPhotoUIDs))
+	}
+
+	respondJSON(w, http.StatusOK, resp)
 }
 
 func buildBookDetailResponse(
@@ -296,6 +312,19 @@ func buildBookDetailResponse(
 		Pages:       pageResps,
 		CreatedAt:   book.CreatedAt.Format("2006-01-02T15:04:05Z"),
 		UpdatedAt:   book.UpdatedAt.Format("2006-01-02T15:04:05Z"),
+	}
+}
+
+// enrichSlotPhotoNames populates Title and FileName on slot responses from a photo name lookup.
+func enrichSlotPhotoNames(resp *bookDetailResponse, names map[string]photoNameInfo) {
+	for i := range resp.Pages {
+		for j := range resp.Pages[i].Slots {
+			uid := resp.Pages[i].Slots[j].PhotoUID
+			if info, ok := names[uid]; ok {
+				resp.Pages[i].Slots[j].Title = info.Title
+				resp.Pages[i].Slots[j].FileName = info.FileName
+			}
+		}
 	}
 }
 
@@ -565,14 +594,34 @@ func (h *BooksHandler) GetSectionPhotos(w http.ResponseWriter, r *http.Request) 
 		respondError(w, http.StatusInternalServerError, "failed to get section photos")
 		return
 	}
+
+	// Fetch photo names from PhotoPrism
+	var photoNames map[string]photoNameInfo
+	if len(photos) > 0 {
+		pp := middleware.MustGetPhotoPrism(r.Context(), w)
+		if pp == nil {
+			return
+		}
+		uids := make([]string, len(photos))
+		for i, p := range photos {
+			uids[i] = p.PhotoUID
+		}
+		photoNames = fetchPhotoNames(pp, uids)
+	}
+
 	result := make([]sectionPhotoResponse, len(photos))
 	for i, p := range photos {
-		result[i] = sectionPhotoResponse{
+		resp := sectionPhotoResponse{
 			PhotoUID:    p.PhotoUID,
 			Description: p.Description,
 			Note:        p.Note,
 			AddedAt:     p.AddedAt.Format("2006-01-02T15:04:05Z"),
 		}
+		if info, ok := photoNames[p.PhotoUID]; ok {
+			resp.Title = info.Title
+			resp.FileName = info.FileName
+		}
+		result[i] = resp
 	}
 	respondJSON(w, http.StatusOK, result)
 }
@@ -1626,6 +1675,32 @@ func fetchPhotoDimensions(pp *photoprism.PhotoPrism, uids []string) map[string][
 		}
 	}
 	return dims
+}
+
+// photoNameInfo holds title and filename for a photo.
+type photoNameInfo struct {
+	Title    string
+	FileName string
+}
+
+// fetchPhotoNames batch-fetches photo title and filename from PhotoPrism.
+func fetchPhotoNames(pp *photoprism.PhotoPrism, uids []string) map[string]photoNameInfo {
+	names := make(map[string]photoNameInfo, len(uids))
+	const batchSize = 100
+	for i := 0; i < len(uids); i += batchSize {
+		end := min(i+batchSize, len(uids))
+		batch := uids[i:end]
+		query := "uid:" + strings.Join(batch, "|uid:")
+		photos, err := pp.GetPhotosWithQuery(len(batch), 0, query, 0)
+		if err != nil {
+			log.Printf("fetchPhotoNames: failed to fetch photos: %v", err)
+			continue
+		}
+		for _, p := range photos {
+			names[p.UID] = photoNameInfo{Title: p.Title, FileName: p.FileName}
+		}
+	}
+	return names
 }
 
 // computeEffectiveDPI calculates the effective DPI for a photo at a given slot size.

@@ -23,6 +23,7 @@ interface Props {
   onEditCrop?: () => void;
   description?: string;
   note?: string;
+  fileName?: string;
   onEditDescription?: () => void;
   onEditText?: () => void;
   onAddText?: () => void;
@@ -31,7 +32,7 @@ interface Props {
   className?: string;
 }
 
-export function PageSlotComponent({ pageId, slotIndex, photoUid, textContent, cropX, cropY, cropScale, format, splitPosition, onClear, onEditCrop, description, note, onEditDescription, onEditText, onAddText, chapterColor, textPaddingClass, className }: Props) {
+export function PageSlotComponent({ pageId, slotIndex, photoUid, textContent, cropX, cropY, cropScale, format, splitPosition, onClear, onEditCrop, description, note, fileName, onEditDescription, onEditText, onAddText, chapterColor, textPaddingClass, className }: Props) {
   const { t } = useTranslation('pages');
   const [orientation, setOrientation] = useState<'L' | 'P' | null>(null);
   const [dpi, setDpi] = useState<number | null>(null);
@@ -136,6 +137,7 @@ export function PageSlotComponent({ pageId, slotIndex, photoUid, textContent, cr
           <PhotoInfoOverlay
             description={description}
             note={note}
+            fileName={fileName}
             orientation={orientation}
           />
           <PhotoActionOverlay photoUid={photoUid} />

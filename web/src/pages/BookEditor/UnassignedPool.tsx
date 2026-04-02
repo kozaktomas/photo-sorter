@@ -12,10 +12,11 @@ interface Props {
   onEditDescription?: (photoUid: string) => void;
 }
 
-function DraggablePhoto({ uid, description, note }: {
+function DraggablePhoto({ uid, description, note, fileName }: {
   uid: string;
   description: string;
   note: string;
+  fileName: string;
 }) {
   const [orientation, setOrientation] = useState<'L' | 'P' | null>(null);
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({
@@ -48,6 +49,7 @@ function DraggablePhoto({ uid, description, note }: {
       <PhotoInfoOverlay
         description={description}
         note={note}
+        fileName={fileName}
         orientation={orientation}
         compact
       />
@@ -87,6 +89,7 @@ export function UnassignedPool({ photoUids, sectionPhotos }: Props) {
               uid={uid}
               description={sp?.description ?? ''}
               note={sp?.note ?? ''}
+              fileName={sp?.file_name ?? ''}
             />
           );
         })}

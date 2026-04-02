@@ -51,7 +51,7 @@ function DraggablePhoto({ photo, sectionId, selected, onToggleSelect, children }
             <Square className="h-5 w-5 text-white/50" />
           )}
         </div>
-        <PhotoInfoOverlay description={photo.description} note={photo.note} />
+        <PhotoInfoOverlay description={photo.description} note={photo.note} fileName={photo.file_name} />
         <PhotoActionOverlay photoUid={photo.photo_uid} />
       </div>
       {children}

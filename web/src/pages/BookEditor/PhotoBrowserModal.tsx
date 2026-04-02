@@ -198,6 +198,7 @@ export function PhotoBrowserModal({ sectionId, existingUids, onClose, onAdded }:
                     isSelected ? 'border-rose-500' : 'border-transparent hover:border-slate-500'
                   }`}
                   onClick={() => !isExisting && toggleSelect(photo.uid)}
+                  title={photo.file_name || photo.title}
                 >
                   <img
                     src={getThumbnailUrl(photo.uid, 'tile_100')}
@@ -214,6 +215,9 @@ export function PhotoBrowserModal({ sectionId, existingUids, onClose, onAdded }:
                       )}
                     </div>
                   )}
+                  <div className="absolute bottom-0 inset-x-0 bg-black/60 text-white text-[9px] px-1 py-0.5 truncate">
+                    {photo.file_name || photo.title}
+                  </div>
                 </div>
               );
             })}

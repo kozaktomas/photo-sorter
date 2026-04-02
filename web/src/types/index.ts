@@ -435,6 +435,8 @@ export interface SectionPhoto {
   photo_uid: string;
   description: string;
   note: string;
+  title: string;
+  file_name: string;
   added_at: string;
 }
 
@@ -458,6 +460,8 @@ export interface PageSlot {
   crop_x: number;
   crop_y: number;
   crop_scale: number;
+  title: string;
+  file_name: string;
 }
 
 export interface BookDetail {

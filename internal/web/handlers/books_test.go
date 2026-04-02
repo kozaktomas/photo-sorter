@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/kozaktomas/photo-sorter/internal/database"
 	"github.com/kozaktomas/photo-sorter/internal/database/mock"
+	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
 
 var errMock = errors.New("mock error")
@@ -498,7 +500,22 @@ func TestBooksHandler_GetSectionPhotos_Success(t *testing.T) {
 		{SectionID: "s1", PhotoUID: "p2", Description: "desc2", AddedAt: now},
 	})
 
+	// Set up mock PhotoPrism server for photo name enrichment
+	server := setupMockPhotoPrismServer(t, map[string]http.HandlerFunc{
+		"/api/v1/photos": func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode([]map[string]any{
+				{"UID": "p1", "Title": "Photo One", "FileName": "photo1.jpg"},
+				{"UID": "p2", "Title": "Photo Two", "FileName": "photo2.jpg"},
+			})
+		},
+	})
+	defer server.Close()
+	pp := createPhotoPrismClient(t, server)
+
 	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/sections/s1/photos", nil)
+	ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
+	req = req.WithContext(ctx)
 	req = requestWithChiParams(req, map[string]string{"id": "s1"})
 	recorder := httptest.NewRecorder()
 	handler.GetSectionPhotos(recorder, req)
@@ -513,6 +530,12 @@ func TestBooksHandler_GetSectionPhotos_Success(t *testing.T) {
 	}
 	if resp[0].PhotoUID != "p1" {
 		t.Errorf("expected photo UID 'p1', got '%s'", resp[0].PhotoUID)
+	}
+	if resp[0].Title != "Photo One" {
+		t.Errorf("expected title 'Photo One', got '%s'", resp[0].Title)
+	}
+	if resp[0].FileName != "photo1.jpg" {
+		t.Errorf("expected file_name 'photo1.jpg', got '%s'", resp[0].FileName)
 	}
 }
 

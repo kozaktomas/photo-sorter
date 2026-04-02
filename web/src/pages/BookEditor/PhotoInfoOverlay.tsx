@@ -4,13 +4,14 @@ import { StickyNote } from 'lucide-react';
 interface Props {
   description?: string;
   note?: string;
+  fileName?: string;
   orientation?: 'L' | 'P' | null;
   compact?: boolean;
 }
 
-export function PhotoInfoOverlay({ description, note, orientation, compact }: Props) {
+export function PhotoInfoOverlay({ description, note, fileName, orientation, compact }: Props) {
   const { t } = useTranslation('pages');
-  const hasContent = description || note || orientation;
+  const hasContent = description || note || orientation || fileName;
   if (!hasContent) return null;
 
   return (
@@ -18,9 +19,14 @@ export function PhotoInfoOverlay({ description, note, orientation, compact }: Pr
       {orientation && (
         <span className={`absolute bottom-0.5 right-0.5 text-[9px] font-bold leading-none px-1 py-0.5 rounded z-10 ${
           orientation === 'L' ? 'bg-blue-600/80 text-blue-100' : 'bg-amber-600/80 text-amber-100'
-        }`} style={note || description ? { bottom: `${(note ? 1.25 : 0) + (description ? (compact ? 1.25 : 2.25) : 0)}rem` } : undefined}>
+        }`} style={note || description || fileName ? { bottom: `${(note ? 1.25 : 0) + (description ? (compact ? 1.25 : 2.25) : 0) + (fileName ? 1.25 : 0)}rem` } : undefined}>
           {orientation === 'L' ? t('books.editor.orientationLandscape') : t('books.editor.orientationPortrait')}
         </span>
+      )}
+      {fileName && (
+        <div className="bg-slate-900/70 text-slate-300 text-[10px] px-1.5 py-0.5 truncate" title={fileName}>
+          {fileName}
+        </div>
       )}
       {note && (
         <div className="bg-amber-900/60 text-amber-200 text-[10px] px-1.5 py-0.5 flex items-center gap-1 line-clamp-1">

@@ -151,6 +151,8 @@ export function PageTemplate({ page, onClearSlot, sectionPhotos, onEditDescripti
           const textContent = getSlotTextContent(page, i);
           const { cropX, cropY, cropScale } = getSlotCrop(page, i);
           const sp = uid ? photoLookup.get(uid) : undefined;
+          const slot = page.slots.find(s => s.slot_index === i);
+          const slotFileName = slot?.file_name || sp?.file_name || '';
           return (
             <PageSlotComponent
               key={i}
@@ -167,6 +169,7 @@ export function PageTemplate({ page, onClearSlot, sectionPhotos, onEditDescripti
               onEditCrop={uid && onEditCrop ? () => onEditCrop(i) : undefined}
               description={sp?.description ?? ''}
               note={sp?.note ?? ''}
+              fileName={slotFileName}
               onEditDescription={uid && onEditDescription ? () => onEditDescription(uid) : undefined}
               onEditText={textContent && onEditText ? () => onEditText(i) : undefined}
               onAddText={!uid && !textContent && onAddText ? () => onAddText(i) : undefined}
