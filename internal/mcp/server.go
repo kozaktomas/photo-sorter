@@ -2,10 +2,8 @@ package mcp
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"strings"
-	"time"
 
 	"github.com/kozaktomas/photo-sorter/internal/config"
 	"github.com/kozaktomas/photo-sorter/internal/database"
@@ -28,6 +26,7 @@ type Server struct {
 }
 
 // NewServer creates a new MCP server with all book/chapter tools registered.
+// basePath is the URL prefix where the MCP SSE server will be mounted (e.g. "/mcp").
 func NewServer(
 	version string,
 	bookWriter database.BookWriter,
@@ -37,6 +36,7 @@ func NewServer(
 	pp *photoprism.PhotoPrism,
 	cfg *config.Config,
 	apiToken string,
+	basePath string,
 ) *Server {
 	s := &Server{
 		bookWriter:       bookWriter,
@@ -55,6 +55,10 @@ func NewServer(
 	)
 
 	s.mcpServer = mcpServer
+	s.sseServer = server.NewSSEServer(mcpServer,
+		server.WithStaticBasePath(basePath),
+	)
+
 	s.registerBookTools()
 	s.registerChapterTools()
 	s.registerSectionTools()
@@ -69,38 +73,34 @@ func NewServer(
 	return s
 }
 
-// Start begins serving on the given address (e.g. ":8086").
-func (s *Server) Start(addr string) error {
-	s.sseServer = server.NewSSEServer(s.mcpServer,
-		server.WithBaseURL("http://localhost"+addr),
-	)
-
-	handler := s.authMiddleware(s.sseServer)
-
-	httpServer := &http.Server{
-		Addr:              addr,
-		Handler:           handler,
-		ReadHeaderTimeout: 10 * time.Second,
-	}
-
-	return fmt.Errorf("listen: %w", httpServer.ListenAndServe())
+// Handler returns the MCP SSE server as an http.Handler.
+// The caller is responsible for applying auth middleware.
+func (s *Server) Handler() http.Handler {
+	return s.sseServer
 }
 
-// authMiddleware validates the Bearer token on every request.
-func (s *Server) authMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		authHeader := r.Header.Get("Authorization")
-		if !strings.HasPrefix(authHeader, "Bearer ") {
-			http.Error(w, `{"error":"missing or invalid Authorization header"}`, http.StatusUnauthorized)
-			return
-		}
-		token := strings.TrimPrefix(authHeader, "Bearer ")
-		if token != s.apiToken {
-			http.Error(w, `{"error":"invalid API token"}`, http.StatusUnauthorized)
-			return
-		}
-		next.ServeHTTP(w, r)
-	})
+// APIToken returns the configured API token for Bearer auth.
+func (s *Server) APIToken() string {
+	return s.apiToken
+}
+
+// BearerAuthMiddleware returns middleware that validates Bearer token authentication.
+func BearerAuthMiddleware(token string) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			authHeader := r.Header.Get("Authorization")
+			if !strings.HasPrefix(authHeader, "Bearer ") {
+				http.Error(w, `{"error":"missing or invalid Authorization header"}`, http.StatusUnauthorized)
+				return
+			}
+			t := strings.TrimPrefix(authHeader, "Bearer ")
+			if t != token {
+				http.Error(w, `{"error":"invalid API token"}`, http.StatusUnauthorized)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }
 
 // registerBookTools registers book CRUD tools.

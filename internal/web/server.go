@@ -21,12 +21,15 @@ type Server struct {
 	httpServer     *http.Server
 	jobManager     *handlers.JobManager
 	sessionManager *middleware.SessionManager
+	mcpHandler     http.Handler // nil if MCP not enabled
 }
 
 // NewServer creates a new web server.
+// mcpHandler is optional — pass nil to disable MCP endpoints.
 func NewServer(
 	cfg *config.Config, port int, host string,
 	sessionSecret string, sessionRepo middleware.SessionRepository,
+	mcpHandler http.Handler,
 ) *Server {
 	r := chi.NewRouter()
 
@@ -41,6 +44,7 @@ func NewServer(
 		router:         r,
 		jobManager:     jobManager,
 		sessionManager: sessionManager,
+		mcpHandler:     mcpHandler,
 	}
 
 	// Set up middleware stack.

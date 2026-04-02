@@ -541,34 +541,19 @@ photo-sorter cache push-embeddings --json
 
 ---
 
-### mcp-serve
+### MCP Server (integrated into serve)
 
-Start the MCP (Model Context Protocol) server for AI agent integration. Exposes photo book management, photo/album/label operations, and AI text tools as MCP tools over HTTP SSE.
-
-```bash
-photo-sorter mcp-serve [flags]
-```
-
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `--port` | int | 8086 | Server port |
-| `--host` | string | 0.0.0.0 | Server host |
-
-**Environment Variables:**
-
-| Variable | Required | Description |
-|----------|----------|-------------|
-| `MCP_API_TOKEN` | Yes | Bearer token for MCP client authentication |
-| `DATABASE_URL` | Yes | PostgreSQL connection string |
-| `PHOTOPRISM_URL` | Yes | PhotoPrism instance URL |
-| `PHOTOPRISM_USERNAME` | Yes | PhotoPrism login username |
-| `PHOTOPRISM_PASSWORD` | Yes | PhotoPrism login password |
+The MCP (Model Context Protocol) server for AI agent integration is part of the `serve` command. When `MCP_API_TOKEN` is set, MCP endpoints are mounted at `/mcp/sse` and `/mcp/message` on the same HTTP server. If the token is not set, MCP routes are not registered.
 
 **Example:**
 ```bash
 export MCP_API_TOKEN=my-secret-token
-photo-sorter mcp-serve --port 8086
+photo-sorter serve --port 8085
+# MCP available at http://localhost:8085/mcp/sse
+# Web UI available at http://localhost:8085/
 ```
+
+MCP clients authenticate with `Authorization: Bearer <MCP_API_TOKEN>`.
 
 **Available Tools (48 total):**
 - **Books** (5): `list_books`, `get_book`, `create_book`, `update_book`, `delete_book`

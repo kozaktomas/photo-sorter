@@ -2495,9 +2495,9 @@ POST /text-versions/{id}/restore
 
 ## MCP Server
 
-A separate MCP (Model Context Protocol) server exposes photo book management as tools for AI agents.
+The MCP (Model Context Protocol) server is integrated into the `serve` command. When `MCP_API_TOKEN` is set, MCP endpoints are mounted at `/mcp/sse` and `/mcp/message` on the same HTTP server. If the token is not set, MCP routes are not registered.
 
-**Command:** `go run . mcp-serve [--port 8086] [--host 0.0.0.0]`
+**Endpoints:** `/mcp/sse` (SSE connection), `/mcp/message` (message posting)
 
 **Transport:** HTTP SSE (not stdio)
 

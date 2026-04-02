@@ -154,6 +154,11 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 		})
 	})
 
+	// MCP SSE server (optional, enabled when MCP_API_TOKEN is set).
+	if s.mcpHandler != nil {
+		s.router.Handle("/mcp/*", s.mcpHandler)
+	}
+
 	// Serve static files for frontend (SPA).
 	s.router.Get("/*", s.serveSPA)
 }

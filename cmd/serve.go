@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"os"
 	"os/signal"
 	"sync"
@@ -13,6 +14,8 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/config"
 	"github.com/kozaktomas/photo-sorter/internal/database"
 	"github.com/kozaktomas/photo-sorter/internal/database/postgres"
+	mcpserver "github.com/kozaktomas/photo-sorter/internal/mcp"
+	"github.com/kozaktomas/photo-sorter/internal/photoprism"
 	"github.com/kozaktomas/photo-sorter/internal/web"
 	"github.com/kozaktomas/photo-sorter/internal/web/handlers"
 	"github.com/spf13/cobra"
@@ -185,7 +188,21 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 
 	handlers.SetVersionInfo(Version, CommitSHA)
-	server := web.NewServer(cfg, port, host, sessionSecret, sessionRepo)
+
+	// Initialize MCP if API token is configured.
+	var mcpHandler http.Handler
+	if apiToken := os.Getenv("MCP_API_TOKEN"); apiToken != "" {
+		h, err := buildMCPHandler(ctx, cfg, apiToken)
+		if err != nil {
+			return err
+		}
+		mcpHandler = h
+		fmt.Println("MCP endpoint enabled at /mcp/sse")
+	} else {
+		fmt.Println("MCP_API_TOKEN not set, MCP endpoint disabled")
+	}
+
+	server := web.NewServer(cfg, port, host, sessionSecret, sessionRepo, mcpHandler)
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
@@ -203,4 +220,35 @@ func runServe(cmd *cobra.Command, args []string) error {
 	// Wait for shutdown goroutine to finish saving indexes and closing DB.
 	wg.Wait()
 	return nil
+}
+
+// buildMCPHandler creates an authenticated MCP HTTP handler.
+func buildMCPHandler(ctx context.Context, cfg *config.Config, apiToken string) (http.Handler, error) {
+	pp, err := photoprism.NewPhotoPrism(cfg.PhotoPrism.URL, cfg.PhotoPrism.Username, cfg.PhotoPrism.GetPassword())
+	if err != nil {
+		return nil, fmt.Errorf("failed to create PhotoPrism session for MCP: %w", err)
+	}
+
+	bookWriter, err := database.GetBookWriter(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("MCP: %w", err)
+	}
+	tvStore, err := database.GetTextVersionStore(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("MCP: %w", err)
+	}
+	tcStore, err := database.GetTextCheckStore(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("MCP: %w", err)
+	}
+	embReader, err := database.GetEmbeddingReader(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("MCP: %w", err)
+	}
+
+	mcpSrv := mcpserver.NewServer(
+		Version, bookWriter, tvStore, tcStore, embReader,
+		pp, cfg, apiToken, "/mcp",
+	)
+	return mcpserver.BearerAuthMiddleware(apiToken)(mcpSrv.Handler()), nil
 }

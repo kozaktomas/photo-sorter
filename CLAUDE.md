@@ -196,7 +196,7 @@ Environment variables (loaded from `.env`):
 - `HNSW_INDEX_PATH` (optional, path to persist face HNSW index, e.g., `/data/faces.pg.hnsw`)
 - `HNSW_EMBEDDING_INDEX_PATH` (optional, path to persist embedding HNSW index, e.g., `/data/embeddings.pg.hnsw`)
 - `PHOTOPRISM_DATABASE_URL` (optional, MariaDB DSN for direct database access, e.g., `photoprism:photoprism@tcp(mariadb:3306)/photoprism`)
-- `MCP_API_TOKEN` (required for `mcp-serve`, Bearer token for MCP client authentication)
+- `MCP_API_TOKEN` (optional, enables MCP endpoint at `/mcp/sse` on the `serve` command; Bearer token for MCP client authentication)
 
 ### AI Provider API Calls
 
@@ -276,18 +276,14 @@ go run . cache compute-eras [flags]           # Compute CLIP era embedding centr
 
 ### MCP Server
 
-```bash
-go run . mcp-serve [flags]                    # Start MCP server for AI agents
-  --port 8086     Port to listen on (default: 8086)
-  --host 0.0.0.0  Host to bind to (default: 0.0.0.0)
-```
+The MCP server is integrated into the `serve` command. When `MCP_API_TOKEN` is set, MCP endpoints are mounted at `/mcp/sse` and `/mcp/message` on the same HTTP server. If the token is not set, MCP routes are simply not registered.
 
-Requires `MCP_API_TOKEN` environment variable. Exposes 48 MCP tools for photo book management, photo/album/label operations, and AI text tools over HTTP SSE. Server name: `photo-sorter-books`.
+Exposes 48 MCP tools for photo book management, photo/album/label operations, and AI text tools over HTTP SSE. Server name: `photo-sorter-books`. MCP clients authenticate with `Authorization: Bearer <MCP_API_TOKEN>`.
 
 **Package structure:**
 ```
 internal/mcp/
-├── server.go          # MCP server setup, auth middleware, lifecycle
+├── server.go          # MCP server setup, Bearer auth middleware, handler
 ├── books.go           # Book and chapter tool handlers
 ├── sections.go        # Section and section photo tool handlers
 ├── pages.go           # Page and slot tool handlers

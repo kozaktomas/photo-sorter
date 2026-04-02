@@ -241,7 +241,7 @@ Environment variables grouped by service:
 ### MCP Server
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `MCP_API_TOKEN` | Yes* | Bearer token for MCP client authentication (*required for `mcp-serve` command) |
+| `MCP_API_TOKEN` | No | Bearer token for MCP client authentication (enables MCP endpoint at `/mcp/sse` on `serve` command) |
 
 ## Error Handling Strategy
 
