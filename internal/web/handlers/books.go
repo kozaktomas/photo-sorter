@@ -1697,7 +1697,11 @@ func fetchPhotoNames(pp *photoprism.PhotoPrism, uids []string) map[string]photoN
 			continue
 		}
 		for _, p := range photos {
-			names[p.UID] = photoNameInfo{Title: p.Title, FileName: p.FileName}
+			fn := p.OriginalName
+			if fn == "" {
+				fn = p.FileName
+			}
+			names[p.UID] = photoNameInfo{Title: p.Title, FileName: fn}
 		}
 	}
 	return names
