@@ -229,13 +229,18 @@ func formatHeading(text string, level int, chapterColor string, bleedLeftMM, ble
 		}
 
 		totalBleed := bleedLeftMM + bleedRightMM
-		inner := fmt.Sprintf(
-			`\vspace{10pt}\hspace{%s}%s%s\textcolor{%s}{%s}\hspace{%s}\vspace{10pt}`,
-			leftPad, sizeCmd, fontCmd, textColor, text, rightPad,
-		)
+		// Use \makebox instead of \parbox to constrain height to a single line.
+		// \parbox allowed the colored box to expand vertically into adjacent photo slots.
+		// \rule[-6pt]{0pt}{30pt} is an invisible strut providing consistent vertical padding
+		// (24pt above baseline + 6pt below) for 18pt text.
 		box := fmt.Sprintf(
-			`{\fboxsep=0pt\noindent\hspace{-%.0fmm}\colorbox{chaptercolor}{\parbox{\dimexpr\linewidth+%.0fmm}{%s}}}`,
-			bleedLeftMM, totalBleed, inner,
+			`{\fboxsep=0pt\noindent\hspace{-%.0fmm}\colorbox{chaptercolor}{`+
+				`\makebox[\dimexpr\linewidth+%.0fmm][l]{`+
+				`\rule[-6pt]{0pt}{30pt}`+
+				`\hspace{%s}%s%s\textcolor{%s}{%s}\hspace{%s}`+
+				`}}}`,
+			bleedLeftMM, totalBleed,
+			leftPad, sizeCmd, fontCmd, textColor, text, rightPad,
 		)
 		return colorDef + "\n" + box + `\par\vspace{4mm}`
 	}

@@ -544,7 +544,7 @@ func TestMarkdownToLatexWithColor_BleedBothSides(t *testing.T) {
 	if !strings.Contains(got, `\hspace{-4mm}`) {
 		t.Errorf("expected 4mm left bleed, got %q", got)
 	}
-	if !strings.Contains(got, `\linewidth+8mm}`) {
+	if !strings.Contains(got, `\linewidth+8mm]`) {
 		t.Errorf("expected 8mm total bleed, got %q", got)
 	}
 	// Both sides have bleed → both use 16pt padding.
@@ -559,11 +559,11 @@ func TestMarkdownToLatexWithColor_BleedLeftOnly(t *testing.T) {
 	if !strings.Contains(got, `\hspace{-4mm}`) {
 		t.Errorf("expected 4mm left bleed, got %q", got)
 	}
-	if !strings.Contains(got, `\linewidth+4mm}`) {
+	if !strings.Contains(got, `\linewidth+4mm]`) {
 		t.Errorf("expected 4mm total bleed (left only), got %q", got)
 	}
 	// Right side has no bleed → 8pt padding.
-	if !strings.Contains(got, `\hspace{8pt}\vspace{10pt}`) {
+	if !strings.Contains(got, `{8pt}`) {
 		t.Errorf("expected 8pt right padding on non-bleed side, got %q", got)
 	}
 }
@@ -574,7 +574,7 @@ func TestMarkdownToLatexWithColor_BleedRightOnly(t *testing.T) {
 	if !strings.Contains(got, `\hspace{-0mm}`) {
 		t.Errorf("expected 0mm left bleed, got %q", got)
 	}
-	if !strings.Contains(got, `\linewidth+4mm}`) {
+	if !strings.Contains(got, `\linewidth+4mm]`) {
 		t.Errorf("expected 4mm total bleed (right only), got %q", got)
 	}
 	// Left side has no bleed → 8pt padding.
@@ -589,7 +589,7 @@ func TestMarkdownToLatexWithColor_NoBleed(t *testing.T) {
 	if !strings.Contains(got, `\hspace{-0mm}`) {
 		t.Errorf("expected 0mm left offset, got %q", got)
 	}
-	if !strings.Contains(got, `\linewidth+0mm}`) {
+	if !strings.Contains(got, `\linewidth+0mm]`) {
 		t.Errorf("expected 0mm total bleed, got %q", got)
 	}
 }
