@@ -65,7 +65,7 @@ func TestCollectPhotoUIDs(t *testing.T) {
 	})
 }
 
-// --- sortPagesBySectionOrder ---
+// --- SortPagesBySectionOrder ---
 
 func TestSortPagesBySectionOrder(t *testing.T) {
 	t.Run("single section", func(t *testing.T) {
@@ -74,7 +74,7 @@ func TestSortPagesBySectionOrder(t *testing.T) {
 			{ID: "p1", SectionID: "s1", SortOrder: 1},
 		}
 		sections := []database.BookSection{{ID: "s1"}}
-		sortPagesBySectionOrder(pages, sections)
+		SortPagesBySectionOrder(pages, sections)
 		if pages[0].ID != "p1" || pages[1].ID != "p2" {
 			t.Errorf("expected [p1, p2], got [%s, %s]", pages[0].ID, pages[1].ID)
 		}
@@ -86,7 +86,7 @@ func TestSortPagesBySectionOrder(t *testing.T) {
 			{ID: "p1", SectionID: "s1", SortOrder: 1},
 		}
 		sections := []database.BookSection{{ID: "s1"}, {ID: "s2"}}
-		sortPagesBySectionOrder(pages, sections)
+		SortPagesBySectionOrder(pages, sections)
 		if pages[0].ID != "p1" || pages[1].ID != "p2" {
 			t.Errorf("expected [p1, p2], got [%s, %s]", pages[0].ID, pages[1].ID)
 		}
@@ -99,7 +99,7 @@ func TestSortPagesBySectionOrder(t *testing.T) {
 			{ID: "p2", SectionID: "s1", SortOrder: 2},
 		}
 		sections := []database.BookSection{{ID: "s1"}}
-		sortPagesBySectionOrder(pages, sections)
+		SortPagesBySectionOrder(pages, sections)
 		if pages[0].ID != "p1" || pages[1].ID != "p2" || pages[2].ID != "p3" {
 			t.Errorf("expected [p1, p2, p3], got [%s, %s, %s]", pages[0].ID, pages[1].ID, pages[2].ID)
 		}
@@ -108,7 +108,7 @@ func TestSortPagesBySectionOrder(t *testing.T) {
 	t.Run("empty pages", func(t *testing.T) {
 		var pages []database.BookPage
 		sections := []database.BookSection{{ID: "s1"}}
-		sortPagesBySectionOrder(pages, sections) // should not panic
+		SortPagesBySectionOrder(pages, sections) // should not panic
 		if len(pages) != 0 {
 			t.Error("expected empty")
 		}

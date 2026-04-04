@@ -224,7 +224,7 @@ func GeneratePDFWithOptions(
 		return nil, nil, errors.New("book has no pages")
 	}
 
-	sortPagesBySectionOrder(pages, sections)
+	SortPagesBySectionOrder(pages, sections)
 	captions := buildCaptionMap(ctx, br, sections)
 	uidSet := collectPhotoUIDs(pages)
 
@@ -325,8 +325,8 @@ func lookupCaption(captions CaptionMap, sectionID, photoUID string) string {
 	return ""
 }
 
-// sortPagesBySectionOrder sorts pages by section order then sort_order.
-func sortPagesBySectionOrder(pages []database.BookPage, sections []database.BookSection) {
+// SortPagesBySectionOrder sorts pages by section order then sort_order.
+func SortPagesBySectionOrder(pages []database.BookPage, sections []database.BookSection) {
 	sectionOrder := make(map[string]int, len(sections))
 	for i, s := range sections {
 		sectionOrder[s.ID] = i
@@ -1104,10 +1104,12 @@ type SinglePageInput struct {
 	BookTitle    string
 	ChapterColor string // hex without # (e.g. "8B0000"), empty = no color
 	Captions     CaptionMap
+	PageNumber   int // actual page number in book (1-based); 0 = default to 1
 }
 
 // GenerateSinglePagePDF renders a single book page to PDF using the same layout as full book export.
-// The page is rendered as a recto (right-hand, odd) page for consistent margin preview.
+// When PageNumber is set, the page is rendered with the correct page number, margins, and side
+// (recto/verso) matching its position in the full book.
 func GenerateSinglePagePDF(
 	ctx context.Context, pp *photoprism.PhotoPrism, input SinglePageInput,
 ) ([]byte, error) {
@@ -1122,13 +1124,15 @@ func GenerateSinglePagePDF(
 	photos := downloadPhotos(ctx, pp, uidSet, tmpDir)
 	config := DefaultLayoutConfig()
 
+	pageNum := max(input.PageNumber, 1)
+
 	pb := &pageBuilder{
 		config:            config,
 		photos:            photos,
 		captions:          input.Captions,
-		totalContentPages: 1,
-		contentPageIdx:    0,
-		pageNumber:        0, // will become 1 (recto)
+		totalContentPages: pageNum,
+		contentPageIdx:    pageNum - 1,
+		pageNumber:        pageNum - 1, // incremented to pageNum below
 		photoSet:          make(map[string]bool),
 	}
 

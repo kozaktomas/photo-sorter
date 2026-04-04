@@ -1787,6 +1787,30 @@ func (h *BooksHandler) ExportPDF(w http.ResponseWriter, r *http.Request) {
 	writePDFResponse(w, pdfData, book.Title+suffix, report)
 }
 
+// computePageNumber determines a page's actual number in the full book sequence.
+// Returns 1 as fallback if pages or sections cannot be fetched.
+func computePageNumber(ctx context.Context, bw database.BookWriter, bookID, pageID, bookTitle string) int {
+	pages, err := bw.GetPages(ctx, bookID)
+	if err != nil {
+		return 1
+	}
+	sections, err := bw.GetSections(ctx, bookID)
+	if err != nil {
+		return 1
+	}
+	latex.SortPagesBySectionOrder(pages, sections)
+	for i, p := range pages {
+		if p.ID == pageID {
+			num := i + 1
+			if bookTitle != "" {
+				num++ // title page is page 1
+			}
+			return num
+		}
+	}
+	return 1
+}
+
 // resolveChapterColor follows section -> chapter -> color chain to find the chapter color.
 func resolveChapterColor(ctx context.Context, bw database.BookWriter, sectionID string) string {
 	if sectionID == "" {
@@ -1854,11 +1878,14 @@ func (h *BooksHandler) ExportPagePDF(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	actualPageNumber := computePageNumber(r.Context(), bw, page.BookID, pageID, book.Title)
+
 	pdfData, err := latex.GenerateSinglePagePDF(r.Context(), pp, latex.SinglePageInput{
 		Page:         *page,
 		BookTitle:    book.Title,
 		ChapterColor: resolveChapterColor(r.Context(), bw, page.SectionID),
 		Captions:     buildSectionCaptions(r.Context(), bw, page.SectionID),
+		PageNumber:   actualPageNumber,
 	})
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Sprintf("PDF generation failed: %v", err))
