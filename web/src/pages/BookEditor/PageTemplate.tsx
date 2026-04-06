@@ -2,7 +2,7 @@ import { useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { PageSlotComponent } from './PageSlot';
 import type { BookPage, SectionPhoto, PageFormat, PageStyle } from '../../types';
-import { pageFormatSlotCount, getGridClasses, getGridColumnStyle, getSlotClasses, getSlotPhotoUid, getSlotTextContent, getSlotCrop, getTextSlotPaddingClass, isMultiColumn, defaultSplitPosition } from '../../utils/pageFormats';
+import { pageFormatSlotCount, getGridClasses, getGridColumnStyle, getSlotClasses, getSlotPhotoUid, getSlotTextContent, getSlotCrop, getTextSlotPaddingClass, getSlotH1Bleed, isMultiColumn, defaultSplitPosition } from '../../utils/pageFormats';
 
 const ALL_PAGE_FORMATS: PageFormat[] = ['4_landscape', '2l_1p', '1p_2l', '2_portrait', '1_fullscreen'];
 
@@ -153,6 +153,7 @@ export function PageTemplate({ page, onClearSlot, sectionPhotos, onEditDescripti
           const sp = uid ? photoLookup.get(uid) : undefined;
           const slot = page.slots.find(s => s.slot_index === i);
           const slotFileName = slot?.file_name || sp?.file_name || '';
+          const bleed = getSlotH1Bleed(page.format, i);
           return (
             <PageSlotComponent
               key={i}
@@ -174,6 +175,8 @@ export function PageTemplate({ page, onClearSlot, sectionPhotos, onEditDescripti
               onEditText={textContent && onEditText ? () => onEditText(i) : undefined}
               onAddText={!uid && !textContent && onAddText ? () => onAddText(i) : undefined}
               chapterColor={chapterColor}
+              bleedLeft={bleed.left}
+              bleedRight={bleed.right}
               textPaddingClass={getTextSlotPaddingClass(page, i)}
               className={getSlotClasses(page.format, i)}
             />

@@ -123,11 +123,13 @@ body {
   background-color: var(--chapter-color);
   color: var(--chapter-text-color, #ffffff);
   font-family: 'Source Sans 3', sans-serif;
-  padding: 4px 16px;
-  margin-left: -4mm;
-  margin-right: -4mm;
-  width: calc(100% + 8mm);
+  padding: 6px 16px;
+  margin-left: var(--h1-bleed-left, -4mm);
+  margin-right: var(--h1-bleed-right, -4mm);
+  width: calc(100% - var(--h1-bleed-left, -4mm) - var(--h1-bleed-right, -4mm));
   box-sizing: border-box;
+  display: flex;
+  align-items: center;
 }
 .markdown-content h2 {
   font-family: 'Source Sans 3', sans-serif;
@@ -209,11 +211,13 @@ body {
   background-color: var(--chapter-color);
   color: var(--chapter-text-color, #ffffff);
   font-family: 'Source Sans 3', sans-serif;
-  padding: 4px 16px;
-  margin-left: -4mm;
-  margin-right: -4mm;
-  width: calc(100% + 8mm);
+  padding: 6px 16px;
+  margin-left: var(--h1-bleed-left, -4mm);
+  margin-right: var(--h1-bleed-right, -4mm);
+  width: calc(100% - var(--h1-bleed-left, -4mm) - var(--h1-bleed-right, -4mm));
   box-sizing: border-box;
+  display: flex;
+  align-items: center;
 }
 .wysiwyg-preview h2 {
   font-family: 'Source Sans 3', sans-serif;

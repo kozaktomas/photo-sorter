@@ -740,58 +740,61 @@ func (pb *pageBuilder) buildSlots(
 // textPadMM is the inner padding (mm) added to text slots adjacent to photos.
 const textPadMM = 4.0
 
-// isLeftColumn returns true if the slot index is in the left column for a given format.
-func isLeftColumn(format string, slotIndex int) bool {
-	// 1p_2l: slot 0 is left; 2l_1p: slots 0,1 are left.
-	if format == Format1P2L {
+// isSlotOnLeftEdge returns true if the slot touches the left page margin.
+func isSlotOnLeftEdge(format string, slotIndex int) bool {
+	switch format {
+	case FormatFullscreen:
+		return true
+	case Format2Portrait:
 		return slotIndex == 0
-	}
-	return slotIndex <= 1
-}
-
-// setDefaultBleed sets symmetric bleed on all text slots.
-func setDefaultBleed(slots []TemplateSlot) {
-	for i := range slots {
-		if slots[i].HasText {
-			slots[i].BleedLeftMM = textPadMM
-			slots[i].BleedRightMM = textPadMM
-		}
+	case Format4Landscape:
+		return slotIndex == 0 || slotIndex == 2
+	case Format1P2L:
+		return slotIndex == 0
+	case Format2L1P:
+		return slotIndex == 0 || slotIndex == 1
+	default:
+		return true
 	}
 }
 
-// applyTextSlotPadding adds horizontal padding to text slots that are adjacent
-// to photo slots in mixed layouts (1p_2l, 2l_1p). Also sets directional H1 bleed
-// so the colored heading box only extends towards the page edge, not into the gutter.
+// isSlotOnRightEdge returns true if the slot touches the right page margin.
+func isSlotOnRightEdge(format string, slotIndex int) bool {
+	switch format {
+	case FormatFullscreen:
+		return true
+	case Format2Portrait:
+		return slotIndex == 1
+	case Format4Landscape:
+		return slotIndex == 1 || slotIndex == 3
+	case Format1P2L:
+		return slotIndex == 1 || slotIndex == 2
+	case Format2L1P:
+		return slotIndex == 2
+	default:
+		return true
+	}
+}
+
+// applyTextSlotPadding sets directional H1 bleed and inner padding on text slots.
+// The colored heading box only extends towards page edges, never into adjacent slots.
 func applyTextSlotPadding(slots []TemplateSlot, format string) {
-	if format != Format1P2L && format != Format2L1P {
-		setDefaultBleed(slots)
-		return
-	}
-	hasPhoto := false
-	for i := range slots {
-		if slots[i].HasPhoto {
-			hasPhoto = true
-			break
-		}
-	}
-	if !hasPhoto {
-		setDefaultBleed(slots)
-		return
-	}
 	for i := range slots {
 		if !slots[i].HasText {
 			continue
 		}
-		if isLeftColumn(format, i) {
-			// Left column text: bleed left (page edge), not right (gutter).
-			slots[i].TextPadRight = textPadMM
+		onLeft := isSlotOnLeftEdge(format, i)
+		onRight := isSlotOnRightEdge(format, i)
+
+		if onLeft {
 			slots[i].BleedLeftMM = textPadMM
-			slots[i].BleedRightMM = 0
 		} else {
-			// Right column text: bleed right (page edge), not left (gutter).
 			slots[i].TextPadLeft = textPadMM
-			slots[i].BleedLeftMM = 0
+		}
+		if onRight {
 			slots[i].BleedRightMM = textPadMM
+		} else {
+			slots[i].TextPadRight = textPadMM
 		}
 	}
 }

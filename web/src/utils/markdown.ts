@@ -139,14 +139,18 @@ interface MarkdownContentProps {
   content: string;
   className?: string;
   chapterColor?: string;
+  bleedLeft?: boolean;
+  bleedRight?: boolean;
 }
 
-export function MarkdownContent({ content, className, chapterColor }: MarkdownContentProps) {
+export function MarkdownContent({ content, className, chapterColor, bleedLeft, bleedRight }: MarkdownContentProps) {
   const html = renderMarkdown(content);
   const style: Record<string, string> = {};
   if (chapterColor) {
     style['--chapter-color'] = chapterColor;
     style['--chapter-text-color'] = contrastTextColor(chapterColor);
+    style['--h1-bleed-left'] = bleedLeft !== false ? '-4mm' : '0';
+    style['--h1-bleed-right'] = bleedRight !== false ? '-4mm' : '0';
   }
   return React.createElement('div', {
     className: `markdown-content ${className || ''}`,

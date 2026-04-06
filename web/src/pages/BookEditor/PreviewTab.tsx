@@ -5,7 +5,7 @@ import { getThumbnailUrl } from '../../api/client';
 import { PhotoInfoOverlay } from './PhotoInfoOverlay';
 import { MarkdownContent } from '../../utils/markdown';
 import type { BookDetail, BookPage, SectionPhoto } from '../../types';
-import { pageFormatLabelKey, pageFormatSlotCount, getGridClasses, getGridColumnStyle, getSlotClasses, getSlotPhotoUid, getSlotTextContent, getSlotCrop, getTextSlotPaddingClass } from '../../utils/pageFormats';
+import { pageFormatLabelKey, pageFormatSlotCount, getGridClasses, getGridColumnStyle, getSlotClasses, getSlotPhotoUid, getSlotTextContent, getSlotCrop, getTextSlotPaddingClass, getSlotH1Bleed } from '../../utils/pageFormats';
 
 interface Props {
   book: BookDetail;
@@ -14,7 +14,7 @@ interface Props {
   initialPageId?: string | null;
 }
 
-function PreviewPageSlot({ photoUid, textContent, description, note, cropX, cropY, cropScale, chapterColor, textPaddingClass, className }: {
+function PreviewPageSlot({ photoUid, textContent, description, note, cropX, cropY, cropScale, chapterColor, bleedLeft, bleedRight, textPaddingClass, className }: {
   photoUid: string;
   textContent: string;
   description: string;
@@ -23,6 +23,8 @@ function PreviewPageSlot({ photoUid, textContent, description, note, cropX, crop
   cropY?: number;
   cropScale?: number;
   chapterColor?: string;
+  bleedLeft?: boolean;
+  bleedRight?: boolean;
   textPaddingClass?: string;
   className?: string;
 }) {
@@ -53,7 +55,7 @@ function PreviewPageSlot({ photoUid, textContent, description, note, cropX, crop
         </div>
       ) : textContent ? (
         <div className={`w-full h-full rounded p-4 ${textPaddingClass ?? ''}`}>
-          <MarkdownContent content={textContent} chapterColor={chapterColor} />
+          <MarkdownContent content={textContent} chapterColor={chapterColor} bleedLeft={bleedLeft} bleedRight={bleedRight} />
         </div>
       ) : (
         <div className="w-full h-full bg-slate-800 rounded flex items-center justify-center text-slate-600 text-xs">
@@ -83,6 +85,7 @@ function PreviewPageContent({ page, photoInfo, chapterColor, className }: {
         const textContent = getSlotTextContent(page, i);
         const { cropX, cropY, cropScale } = getSlotCrop(page, i);
         const info = uid ? photoInfo[uid] : undefined;
+        const bleed = getSlotH1Bleed(page.format, i);
         return (
           <PreviewPageSlot
             key={i}
@@ -94,6 +97,8 @@ function PreviewPageContent({ page, photoInfo, chapterColor, className }: {
             cropY={cropY}
             cropScale={cropScale}
             chapterColor={chapterColor}
+            bleedLeft={bleed.left}
+            bleedRight={bleed.right}
             textPaddingClass={getTextSlotPaddingClass(page, i)}
             className={getSlotClasses(page.format, i)}
           />

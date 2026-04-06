@@ -8,8 +8,11 @@ const (
 
 // Page format identifiers.
 const (
-	Format2L1P = "2l_1p"
-	Format1P2L = "1p_2l"
+	FormatFullscreen = "1_fullscreen"
+	Format2Portrait  = "2_portrait"
+	Format4Landscape = "4_landscape"
+	Format2L1P       = "2l_1p"
+	Format1P2L       = "1p_2l"
 )
 
 // LayoutConfig holds the 12-column grid and 3-zone page layout configuration.
@@ -92,13 +95,13 @@ func FormatSlotsGrid(format string, config LayoutConfig) []SlotRect {
 	rowGap := config.RowGapMM
 
 	switch format {
-	case "1_fullscreen":
+	case FormatFullscreen:
 		// Slot 0: cols 1-12, full canvas.
 		return []SlotRect{
 			{0, 0, cw, ch},
 		}
 
-	case "2_portrait":
+	case Format2Portrait:
 		// Slot 0: cols 1-6, full canvas.
 		// Slot 1: cols 7-12, full canvas.
 		return []SlotRect{
@@ -106,7 +109,7 @@ func FormatSlotsGrid(format string, config LayoutConfig) []SlotRect {
 			{halfW + gap, 0, halfW, ch},
 		}
 
-	case "4_landscape":
+	case Format4Landscape:
 		// Slot 0: cols 1-6, top row  |  Slot 1: cols 7-12, top row.
 		// Slot 2: cols 1-6, bottom   |  Slot 3: cols 7-12, bottom.
 		return []SlotRect{
@@ -148,7 +151,7 @@ func FormatSlotsGrid(format string, config LayoutConfig) []SlotRect {
 // FormatSlotsGridWithSplit returns slot rectangles using a custom split position.
 // When splitPosition is nil or the format is 1_fullscreen, it delegates to FormatSlotsGrid.
 func FormatSlotsGridWithSplit(format string, config LayoutConfig, splitPosition *float64) []SlotRect {
-	if splitPosition == nil || format == "1_fullscreen" {
+	if splitPosition == nil || format == FormatFullscreen {
 		return FormatSlotsGrid(format, config)
 	}
 
@@ -166,13 +169,13 @@ func FormatSlotsGridWithSplit(format string, config LayoutConfig, splitPosition 
 	rightX := leftW + gap
 
 	switch format {
-	case "2_portrait":
+	case Format2Portrait:
 		return []SlotRect{
 			{0, 0, leftW, ch},
 			{rightX, 0, rightW, ch},
 		}
 
-	case "4_landscape":
+	case Format4Landscape:
 		return []SlotRect{
 			{0, 0, leftW, halfH},
 			{rightX, 0, rightW, halfH},

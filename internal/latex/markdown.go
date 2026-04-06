@@ -230,13 +230,13 @@ func formatHeading(text string, level int, chapterColor string, bleedLeftMM, ble
 
 		totalBleed := bleedLeftMM + bleedRightMM
 		// Use \makebox instead of \parbox to constrain height to a single line.
-		// \parbox allowed the colored box to expand vertically into adjacent photo slots.
-		// \rule[-6pt]{0pt}{30pt} is an invisible strut providing consistent vertical padding
-		// (24pt above baseline + 6pt below) for 18pt text.
+		// \rule[-8.5pt]{0pt}{30pt} is an invisible strut providing consistent vertical padding.
+		// 8.5pt below baseline + 21.5pt above = 30pt total. For 18pt Source Sans 3 with
+		// cap height ~13pt, this gives ~8.5pt padding above and below — visually centered.
 		box := fmt.Sprintf(
 			`{\fboxsep=0pt\noindent\hspace{-%.0fmm}\colorbox{chaptercolor}{`+
 				`\makebox[\dimexpr\linewidth+%.0fmm][l]{`+
-				`\rule[-6pt]{0pt}{30pt}`+
+				`\rule[-8.5pt]{0pt}{30pt}`+
 				`\hspace{%s}%s%s\textcolor{%s}{%s}\hspace{%s}`+
 				`}}}`,
 			bleedLeftMM, totalBleed,

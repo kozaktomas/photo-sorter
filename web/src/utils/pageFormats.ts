@@ -102,6 +102,24 @@ export function getTextSlotPaddingClass(page: BookPage, slotIndex: number): stri
   return slotIndex <= 1 ? 'pr-4' : 'pl-4';
 }
 
+// Returns H1 bleed direction for a text slot. Mirrors isSlotOnLeftEdge/isSlotOnRightEdge in latex.go.
+export function getSlotH1Bleed(format: string, slotIndex: number): { left: boolean; right: boolean } {
+  switch (format) {
+    case '1_fullscreen':
+      return { left: true, right: true };
+    case '2_portrait':
+      return { left: slotIndex === 0, right: slotIndex === 1 };
+    case '4_landscape':
+      return { left: slotIndex === 0 || slotIndex === 2, right: slotIndex === 1 || slotIndex === 3 };
+    case '1p_2l':
+      return { left: slotIndex === 0, right: slotIndex === 1 || slotIndex === 2 };
+    case '2l_1p':
+      return { left: slotIndex === 0 || slotIndex === 1, right: slotIndex === 2 };
+    default:
+      return { left: true, right: true };
+  }
+}
+
 // Layout constants mirroring internal/latex/formats.go
 const CONTENT_WIDTH = 265; // 297 - 20 - 12
 const CANVAS_HEIGHT = 172;
