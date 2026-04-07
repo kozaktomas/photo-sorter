@@ -1,8 +1,9 @@
-import { useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { updateChapter } from '../../api/client';
-import { BOOK_TYPOGRAPHY, PAGE_DIMENSIONS } from '../../constants/bookTypography';
-import type { BookDetail } from '../../types';
+import { getFonts, updateBook, updateChapter } from '../../api/client';
+import { BOOK_TYPOGRAPHY, PAGE_DIMENSIONS, setFontRegistry, getBookTypographyCSSVars } from '../../constants/bookTypography';
+import type { BookDetail, FontInfo } from '../../types';
+import { loadFontByInfo } from '../../utils/fontLoader';
 import { MarkdownContent } from '../../utils/markdown';
 
 interface TypographyTabProps {
@@ -10,86 +11,243 @@ interface TypographyTabProps {
   onRefresh: () => void;
 }
 
-// ── Fonts Section ──────────────────────────────────────────────
+// ── Typography Settings Section ────────────────────────────────
 
-function FontsSection() {
+function useDebouncedSave() {
+  const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  return useCallback((fn: () => Promise<void>, delay: number) => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => void fn(), delay);
+  }, []);
+}
+
+function FontSelect({
+  label,
+  value,
+  fonts,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  fonts: FontInfo[];
+  onChange: (fontId: string) => void;
+}) {
   const { t } = useTranslation('pages');
-  const typo = BOOK_TYPOGRAPHY;
+  const serifFonts = fonts.filter(f => f.category === 'serif');
+  const sansFonts = fonts.filter(f => f.category === 'sans-serif');
+  const selectedFont = fonts.find(f => f.id === value);
+
+  return (
+    <div className="bg-slate-800/50 rounded-lg p-5 border border-slate-700">
+      <label className="text-sm font-medium text-slate-400 mb-2 block">{label}</label>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full px-3 py-2 bg-slate-900 border border-slate-600 rounded text-white text-sm focus:outline-none focus-visible:ring-1 focus-visible:ring-rose-500 mb-3"
+      >
+        <optgroup label={t('books.editor.typography.serif')}>
+          {serifFonts.map(f => (
+            <option key={f.id} value={f.id}>{f.display_name}</option>
+          ))}
+        </optgroup>
+        <optgroup label={t('books.editor.typography.sansSerif')}>
+          {sansFonts.map(f => (
+            <option key={f.id} value={f.id}>{f.display_name}</option>
+          ))}
+        </optgroup>
+      </select>
+      {selectedFont && (
+        <p
+          className="text-slate-200 leading-relaxed"
+          style={{
+            fontFamily: `'${selectedFont.display_name}', ${selectedFont.category}`,
+            fontSize: '11pt',
+            lineHeight: '15pt',
+          }}
+        >
+          {t('books.editor.typography.sampleText')}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function NumberInput({
+  label,
+  value,
+  min,
+  max,
+  step,
+  suffix,
+  onChange,
+}: {
+  label: string;
+  value: number;
+  min: number;
+  max: number;
+  step: number;
+  suffix?: string;
+  onChange: (value: number) => void;
+}) {
+  const [localValue, setLocalValue] = useState(value);
+
+  useEffect(() => { setLocalValue(value); }, [value]);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const v = parseFloat(e.target.value);
+    if (!isNaN(v)) {
+      setLocalValue(v);
+      onChange(v);
+    }
+  };
+
+  return (
+    <div>
+      <label className="text-xs text-slate-400 mb-1 block">{label}</label>
+      <div className="flex items-center gap-2">
+        <input
+          type="number"
+          value={localValue}
+          min={min}
+          max={max}
+          step={step}
+          onChange={handleChange}
+          className="w-full px-2 py-1.5 bg-slate-900 border border-slate-600 rounded text-white text-sm focus:outline-none focus-visible:ring-1 focus-visible:ring-rose-500"
+        />
+        {suffix && <span className="text-xs text-slate-500 shrink-0">{suffix}</span>}
+      </div>
+    </div>
+  );
+}
+
+function TypographySettingsSection({ book, onRefresh }: { book: BookDetail; onRefresh: () => void }) {
+  const { t } = useTranslation('pages');
+  const [fonts, setFonts] = useState<FontInfo[]>([]);
+  const [saving, setSaving] = useState(false);
+  const debouncedSave = useDebouncedSave();
+
+  // Load font registry
+  useEffect(() => {
+    getFonts().then(f => {
+      setFonts(f);
+      setFontRegistry(f);
+      // Preload current book's fonts
+      const bodyFont = f.find(x => x.id === book.body_font);
+      const headingFont = f.find(x => x.id === book.heading_font);
+      if (bodyFont) loadFontByInfo(bodyFont);
+      if (headingFont) loadFontByInfo(headingFont);
+    }).catch(() => { /* ignore font loading errors */ });
+  }, [book.body_font, book.heading_font]);
+
+  const handleFontChange = async (field: 'body_font' | 'heading_font', fontId: string) => {
+    const font = fonts.find(f => f.id === fontId);
+    if (font) loadFontByInfo(font);
+    setSaving(true);
+    try {
+      await updateBook(book.id, { [field]: fontId });
+      onRefresh();
+    } catch { /* silent */ } finally { setSaving(false); }
+  };
+
+  const handleNumberChange = (field: string, value: number) => {
+    debouncedSave(async () => {
+      setSaving(true);
+      try {
+        await updateBook(book.id, { [field]: value });
+        onRefresh();
+      } catch { /* silent */ } finally { setSaving(false); }
+    }, 500);
+  };
+
+  // Compute live preview CSS vars from current book state
+  const previewVars = getBookTypographyCSSVars(book);
+
+  if (!fonts.length) return null;
 
   return (
     <section>
-      <h2 className="text-lg font-semibold text-white mb-4">{t('books.editor.typography.fontsTitle')}</h2>
-      <div className="grid gap-6 md:grid-cols-2">
-        {/* Body text font */}
-        <div className="bg-slate-800/50 rounded-lg p-5 border border-slate-700">
-          <h3 className="text-sm font-medium text-slate-400 mb-1">{t('books.editor.typography.bodyTextFont')}</h3>
-          <div className="text-white font-semibold mb-3" style={{ fontFamily: typo.textSlot.fontFamily }}>
-            EB Garamond
-          </div>
-          <div className="grid grid-cols-3 gap-2 text-xs text-slate-400 mb-4">
-            <div>
-              <span className="text-slate-500">{t('books.editor.typography.fontSize')}:</span>{' '}
-              <span className="text-slate-300">{typo.textSlot.fontSize}</span>
-            </div>
-            <div>
-              <span className="text-slate-500">{t('books.editor.typography.lineHeight')}:</span>{' '}
-              <span className="text-slate-300">{typo.textSlot.lineHeight}</span>
-            </div>
-            <div>
-              <span className="text-slate-500">{t('books.editor.typography.fontWeight')}:</span>{' '}
-              <span className="text-slate-300">400, 700</span>
-            </div>
-          </div>
-          <p
-            className="text-slate-200 leading-relaxed"
-            style={{
-              fontFamily: typo.textSlot.fontFamily,
-              fontSize: typo.textSlot.fontSize,
-              lineHeight: typo.textSlot.lineHeight,
-            }}
-          >
-            {t('books.editor.typography.sampleText')}
-          </p>
-        </div>
+      <div className="flex items-center gap-3 mb-4">
+        <h2 className="text-lg font-semibold text-white">{t('books.editor.typography.fontsTitle')}</h2>
+        {saving && (
+          <span className="text-xs text-slate-500">{t('books.editor.typography.saving')}</span>
+        )}
+      </div>
 
-        {/* Heading font */}
-        <div className="bg-slate-800/50 rounded-lg p-5 border border-slate-700">
-          <h3 className="text-sm font-medium text-slate-400 mb-1">{t('books.editor.typography.headingFont')}</h3>
-          <div className="text-white font-semibold mb-3" style={{ fontFamily: typo.headingFontFamily }}>
-            Source Sans 3
-          </div>
-          <div className="grid grid-cols-2 gap-2 text-xs text-slate-400 mb-4">
-            <div>
-              <span className="text-slate-500">H1:</span>{' '}
-              <span className="text-slate-300">{typo.h1.fontSize} / {t('books.editor.typography.fontWeight')} {typo.h1.fontWeight}</span>
-            </div>
-            <div>
-              <span className="text-slate-500">H2:</span>{' '}
-              <span className="text-slate-300">{typo.h2.fontSize} / {t('books.editor.typography.fontWeight')} {typo.h2.fontWeight}</span>
-            </div>
-          </div>
-          <div className="space-y-3">
-            <div
-              style={{
-                fontFamily: typo.headingFontFamily,
-                fontSize: typo.h1.fontSize,
-                fontWeight: typo.h1.fontWeight,
-              }}
-              className="text-white"
-            >
-              Heading 1
-            </div>
-            <div
-              style={{
-                fontFamily: typo.headingFontFamily,
-                fontSize: typo.h2.fontSize,
-                fontWeight: typo.h2.fontWeight,
-              }}
-              className="text-white"
-            >
-              Heading 2
-            </div>
-          </div>
+      {/* Font selectors */}
+      <div className="grid gap-6 md:grid-cols-2 mb-6">
+        <FontSelect
+          label={t('books.editor.typography.bodyTextFont')}
+          value={book.body_font}
+          fonts={fonts}
+          onChange={(id) => void handleFontChange('body_font', id)}
+        />
+        <FontSelect
+          label={t('books.editor.typography.headingFont')}
+          value={book.heading_font}
+          fonts={fonts}
+          onChange={(id) => void handleFontChange('heading_font', id)}
+        />
+      </div>
+
+      {/* Size controls */}
+      <div className="grid gap-4 grid-cols-2 md:grid-cols-5 bg-slate-800/50 rounded-lg p-5 border border-slate-700 mb-6">
+        <NumberInput
+          label={t('books.editor.typography.fontSize')}
+          value={book.body_font_size}
+          min={6} max={36} step={0.5}
+          suffix="pt"
+          onChange={(v) => handleNumberChange('body_font_size', v)}
+        />
+        <NumberInput
+          label={t('books.editor.typography.lineHeight')}
+          value={book.body_line_height}
+          min={8} max={48} step={0.5}
+          suffix="pt"
+          onChange={(v) => handleNumberChange('body_line_height', v)}
+        />
+        <NumberInput
+          label={t('books.editor.typography.h1Size')}
+          value={book.h1_font_size}
+          min={6} max={36} step={1}
+          suffix="pt"
+          onChange={(v) => handleNumberChange('h1_font_size', v)}
+        />
+        <NumberInput
+          label={t('books.editor.typography.h2Size')}
+          value={book.h2_font_size}
+          min={6} max={36} step={1}
+          suffix="pt"
+          onChange={(v) => handleNumberChange('h2_font_size', v)}
+        />
+        <NumberInput
+          label={t('books.editor.typography.captionOpacity')}
+          value={Math.round(book.caption_opacity * 100)}
+          min={0} max={100} step={5}
+          suffix="%"
+          onChange={(v) => handleNumberChange('caption_opacity', v / 100)}
+        />
+        <NumberInput
+          label={t('books.editor.typography.captionFontSize')}
+          value={book.caption_font_size}
+          min={6} max={16} step={0.5}
+          suffix="pt"
+          onChange={(v) => handleNumberChange('caption_font_size', v)}
+        />
+      </div>
+
+      {/* Live preview */}
+      <div className="bg-slate-800/50 rounded-lg border border-slate-700 overflow-hidden">
+        <div className="px-5 py-3 border-b border-slate-700">
+          <h3 className="text-sm font-medium text-slate-400">{t('books.editor.typography.livePreview')}</h3>
+        </div>
+        <div
+          className="p-6 bg-white wysiwyg-preview"
+          style={previewVars as React.CSSProperties}
+        >
+          <MarkdownContent
+            content={`# ${t('books.editor.typography.previewHeading')}\n\n## ${t('books.editor.typography.previewSubheading')}\n\n${t('books.editor.typography.previewBody')}\n\n- First item\n- Second item\n\n> ${t('books.editor.typography.sampleText')}`}
+            className="wysiwyg-preview"
+          />
         </div>
       </div>
     </section>
@@ -297,7 +455,7 @@ function PageDimensionsSection() {
 export function TypographyTab({ book, onRefresh }: TypographyTabProps) {
   return (
     <div className="space-y-8 max-w-4xl">
-      <FontsSection />
+      <TypographySettingsSection book={book} onRefresh={onRefresh} />
       <ChapterColorsSection book={book} onRefresh={onRefresh} />
       <TextStylesSection />
       <PageDimensionsSection />

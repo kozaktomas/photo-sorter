@@ -13,7 +13,7 @@ A CLI tool and web interface for organizing photos in [PhotoPrism](https://photo
 - **Text-to-Image Search** - Search photos by text description with automatic Czech-to-English translation
 - **Face Recognition** - Detect faces, find matches across your library, and assign people
 - **Face Outlier Detection** - Find incorrectly assigned faces by computing distance from centroid
-- **Photo Books** - Create and manage photo book layouts with multiple page formats and chapter color themes
+- **Photo Books** - Create and manage photo book layouts with multiple page formats, chapter color themes, and customizable typography (20 Google Fonts, adjustable sizes and caption opacity)
 - **Era Estimation** - Estimate photo time periods using CLIP embedding comparison
 - **Duplicate Detection** - Find near-duplicate photos via embedding similarity
 - **Album Suggestions** - Find photos missing from albums via HNSW centroid search

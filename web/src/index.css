@@ -112,7 +112,7 @@ body {
   line-height: 1.5;
 }
 .markdown-content h1 {
-  font-family: 'Source Sans 3', sans-serif;
+  font-family: var(--book-heading-font, 'Source Sans 3', sans-serif);
   font-size: 1.375rem;
   font-weight: 700;
   color: #f8fafc; /* slate-50 */
@@ -122,7 +122,7 @@ body {
 .markdown-content[style*="--chapter-color"] h1 {
   background-color: var(--chapter-color);
   color: var(--chapter-text-color, #ffffff);
-  font-family: 'Source Sans 3', sans-serif;
+  font-family: var(--book-heading-font, 'Source Sans 3', sans-serif);
   padding: 6px 16px;
   margin-left: var(--h1-bleed-left, -4mm);
   margin-right: var(--h1-bleed-right, -4mm);
@@ -132,15 +132,16 @@ body {
   align-items: center;
 }
 .markdown-content h2 {
-  font-family: 'Source Sans 3', sans-serif;
-  font-size: 1.1875rem;
-  font-weight: 600;
+  font-family: var(--book-heading-font, 'Source Sans 3', sans-serif);
+  font-size: 1.0625rem;
+  font-weight: 700;
   color: #f1f5f9; /* slate-100 */
   margin: 0 0 0.375rem;
 }
 .markdown-content h3 {
-  font-size: 1.0625rem;
-  font-weight: 600;
+  font-family: var(--book-heading-font, 'Source Sans 3', sans-serif);
+  font-size: 1rem;
+  font-weight: 700;
   color: #f1f5f9;
   margin: 0 0 0.25rem;
 }
@@ -190,9 +191,9 @@ body {
 
 /* WYSIWYG print preview — matches PDF output typography */
 .wysiwyg-preview {
-  font-family: 'EB Garamond', serif;
-  font-size: 13pt;
-  line-height: 16pt;
+  font-family: var(--book-body-font, 'PT Serif', serif);
+  font-size: var(--book-body-size, 11pt);
+  line-height: var(--book-body-line-height, 15pt);
   color: #1a1a1a;
   background: white;
   text-align: justify;
@@ -200,17 +201,18 @@ body {
   word-wrap: break-word;
 }
 .wysiwyg-preview h1 {
-  font-family: 'Source Sans 3', sans-serif;
-  font-size: 18pt;
+  font-family: var(--book-heading-font, 'Source Sans 3', sans-serif);
+  font-size: var(--book-h1-size, 18pt);
   font-weight: 700;
   line-height: 1.2;
   margin: 0 0 4mm;
+  color: #1a1a1a;
 }
 /* Chapter color override for H1 headings in print preview */
 .wysiwyg-preview[style*="--chapter-color"] h1 {
   background-color: var(--chapter-color);
   color: var(--chapter-text-color, #ffffff);
-  font-family: 'Source Sans 3', sans-serif;
+  font-family: var(--book-heading-font, 'Source Sans 3', sans-serif);
   padding: 6px 16px;
   margin-left: var(--h1-bleed-left, -4mm);
   margin-right: var(--h1-bleed-right, -4mm);
@@ -220,17 +222,20 @@ body {
   align-items: center;
 }
 .wysiwyg-preview h2 {
-  font-family: 'Source Sans 3', sans-serif;
-  font-size: 15pt;
+  font-family: var(--book-heading-font, 'Source Sans 3', sans-serif);
+  font-size: var(--book-h2-size, 13pt);
   font-weight: 700;
   line-height: 1.2;
   margin: 0 0 4mm;
+  color: #1a1a1a;
 }
 .wysiwyg-preview h3 {
-  font-size: 13pt;
+  font-family: var(--book-heading-font, 'Source Sans 3', sans-serif);
+  font-size: 11pt;
   font-weight: 700;
   line-height: 1.2;
   margin: 0 0 2mm;
+  color: #1a1a1a;
 }
 .wysiwyg-preview p {
   margin: 0 0 4mm;

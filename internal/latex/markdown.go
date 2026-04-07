@@ -30,6 +30,24 @@ var (
 	alignRightRe  = regexp.MustCompile(`^->\s*(.*?)\s*->$`)
 )
 
+// TypographyConfig holds per-book heading sizes for LaTeX rendering.
+type TypographyConfig struct {
+	H1Size    float64 // pt, e.g. 18.0
+	H1Leading float64 // pt, e.g. 22.0
+	H2Size    float64 // pt, e.g. 13.0
+	H2Leading float64 // pt, e.g. 16.0
+}
+
+// DefaultTypographyConfig returns the default heading sizes.
+func DefaultTypographyConfig() TypographyConfig {
+	return TypographyConfig{
+		H1Size:    DefaultH1FontSize,
+		H1Leading: 22.0,
+		H2Size:    DefaultH2FontSize,
+		H2Leading: 16.0,
+	}
+}
+
 // MarkdownToLatex converts a subset of Markdown to LaTeX.
 //
 // Supported syntax:.
@@ -45,7 +63,7 @@ var (
 //   - blank line      → \par\vspace{4mm}
 //   - plain text      → escaped text (backward compatible)
 func MarkdownToLatex(md string) string {
-	return markdownToLatexInternal(md, "")
+	return markdownToLatexInternal(md, "", DefaultTypographyConfig())
 }
 
 // MarkdownToLatexWithColor converts Markdown to LaTeX with chapter color applied to H1 headings.
@@ -53,11 +71,16 @@ func MarkdownToLatex(md string) string {
 // bleedLeftMM/bleedRightMM control how far the colored H1 box extends beyond the text column
 // on each side (mm). Use 4,4 for full-width; 4,0 for left-column text; 0,4 for right-column text.
 func MarkdownToLatexWithColor(md, chapterColor string, bleedLeftMM, bleedRightMM float64) string {
-	return markdownToLatexInternal(md, chapterColor, bleedLeftMM, bleedRightMM)
+	return markdownToLatexInternal(md, chapterColor, DefaultTypographyConfig(), bleedLeftMM, bleedRightMM)
+}
+
+// MarkdownToLatexWithTypography converts Markdown to LaTeX with chapter color and custom typography.
+func MarkdownToLatexWithTypography(md, chapterColor string, bleedL, bleedR float64, typo TypographyConfig) string {
+	return markdownToLatexInternal(md, chapterColor, typo, bleedL, bleedR)
 }
 
 //nolint:funlen,gocognit,cyclop // Sequential markdown transformation pipeline.
-func markdownToLatexInternal(md, chapterColor string, bleed ...float64) string {
+func markdownToLatexInternal(md, chapterColor string, typo TypographyConfig, bleed ...float64) string {
 	bleedL, bleedR := 4.0, 4.0
 	if len(bleed) >= 2 {
 		bleedL, bleedR = bleed[0], bleed[1]
@@ -85,14 +108,14 @@ func markdownToLatexInternal(md, chapterColor string, bleed ...float64) string {
 
 		// Heading ## (must check before #).
 		if text, ok := strings.CutPrefix(trimmed, "## "); ok {
-			out = append(out, formatHeading(text, 2, "", 0, 0))
+			out = append(out, formatHeading(text, 2, "", 0, 0, typo))
 			i++
 			continue
 		}
 
 		// Heading #.
 		if text, ok := strings.CutPrefix(trimmed, "# "); ok {
-			out = append(out, formatHeading(text, 1, chapterColor, bleedL, bleedR))
+			out = append(out, formatHeading(text, 1, chapterColor, bleedL, bleedR, typo))
 			i++
 			continue
 		}
@@ -197,20 +220,22 @@ func contrastTextColorLatex(bgHex string) string {
 }
 
 // formatHeading formats a heading line with an explicit font size.
-// H1 (level 1) = 18pt, H2 (level 2) = 15pt. Line spacing is 1.2× the font size.
-// H1 uses \sffamily to render in Source Sans 3 (the sans-serif font).
+// H1 (level 1) and H2 (level 2) sizes come from TypographyConfig.
+// All headings use \sffamily for contrast with the serif body text.
 // If chapterColor is non-empty (hex without #), H1 renders with a colored background
 // and auto-selected text color based on background luminance.
 // bleedLeftMM/bleedRightMM control how far the colored box extends beyond linewidth on each side.
-func formatHeading(text string, level int, chapterColor string, bleedLeftMM, bleedRightMM float64) string {
+func formatHeading(
+	text string, level int, chapterColor string,
+	bleedLeftMM, bleedRightMM float64, typo TypographyConfig,
+) string {
 	text = inlineFormat(latexEscapeRaw(text))
 	text = czechTypography(text)
 
-	sizeCmd := `\fontsize{15}{18}\selectfont`
-	fontCmd := `\bfseries `
+	sizeCmd := fmt.Sprintf(`\fontsize{%.0f}{%.0f}\selectfont`, typo.H2Size, typo.H2Leading)
+	fontCmd := `\sffamily\bfseries `
 	if level == 1 {
-		sizeCmd = `\fontsize{18}{22}\selectfont`
-		fontCmd = `\sffamily\bfseries `
+		sizeCmd = fmt.Sprintf(`\fontsize{%.0f}{%.0f}\selectfont`, typo.H1Size, typo.H1Leading)
 	}
 
 	if level == 1 && chapterColor != "" {
@@ -229,17 +254,18 @@ func formatHeading(text string, level int, chapterColor string, bleedLeftMM, ble
 		}
 
 		totalBleed := bleedLeftMM + bleedRightMM
-		// Use \makebox instead of \parbox to constrain height to a single line.
-		// \rule[-8.5pt]{0pt}{30pt} is an invisible strut providing consistent vertical padding.
-		// 8.5pt below baseline + 21.5pt above = 30pt total. For 18pt Source Sans 3 with
-		// cap height ~13pt, this gives ~8.5pt padding above and below — visually centered.
+		// Scale the strut proportionally to H1 font size.
+		// Reference: 18pt → strut depth 8.5pt, height 30pt.
+		strutDepth := 8.5 * (typo.H1Size / 18.0)
+		strutHeight := 30.0 * (typo.H1Size / 18.0)
 		box := fmt.Sprintf(
 			`{\fboxsep=0pt\noindent\hspace{-%.0fmm}\colorbox{chaptercolor}{`+
 				`\makebox[\dimexpr\linewidth+%.0fmm][l]{`+
-				`\rule[-8.5pt]{0pt}{30pt}`+
+				`\rule[-%.1fpt]{0pt}{%.1fpt}`+
 				`\hspace{%s}%s%s\textcolor{%s}{%s}\hspace{%s}`+
 				`}}}`,
 			bleedLeftMM, totalBleed,
+			strutDepth, strutHeight,
 			leftPad, sizeCmd, fontCmd, textColor, text, rightPad,
 		)
 		return colorDef + "\n" + box + `\par\vspace{4mm}`

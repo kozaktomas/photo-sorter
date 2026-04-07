@@ -1,10 +1,12 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { BookOpen, ArrowLeft, Pencil, Trash2, Check, X, Download, BarChart3 } from 'lucide-react';
-import { updateBook, deleteBook, exportBookPDF, preflightBook } from '../../api/client';
+import { updateBook, deleteBook, exportBookPDF, preflightBook, getFonts } from '../../api/client';
 import type { PreflightResponse } from '../../types';
 import { LoadingState } from '../../components/LoadingState';
+import { setFontRegistry, getBookTypographyCSSVars } from '../../constants/bookTypography';
+import { loadFontByInfo } from '../../utils/fontLoader';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useBookData } from './hooks/useBookData';
 import { BookStatsPanel } from './BookStatsPanel';
@@ -87,6 +89,24 @@ export function BookEditorPage() {
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, [handleTabChange]);
+
+  // Load font registry and book's fonts for preview
+  useEffect(() => {
+    if (!book) return;
+    getFonts().then(fonts => {
+      setFontRegistry(fonts);
+      const bodyFont = fonts.find(f => f.id === book.body_font);
+      const headingFont = fonts.find(f => f.id === book.heading_font);
+      if (bodyFont) loadFontByInfo(bodyFont);
+      if (headingFont) loadFontByInfo(headingFont);
+    }).catch(() => { /* ignore font loading errors */ });
+  }, [book?.body_font, book?.heading_font]);
+
+  // CSS variables for typography inheritance by all child components
+  const typographyVars = useMemo(
+    () => (book ? getBookTypographyCSSVars(book) : {}),
+    [book],
+  );
 
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState('');
@@ -296,6 +316,7 @@ export function BookEditorPage() {
 
             {showStats && <BookStatsPanel book={book} sectionPhotos={sectionPhotos} />}
 
+            <div style={typographyVars as React.CSSProperties}>
             {activeTab === 'sections' && (
               <SectionsTab
                 book={book}
@@ -340,6 +361,7 @@ export function BookEditorPage() {
                 onRefresh={refresh}
               />
             )}
+            </div>
           </>
         )}
       </LoadingState>

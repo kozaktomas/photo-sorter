@@ -532,6 +532,11 @@ func TestAddDPIWarnings(t *testing.T) {
 
 // --- buildTemplateData ---
 
+// dummySlot returns a minimal non-empty slot so the page is not skipped as empty.
+func dummySlot() []database.PageSlot {
+	return []database.PageSlot{{SlotIndex: 0, TextContent: "x"}}
+}
+
 func TestBuildTemplateData(t *testing.T) {
 	t.Run("single section single page", func(t *testing.T) {
 		groups := []sectionGroup{
@@ -543,7 +548,7 @@ func TestBuildTemplateData(t *testing.T) {
 		photos := map[string]photoImage{
 			"photo1": {path: "/tmp/photo1.jpg", width: 3840, height: 2160},
 		}
-		data, report := buildTemplateData(groups, photos, nil, DefaultLayoutConfig(), "")
+		data, report := buildTemplateData(groups, photos, nil, DefaultLayoutConfig(), nil)
 
 		if len(data.Sections) != 1 {
 			t.Fatalf("expected 1 section, got %d", len(data.Sections))
@@ -562,10 +567,10 @@ func TestBuildTemplateData(t *testing.T) {
 	t.Run("title page added when bookTitle set", func(t *testing.T) {
 		groups := []sectionGroup{
 			{sectionID: "s1", title: "S1", pages: []database.BookPage{
-				{ID: "p1", SectionID: "s1", Format: "1_fullscreen"},
+				{ID: "p1", SectionID: "s1", Format: "1_fullscreen", Slots: dummySlot()},
 			}},
 		}
-		data, report := buildTemplateData(groups, nil, nil, DefaultLayoutConfig(), "My Book")
+		data, report := buildTemplateData(groups, nil, nil, DefaultLayoutConfig(), &database.PhotoBook{Title: "My Book"})
 
 		if data.BookTitle != "My Book" {
 			t.Errorf("expected book title 'My Book', got '%s'", data.BookTitle)
@@ -585,10 +590,10 @@ func TestBuildTemplateData(t *testing.T) {
 	t.Run("no title page without bookTitle", func(t *testing.T) {
 		groups := []sectionGroup{
 			{sectionID: "s1", title: "S1", pages: []database.BookPage{
-				{ID: "p1", SectionID: "s1", Format: "1_fullscreen"},
+				{ID: "p1", SectionID: "s1", Format: "1_fullscreen", Slots: dummySlot()},
 			}},
 		}
-		_, report := buildTemplateData(groups, nil, nil, DefaultLayoutConfig(), "")
+		_, report := buildTemplateData(groups, nil, nil, DefaultLayoutConfig(), nil)
 		if report.PageCount != 1 {
 			t.Errorf("expected 1 page (no title), got %d", report.PageCount)
 		}
@@ -597,13 +602,13 @@ func TestBuildTemplateData(t *testing.T) {
 	t.Run("multi-section", func(t *testing.T) {
 		groups := []sectionGroup{
 			{sectionID: "s1", title: "A", pages: []database.BookPage{
-				{ID: "p1", SectionID: "s1", Format: "1_fullscreen"},
+				{ID: "p1", SectionID: "s1", Format: "1_fullscreen", Slots: dummySlot()},
 			}},
 			{sectionID: "s2", title: "B", pages: []database.BookPage{
-				{ID: "p2", SectionID: "s2", Format: "1_fullscreen"},
+				{ID: "p2", SectionID: "s2", Format: "1_fullscreen", Slots: dummySlot()},
 			}},
 		}
-		data, report := buildTemplateData(groups, nil, nil, DefaultLayoutConfig(), "")
+		data, report := buildTemplateData(groups, nil, nil, DefaultLayoutConfig(), nil)
 
 		if len(data.Sections) != 2 {
 			t.Fatalf("expected 2 sections, got %d", len(data.Sections))
@@ -619,12 +624,12 @@ func TestBuildTemplateData(t *testing.T) {
 	t.Run("page numbering and recto-verso", func(t *testing.T) {
 		groups := []sectionGroup{
 			{sectionID: "s1", title: "S1", pages: []database.BookPage{
-				{ID: "p1", SectionID: "s1", Format: "1_fullscreen"},
-				{ID: "p2", SectionID: "s1", Format: "1_fullscreen"},
-				{ID: "p3", SectionID: "s1", Format: "1_fullscreen"},
+				{ID: "p1", SectionID: "s1", Format: "1_fullscreen", Slots: dummySlot()},
+				{ID: "p2", SectionID: "s1", Format: "1_fullscreen", Slots: dummySlot()},
+				{ID: "p3", SectionID: "s1", Format: "1_fullscreen", Slots: dummySlot()},
 			}},
 		}
-		data, _ := buildTemplateData(groups, nil, nil, DefaultLayoutConfig(), "")
+		data, _ := buildTemplateData(groups, nil, nil, DefaultLayoutConfig(), nil)
 
 		pages := data.Sections[0].Pages
 		if pages[0].PageNumber != 1 || pages[1].PageNumber != 2 || pages[2].PageNumber != 3 {
@@ -649,7 +654,7 @@ func TestBuildTemplateData(t *testing.T) {
 					Slots: []database.PageSlot{{SlotIndex: 0, PhotoUID: "missing"}}},
 			}},
 		}
-		data, report := buildTemplateData(groups, nil, nil, DefaultLayoutConfig(), "")
+		data, report := buildTemplateData(groups, nil, nil, DefaultLayoutConfig(), nil)
 		slot := data.Sections[0].Pages[0].Slots[0]
 		if slot.HasPhoto {
 			t.Error("expected HasPhoto=false for missing photo")
@@ -662,12 +667,12 @@ func TestBuildTemplateData(t *testing.T) {
 	t.Run("titled section uses full canvas height", func(t *testing.T) {
 		groups := []sectionGroup{
 			{sectionID: "s1", title: "My Section", pages: []database.BookPage{
-				{ID: "p1", SectionID: "s1", Format: "1_fullscreen"},
-				{ID: "p2", SectionID: "s1", Format: "1_fullscreen"},
+				{ID: "p1", SectionID: "s1", Format: "1_fullscreen", Slots: dummySlot()},
+				{ID: "p2", SectionID: "s1", Format: "1_fullscreen", Slots: dummySlot()},
 			}},
 		}
 		cfg := DefaultLayoutConfig()
-		data, _ := buildTemplateData(groups, nil, nil, cfg, "")
+		data, _ := buildTemplateData(groups, nil, nil, cfg, nil)
 		pages := data.Sections[0].Pages
 		// Both pages should use the full canvas top Y (no section heading reduction).
 		expectedCanvasTopY := PageH - cfg.TopMarginMM - cfg.HeaderHeightMM
@@ -692,7 +697,7 @@ func TestBuildTemplateData(t *testing.T) {
 		photos := map[string]photoImage{
 			"same": {path: "/tmp/same.jpg", width: 2000, height: 3000},
 		}
-		_, report := buildTemplateData(groups, photos, nil, DefaultLayoutConfig(), "")
+		_, report := buildTemplateData(groups, photos, nil, DefaultLayoutConfig(), nil)
 		if report.PhotoCount != 1 {
 			t.Errorf("expected 1 unique photo, got %d", report.PhotoCount)
 		}

@@ -97,6 +97,8 @@ type TemplateSlot struct {
 	// Bleed towards the page edge (outside), not towards the gutter (adjacent photo column).
 	BleedLeftMM  float64
 	BleedRightMM float64
+	// RaggedRight: use left-aligned text instead of justified (for narrow columns).
+	RaggedRight bool
 	// Caption marker (1-based; 0 = no marker).
 	CaptionMarker        int
 	CaptionMarkerX       float64 // bottom-left X of marker rect
@@ -145,8 +147,22 @@ type TemplateData struct {
 	BookTitle       string
 	PageW           float64
 	PageH           float64
+	SinglePage      bool // true for single-page export (oneside, no blank pages)
 	DebugOverlay    bool
 	DebugColOffsets []float64 // relative X offsets for column left edges
+
+	// Typography settings (from per-book configuration).
+	BodyFontLatex    string  // fontspec font name, e.g. "PT Serif"
+	HeadingFontLatex string  // fontspec font name, e.g. "Source Sans 3"
+	BodyFontSize     float64 // e.g. 11.0
+	BodyLineHeight   float64 // e.g. 15.0
+	H1FontSize       float64 // e.g. 18.0
+	H1Leading        float64 // e.g. 22.0
+	H2FontSize       float64 // e.g. 13.0
+	H2Leading        float64 // e.g. 16.0
+	CaptionOpacity   int     // 0-100 for LaTeX black!N notation
+	CaptionFontSize  float64 // e.g. 9.0
+	CaptionLeading   float64 // e.g. 11.0
 }
 
 // photoImage holds downloaded photo data for dimension lookup.
@@ -237,7 +253,7 @@ func GeneratePDFWithOptions(
 	photos := downloadPhotos(ctx, pp, uidSet, tmpDir)
 	groups := groupPagesBySection(pages, sections, chapters)
 	config := DefaultLayoutConfig()
-	data, report := buildTemplateData(groups, photos, captions, config, book.Title)
+	data, report := buildTemplateData(groups, photos, captions, config, book)
 
 	if debug {
 		applyDebugOverlay(&data, config)
@@ -380,7 +396,7 @@ func groupPagesBySection(
 // buildTemplateData constructs the template data and export report.
 func buildTemplateData(
 	groups []sectionGroup, photos map[string]photoImage,
-	captions CaptionMap, config LayoutConfig, bookTitle string,
+	captions CaptionMap, config LayoutConfig, book *database.PhotoBook,
 ) (TemplateData, *ExportReport) {
 	pb := &pageBuilder{
 		config:   config,
@@ -390,6 +406,11 @@ func buildTemplateData(
 	}
 	for _, g := range groups {
 		pb.totalContentPages += len(g.pages)
+	}
+
+	bookTitle := ""
+	if book != nil {
+		bookTitle = book.Title
 	}
 
 	// Title page counts as page 1 when book has a title.
@@ -407,11 +428,25 @@ func buildTemplateData(
 		tmplSections = append(tmplSections, pb.buildSection(g))
 	}
 
+	// Resolve typography from book settings with fallbacks to defaults.
+	typo := resolveBookTypography(book)
+
 	return TemplateData{
-			Sections:  tmplSections,
-			BookTitle: bookTitle,
-			PageW:     PageW,
-			PageH:     PageH,
+			Sections:         tmplSections,
+			BookTitle:        bookTitle,
+			PageW:            PageW,
+			PageH:            PageH,
+			BodyFontLatex:    typo.bodyFontLatex,
+			HeadingFontLatex: typo.headingFontLatex,
+			BodyFontSize:     typo.bodyFontSize,
+			BodyLineHeight:   typo.bodyLineHeight,
+			H1FontSize:       typo.h1FontSize,
+			H1Leading:        typo.h1Leading,
+			H2FontSize:       typo.h2FontSize,
+			H2Leading:        typo.h2Leading,
+			CaptionOpacity:   typo.captionOpacity,
+			CaptionFontSize:  typo.captionFontSize,
+			CaptionLeading:   typo.captionLeading,
 		}, &ExportReport{
 			BookTitle:  bookTitle,
 			PageCount:  pb.pageNumber,
@@ -420,10 +455,98 @@ func buildTemplateData(
 		}
 }
 
+// resolvedTypography holds resolved font/size values with defaults applied.
+type resolvedTypography struct {
+	bodyFontLatex    string
+	headingFontLatex string
+	bodyFontSize     float64
+	bodyLineHeight   float64
+	h1FontSize       float64
+	h1Leading        float64
+	h2FontSize       float64
+	h2Leading        float64
+	captionOpacity   int
+	captionFontSize  float64
+	captionLeading   float64
+}
+
+// resolveBookTypography resolves typography settings from a PhotoBook with fallbacks.
+func resolveBookTypography(book *database.PhotoBook) resolvedTypography {
+	rt := resolvedTypography{
+		bodyFontLatex:    "PT Serif",
+		headingFontLatex: "Source Sans 3",
+		bodyFontSize:     DefaultBodyFontSize,
+		bodyLineHeight:   DefaultBodyLineHeight,
+		h1FontSize:       DefaultH1FontSize,
+		h2FontSize:       DefaultH2FontSize,
+		captionOpacity:   int(DefaultCaptionOpacity * 100),
+		captionFontSize:  DefaultCaptionFontSize,
+	}
+
+	if book != nil {
+		applyBookFonts(&rt, book)
+		applyBookSizes(&rt, book)
+	}
+
+	rt.h1Leading = math.Ceil(rt.h1FontSize * 1.22)
+	rt.h2Leading = math.Ceil(rt.h2FontSize * 1.23)
+	rt.captionLeading = math.Ceil(rt.captionFontSize * 1.22)
+	return rt
+}
+
+// applyBookFonts overrides font names from book settings when available.
+func applyBookFonts(rt *resolvedTypography, book *database.PhotoBook) {
+	if f, ok := GetFont(book.BodyFont); ok && f.LatexName != "" {
+		rt.bodyFontLatex = f.LatexName
+	}
+	if f, ok := GetFont(book.HeadingFont); ok && f.LatexName != "" {
+		rt.headingFontLatex = f.LatexName
+	}
+}
+
+// applyBookSizes overrides font sizes and opacity from book settings when set.
+func applyBookSizes(rt *resolvedTypography, book *database.PhotoBook) {
+	if book.BodyFontSize > 0 {
+		rt.bodyFontSize = book.BodyFontSize
+	}
+	if book.BodyLineHeight > 0 {
+		rt.bodyLineHeight = book.BodyLineHeight
+	}
+	if book.H1FontSize > 0 {
+		rt.h1FontSize = book.H1FontSize
+	}
+	if book.H2FontSize > 0 {
+		rt.h2FontSize = book.H2FontSize
+	}
+	if book.CaptionOpacity > 0 {
+		rt.captionOpacity = int(book.CaptionOpacity * 100)
+	}
+	if book.CaptionFontSize > 0 {
+		rt.captionFontSize = book.CaptionFontSize
+	}
+}
+
+// isPageEmpty returns true if a page has no content (no photos, no text in any slot).
+func isPageEmpty(p database.BookPage) bool {
+	if len(p.Slots) == 0 {
+		return true
+	}
+	for _, s := range p.Slots {
+		if s.PhotoUID != "" || s.TextContent != "" {
+			return false
+		}
+	}
+	return true
+}
+
 // buildSection builds a TemplateSection and accumulates report data.
 func (pb *pageBuilder) buildSection(g sectionGroup) TemplateSection {
 	tmplPages := make([]TemplatePage, 0, len(g.pages))
 	for _, p := range g.pages {
+		if isPageEmpty(p) {
+			pb.totalContentPages-- // adjust total so IsLast works correctly
+			continue
+		}
 		pb.contentPageIdx++
 		pb.pageNumber++
 		tmplPages = append(tmplPages, pb.buildContentPage(p, g.chapterColor))
@@ -832,14 +955,22 @@ func latexEscape(s string) string {
 
 // compileLatex writes the template and runs lualatex, returning the PDF bytes.
 func compileLatex(ctx context.Context, data TemplateData, tmpDir string) ([]byte, error) {
+	typoConfig := TypographyConfig{
+		H1Size:    data.H1FontSize,
+		H1Leading: data.H1Leading,
+		H2Size:    data.H2FontSize,
+		H2Leading: data.H2Leading,
+	}
 	funcMap := template.FuncMap{
-		"latexEscape":          latexEscape,
-		"markdownToLatex":      MarkdownToLatex,
-		"markdownToLatexColor": MarkdownToLatexWithColor,
-		"addFloat":             func(a, b float64) float64 { return a + b },
-		"subtractFloat":        func(a, b float64) float64 { return a - b },
-		"mulFloat":             func(a, b float64) float64 { return a * b },
-		"divFloat":             func(a, b float64) float64 { return a / b },
+		"latexEscape":     latexEscape,
+		"markdownToLatex": MarkdownToLatex,
+		"markdownToLatexColor": func(md, color string, bleedL, bleedR float64) string {
+			return MarkdownToLatexWithTypography(md, color, bleedL, bleedR, typoConfig)
+		},
+		"addFloat":      func(a, b float64) float64 { return a + b },
+		"subtractFloat": func(a, b float64) float64 { return a - b },
+		"mulFloat":      func(a, b float64) float64 { return a * b },
+		"divFloat":      func(a, b float64) float64 { return a / b },
 	}
 	tmpl, err := template.New("book.tex").Funcs(funcMap).ParseFS(templateFS, "templates/book.tex")
 	if err != nil {
@@ -1104,8 +1235,8 @@ func setEnvVars(environ []string, vars map[string]string) []string {
 // SinglePageInput holds context needed to render a single page as PDF.
 type SinglePageInput struct {
 	Page         database.BookPage
-	BookTitle    string
-	ChapterColor string // hex without # (e.g. "8B0000"), empty = no color
+	Book         *database.PhotoBook // book with typography settings (nil = defaults)
+	ChapterColor string              // hex without # (e.g. "8B0000"), empty = no color
 	Captions     CaptionMap
 	PageNumber   int // actual page number in book (1-based); 0 = default to 1
 }
@@ -1143,14 +1274,28 @@ func GenerateSinglePagePDF(
 	pb.pageNumber++
 	tmplPage := pb.buildContentPage(input.Page, input.ChapterColor)
 
+	typo := resolveBookTypography(input.Book)
+
 	data := TemplateData{
 		Sections: []TemplateSection{{
 			Title: "",
 			Pages: []TemplatePage{tmplPage},
 		}},
-		BookTitle: "", // no title page for single-page export
-		PageW:     PageW,
-		PageH:     PageH,
+		SinglePage:       true,
+		BookTitle:        "", // no title page for single-page export
+		PageW:            PageW,
+		PageH:            PageH,
+		BodyFontLatex:    typo.bodyFontLatex,
+		HeadingFontLatex: typo.headingFontLatex,
+		BodyFontSize:     typo.bodyFontSize,
+		BodyLineHeight:   typo.bodyLineHeight,
+		H1FontSize:       typo.h1FontSize,
+		H1Leading:        typo.h1Leading,
+		H2FontSize:       typo.h2FontSize,
+		H2Leading:        typo.h2Leading,
+		CaptionOpacity:   typo.captionOpacity,
+		CaptionFontSize:  typo.captionFontSize,
+		CaptionLeading:   typo.captionLeading,
 	}
 
 	pdfData, err := compileLatex(ctx, data, tmpDir)

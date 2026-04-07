@@ -140,7 +140,7 @@ This is a CLI tool that sorts photos in PhotoPrism using AI providers. Built wit
 - **internal/database/** - PostgreSQL storage with pgvector for embeddings and faces data
 - **internal/facematch/** - Face matching utilities (IoU computation, bbox conversion, name normalization, marker matching)
 - **internal/constants/** - Shared constants (page sizes, thresholds, concurrency, upload limits)
-- **internal/latex/** - PDF export via LaTeX (markdown-to-LaTeX, layout validation, 12-column grid, templates)
+- **internal/latex/** - PDF export via LaTeX (markdown-to-LaTeX, layout validation, 12-column grid, font registry, templates)
 - **internal/web/** - Web server with Chi router, REST API handlers, and SSE for real-time updates
 - **web/** - React + TypeScript + TailwindCSS frontend (built with Vite, i18n with Czech + English)
 
@@ -319,10 +319,10 @@ internal/database/
     ├── sessions.go     # Session persistence for web auth
     ├── text_versions.go   # TextVersionStore implementation
     ├── text_checks.go     # TextCheckStore implementation
-    └── migrations/     # SQL migrations 001-019 (embedded)
+    └── migrations/     # SQL migrations 001-022 (embedded)
 ```
 
-**Tables:** `embeddings` (768-dim CLIP), `faces` (512-dim ResNet100 with cached PhotoPrism marker data), `era_embeddings` (768-dim CLIP text centroids), `faces_processed` (tracking), `sessions` (with `user_uid` for upload support across restarts), `photo_books`, `book_chapters` (migration 016, with `color` column added in migration 020 for per-chapter color themes), `book_sections` (with optional `chapter_id`), `section_photos`, `book_pages` (with `split_position` for adjustable column splits in mixed formats), `page_slots` (with `text_content` for text-only slots, `crop_x`/`crop_y`/`crop_scale` for per-photo crop control, mutually exclusive with `photo_uid`), `text_versions` (migration 017, version history for text fields), `text_check_results` (migration 019, persisted AI text check results with content hash for stale detection).
+**Tables:** `embeddings` (768-dim CLIP), `faces` (512-dim ResNet100 with cached PhotoPrism marker data), `era_embeddings` (768-dim CLIP text centroids), `faces_processed` (tracking), `sessions` (with `user_uid` for upload support across restarts), `photo_books` (with typography settings: `body_font`, `heading_font`, `body_font_size`, `body_line_height`, `h1_font_size`, `h2_font_size`, `caption_opacity`, `caption_font_size` added in migrations 021-022), `book_chapters` (migration 016, with `color` column added in migration 020 for per-chapter color themes), `book_sections` (with optional `chapter_id`), `section_photos`, `book_pages` (with `split_position` for adjustable column splits in mixed formats), `page_slots` (with `text_content` for text-only slots, `crop_x`/`crop_y`/`crop_scale` for per-photo crop control, mutually exclusive with `photo_uid`), `text_versions` (migration 017, version history for text fields), `text_check_results` (migration 019, persisted AI text check results with content hash for stale detection).
 
 **Face name normalization:** `GetFacesBySubjectName` normalizes names via `facematch.NormalizePersonName` (remove diacritics, lowercase, dashes→spaces) using the `unaccent` PostgreSQL extension.
 
@@ -457,7 +457,8 @@ Session cookies use `HttpOnly`, `SameSite=Strict`, and auto-detect `Secure` flag
 - `GET /api/v1/books` - List all photo books
 - `POST /api/v1/books` - Create a new book
 - `GET /api/v1/books/{id}` - Get book detail with chapters, sections, and pages
-- `PUT /api/v1/books/{id}` - Update book (title, description)
+- `PUT /api/v1/books/{id}` - Update book (title, description, typography settings)
+- `GET /api/v1/fonts` - List available fonts for book typography
 - `DELETE /api/v1/books/{id}` - Delete book (cascades to chapters, sections, pages, slots)
 - `POST /api/v1/books/{id}/chapters` - Create chapter in a book
 - `PUT /api/v1/books/{id}/chapters/reorder` - Reorder chapters
@@ -519,6 +520,7 @@ web/src/
 │   └── StatsGrid.tsx          # Stats display grid (configurable columns/colors)
 ├── constants/
 │   ├── actions.ts             # Face action styling (i18n label keys, colors)
+│   ├── bookTypography.ts      # Typography CSS defaults, font registry, CSS variable helpers
 │   ├── index.ts               # Magic numbers and defaults
 │   └── pageConfig.ts          # Book page format configuration
 ├── hooks/                     # Global hooks
@@ -533,6 +535,7 @@ web/src/
 │   └── locales/{cs,en}/       # common.json, forms.json, pages.json
 ├── utils/
 │   ├── clipboard.ts           # Clipboard copy utility
+│   ├── fontLoader.ts          # Google Fonts CSS loader (deduplicates, display=swap)
 │   ├── markdown.ts            # Markdown-to-HTML renderer (marked.js + DOMPurify)
 │   └── pageFormats.ts         # Book page format helpers
 ├── pages/                     # Page components
@@ -558,13 +561,13 @@ web/src/
 │   ├── Duplicates/            # Near-duplicate detection
 │   ├── Compare/               # Side-by-side comparison (hooks/useCompareState.ts)
 │   ├── Books/                 # Photo books list
-│   ├── BookEditor/            # Book editor (sections, pages, preview, texts, duplicates)
+│   ├── BookEditor/            # Book editor (sections, pages, preview, typography, texts, duplicates)
 │   │   ├── hooks/useBookData.ts, hooks/useUndoRedo.ts
 │   │   ├── BookStatsPanel.tsx, KeyboardShortcutsHelp.tsx
 │   │   ├── SectionsTab.tsx, SectionSidebar.tsx, SectionPhotoPool.tsx
 │   │   ├── PagesTab.tsx, PageSidebar.tsx, PageMinimap.tsx, PageTemplate.tsx, PageSlot.tsx
 │   │   ├── UnassignedPool.tsx, PreviewTab.tsx, PreviewModal.tsx
-│   │   ├── TextsTab.tsx, DuplicatesTab.tsx
+│   │   ├── TypographyTab.tsx, TextsTab.tsx, DuplicatesTab.tsx
 │   │   ├── PhotoBrowserModal.tsx, PhotoDescriptionDialog.tsx
 │   │   └── PhotoActionOverlay.tsx, PhotoInfoOverlay.tsx
 │   ├── Slideshow/             # Photo slideshow (hooks/useSlideshow.ts, useSlideshowPhotos.ts)
@@ -593,7 +596,7 @@ internal/web/handlers/
 ├── face_match.go, face_apply.go                # Face matching and applying
 ├── face_outliers.go, face_photos.go            # Outlier detection, photo faces
 ├── face_helpers.go                             # Shared face helpers
-├── books.go                                    # BooksHandler: books, chapters, sections, pages, slots
+├── books.go                                    # BooksHandler: books, chapters, sections, pages, slots, fonts
 ├── text.go                                     # TextHandler: AI text check, rewrite, consistency, check-and-save
 ├── text_versions.go                            # TextVersionsHandler: text version history and restore
 └── jobs.go                                     # Sort job status
@@ -601,7 +604,7 @@ internal/web/handlers/
 
 **Photo Book Database:**
 
-Tables: `photo_books`, `book_chapters` (with optional `color` for per-chapter theme, migration 020), `book_sections` (with optional `chapter_id`), `section_photos`, `book_pages`, `page_slots` (migration 008, extended by 009-013, 015, plus crop/split/chapter features). Hierarchy: Book > Chapters (optional) > Sections > Pages > Slots. Slots hold either `photo_uid` or `text_content` (mutually exclusive via CHECK constraint) with `crop_x`/`crop_y` for crop positioning (0.0-1.0, default 0.5) and `crop_scale` for zoom level (0.1-1.0, default 1.0). Pages have a `style` field (`modern`/`archival`, migration 013) and `split_position` for adjustable column splits in `2l_1p`/`1p_2l` formats (0.2-0.8, default 0.5).
+Tables: `photo_books` (with typography: `body_font`, `heading_font`, `body_font_size`, `body_line_height`, `h1_font_size`, `h2_font_size`, `caption_opacity`, `caption_font_size` — migrations 021-022), `book_chapters` (with optional `color` for per-chapter theme, migration 020), `book_sections` (with optional `chapter_id`), `section_photos`, `book_pages`, `page_slots` (migration 008, extended by 009-013, 015, plus crop/split/chapter features). Hierarchy: Book > Chapters (optional) > Sections > Pages > Slots. Slots hold either `photo_uid` or `text_content` (mutually exclusive via CHECK constraint) with `crop_x`/`crop_y` for crop positioning (0.0-1.0, default 0.5) and `crop_scale` for zoom level (0.1-1.0, default 1.0). Pages have a `style` field (`modern`/`archival`, migration 013) and `split_position` for adjustable column splits in `2l_1p`/`1p_2l` formats (0.2-0.8, default 0.5).
 
 Page formats: `4_landscape` (4 slots), `2l_1p` (3 slots), `1p_2l` (3 slots), `2_portrait` (2 slots), `1_fullscreen` (1 slot). Layout uses a 12-column grid with 3 fixed zones (header 4mm / canvas 172mm / footer 8mm) and asymmetric margins (inside 20mm / outside 12mm). Mixed formats support adjustable split position via `split_position`.
 

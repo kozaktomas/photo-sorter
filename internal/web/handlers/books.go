@@ -56,14 +56,22 @@ type bookResponse struct {
 }
 
 type bookDetailResponse struct {
-	ID          string            `json:"id"`
-	Title       string            `json:"title"`
-	Description string            `json:"description"`
-	Chapters    []chapterResponse `json:"chapters"`
-	Sections    []sectionResponse `json:"sections"`
-	Pages       []pageResponse    `json:"pages"`
-	CreatedAt   string            `json:"created_at"`
-	UpdatedAt   string            `json:"updated_at"`
+	ID              string            `json:"id"`
+	Title           string            `json:"title"`
+	Description     string            `json:"description"`
+	BodyFont        string            `json:"body_font"`
+	HeadingFont     string            `json:"heading_font"`
+	BodyFontSize    float64           `json:"body_font_size"`
+	BodyLineHeight  float64           `json:"body_line_height"`
+	H1FontSize      float64           `json:"h1_font_size"`
+	H2FontSize      float64           `json:"h2_font_size"`
+	CaptionOpacity  float64           `json:"caption_opacity"`
+	CaptionFontSize float64           `json:"caption_font_size"`
+	Chapters        []chapterResponse `json:"chapters"`
+	Sections        []sectionResponse `json:"sections"`
+	Pages           []pageResponse    `json:"pages"`
+	CreatedAt       string            `json:"created_at"`
+	UpdatedAt       string            `json:"updated_at"`
 }
 
 type chapterResponse struct {
@@ -143,6 +151,13 @@ func (h *BooksHandler) GetPhotoBookMemberships(w http.ResponseWriter, r *http.Re
 		}
 	}
 	respondJSON(w, http.StatusOK, result)
+}
+
+// --- Fonts ---
+
+// ListFonts handles GET /api/v1/fonts and returns all available fonts for book typography.
+func (h *BooksHandler) ListFonts(w http.ResponseWriter, r *http.Request) {
+	respondJSON(w, http.StatusOK, latex.AllFonts())
 }
 
 // --- Books CRUD ---
@@ -252,31 +267,7 @@ func (h *BooksHandler) GetBook(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, resp)
 }
 
-func buildBookDetailResponse(
-	book *database.PhotoBook, chapters []database.BookChapter,
-	sections []database.BookSection, pages []database.BookPage,
-) bookDetailResponse {
-	chapterResps := make([]chapterResponse, len(chapters))
-	for i, c := range chapters {
-		chapterResps[i] = chapterResponse{
-			ID:        c.ID,
-			Title:     c.Title,
-			Color:     c.Color,
-			SortOrder: c.SortOrder,
-		}
-	}
-
-	sectionResps := make([]sectionResponse, len(sections))
-	for i, s := range sections {
-		sectionResps[i] = sectionResponse{
-			ID:         s.ID,
-			ChapterID:  s.ChapterID,
-			Title:      s.Title,
-			SortOrder:  s.SortOrder,
-			PhotoCount: s.PhotoCount,
-		}
-	}
-
+func buildPageResponses(pages []database.BookPage) []pageResponse {
 	pageResps := make([]pageResponse, len(pages))
 	for i := range pages {
 		p := &pages[i]
@@ -302,16 +293,51 @@ func buildBookDetailResponse(
 			Slots:         slots,
 		}
 	}
+	return pageResps
+}
+
+func buildBookDetailResponse(
+	book *database.PhotoBook, chapters []database.BookChapter,
+	sections []database.BookSection, pages []database.BookPage,
+) bookDetailResponse {
+	chapterResps := make([]chapterResponse, len(chapters))
+	for i, c := range chapters {
+		chapterResps[i] = chapterResponse{
+			ID:        c.ID,
+			Title:     c.Title,
+			Color:     c.Color,
+			SortOrder: c.SortOrder,
+		}
+	}
+
+	sectionResps := make([]sectionResponse, len(sections))
+	for i, s := range sections {
+		sectionResps[i] = sectionResponse{
+			ID:         s.ID,
+			ChapterID:  s.ChapterID,
+			Title:      s.Title,
+			SortOrder:  s.SortOrder,
+			PhotoCount: s.PhotoCount,
+		}
+	}
 
 	return bookDetailResponse{
-		ID:          book.ID,
-		Title:       book.Title,
-		Description: book.Description,
-		Chapters:    chapterResps,
-		Sections:    sectionResps,
-		Pages:       pageResps,
-		CreatedAt:   book.CreatedAt.Format("2006-01-02T15:04:05Z"),
-		UpdatedAt:   book.UpdatedAt.Format("2006-01-02T15:04:05Z"),
+		ID:              book.ID,
+		Title:           book.Title,
+		Description:     book.Description,
+		BodyFont:        book.BodyFont,
+		HeadingFont:     book.HeadingFont,
+		BodyFontSize:    book.BodyFontSize,
+		BodyLineHeight:  book.BodyLineHeight,
+		H1FontSize:      book.H1FontSize,
+		H2FontSize:      book.H2FontSize,
+		CaptionOpacity:  book.CaptionOpacity,
+		CaptionFontSize: book.CaptionFontSize,
+		Chapters:        chapterResps,
+		Sections:        sectionResps,
+		Pages:           buildPageResponses(pages),
+		CreatedAt:       book.CreatedAt.Format("2006-01-02T15:04:05Z"),
+		UpdatedAt:       book.UpdatedAt.Format("2006-01-02T15:04:05Z"),
 	}
 }
 
@@ -328,7 +354,87 @@ func enrichSlotPhotoNames(resp *bookDetailResponse, names map[string]photoNameIn
 	}
 }
 
-// UpdateBook handles PUT /api/v1/books/:id and updates a book's title and description.
+type bookUpdateRequest struct {
+	Title           *string  `json:"title"`
+	Description     *string  `json:"description"`
+	BodyFont        *string  `json:"body_font"`
+	HeadingFont     *string  `json:"heading_font"`
+	BodyFontSize    *float64 `json:"body_font_size"`
+	BodyLineHeight  *float64 `json:"body_line_height"`
+	H1FontSize      *float64 `json:"h1_font_size"`
+	H2FontSize      *float64 `json:"h2_font_size"`
+	CaptionOpacity  *float64 `json:"caption_opacity"`
+	CaptionFontSize *float64 `json:"caption_font_size"`
+}
+
+// applyTo validates and applies the update request fields to a book.
+// Returns an error message string if validation fails, or "" on success.
+func (req *bookUpdateRequest) applyTo(book *database.PhotoBook) string {
+	if req.Title != nil {
+		book.Title = *req.Title
+	}
+	if req.Description != nil {
+		book.Description = *req.Description
+	}
+	if msg := req.applyFonts(book); msg != "" {
+		return msg
+	}
+	return req.applySizes(book)
+}
+
+func (req *bookUpdateRequest) applyFonts(book *database.PhotoBook) string {
+	if req.BodyFont != nil {
+		if !latex.ValidateFont(*req.BodyFont) {
+			return "invalid body_font"
+		}
+		book.BodyFont = *req.BodyFont
+	}
+	if req.HeadingFont != nil {
+		if !latex.ValidateFont(*req.HeadingFont) {
+			return "invalid heading_font"
+		}
+		book.HeadingFont = *req.HeadingFont
+	}
+	return ""
+}
+
+func (req *bookUpdateRequest) applySizes(book *database.PhotoBook) string {
+	ranges := []struct {
+		val    *float64
+		lo, hi float64
+		name   string
+		target *float64
+	}{
+		{req.BodyFontSize, 6, 36, "body_font_size", &book.BodyFontSize},
+		{req.BodyLineHeight, 8, 48, "body_line_height", &book.BodyLineHeight},
+		{req.H1FontSize, 6, 36, "h1_font_size", &book.H1FontSize},
+		{req.H2FontSize, 6, 36, "h2_font_size", &book.H2FontSize},
+		{req.CaptionOpacity, 0, 1, "caption_opacity", &book.CaptionOpacity},
+		{req.CaptionFontSize, 6, 36, "caption_font_size", &book.CaptionFontSize},
+	}
+	for _, r := range ranges {
+		if msg := validateRange(r.val, r.lo, r.hi, r.name); msg != "" {
+			return msg
+		}
+		if r.val != nil {
+			*r.target = *r.val
+		}
+	}
+	return ""
+}
+
+// validateRange checks that *v (if non-nil) is within [lo, hi].
+func validateRange(v *float64, lo, hi float64, name string) string {
+	if v == nil {
+		return ""
+	}
+	if *v < lo || *v > hi {
+		return fmt.Sprintf("%s must be between %.1f and %.1f", name, lo, hi)
+	}
+	return ""
+}
+
+// UpdateBook handles PUT /api/v1/books/:id and updates a book's title, description, and typography.
 func (h *BooksHandler) UpdateBook(w http.ResponseWriter, r *http.Request) {
 	bw := getBookWriter(r, w)
 	if bw == nil {
@@ -340,19 +446,14 @@ func (h *BooksHandler) UpdateBook(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusNotFound, "book not found")
 		return
 	}
-	var req struct {
-		Title       *string `json:"title"`
-		Description *string `json:"description"`
-	}
+	var req bookUpdateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return
 	}
-	if req.Title != nil {
-		book.Title = *req.Title
-	}
-	if req.Description != nil {
-		book.Description = *req.Description
+	if msg := req.applyTo(book); msg != "" {
+		respondError(w, http.StatusBadRequest, msg)
+		return
 	}
 	if err := bw.UpdateBook(r.Context(), book); err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to update book")
@@ -1882,7 +1983,7 @@ func (h *BooksHandler) ExportPagePDF(w http.ResponseWriter, r *http.Request) {
 
 	pdfData, err := latex.GenerateSinglePagePDF(r.Context(), pp, latex.SinglePageInput{
 		Page:         *page,
-		BookTitle:    book.Title,
+		Book:         book,
 		ChapterColor: resolveChapterColor(r.Context(), bw, page.SectionID),
 		Captions:     buildSectionCaptions(r.Context(), bw, page.SectionID),
 		PageNumber:   actualPageNumber,

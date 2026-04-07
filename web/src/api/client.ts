@@ -33,6 +33,7 @@ import type {
   PhotoAlbumMembership,
   PreflightResponse,
   TextVersion,
+  FontInfo,
 } from '../types';
 
 const API_BASE = '/api/v1';
@@ -564,11 +565,29 @@ export async function getBook(id: string): Promise<BookDetail> {
   return request<BookDetail>(`/books/${id}`);
 }
 
-export async function updateBook(id: string, updates: { title?: string; description?: string }): Promise<void> {
+export async function updateBook(id: string, updates: {
+  title?: string;
+  description?: string;
+  body_font?: string;
+  heading_font?: string;
+  body_font_size?: number;
+  body_line_height?: number;
+  h1_font_size?: number;
+  h2_font_size?: number;
+  caption_opacity?: number;
+  caption_font_size?: number;
+}): Promise<void> {
   await request(`/books/${id}`, {
     method: 'PUT',
     body: JSON.stringify(updates),
   });
+}
+
+// Fonts
+export async function getFonts(): Promise<FontInfo[]> {
+  const resp = await fetch('/api/v1/fonts', { credentials: 'include' });
+  if (!resp.ok) throw new Error('Failed to fetch fonts');
+  return resp.json() as Promise<FontInfo[]>;
 }
 
 export async function deleteBook(id: string): Promise<void> {

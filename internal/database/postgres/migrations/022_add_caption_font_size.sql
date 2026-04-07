@@ -1,0 +1,1 @@
+ALTER TABLE photo_books ADD COLUMN IF NOT EXISTS caption_font_size REAL NOT NULL DEFAULT 9.0;

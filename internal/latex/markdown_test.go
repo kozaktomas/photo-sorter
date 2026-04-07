@@ -19,7 +19,7 @@ func TestMarkdownToLatex_Headings(t *testing.T) {
 		{
 			name:     "h2",
 			input:    "## Subheading",
-			contains: []string{`{\fontsize{15}{18}\selectfont\bfseries Subheading}\par\vspace{4mm}`},
+			contains: []string{`{\fontsize{13}{16}\selectfont\sffamily\bfseries Subheading}\par\vspace{4mm}`},
 		},
 	}
 

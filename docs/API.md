@@ -1678,6 +1678,36 @@ interface UsageInfo {
 
 **Slot crop control:** Each photo slot has `crop_x` and `crop_y` fields (0.0-1.0, default 0.5) that control the crop center position, and a `crop_scale` field (0.1-1.0, default 1.0) that controls the zoom level (1.0 = fill one axis, lower = zoom in). Use `PUT /pages/{id}/slots/{index}/crop` to adjust.
 
+### Fonts
+
+#### List Available Fonts
+
+```
+GET /fonts
+```
+
+Returns all fonts available for book typography customization.
+
+**Response (200):**
+```json
+[
+  {
+    "id": "pt-serif",
+    "display_name": "PT Serif",
+    "category": "serif",
+    "google_family": "PT+Serif",
+    "google_spec": "ital,wght@0,400;0,700;1,400;1,700"
+  },
+  {
+    "id": "source-sans-3",
+    "display_name": "Source Sans 3",
+    "category": "sans-serif",
+    "google_family": "Source+Sans+3",
+    "google_spec": "ital,wght@0,400;0,600;0,700;1,400;1,600;1,700"
+  }
+]
+```
+
 ### Books CRUD
 
 #### List Books
@@ -1719,9 +1749,19 @@ PUT /books/{id}
 ```json
 {
   "title": "Updated Title",
-  "description": "Updated description"
+  "description": "Updated description",
+  "body_font": "pt-serif",
+  "heading_font": "source-sans-3",
+  "body_font_size": 11.0,
+  "body_line_height": 15.0,
+  "h1_font_size": 18.0,
+  "h2_font_size": 13.0,
+  "caption_opacity": 0.85,
+  "caption_font_size": 9.0
 }
 ```
+
+All fields are optional (partial updates). Font IDs are validated against the font registry. Size ranges: font sizes 6–36 pt, line height 8–48 pt, caption font size 6–16 pt, opacity 0.0–1.0.
 
 #### Delete Book
 

@@ -1,32 +1,15 @@
-\documentclass[a4paper,landscape,twoside]{article}
+\documentclass[a4paper,landscape,{{if .SinglePage}}oneside{{else}}twoside{{end}}]{article}
 \usepackage[margin=0mm]{geometry}
 \usepackage{tikz}
 \usepackage{graphicx}
 \usepackage{fontspec}
 \usepackage{polyglossia}
 \setdefaultlanguage{czech}
-\setmainfont{EBGaramond}[
-  Extension      = .otf,
-  UprightFont    = *-Regular,
-  BoldFont       = *-SemiBold,
-  ItalicFont     = *-Italic,
-  BoldItalicFont = *-SemiBoldItalic,
+\setmainfont{ {{- .BodyFontLatex -}} }[
   Ligatures      = TeX,
-  Numbers        = {Proportional,OldStyle}
 ]
-\newfontfamily\ebgaramondsb{EBGaramond}[
-  Extension      = .otf,
-  UprightFont    = *-SemiBold,
-  ItalicFont     = *-SemiBoldItalic,
+\setsansfont{ {{- .HeadingFontLatex -}} }[
   Ligatures      = TeX,
-  Numbers        = {Proportional,OldStyle}
-]
-\setsansfont{SourceSans3}[
-  Extension      = .otf,
-  UprightFont    = *-Regular,
-  BoldFont       = *-Semibold,
-  ItalicFont     = *-RegularIt,
-  BoldItalicFont = *-SemiboldIt,
 ]
 \usepackage[dvipsnames]{xcolor}
 \usepackage{enumitem}
@@ -50,7 +33,7 @@
 \begin{tikzpicture}[remember picture,overlay,shift={(current page.south west)},x=1mm,y=1mm]
   \draw[black!30,line width=0.4pt] (73.50,128.00) -- (223.50,128.00);
   \node[anchor=north,inner sep=0,text width=150mm,align=center,
-    font=\fontsize{32}{38}\selectfont\ebgaramondsb] at (148.50,126.00) {%
+    font=\fontsize{32}{38}\selectfont\sffamily\bfseries] at (148.50,126.00) {%
     {{latexEscape .BookTitle}}%
   };
 \end{tikzpicture}
@@ -93,7 +76,7 @@
   \node[anchor=north west,inner sep=0]
     at ({{printf "%.2f" (addFloat $slot.ClipX $slot.TextPadLeft)}},{{printf "%.2f" (addFloat $slot.ClipY $slot.ClipH)}})
     {\parbox{{print "{"}}{{printf "%.2f" (subtractFloat (subtractFloat $slot.ClipW $slot.TextPadLeft) $slot.TextPadRight)}}mm}{%
-      \parskip=0pt\parindent=0pt\fontsize{13}{16}\selectfont%
+      \parskip=0pt\parindent=0pt\fontsize{ {{- printf "%.0f" $.BodyFontSize -}} }{ {{- printf "%.0f" $.BodyLineHeight -}} }\selectfont{{if $slot.RaggedRight}}\raggedright{{end}}%
       {{markdownToLatexColor $slot.TextContent $slot.ChapterColor $slot.BleedLeftMM $slot.BleedRightMM}}%
     }};
 {{- end}}
@@ -102,7 +85,7 @@
 % --- Footer zone ---
 {{- if $page.HasCaptions}}
   \node[anchor=north west,inner sep=0,text width={{printf "%.2f" $page.CaptionBlockW}}mm,
-    font=\fontsize{9}{11}\selectfont,text=black!70]
+    font=\fontsize{ {{- printf "%.0f" $.CaptionFontSize -}} }{ {{- printf "%.0f" $.CaptionLeading -}} }\selectfont,text=black!{{$.CaptionOpacity}}]
     at ({{printf "%.2f" $page.CaptionBlockX}},{{printf "%.2f" $page.CaptionBlockY}})
     {{print "{"}}{{- range $ci, $cap := $page.Captions}}{{- if gt $ci 0}}\enspace {{end}}{{- if $cap.Marker}}\textbf{{print "{"}}{{$cap.Marker}}{{print "}"}} {{end}}{{latexEscape $cap.Caption}}{{- end}}{{print "}"}};
 {{- end}}

@@ -67,6 +67,8 @@ Crop position + split: `internal/database/postgres/migrations/014_add_crop_and_s
 Crop scale (zoom): `internal/database/postgres/migrations/015_add_crop_scale.sql`
 Chapters: `internal/database/postgres/migrations/016_create_book_chapters.sql`
 Chapter color: `internal/database/postgres/migrations/020_add_chapter_color.sql`
+Book typography (fonts, sizes, caption opacity): `internal/database/postgres/migrations/021_add_book_typography.sql`
+Caption font size (standalone): `internal/database/postgres/migrations/022_add_caption_font_size.sql`
 
 ### Tables
 
@@ -75,6 +77,14 @@ photo_books
 ├── id (PK)
 ├── title
 ├── description
+├── body_font (VARCHAR(50), default 'pt-serif')
+├── heading_font (VARCHAR(50), default 'source-sans-3')
+├── body_font_size (REAL, default 11.0 pt)
+├── body_line_height (REAL, default 15.0 pt)
+├── h1_font_size (REAL, default 18.0 pt)
+├── h2_font_size (REAL, default 13.0 pt)
+├── caption_opacity (REAL, default 0.85, range 0.0-1.0)
+├── caption_font_size (REAL, default 9.0 pt)
 ├── created_at
 └── updated_at
 
@@ -135,6 +145,12 @@ Deleting a book cascades to all chapters, sections, pages, and slots.
 
 ## API Endpoints
 
+### Fonts
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/api/v1/fonts` | List all available fonts (`[{ id, display_name, category, google_family, google_spec }]`) |
+
 ### Books
 
 | Method | Endpoint | Description |
@@ -142,7 +158,7 @@ Deleting a book cascades to all chapters, sections, pages, and slots.
 | GET | `/api/v1/books` | List all books |
 | POST | `/api/v1/books` | Create a book (`{ title }`) |
 | GET | `/api/v1/books/:id` | Get book with sections and pages |
-| PUT | `/api/v1/books/:id` | Update book (`{ title, description }`) |
+| PUT | `/api/v1/books/:id` | Update book (`{ title, description, body_font, heading_font, body_font_size, body_line_height, h1_font_size, h2_font_size, caption_opacity, caption_font_size }`) |
 | DELETE | `/api/v1/books/:id` | Delete book (cascades) |
 
 ### Chapters
@@ -220,7 +236,7 @@ The book can be exported to a print-ready A4 landscape PDF via the "Export PDF" 
 3. Downloads high-resolution thumbnails (`fit_3840`) for all photos in slots
 4. Computes layout geometry with configurable margins (asymmetric for binding)
 5. Generates a LaTeX document using TikZ for precise photo placement with object-cover cropping
-6. Compiles with `lualatex` (Czech typography via `polyglossia` + EB Garamond font)
+6. Compiles with `lualatex` (Czech typography via `polyglossia` + configurable Google Fonts)
 7. Returns the PDF and an export report with DPI warnings
 
 ### Requirements
@@ -228,7 +244,7 @@ The book can be exported to a print-ready A4 landscape PDF via the "Export PDF" 
 - `lualatex` must be installed on the server
 - **TeX packages:** `texlive-luatex`, `texmf-dist-latexrecommended`, `texmf-dist-fontsrecommended`, `texmf-dist-langczechslovak`, `texmf-dist-pictures`
 - **Additional LaTeX packages:** `enumitem`, `microtype`, `crop` (from `texmf-dist-latexrecommended` or installed separately)
-- **Fonts:** EB Garamond OpenType (Regular, SemiBold, Italic, SemiBoldItalic) — available from CTAN (`fonts/ebgaramond/opentype/`)
+- **Fonts:** Google Fonts (downloaded at Docker build time). Default: PT Serif (body) + Source Sans 3 (headings). 20 fonts available — see Typography Customization section
 - **Font cache:** `luaotfload` requires a writable cache directory; set `TEXMFCACHE` and `TEXMFVAR` env vars if running as a non-root user (the Go code auto-sets both to the temp directory at runtime)
 - Returns HTTP 503 if `lualatex` is not available
 
@@ -341,7 +357,7 @@ All spacing values follow a 4mm baseline rhythm:
 
 ### Section Dividers
 
-Each section with a title generates a full-page divider with the title centered in 28pt EBGaramond SemiBold with letter-spacing (LetterSpace=5). Paired decorative rules (100mm wide, `black!20`) appear above and below the title for visual balance. No page number is displayed on divider pages.
+Each section with a title generates a full-page divider with the title centered in 28pt heading font (SemiBold weight) with letter-spacing (LetterSpace=5). Paired decorative rules (100mm wide, `black!20`) appear above and below the title for visual balance. No page number is displayed on divider pages.
 
 **Recto alignment:** Section dividers always appear on recto (right-hand, odd) pages. If a divider would land on a verso (even) page, a blank page is automatically inserted before it.
 
@@ -378,9 +394,34 @@ Without percentages, columns are equal-width. Uses `tabularx` with `X` columns i
 
 All text slots render on a light gray background (`black!5`), replacing the previous white-on-dark style.
 
+### Typography Customization
+
+Each book has configurable typography settings that control both PDF rendering and the frontend live preview:
+
+| Setting | Default | Range | Description |
+|---------|---------|-------|-------------|
+| `body_font` | `pt-serif` | See font registry | Google Font for body text |
+| `heading_font` | `source-sans-3` | See font registry | Google Font for headings |
+| `body_font_size` | 11.0 pt | 6–36 pt | Body text size |
+| `body_line_height` | 15.0 pt | 8–48 pt | Body text leading |
+| `h1_font_size` | 18.0 pt | 6–36 pt | H1 heading size |
+| `h2_font_size` | 13.0 pt | 6–36 pt | H2 heading size |
+| `caption_opacity` | 0.85 | 0.0–1.0 | Caption text opacity (LaTeX `black!N`) |
+| `caption_font_size` | 9.0 pt | 6–16 pt | Photo caption size |
+
+**Font Registry:** 20 Google Fonts available (11 serif, 9 sans-serif), defined in `internal/latex/fonts.go`. Each font has a `LatexName` (for `fontspec` in LuaLaTeX) and `GoogleFamily`/`GoogleSpec` (for browser preview). Fonts are validated on save via `latex.ValidateFont()`.
+
+**Available fonts:**
+- **Serif:** PT Serif (default body), Libertinus Serif, EB Garamond, Lora, Merriweather, Noto Serif, Crimson Pro, Source Serif 4, Cormorant Garamond, Bitter
+- **Sans-serif:** Source Sans 3 (default headings), PT Sans, Noto Sans, Open Sans, Lato, Roboto, Inter, Fira Sans, IBM Plex Sans, Nunito Sans
+
+**Font API:** `GET /api/v1/fonts` returns all available fonts with `id`, `display_name`, `category`, `google_family`, `google_spec`.
+
+**Frontend live preview:** The TypographyTab loads fonts via Google Fonts CSS links and applies CSS custom properties for real-time preview. Font selections and size adjustments are debounce-saved (500ms).
+
 ### Czech Typography
 
-The template uses `polyglossia` with Czech as the default language and EB Garamond as the main font (with SemiBold for bold weight). This provides proper Czech hyphenation, ligatures, and diacritics support.
+The template uses `polyglossia` with Czech as the default language. The body font (configurable, default PT Serif) and heading font (configurable, default Source Sans 3) are loaded via `fontspec`. This provides proper Czech hyphenation, ligatures, and diacritics support.
 
 ### Export Report
 
@@ -446,7 +487,7 @@ With asymmetric margins (20mm inside, 12mm outside) and 4mm column gutters:
 ### Print Preparation Checklist
 
 - **Recommended DPI**: 300+ for high-quality prints, 200+ minimum
-- **Fonts**: All text is embedded via EBGaramond (OpenType)
+- **Fonts**: All text is embedded via configurable Google Fonts (OpenType, loaded by `fontspec`)
 - **Deterministic output**: PDF timestamps are suppressed for reproducible builds
 - **Bleed**: 3mm bleed on all sides with crop marks — ready for professional trimming
 - **Color**: Decorative elements use subtle grays (`black!20`–`black!50`) for clean print output
@@ -457,11 +498,12 @@ With asymmetric margins (20mm inside, 12mm outside) and 4mm column gutters:
 | File | Description |
 |------|-------------|
 | `internal/latex/formats.go` | `LayoutConfig`, 12-column grid system, `FormatSlotsGrid`, page format slot positions |
-| `internal/latex/latex.go` | PDF generation, caption lookup, DPI computation, export report |
+| `internal/latex/fonts.go` | Font registry (20 Google Fonts), `GetFont()`, `ValidateFont()`, `AllFonts()` |
+| `internal/latex/latex.go` | PDF generation, typography resolution, caption lookup, DPI computation, export report |
 | `internal/latex/markdown.go` | Markdown-to-LaTeX converter for text slots |
 | `internal/latex/validate.go` | Layout validation (zone integrity, overlaps, gutter-safe markers) |
 | `internal/latex/testpages.go` | Diagnostic test PDF generator |
-| `internal/latex/templates/book.tex` | LaTeX template with TikZ, polyglossia, configurable layout |
+| `internal/latex/templates/book.tex` | LaTeX template with TikZ, polyglossia, configurable fonts and layout |
 | `internal/latex/templates/testpage.tex` | Diagnostic test page template |
 
 ### API
@@ -522,7 +564,7 @@ Returns `application/pdf` with `Content-Disposition: attachment`.
 | File | Description |
 |------|-------------|
 | `web/src/pages/Books/index.tsx` | Books list page — card grid, create, delete |
-| `web/src/pages/BookEditor/index.tsx` | Editor shell — tabs (Sections, Pages, Preview, Duplicates), title editing |
+| `web/src/pages/BookEditor/index.tsx` | Editor shell — tabs (Sections, Pages, Preview, Typography, Duplicates), title editing |
 | `web/src/pages/BookEditor/hooks/useBookData.ts` | Book data fetching and section photo loading |
 | `web/src/pages/BookEditor/hooks/useUndoRedo.ts` | Undo/redo stack for slot assignments (assign, clear, swap) |
 | `web/src/hooks/useBookKeyboardNav.ts` | Shared keyboard navigation hook (W/S prev/next, E/D chapter jump) |
@@ -540,7 +582,10 @@ Returns `application/pdf` with `Content-Disposition: attachment`.
 | `web/src/pages/BookEditor/PhotoActionOverlay.tsx` | Hover overlay with View Detail, Find Similar, Copy ID actions |
 | `web/src/pages/BookEditor/PhotoInfoOverlay.tsx` | Photo info overlay component |
 | `web/src/pages/BookEditor/PreviewTab.tsx` | Read-only scrollable book preview with page descriptions |
+| `web/src/pages/BookEditor/TypographyTab.tsx` | Font selection, size controls, caption opacity, live preview |
 | `web/src/pages/BookEditor/DuplicatesTab.tsx` | Cross-section duplicate finder with one-click removal |
+| `web/src/constants/bookTypography.ts` | Typography CSS defaults, font registry cache, CSS variable helpers |
+| `web/src/utils/fontLoader.ts` | Google Fonts CSS loader (deduplicates, uses `display=swap`) |
 | `web/src/pages/PhotoDetail/AddToBookDropdown.tsx` | Two-step picker (book → section) for adding photo to a book |
 | `web/src/pages/PhotoDetail/BookMembership.tsx` | Sidebar panel showing which books/sections a photo belongs to |
 

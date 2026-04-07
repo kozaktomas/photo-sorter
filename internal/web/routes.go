@@ -110,6 +110,9 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 			r.Post("/process/rebuild-index", processHandler.RebuildIndex)
 			r.Post("/process/sync-cache", processHandler.SyncCache)
 
+			// Fonts.
+			r.Get("/fonts", booksHandler.ListFonts)
+
 			// Photo Books.
 			r.Get("/books", booksHandler.ListBooks)
 			r.Post("/books", booksHandler.CreateBook)

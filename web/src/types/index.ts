@@ -468,11 +468,27 @@ export interface BookDetail {
   id: string;
   title: string;
   description: string;
+  body_font: string;
+  heading_font: string;
+  body_font_size: number;
+  body_line_height: number;
+  h1_font_size: number;
+  h2_font_size: number;
+  caption_opacity: number;
+  caption_font_size: number;
   chapters: BookChapter[];
   sections: BookSection[];
   pages: BookPage[];
   created_at: string;
   updated_at: string;
+}
+
+export interface FontInfo {
+  id: string;
+  display_name: string;
+  category: 'serif' | 'sans-serif';
+  google_family: string;
+  google_spec: string;
 }
 
 export interface PhotoBookMembership {
