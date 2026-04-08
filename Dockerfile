@@ -23,22 +23,16 @@ FROM alpine:3
 RUN apk update && \
     apk add --no-cache ca-certificates tzdata curl unzip \
     texlive-luatex texmf-dist-latexrecommended texmf-dist-fontsrecommended texmf-dist-langczechslovak texmf-dist-pictures && \
-    # Install PT Serif fonts from CTAN (paratype package)
+    # Install PT Serif + PT Sans from CTAN (paratype package)
+    # Zip layout: paratype/truetype/*.ttf — use find to avoid path fragility
     mkdir -p /usr/share/fonts/truetype/paratype && \
     curl -fsSL -o /tmp/paratype.zip \
       https://mirrors.ctan.org/fonts/paratype.zip && \
     unzip -q -o /tmp/paratype.zip -d /tmp/paratype && \
-    cp /tmp/paratype/paratype/PTSerif-Regular.ttf \
-       /tmp/paratype/paratype/PTSerif-Bold.ttf \
-       /tmp/paratype/paratype/PTSerif-Italic.ttf \
-       /tmp/paratype/paratype/PTSerif-BoldItalic.ttf \
-       /usr/share/fonts/truetype/paratype/ 2>/dev/null || \
-    cp /tmp/paratype/paratype/PTF55F.ttf \
-       /tmp/paratype/paratype/PTF75F.ttf \
-       /tmp/paratype/paratype/PTF56F.ttf \
-       /tmp/paratype/paratype/PTF76F.ttf \
-       /usr/share/fonts/truetype/paratype/ && \
-    # Also copy PT Sans from the same paratype package (abbreviated names: PTS*)
+    find /tmp/paratype -name 'PTF55F.ttf' -exec cp {} /usr/share/fonts/truetype/paratype/ \; && \
+    find /tmp/paratype -name 'PTF75F.ttf' -exec cp {} /usr/share/fonts/truetype/paratype/ \; && \
+    find /tmp/paratype -name 'PTF56F.ttf' -exec cp {} /usr/share/fonts/truetype/paratype/ \; && \
+    find /tmp/paratype -name 'PTF76F.ttf' -exec cp {} /usr/share/fonts/truetype/paratype/ \; && \
     find /tmp/paratype -name 'PTS55F.ttf' -exec cp {} /usr/share/fonts/truetype/paratype/ \; && \
     find /tmp/paratype -name 'PTS75F.ttf' -exec cp {} /usr/share/fonts/truetype/paratype/ \; && \
     find /tmp/paratype -name 'PTS56F.ttf' -exec cp {} /usr/share/fonts/truetype/paratype/ \; && \
