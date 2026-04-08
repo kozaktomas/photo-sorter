@@ -67,19 +67,20 @@ type ExportData struct {
 
 // PhotoBook represents a photo book project.
 type PhotoBook struct {
-	ID              string
-	Title           string
-	Description     string
-	BodyFont        string
-	HeadingFont     string
-	BodyFontSize    float64
-	BodyLineHeight  float64
-	H1FontSize      float64
-	H2FontSize      float64
-	CaptionOpacity  float64
-	CaptionFontSize float64
-	CreatedAt       time.Time
-	UpdatedAt       time.Time
+	ID                string
+	Title             string
+	Description       string
+	BodyFont          string
+	HeadingFont       string
+	BodyFontSize      float64
+	BodyLineHeight    float64
+	H1FontSize        float64
+	H2FontSize        float64
+	CaptionOpacity    float64
+	CaptionFontSize   float64
+	HeadingColorBleed float64
+	CreatedAt         time.Time
+	UpdatedAt         time.Time
 }
 
 // PhotoBookWithCounts extends PhotoBook with precomputed counts for list views.

@@ -16,8 +16,12 @@
 \usepackage{tabularx}
 \usepackage{microtype}
 
-% Bleed: extend paper by 3mm on each side with crop marks
+% Bleed: extend paper by 3mm on each side with crop marks (skip for single-page preview)
+{{- if .SinglePage}}
+\usepackage[off,width=303truemm,height=216truemm,center]{crop}
+{{- else}}
 \usepackage[cam,noinfo,width=303truemm,height=216truemm,center]{crop}
+{{- end}}
 
 % Broad printer compatibility
 \pdfvariable minorversion 4
@@ -26,27 +30,17 @@
 \pdfvariable suppressoptionalinfo 511
 
 \pagestyle{empty}
+\pagenumbering{gobble}
 
 \begin{document}
-{{- if .BookTitle}}
-% --- Title page ---
-\begin{tikzpicture}[remember picture,overlay,shift={(current page.south west)},x=1mm,y=1mm]
-  \draw[black!30,line width=0.4pt] (73.50,128.00) -- (223.50,128.00);
-  \node[anchor=north,inner sep=0,text width=150mm,align=center,
-    font=\fontsize{32}{38}\selectfont\sffamily\bfseries] at (148.50,126.00) {%
-    {{latexEscape .BookTitle}}%
-  };
-\end{tikzpicture}
-\newpage
-{{- end}}
 {{- range $si, $section := .Sections}}
 {{- range $pi, $page := $section.Pages}}
 % --- Page {{$page.PageNumber}} ({{$page.Style}}) ---
 \begin{tikzpicture}[remember picture,overlay,shift={(current page.south west)},x=1mm,y=1mm]
-% --- Canvas zone (clipped) ---
+% --- Canvas zone (clipped — expanded by heading bleed for colored boxes) ---
   \begin{scope}
-    \clip ({{printf "%.2f" $page.ContentLeftX}},{{printf "%.2f" $page.CanvasBottomY}})
-      rectangle ({{printf "%.2f" $page.ContentRightX}},{{printf "%.2f" $page.CanvasTopY}});
+    \clip ({{printf "%.2f" $page.ClipLeftX}},{{printf "%.2f" $page.CanvasBottomY}})
+      rectangle ({{printf "%.2f" $page.ClipRightX}},{{printf "%.2f" $page.CanvasTopY}});
 {{- range $si, $slot := $page.Slots}}
 {{- if $slot.HasPhoto}}
 {{- if $slot.IsArchival}}
@@ -64,10 +58,15 @@
   \end{scope}
 {{- if gt $slot.CaptionMarker 0}}
   % Caption marker
+{{- if $slot.ChapterColor}}
+  \definecolor{markercolor}{HTML}{ {{- $slot.ChapterColor -}} }
+  \fill[markercolor]
+{{- else}}
   \fill[black,opacity=0.55]
+{{- end}}
     ({{printf "%.2f" $slot.CaptionMarkerX}},{{printf "%.2f" $slot.CaptionMarkerY}})
     rectangle ++(4,4);
-  \node[anchor=center,inner sep=0,font=\fontsize{6}{6}\selectfont\bfseries,text=white]
+  \node[anchor=center,inner sep=0,font=\fontsize{6}{6}\selectfont\bfseries,text={{contrastTextColor $slot.ChapterColor}}]
     at ({{printf "%.2f" $slot.CaptionMarkerCenterX}},{{printf "%.2f" $slot.CaptionMarkerCenterY}})
     {{print "{"}}{{$slot.CaptionMarker}}{{print "}"}};
 {{- end}}

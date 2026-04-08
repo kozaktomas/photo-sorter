@@ -601,6 +601,7 @@
         "h2Size": "H2 size",
         "captionOpacity": "Caption opacity",
         "captionFontSize": "Caption size",
+        "headingColorBleed": "Heading box bleed",
         "serif": "Serif",
         "sansSerif": "Sans-serif",
         "saving": "Saving...",

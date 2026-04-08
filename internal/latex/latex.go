@@ -118,6 +118,10 @@ type TemplatePage struct {
 	ContentLeftX  float64
 	ContentRightX float64
 	ContentW      float64
+	// Clip area bounds — expanded by heading bleed so colored heading boxes
+	// are visible in the margins. Photos are still constrained by slot-level clips.
+	ClipLeftX  float64
+	ClipRightX float64
 	// Header zone.
 	HeaderY float64 // Y position for running header text
 	// Canvas zone.
@@ -144,7 +148,6 @@ type TemplateSection struct {
 // TemplateData is the root data passed to the LaTeX template.
 type TemplateData struct {
 	Sections        []TemplateSection
-	BookTitle       string
 	PageW           float64
 	PageH           float64
 	SinglePage      bool // true for single-page export (oneside, no blank pages)
@@ -193,6 +196,7 @@ type pageBuilder struct {
 	pageNumber        int
 	photoSet          map[string]bool
 	reportPages       []ReportPage
+	headingColorBleed float64
 }
 
 const (
@@ -398,29 +402,18 @@ func buildTemplateData(
 	groups []sectionGroup, photos map[string]photoImage,
 	captions CaptionMap, config LayoutConfig, book *database.PhotoBook,
 ) (TemplateData, *ExportReport) {
+	// Resolve typography first so pageBuilder has the heading bleed value.
+	typo := resolveBookTypography(book)
+
 	pb := &pageBuilder{
-		config:   config,
-		photos:   photos,
-		captions: captions,
-		photoSet: make(map[string]bool),
+		config:            config,
+		photos:            photos,
+		captions:          captions,
+		photoSet:          make(map[string]bool),
+		headingColorBleed: typo.headingColorBleed,
 	}
 	for _, g := range groups {
 		pb.totalContentPages += len(g.pages)
-	}
-
-	bookTitle := ""
-	if book != nil {
-		bookTitle = book.Title
-	}
-
-	// Title page counts as page 1 when book has a title.
-	if bookTitle != "" {
-		pb.pageNumber++
-		pb.reportPages = append(pb.reportPages, ReportPage{
-			PageNumber: pb.pageNumber,
-			Format:     "title",
-			IsDivider:  true,
-		})
 	}
 
 	tmplSections := make([]TemplateSection, 0, len(groups))
@@ -428,12 +421,13 @@ func buildTemplateData(
 		tmplSections = append(tmplSections, pb.buildSection(g))
 	}
 
-	// Resolve typography from book settings with fallbacks to defaults.
-	typo := resolveBookTypography(book)
+	bookTitle := ""
+	if book != nil {
+		bookTitle = book.Title
+	}
 
 	return TemplateData{
 			Sections:         tmplSections,
-			BookTitle:        bookTitle,
 			PageW:            PageW,
 			PageH:            PageH,
 			BodyFontLatex:    typo.bodyFontLatex,
@@ -457,30 +451,32 @@ func buildTemplateData(
 
 // resolvedTypography holds resolved font/size values with defaults applied.
 type resolvedTypography struct {
-	bodyFontLatex    string
-	headingFontLatex string
-	bodyFontSize     float64
-	bodyLineHeight   float64
-	h1FontSize       float64
-	h1Leading        float64
-	h2FontSize       float64
-	h2Leading        float64
-	captionOpacity   int
-	captionFontSize  float64
-	captionLeading   float64
+	bodyFontLatex     string
+	headingFontLatex  string
+	bodyFontSize      float64
+	bodyLineHeight    float64
+	h1FontSize        float64
+	h1Leading         float64
+	h2FontSize        float64
+	h2Leading         float64
+	captionOpacity    int
+	captionFontSize   float64
+	captionLeading    float64
+	headingColorBleed float64
 }
 
 // resolveBookTypography resolves typography settings from a PhotoBook with fallbacks.
 func resolveBookTypography(book *database.PhotoBook) resolvedTypography {
 	rt := resolvedTypography{
-		bodyFontLatex:    "PT Serif",
-		headingFontLatex: "Source Sans 3",
-		bodyFontSize:     DefaultBodyFontSize,
-		bodyLineHeight:   DefaultBodyLineHeight,
-		h1FontSize:       DefaultH1FontSize,
-		h2FontSize:       DefaultH2FontSize,
-		captionOpacity:   int(DefaultCaptionOpacity * 100),
-		captionFontSize:  DefaultCaptionFontSize,
+		bodyFontLatex:     "PT Serif",
+		headingFontLatex:  "Source Sans 3",
+		bodyFontSize:      DefaultBodyFontSize,
+		bodyLineHeight:    DefaultBodyLineHeight,
+		h1FontSize:        DefaultH1FontSize,
+		h2FontSize:        DefaultH2FontSize,
+		captionOpacity:    int(DefaultCaptionOpacity * 100),
+		captionFontSize:   DefaultCaptionFontSize,
+		headingColorBleed: DefaultHeadingColorBleed,
 	}
 
 	if book != nil {
@@ -523,6 +519,9 @@ func applyBookSizes(rt *resolvedTypography, book *database.PhotoBook) {
 	}
 	if book.CaptionFontSize > 0 {
 		rt.captionFontSize = book.CaptionFontSize
+	}
+	if book.HeadingColorBleed > 0 {
+		rt.headingColorBleed = book.HeadingColorBleed
 	}
 }
 
@@ -629,6 +628,12 @@ func (pb *pageBuilder) buildContentPage(p database.BookPage, chapterColor string
 		captionBlockW = contentW
 	}
 
+	// Expand clip bounds by heading bleed so colored heading boxes
+	// extend into the margins. Photos stay constrained by slot-level clips.
+	bleed := pb.headingColorBleed
+	clipLeftX := max(0, contentLeftX-bleed)
+	clipRightX := min(PageW, contentRightX+bleed)
+
 	return TemplatePage{
 		Slots:         tmplSlots,
 		IsLast:        isLast,
@@ -638,6 +643,8 @@ func (pb *pageBuilder) buildContentPage(p database.BookPage, chapterColor string
 		ContentLeftX:  contentLeftX,
 		ContentRightX: contentRightX,
 		ContentW:      contentW,
+		ClipLeftX:     clipLeftX,
+		ClipRightX:    clipRightX,
 		HeaderY:       headerY,
 		CanvasTopY:    canvasTopY,
 		CanvasBottomY: canvasBottomY,
@@ -844,6 +851,7 @@ func (pb *pageBuilder) buildSlots(
 			cfg.ArchivalInsetMM, ps.CropX, ps.CropY, cropScale,
 		)
 		placeCaptionMarker(&ts, ct.markerMap[i], cfg, isRecto)
+		ts.ChapterColor = chapterColor
 		tmplSlots[i] = ts
 
 		pb.photoSet[uid] = true
@@ -855,7 +863,7 @@ func (pb *pageBuilder) buildSlots(
 		})
 	}
 
-	applyTextSlotPadding(tmplSlots, p.Format)
+	applyTextSlotPadding(tmplSlots, p.Format, pb.headingColorBleed)
 
 	return tmplSlots, reportPhotos, buildFooterCaptions(ct)
 }
@@ -899,24 +907,23 @@ func isSlotOnRightEdge(format string, slotIndex int) bool {
 	}
 }
 
-// applyTextSlotPadding sets directional H1 bleed and inner padding on text slots.
-// The colored heading box only extends towards page edges, never into adjacent slots.
-func applyTextSlotPadding(slots []TemplateSlot, format string) {
+// applyTextSlotPadding sets heading bleed and inner padding on text slots.
+// headingBleed extends the colored heading box equally on both sides.
+// Non-edge sides also get text padding to offset body text from adjacent photos.
+func applyTextSlotPadding(slots []TemplateSlot, format string, headingBleed float64) {
 	for i := range slots {
 		if !slots[i].HasText {
 			continue
 		}
-		onLeft := isSlotOnLeftEdge(format, i)
-		onRight := isSlotOnRightEdge(format, i)
+		// Heading bleed always extends both sides equally.
+		slots[i].BleedLeftMM = headingBleed
+		slots[i].BleedRightMM = headingBleed
 
-		if onLeft {
-			slots[i].BleedLeftMM = textPadMM
-		} else {
+		// Non-edge sides get body text padding to keep text away from adjacent photos.
+		if !isSlotOnLeftEdge(format, i) {
 			slots[i].TextPadLeft = textPadMM
 		}
-		if onRight {
-			slots[i].BleedRightMM = textPadMM
-		} else {
+		if !isSlotOnRightEdge(format, i) {
 			slots[i].TextPadRight = textPadMM
 		}
 	}
@@ -967,6 +974,12 @@ func compileLatex(ctx context.Context, data TemplateData, tmpDir string) ([]byte
 		"markdownToLatexColor": func(md, color string, bleedL, bleedR float64) string {
 			return MarkdownToLatexWithTypography(md, color, bleedL, bleedR, typoConfig)
 		},
+		"contrastTextColor": func(hexColor string) string {
+			if hexColor == "" {
+				return "white"
+			}
+			return contrastTextColorLatex(hexColor)
+		},
 		"addFloat":      func(a, b float64) float64 { return a + b },
 		"subtractFloat": func(a, b float64) float64 { return a - b },
 		"mulFloat":      func(a, b float64) float64 { return a * b },
@@ -985,7 +998,6 @@ func compileLatex(ctx context.Context, data TemplateData, tmpDir string) ([]byte
 	if err := os.WriteFile(texPath, buf.Bytes(), 0600); err != nil {
 		return nil, fmt.Errorf("failed to write tex file: %w", err)
 	}
-
 	// Run lualatex twice — second pass resolves remember picture positions.
 	// Arguments are safe (tmpDir from os.MkdirTemp, texPath derived from it).
 	//
@@ -1257,6 +1269,7 @@ func GenerateSinglePagePDF(
 
 	photos := downloadPhotos(ctx, pp, uidSet, tmpDir)
 	config := DefaultLayoutConfig()
+	typo := resolveBookTypography(input.Book)
 
 	pageNum := max(input.PageNumber, 1)
 
@@ -1268,13 +1281,12 @@ func GenerateSinglePagePDF(
 		contentPageIdx:    pageNum - 1,
 		pageNumber:        pageNum - 1, // incremented to pageNum below
 		photoSet:          make(map[string]bool),
+		headingColorBleed: typo.headingColorBleed,
 	}
 
 	pb.contentPageIdx++
 	pb.pageNumber++
 	tmplPage := pb.buildContentPage(input.Page, input.ChapterColor)
-
-	typo := resolveBookTypography(input.Book)
 
 	data := TemplateData{
 		Sections: []TemplateSection{{
@@ -1282,7 +1294,6 @@ func GenerateSinglePagePDF(
 			Pages: []TemplatePage{tmplPage},
 		}},
 		SinglePage:       true,
-		BookTitle:        "", // no title page for single-page export
 		PageW:            PageW,
 		PageH:            PageH,
 		BodyFontLatex:    typo.bodyFontLatex,

@@ -108,7 +108,7 @@ func markdownToLatexInternal(md, chapterColor string, typo TypographyConfig, ble
 
 		// Heading ## (must check before #).
 		if text, ok := strings.CutPrefix(trimmed, "## "); ok {
-			out = append(out, formatHeading(text, 2, "", 0, 0, typo))
+			out = append(out, formatHeading(text, 2, chapterColor, bleedL, bleedR, typo))
 			i++
 			continue
 		}
@@ -222,7 +222,7 @@ func contrastTextColorLatex(bgHex string) string {
 // formatHeading formats a heading line with an explicit font size.
 // H1 (level 1) and H2 (level 2) sizes come from TypographyConfig.
 // All headings use \sffamily for contrast with the serif body text.
-// If chapterColor is non-empty (hex without #), H1 renders with a colored background
+// If chapterColor is non-empty (hex without #), both H1 and H2 render with a colored background
 // and auto-selected text color based on background luminance.
 // bleedLeftMM/bleedRightMM control how far the colored box extends beyond linewidth on each side.
 func formatHeading(
@@ -238,35 +238,43 @@ func formatHeading(
 		sizeCmd = fmt.Sprintf(`\fontsize{%.0f}{%.0f}\selectfont`, typo.H1Size, typo.H1Leading)
 	}
 
-	if level == 1 && chapterColor != "" {
+	if chapterColor != "" {
 		textColor := contrastTextColorLatex(chapterColor)
 		colorDef := fmt.Sprintf(`\definecolor{chaptercolor}{HTML}{%s}`, chapterColor)
 
-		// Use 16pt padding on the bleed side (margin space), 8pt on the non-bleed side
-		// so the H1 text aligns with body text.
-		leftPad := "16pt"
-		if bleedLeftMM == 0 {
-			leftPad = "8pt"
+		// Inner padding: bleed side = bleedMM + innerPadMM so text stays
+		// innerPadMM inside the content area regardless of bleed size.
+		// Non-bleed side = just innerPadMM from the box edge.
+		const innerPadMM = 2.0
+		leftPadMM := innerPadMM
+		if bleedLeftMM > 0 {
+			leftPadMM = bleedLeftMM + innerPadMM
 		}
-		rightPad := "16pt"
-		if bleedRightMM == 0 {
-			rightPad = "8pt"
+		rightPadMM := innerPadMM
+		if bleedRightMM > 0 {
+			rightPadMM = bleedRightMM + innerPadMM
+		}
+
+		// Pick font size for strut scaling based on heading level.
+		fontSize := typo.H2Size
+		if level == 1 {
+			fontSize = typo.H1Size
 		}
 
 		totalBleed := bleedLeftMM + bleedRightMM
-		// Scale the strut proportionally to H1 font size.
+		// Scale the strut proportionally to heading font size.
 		// Reference: 18pt → strut depth 8.5pt, height 30pt.
-		strutDepth := 8.5 * (typo.H1Size / 18.0)
-		strutHeight := 30.0 * (typo.H1Size / 18.0)
+		strutDepth := 8.5 * (fontSize / 18.0)
+		strutHeight := 30.0 * (fontSize / 18.0)
 		box := fmt.Sprintf(
-			`{\fboxsep=0pt\noindent\hspace{-%.0fmm}\colorbox{chaptercolor}{`+
-				`\makebox[\dimexpr\linewidth+%.0fmm][l]{`+
+			`{\fboxsep=0pt\noindent\hspace{-%.1fmm}\colorbox{chaptercolor}{`+
+				`\makebox[\dimexpr\linewidth+%.1fmm][l]{`+
 				`\rule[-%.1fpt]{0pt}{%.1fpt}`+
-				`\hspace{%s}%s%s\textcolor{%s}{%s}\hspace{%s}`+
+				`\hspace{%.1fmm}%s%s\textcolor{%s}{%s}\hspace{%.1fmm}`+
 				`}}}`,
 			bleedLeftMM, totalBleed,
 			strutDepth, strutHeight,
-			leftPad, sizeCmd, fontCmd, textColor, text, rightPad,
+			leftPadMM, sizeCmd, fontCmd, textColor, text, rightPadMM,
 		)
 		return colorDef + "\n" + box + `\par\vspace{4mm}`
 	}

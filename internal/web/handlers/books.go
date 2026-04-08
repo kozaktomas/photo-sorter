@@ -56,22 +56,23 @@ type bookResponse struct {
 }
 
 type bookDetailResponse struct {
-	ID              string            `json:"id"`
-	Title           string            `json:"title"`
-	Description     string            `json:"description"`
-	BodyFont        string            `json:"body_font"`
-	HeadingFont     string            `json:"heading_font"`
-	BodyFontSize    float64           `json:"body_font_size"`
-	BodyLineHeight  float64           `json:"body_line_height"`
-	H1FontSize      float64           `json:"h1_font_size"`
-	H2FontSize      float64           `json:"h2_font_size"`
-	CaptionOpacity  float64           `json:"caption_opacity"`
-	CaptionFontSize float64           `json:"caption_font_size"`
-	Chapters        []chapterResponse `json:"chapters"`
-	Sections        []sectionResponse `json:"sections"`
-	Pages           []pageResponse    `json:"pages"`
-	CreatedAt       string            `json:"created_at"`
-	UpdatedAt       string            `json:"updated_at"`
+	ID                string            `json:"id"`
+	Title             string            `json:"title"`
+	Description       string            `json:"description"`
+	BodyFont          string            `json:"body_font"`
+	HeadingFont       string            `json:"heading_font"`
+	BodyFontSize      float64           `json:"body_font_size"`
+	BodyLineHeight    float64           `json:"body_line_height"`
+	H1FontSize        float64           `json:"h1_font_size"`
+	H2FontSize        float64           `json:"h2_font_size"`
+	CaptionOpacity    float64           `json:"caption_opacity"`
+	CaptionFontSize   float64           `json:"caption_font_size"`
+	HeadingColorBleed float64           `json:"heading_color_bleed"`
+	Chapters          []chapterResponse `json:"chapters"`
+	Sections          []sectionResponse `json:"sections"`
+	Pages             []pageResponse    `json:"pages"`
+	CreatedAt         string            `json:"created_at"`
+	UpdatedAt         string            `json:"updated_at"`
 }
 
 type chapterResponse struct {
@@ -322,22 +323,23 @@ func buildBookDetailResponse(
 	}
 
 	return bookDetailResponse{
-		ID:              book.ID,
-		Title:           book.Title,
-		Description:     book.Description,
-		BodyFont:        book.BodyFont,
-		HeadingFont:     book.HeadingFont,
-		BodyFontSize:    book.BodyFontSize,
-		BodyLineHeight:  book.BodyLineHeight,
-		H1FontSize:      book.H1FontSize,
-		H2FontSize:      book.H2FontSize,
-		CaptionOpacity:  book.CaptionOpacity,
-		CaptionFontSize: book.CaptionFontSize,
-		Chapters:        chapterResps,
-		Sections:        sectionResps,
-		Pages:           buildPageResponses(pages),
-		CreatedAt:       book.CreatedAt.Format("2006-01-02T15:04:05Z"),
-		UpdatedAt:       book.UpdatedAt.Format("2006-01-02T15:04:05Z"),
+		ID:                book.ID,
+		Title:             book.Title,
+		Description:       book.Description,
+		BodyFont:          book.BodyFont,
+		HeadingFont:       book.HeadingFont,
+		BodyFontSize:      book.BodyFontSize,
+		BodyLineHeight:    book.BodyLineHeight,
+		H1FontSize:        book.H1FontSize,
+		H2FontSize:        book.H2FontSize,
+		CaptionOpacity:    book.CaptionOpacity,
+		CaptionFontSize:   book.CaptionFontSize,
+		HeadingColorBleed: book.HeadingColorBleed,
+		Chapters:          chapterResps,
+		Sections:          sectionResps,
+		Pages:             buildPageResponses(pages),
+		CreatedAt:         book.CreatedAt.Format("2006-01-02T15:04:05Z"),
+		UpdatedAt:         book.UpdatedAt.Format("2006-01-02T15:04:05Z"),
 	}
 }
 
@@ -355,16 +357,17 @@ func enrichSlotPhotoNames(resp *bookDetailResponse, names map[string]photoNameIn
 }
 
 type bookUpdateRequest struct {
-	Title           *string  `json:"title"`
-	Description     *string  `json:"description"`
-	BodyFont        *string  `json:"body_font"`
-	HeadingFont     *string  `json:"heading_font"`
-	BodyFontSize    *float64 `json:"body_font_size"`
-	BodyLineHeight  *float64 `json:"body_line_height"`
-	H1FontSize      *float64 `json:"h1_font_size"`
-	H2FontSize      *float64 `json:"h2_font_size"`
-	CaptionOpacity  *float64 `json:"caption_opacity"`
-	CaptionFontSize *float64 `json:"caption_font_size"`
+	Title             *string  `json:"title"`
+	Description       *string  `json:"description"`
+	BodyFont          *string  `json:"body_font"`
+	HeadingFont       *string  `json:"heading_font"`
+	BodyFontSize      *float64 `json:"body_font_size"`
+	BodyLineHeight    *float64 `json:"body_line_height"`
+	H1FontSize        *float64 `json:"h1_font_size"`
+	H2FontSize        *float64 `json:"h2_font_size"`
+	CaptionOpacity    *float64 `json:"caption_opacity"`
+	CaptionFontSize   *float64 `json:"caption_font_size"`
+	HeadingColorBleed *float64 `json:"heading_color_bleed"`
 }
 
 // applyTo validates and applies the update request fields to a book.
@@ -411,6 +414,7 @@ func (req *bookUpdateRequest) applySizes(book *database.PhotoBook) string {
 		{req.H2FontSize, 6, 36, "h2_font_size", &book.H2FontSize},
 		{req.CaptionOpacity, 0, 1, "caption_opacity", &book.CaptionOpacity},
 		{req.CaptionFontSize, 6, 36, "caption_font_size", &book.CaptionFontSize},
+		{req.HeadingColorBleed, 0, 20, "heading_color_bleed", &book.HeadingColorBleed},
 	}
 	for _, r := range ranges {
 		if msg := validateRange(r.val, r.lo, r.hi, r.name); msg != "" {

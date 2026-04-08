@@ -587,6 +587,7 @@
         "h2Size": "Velikost H2",
         "captionOpacity": "Průhlednost popisků",
         "captionFontSize": "Velikost popisků",
+        "headingColorBleed": "Přesah boxu nadpisu",
         "serif": "Patkové",
         "sansSerif": "Bezpatkové",
         "saving": "Ukládám...",

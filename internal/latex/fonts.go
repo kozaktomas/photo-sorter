@@ -29,6 +29,8 @@ const (
 	DefaultCaptionOpacity = 0.85
 	// DefaultCaptionFontSize is the default caption font size in pt.
 	DefaultCaptionFontSize = 9.0
+	// DefaultHeadingColorBleed is the default bleed (mm) for colored heading boxes.
+	DefaultHeadingColorBleed = 4.0
 )
 
 // fontRegistry contains all available fonts indexed by ID.

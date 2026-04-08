@@ -1757,11 +1757,12 @@ PUT /books/{id}
   "h1_font_size": 18.0,
   "h2_font_size": 13.0,
   "caption_opacity": 0.85,
-  "caption_font_size": 9.0
+  "caption_font_size": 9.0,
+  "heading_color_bleed": 4.0
 }
 ```
 
-All fields are optional (partial updates). Font IDs are validated against the font registry. Size ranges: font sizes 6–36 pt, line height 8–48 pt, caption font size 6–16 pt, opacity 0.0–1.0.
+All fields are optional (partial updates). Font IDs are validated against the font registry. Size ranges: font sizes 6–36 pt, line height 8–48 pt, caption font size 6–16 pt, opacity 0.0–1.0, heading color bleed 0–20 mm.
 
 #### Delete Book
 

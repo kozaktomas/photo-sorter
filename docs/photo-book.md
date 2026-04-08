@@ -69,6 +69,7 @@ Chapters: `internal/database/postgres/migrations/016_create_book_chapters.sql`
 Chapter color: `internal/database/postgres/migrations/020_add_chapter_color.sql`
 Book typography (fonts, sizes, caption opacity): `internal/database/postgres/migrations/021_add_book_typography.sql`
 Caption font size (standalone): `internal/database/postgres/migrations/022_add_caption_font_size.sql`
+Heading color bleed: `internal/database/postgres/migrations/023_add_heading_color_bleed.sql`
 
 ### Tables
 
@@ -85,6 +86,7 @@ photo_books
 ├── h2_font_size (REAL, default 13.0 pt)
 ├── caption_opacity (REAL, default 0.85, range 0.0-1.0)
 ├── caption_font_size (REAL, default 9.0 pt)
+├── heading_color_bleed (REAL, default 4.0 mm, range 0–20 mm)
 ├── created_at
 └── updated_at
 
@@ -158,7 +160,7 @@ Deleting a book cascades to all chapters, sections, pages, and slots.
 | GET | `/api/v1/books` | List all books |
 | POST | `/api/v1/books` | Create a book (`{ title }`) |
 | GET | `/api/v1/books/:id` | Get book with sections and pages |
-| PUT | `/api/v1/books/:id` | Update book (`{ title, description, body_font, heading_font, body_font_size, body_line_height, h1_font_size, h2_font_size, caption_opacity, caption_font_size }`) |
+| PUT | `/api/v1/books/:id` | Update book (`{ title, description, body_font, heading_font, body_font_size, body_line_height, h1_font_size, h2_font_size, caption_opacity, caption_font_size, heading_color_bleed }`) |
 | DELETE | `/api/v1/books/:id` | Delete book (cascades) |
 
 ### Chapters
@@ -305,7 +307,7 @@ Half-canvas height: (172 - 4) / 2 = 84mm.
 
 ### Canvas Zone Clipping
 
-The entire canvas zone is wrapped in a TikZ `\clip` scope that prevents any content (photos, text, markers) from bleeding into the header or footer zones. This is a safety net — all slots are already positioned within the canvas bounds, but the clip ensures integrity at scale.
+The entire canvas zone is wrapped in a TikZ `\clip` scope that prevents any content (photos, text, markers) from bleeding into the header or footer zones. The clip area is expanded horizontally by the `heading_color_bleed` value (default 4mm) so colored heading boxes can extend into the margins. Photos remain constrained by their own slot-level clips.
 
 ### Running Headers
 
@@ -320,7 +322,7 @@ Captions are sourced from `section_photos.description` (section-scoped). Instead
 
 - **Single-photo pages**: Caption alone in footer, no marker number
 - **Multi-photo pages**: Sequential marker numbers (1, 2, 3...) assigned to photos with captions
-  - **Marker overlay**: 4×4mm bold number (6pt) on outside edge of photo (away from binding), white on semi-transparent dark background
+  - **Marker overlay**: 4×4mm bold number (6pt) on outside edge of photo (away from binding). Uses chapter color when set (with auto-contrast text), otherwise white on semi-transparent dark background
   - **Footer text**: `**1** Caption text  **2** Caption text` in 8/10pt, `black!70`, 4mm below separation rule
 
 ### Page Styles
@@ -367,8 +369,8 @@ Text slots support Markdown formatting with auto-detected rendering types:
 
 | Syntax | Result |
 |--------|--------|
-| `# Heading` | Large bold heading |
-| `## Subheading` | Medium bold subheading |
+| `# Heading` | Large bold heading (colored background when chapter has color) |
+| `## Subheading` | Medium bold subheading (colored background when chapter has color) |
 | `**bold**` | **Bold text** |
 | `*italic*` | *Italic text* |
 | `- item` | Bulleted list |
@@ -408,6 +410,7 @@ Each book has configurable typography settings that control both PDF rendering a
 | `h2_font_size` | 13.0 pt | 6–36 pt | H2 heading size |
 | `caption_opacity` | 0.85 | 0.0–1.0 | Caption text opacity (LaTeX `black!N`) |
 | `caption_font_size` | 9.0 pt | 6–16 pt | Photo caption size |
+| `heading_color_bleed` | 4.0 mm | 0–20 mm | How far colored heading boxes extend beyond content width into margins |
 
 **Font Registry:** 20 Google Fonts available (11 serif, 9 sans-serif), defined in `internal/latex/fonts.go`. Each font has a `LatexName` (for `fontspec` in LuaLaTeX) and `GoogleFamily`/`GoogleSpec` (for browser preview). Fonts are validated on save via `latex.ValidateFont()`.
 
@@ -462,7 +465,7 @@ The test PDF contains 6 pages:
 
 ### Professional Print Features
 
-**Bleed & Crop Marks:** The PDF includes 3mm bleed on all sides using the LaTeX `crop` package. The total paper size is 303×216mm (A4 landscape + 3mm per side). Crop marks (corner registration marks) are rendered in the bleed area for precise trimming. The TikZ content coordinate system remains anchored to the A4 trim area — no coordinate adjustments needed.
+**Bleed & Crop Marks:** The PDF includes 3mm bleed on all sides using the LaTeX `crop` package. The total paper size is 303×216mm (A4 landscape + 3mm per side). Crop marks (corner registration marks) are rendered in the bleed area for precise trimming. For single-page preview exports, crop marks are disabled (the `crop` package uses `off` mode) while maintaining the same paper geometry. The TikZ content coordinate system remains anchored to the A4 trim area — no coordinate adjustments needed.
 
 **PDF Compatibility:** `\pdfvariable minorversion 4` ensures PDF 1.4 output for broad printer compatibility.
 

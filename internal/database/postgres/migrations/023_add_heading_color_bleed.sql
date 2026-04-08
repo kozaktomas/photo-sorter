@@ -1,0 +1,1 @@
+ALTER TABLE photo_books ADD COLUMN IF NOT EXISTS heading_color_bleed REAL NOT NULL DEFAULT 4.0;

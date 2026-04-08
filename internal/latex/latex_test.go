@@ -564,26 +564,20 @@ func TestBuildTemplateData(t *testing.T) {
 		}
 	})
 
-	t.Run("title page added when bookTitle set", func(t *testing.T) {
+	t.Run("no title page even when bookTitle set", func(t *testing.T) {
 		groups := []sectionGroup{
 			{sectionID: "s1", title: "S1", pages: []database.BookPage{
 				{ID: "p1", SectionID: "s1", Format: "1_fullscreen", Slots: dummySlot()},
 			}},
 		}
-		data, report := buildTemplateData(groups, nil, nil, DefaultLayoutConfig(), &database.PhotoBook{Title: "My Book"})
+		_, report := buildTemplateData(groups, nil, nil, DefaultLayoutConfig(), &database.PhotoBook{Title: "My Book"})
 
-		if data.BookTitle != "My Book" {
-			t.Errorf("expected book title 'My Book', got '%s'", data.BookTitle)
+		// No title page — content starts at page 1.
+		if report.PageCount != 1 {
+			t.Errorf("expected 1 page (content only), got %d", report.PageCount)
 		}
-		// Title page is page 1, content is page 2.
-		if report.PageCount != 2 {
-			t.Errorf("expected 2 pages (title + content), got %d", report.PageCount)
-		}
-		if len(report.Pages) < 1 || report.Pages[0].Format != "title" {
-			t.Error("expected first report page to be title format")
-		}
-		if !report.Pages[0].IsDivider {
-			t.Error("expected title page to be divider")
+		if len(report.Pages) > 0 && report.Pages[0].Format == "title" {
+			t.Error("expected no title page")
 		}
 	})
 

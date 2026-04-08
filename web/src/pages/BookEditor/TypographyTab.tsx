@@ -233,6 +233,13 @@ function TypographySettingsSection({ book, onRefresh }: { book: BookDetail; onRe
           suffix="pt"
           onChange={(v) => handleNumberChange('caption_font_size', v)}
         />
+        <NumberInput
+          label={t('books.editor.typography.headingColorBleed')}
+          value={book.heading_color_bleed}
+          min={0} max={20} step={0.1}
+          suffix="mm"
+          onChange={(v) => handleNumberChange('heading_color_bleed', v)}
+        />
       </div>
 
       {/* Live preview */}

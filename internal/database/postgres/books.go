@@ -41,12 +41,14 @@ func (r *BookRepository) CreateBook(ctx context.Context, book *database.PhotoBoo
 		`INSERT INTO photo_books
 		 (id, title, description, body_font, heading_font,
 		  body_font_size, body_line_height, h1_font_size,
-		  h2_font_size, caption_opacity, caption_font_size, created_at, updated_at)
-		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
+		  h2_font_size, caption_opacity, caption_font_size,
+		  heading_color_bleed, created_at, updated_at)
+		 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
 		book.ID, book.Title, book.Description,
 		book.BodyFont, book.HeadingFont, book.BodyFontSize,
 		book.BodyLineHeight, book.H1FontSize, book.H2FontSize,
-		book.CaptionOpacity, book.CaptionFontSize, book.CreatedAt, book.UpdatedAt)
+		book.CaptionOpacity, book.CaptionFontSize,
+		book.HeadingColorBleed, book.CreatedAt, book.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("create book: %w", err)
 	}
@@ -81,6 +83,9 @@ func applyBookTypographyDefaults(book *database.PhotoBook) {
 	if book.CaptionFontSize == 0 {
 		book.CaptionFontSize = 9.0
 	}
+	if book.HeadingColorBleed == 0 {
+		book.HeadingColorBleed = 4.0
+	}
 }
 
 // GetBook retrieves a book by ID from the database.
@@ -90,12 +95,14 @@ func (r *BookRepository) GetBook(ctx context.Context, id string) (*database.Phot
 		`SELECT id, title, description,
 		        body_font, heading_font, body_font_size,
 		        body_line_height, h1_font_size, h2_font_size,
-		        caption_opacity, caption_font_size, created_at, updated_at
+		        caption_opacity, caption_font_size,
+		        heading_color_bleed, created_at, updated_at
 		 FROM photo_books WHERE id = $1`, id).
 		Scan(&b.ID, &b.Title, &b.Description,
 			&b.BodyFont, &b.HeadingFont, &b.BodyFontSize,
 			&b.BodyLineHeight, &b.H1FontSize, &b.H2FontSize,
-			&b.CaptionOpacity, &b.CaptionFontSize, &b.CreatedAt, &b.UpdatedAt)
+			&b.CaptionOpacity, &b.CaptionFontSize,
+			&b.HeadingColorBleed, &b.CreatedAt, &b.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -111,7 +118,8 @@ func (r *BookRepository) ListBooks(ctx context.Context) ([]database.PhotoBook, e
 		`SELECT id, title, description,
 		        body_font, heading_font, body_font_size,
 		        body_line_height, h1_font_size, h2_font_size,
-		        caption_opacity, caption_font_size, created_at, updated_at
+		        caption_opacity, caption_font_size,
+		        heading_color_bleed, created_at, updated_at
 		 FROM photo_books ORDER BY created_at DESC`)
 	if err != nil {
 		return nil, fmt.Errorf("list books: %w", err)
@@ -123,7 +131,7 @@ func (r *BookRepository) ListBooks(ctx context.Context) ([]database.PhotoBook, e
 		if err := rows.Scan(&b.ID, &b.Title, &b.Description,
 			&b.BodyFont, &b.HeadingFont, &b.BodyFontSize, &b.BodyLineHeight,
 			&b.H1FontSize, &b.H2FontSize, &b.CaptionOpacity, &b.CaptionFontSize,
-			&b.CreatedAt, &b.UpdatedAt); err != nil {
+			&b.HeadingColorBleed, &b.CreatedAt, &b.UpdatedAt); err != nil {
 			return nil, fmt.Errorf("scan book: %w", err)
 		}
 		books = append(books, b)
@@ -140,7 +148,7 @@ func (r *BookRepository) ListBooksWithCounts(ctx context.Context) ([]database.Ph
 		`SELECT pb.id, pb.title, pb.description,
 			pb.body_font, pb.heading_font, pb.body_font_size, pb.body_line_height,
 			pb.h1_font_size, pb.h2_font_size, pb.caption_opacity, pb.caption_font_size,
-			pb.created_at, pb.updated_at,
+			pb.heading_color_bleed, pb.created_at, pb.updated_at,
 			(SELECT COUNT(*) FROM book_sections WHERE book_id = pb.id) as section_count,
 			(SELECT COUNT(*) FROM book_pages WHERE book_id = pb.id) as page_count,
 			COALESCE((SELECT SUM(cnt) FROM (
@@ -158,7 +166,7 @@ func (r *BookRepository) ListBooksWithCounts(ctx context.Context) ([]database.Ph
 		if err := rows.Scan(&b.ID, &b.Title, &b.Description,
 			&b.BodyFont, &b.HeadingFont, &b.BodyFontSize, &b.BodyLineHeight,
 			&b.H1FontSize, &b.H2FontSize, &b.CaptionOpacity, &b.CaptionFontSize,
-			&b.CreatedAt, &b.UpdatedAt,
+			&b.HeadingColorBleed, &b.CreatedAt, &b.UpdatedAt,
 			&b.SectionCount, &b.PageCount, &b.PhotoCount); err != nil {
 			return nil, fmt.Errorf("scan book with counts: %w", err)
 		}
@@ -177,11 +185,11 @@ func (r *BookRepository) UpdateBook(ctx context.Context, book *database.PhotoBoo
 		`UPDATE photo_books SET title = $1, description = $2,
 			body_font = $3, heading_font = $4, body_font_size = $5, body_line_height = $6,
 			h1_font_size = $7, h2_font_size = $8, caption_opacity = $9, caption_font_size = $10,
-			updated_at = $11 WHERE id = $12`,
+			heading_color_bleed = $11, updated_at = $12 WHERE id = $13`,
 		book.Title, book.Description,
 		book.BodyFont, book.HeadingFont, book.BodyFontSize, book.BodyLineHeight,
 		book.H1FontSize, book.H2FontSize, book.CaptionOpacity, book.CaptionFontSize,
-		book.UpdatedAt, book.ID)
+		book.HeadingColorBleed, book.UpdatedAt, book.ID)
 	if err != nil {
 		return fmt.Errorf("update book: %w", err)
 	}

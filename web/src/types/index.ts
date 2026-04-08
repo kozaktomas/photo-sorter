@@ -476,6 +476,7 @@ export interface BookDetail {
   h2_font_size: number;
   caption_opacity: number;
   caption_font_size: number;
+  heading_color_bleed: number;
   chapters: BookChapter[];
   sections: BookSection[];
   pages: BookPage[];
