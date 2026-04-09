@@ -60,6 +60,14 @@ make lint
 # Lint and auto-fix
 make lint-fix
 
+# Install all book typography fonts to /usr/local/share/fonts/photo-sorter
+# (one-time setup for dev environments running outside Docker; uses sudo,
+# idempotent). System path is required because the lualatex subprocess in
+# internal/latex/latex.go overrides HOME to a temp dir, which hides any
+# user-local font directory from fontconfig.
+# Uses scripts/install-fonts.sh — the same script the Docker build runs.
+make install-fonts
+
 # Run the CLI
 go run . <command>
 
@@ -98,6 +106,19 @@ The dev environment uses:
 - PhotoPrism: `http://photoprism-test:2342` (admin/photoprism)
 - PostgreSQL: `pgvector:5432` (postgres/photoprism)
 - Embeddings: configured in `.env.dev`
+
+**Book typography fonts:** PDF export requires the book fonts to be installed
+on the host (production reads them from the Docker image's `/usr/share/fonts`).
+For dev environments, run `make install-fonts` once after cloning — it sudo-
+installs all 23 free fonts to `/usr/local/share/fonts/photo-sorter` using the
+same `scripts/install-fonts.sh` the Docker build calls. The system path
+(rather than `~/.local/share/fonts`) is mandatory: `compileLatex` in
+`internal/latex/latex.go` overrides `HOME` to a fresh temp dir before
+spawning lualatex (so luaotfload writes its cache there), which hides any
+user-local font directory from fontconfig. Bookman Old Style is proprietary
+and is not installed automatically; see the script header for manual
+installation instructions. `dev.sh` warns if the canonical sentinel font is
+missing.
 
 ## Direct PhotoPrism API Auth (for Playwright/curl)
 

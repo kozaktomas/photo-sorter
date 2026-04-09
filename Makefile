@@ -1,4 +1,4 @@
-.PHONY: build build-web build-go clean dev serve test lint lint-fix fmt vet check
+.PHONY: build build-web build-go clean dev serve test lint lint-fix fmt vet check install-fonts
 
 VERSION ?= dev
 COMMIT_SHA ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
@@ -90,3 +90,16 @@ lint-fix:
 
 ## check: Run full quality gate (fmt + vet + lint + test)
 check: fmt vet lint test
+
+## install-fonts: Install all book typography fonts to /usr/local/share/fonts/photo-sorter.
+##                Requires sudo. Uses the same script as the Docker build.
+##                System path is required: the lualatex subprocess in
+##                internal/latex/latex.go overrides HOME to a temp dir, so
+##                ~/.local/share/fonts/* is invisible to PDF export.
+install-fonts:
+	@FONT_DEST="/usr/local/share/fonts/photo-sorter"; \
+	echo "Installing photo-sorter book fonts to $$FONT_DEST (sudo) ..."; \
+	sudo sh scripts/install-fonts.sh "$$FONT_DEST" && \
+	echo "Refreshing fontconfig cache..." && \
+	sudo fc-cache -f "$$FONT_DEST" && \
+	echo "Done. Verify with: fc-list : family | grep -E 'Raleway|Montserrat|Lato'"
