@@ -153,7 +153,6 @@ type TemplateData struct {
 	Sections        []TemplateSection
 	PageW           float64
 	PageH           float64
-	SinglePage      bool // true for single-page export (oneside, no blank pages)
 	DebugOverlay    bool
 	DebugColOffsets []float64 // relative X offsets for column left edges
 
@@ -528,8 +527,8 @@ func applyBookSizes(rt *resolvedTypography, book *database.PhotoBook) {
 	}
 }
 
-// isPageEmpty returns true if a page has no content (no photos, no text in any slot).
-func isPageEmpty(p database.BookPage) bool {
+// IsPageEmpty returns true if a page has no content (no photos, no text in any slot).
+func IsPageEmpty(p database.BookPage) bool {
 	if len(p.Slots) == 0 {
 		return true
 	}
@@ -545,7 +544,7 @@ func isPageEmpty(p database.BookPage) bool {
 func (pb *pageBuilder) buildSection(g sectionGroup) TemplateSection {
 	tmplPages := make([]TemplatePage, 0, len(g.pages))
 	for _, p := range g.pages {
-		if isPageEmpty(p) {
+		if IsPageEmpty(p) {
 			pb.totalContentPages-- // adjust total so IsLast works correctly
 			continue
 		}
@@ -1275,12 +1274,14 @@ type SinglePageInput struct {
 	Book         *database.PhotoBook // book with typography settings (nil = defaults)
 	ChapterColor string              // hex without # (e.g. "8B0000"), empty = no color
 	Captions     CaptionMap
-	PageNumber   int // actual page number in book (1-based); 0 = default to 1
+	PageNumber   int // actual 1-based page number in the full book; values < 1 are clamped to 1
 }
 
-// GenerateSinglePagePDF renders a single book page to PDF using the same layout as full book export.
-// When PageNumber is set, the page is rendered with the correct page number, margins, and side
-// (recto/verso) matching its position in the full book.
+// GenerateSinglePagePDF renders a single book page to PDF using the exact same
+// layout, template, and compile path as full book export. Callers MUST set
+// input.PageNumber to the page's 1-based position in the full book so that
+// margins, folio placement, and the printed page number match what the full
+// book render would produce for that page.
 func GenerateSinglePagePDF(
 	ctx context.Context, pp *photoprism.PhotoPrism, input SinglePageInput,
 ) ([]byte, error) {
@@ -1318,7 +1319,6 @@ func GenerateSinglePagePDF(
 			Title: "",
 			Pages: []TemplatePage{tmplPage},
 		}},
-		SinglePage:       true,
 		PageW:            PageW,
 		PageH:            PageH,
 		BodyFontLatex:    typo.bodyFontLatex,

@@ -1930,6 +1930,33 @@ func buildSectionCaptions(ctx context.Context, bw database.BookWriter, sectionID
 	return captions
 }
 
+// computePageNumber returns the 1-based position of pageID in the full book,
+// matching the numbering used by latex.GeneratePDFWithOptions: pages are
+// sorted via latex.SortPagesBySectionOrder and empty pages are skipped.
+// Returns 1 as a safe fallback when the page can't be located.
+func computePageNumber(ctx context.Context, bw database.BookWriter, bookID, pageID string) int {
+	pages, err := bw.GetPages(ctx, bookID)
+	if err != nil {
+		return 1
+	}
+	sections, err := bw.GetSections(ctx, bookID)
+	if err != nil {
+		return 1
+	}
+	latex.SortPagesBySectionOrder(pages, sections)
+	num := 0
+	for _, p := range pages {
+		if latex.IsPageEmpty(p) {
+			continue
+		}
+		num++
+		if p.ID == pageID {
+			return num
+		}
+	}
+	return 1
+}
+
 // ExportPagePDF handles GET /api/v1/pages/:id/export-pdf and exports a single page as PDF.
 func (h *BooksHandler) ExportPagePDF(w http.ResponseWriter, r *http.Request) {
 	pp := middleware.MustGetPhotoPrism(r.Context(), w)
@@ -1964,7 +1991,7 @@ func (h *BooksHandler) ExportPagePDF(w http.ResponseWriter, r *http.Request) {
 		Book:         book,
 		ChapterColor: resolveChapterColor(r.Context(), bw, page.SectionID),
 		Captions:     buildSectionCaptions(r.Context(), bw, page.SectionID),
-		PageNumber:   1, // always page 1 (recto/right) for single-page preview
+		PageNumber:   computePageNumber(r.Context(), bw, page.BookID, pageID),
 	})
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Sprintf("PDF generation failed: %v", err))

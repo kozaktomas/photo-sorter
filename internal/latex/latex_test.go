@@ -1042,7 +1042,6 @@ func TestCaptionBadgeTemplate(t *testing.T) {
 					FolioAnchor: "south east",
 				}},
 			}},
-			SinglePage:       true,
 			BodyFontLatex:    "PT Serif",
 			HeadingFontLatex: "Source Sans 3",
 			BodyFontSize:     11, BodyLineHeight: 15,

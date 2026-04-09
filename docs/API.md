@@ -2258,7 +2258,7 @@ Generates and downloads a print-ready A4 landscape PDF of the book. Features inc
 GET /pages/{id}/export-pdf
 ```
 
-Generates a PDF of a single book page for quick preview. Uses the same layout, fonts, margins, and styling as the full book export. The page is rendered as a recto (right-hand, odd) page.
+Generates a PDF of a single book page for quick preview. The output is pixel-identical to the corresponding page in the full book export — the page number, recto/verso side (and therefore mirrored margins and folio placement), and printer crop marks all match the page's actual position in the book. The position is computed by sorting all book pages via the same section/sort order used by the full book export and counting non-empty pages up to and including the target.
 
 **Response (200):** Binary PDF file with headers:
 - `Content-Type: application/pdf`

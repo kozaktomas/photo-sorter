@@ -1,4 +1,4 @@
-\documentclass[a4paper,landscape,{{if .SinglePage}}oneside{{else}}twoside{{end}}]{article}
+\documentclass[a4paper,landscape,twoside]{article}
 \usepackage[margin=0mm]{geometry}
 \usepackage{tikz}
 \usepackage{graphicx}
@@ -16,12 +16,8 @@
 \usepackage{tabularx}
 \usepackage{microtype}
 
-% Bleed: extend paper by 3mm on each side with crop marks (skip for single-page preview)
-{{- if .SinglePage}}
-\usepackage[off,width=303truemm,height=216truemm,center]{crop}
-{{- else}}
+% Bleed: extend paper by 3mm on each side with printer crop marks.
 \usepackage[cam,noinfo,width=303truemm,height=216truemm,center]{crop}
-{{- end}}
 
 % Broad printer compatibility
 \pdfvariable minorversion 4
