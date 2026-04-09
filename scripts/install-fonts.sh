@@ -148,6 +148,10 @@ echo "Bitter..."
 fetch_to "$DEST_ROOT/truetype/bitter" "Bitter[wght].ttf"        "$GFONTS_BASE/bitter/Bitter%5Bwght%5D.ttf"
 fetch_to "$DEST_ROOT/truetype/bitter" "Bitter-Italic[wght].ttf" "$GFONTS_BASE/bitter/Bitter-Italic%5Bwght%5D.ttf"
 
+echo "Gelasio..."
+fetch_to "$DEST_ROOT/truetype/gelasio" "Gelasio[wght].ttf"        "$GFONTS_BASE/gelasio/Gelasio%5Bwght%5D.ttf"
+fetch_to "$DEST_ROOT/truetype/gelasio" "Gelasio-Italic[wght].ttf" "$GFONTS_BASE/gelasio/Gelasio-Italic%5Bwght%5D.ttf"
+
 echo "Noto Sans..."
 fetch_to "$DEST_ROOT/truetype/notosans" "NotoSans[wdth,wght].ttf"        "$GFONTS_BASE/notosans/NotoSans%5Bwdth%2Cwght%5D.ttf"
 fetch_to "$DEST_ROOT/truetype/notosans" "NotoSans-Italic[wdth,wght].ttf" "$GFONTS_BASE/notosans/NotoSans-Italic%5Bwdth%2Cwght%5D.ttf"

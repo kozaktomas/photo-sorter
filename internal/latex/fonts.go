@@ -121,6 +121,14 @@ var fontRegistry = map[string]FontEntry{
 		GoogleFamily: "Bitter",
 		GoogleSpec:   "ital,wght@0,400;0,600;0,700;1,400;1,600;1,700",
 	},
+	"gelasio": {
+		ID:           "gelasio",
+		DisplayName:  "Gelasio",
+		Category:     "serif",
+		LatexName:    "Gelasio",
+		GoogleFamily: "Gelasio",
+		GoogleSpec:   "ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600;1,700",
+	},
 	"bookman-old-style": {
 		ID:          "bookman-old-style",
 		DisplayName: "Bookman Old Style",

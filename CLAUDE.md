@@ -110,7 +110,7 @@ The dev environment uses:
 **Book typography fonts:** PDF export requires the book fonts to be installed
 on the host (production reads them from the Docker image's `/usr/share/fonts`).
 For dev environments, run `make install-fonts` once after cloning — it sudo-
-installs all 23 free fonts to `/usr/local/share/fonts/photo-sorter` using the
+installs all 24 free fonts to `/usr/local/share/fonts/photo-sorter` using the
 same `scripts/install-fonts.sh` the Docker build calls. The system path
 (rather than `~/.local/share/fonts`) is mandatory: `compileLatex` in
 `internal/latex/latex.go` overrides `HOME` to a fresh temp dir before
