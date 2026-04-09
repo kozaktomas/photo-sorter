@@ -5,12 +5,8 @@
 \usepackage{fontspec}
 \usepackage{polyglossia}
 \setdefaultlanguage{czech}
-\setmainfont{ {{- .BodyFontLatex -}} }[
-  Ligatures      = TeX,
-]
-\setsansfont{ {{- .HeadingFontLatex -}} }[
-  Ligatures      = TeX,
-]
+{{ .BodyFontDeclaration }}
+{{ .HeadingFontDeclaration }}
 \usepackage[dvipsnames]{xcolor}
 \usepackage{enumitem}
 \usepackage{tabularx}

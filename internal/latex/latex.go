@@ -158,18 +158,24 @@ type TemplateData struct {
 	DebugColOffsets []float64 // relative X offsets for column left edges
 
 	// Typography settings (from per-book configuration).
-	BodyFontLatex    string  // fontspec font name, e.g. "PT Serif"
-	HeadingFontLatex string  // fontspec font name, e.g. "Source Sans 3"
-	BodyFontSize     float64 // e.g. 11.0
-	BodyLineHeight   float64 // e.g. 15.0
-	H1FontSize       float64 // e.g. 18.0
-	H1Leading        float64 // e.g. 22.0
-	H2FontSize       float64 // e.g. 13.0
-	H2Leading        float64 // e.g. 16.0
-	CaptionOpacity   int     // 0-100 for LaTeX black!N notation
-	CaptionFontSize  float64 // e.g. 9.0
-	CaptionLeading   float64 // e.g. 11.0
-	CaptionBadgeSize float64 // e.g. 4.0 (mm) — square dimension of footer caption badges
+	// BodyFontDeclaration / HeadingFontDeclaration are full LaTeX commands
+	// (\setmainfont{...}[...] / \setsansfont{...}[...]) built by
+	// FontEntry.LatexDeclaration. They are inserted verbatim into the
+	// template preamble so per-font customization (e.g. file-based loading
+	// for variable fonts that need explicit wght axis configuration) lives
+	// in Go rather than the template.
+	BodyFontDeclaration    string
+	HeadingFontDeclaration string
+	BodyFontSize           float64 // e.g. 11.0
+	BodyLineHeight         float64 // e.g. 15.0
+	H1FontSize             float64 // e.g. 18.0
+	H1Leading              float64 // e.g. 22.0
+	H2FontSize             float64 // e.g. 13.0
+	H2Leading              float64 // e.g. 16.0
+	CaptionOpacity         int     // 0-100 for LaTeX black!N notation
+	CaptionFontSize        float64 // e.g. 9.0
+	CaptionLeading         float64 // e.g. 11.0
+	CaptionBadgeSize       float64 // e.g. 4.0 (mm) — square dimension of footer caption badges
 }
 
 // photoImage holds downloaded photo data for dimension lookup.
@@ -431,21 +437,21 @@ func buildTemplateData(
 	}
 
 	return TemplateData{
-			Sections:         tmplSections,
-			PageW:            PageW,
-			PageH:            PageH,
-			BodyFontLatex:    typo.bodyFontLatex,
-			HeadingFontLatex: typo.headingFontLatex,
-			BodyFontSize:     typo.bodyFontSize,
-			BodyLineHeight:   typo.bodyLineHeight,
-			H1FontSize:       typo.h1FontSize,
-			H1Leading:        typo.h1Leading,
-			H2FontSize:       typo.h2FontSize,
-			H2Leading:        typo.h2Leading,
-			CaptionOpacity:   typo.captionOpacity,
-			CaptionFontSize:  typo.captionFontSize,
-			CaptionLeading:   typo.captionLeading,
-			CaptionBadgeSize: typo.captionBadgeSize,
+			Sections:               tmplSections,
+			PageW:                  PageW,
+			PageH:                  PageH,
+			BodyFontDeclaration:    typo.bodyFontDeclaration,
+			HeadingFontDeclaration: typo.headingFontDeclaration,
+			BodyFontSize:           typo.bodyFontSize,
+			BodyLineHeight:         typo.bodyLineHeight,
+			H1FontSize:             typo.h1FontSize,
+			H1Leading:              typo.h1Leading,
+			H2FontSize:             typo.h2FontSize,
+			H2Leading:              typo.h2Leading,
+			CaptionOpacity:         typo.captionOpacity,
+			CaptionFontSize:        typo.captionFontSize,
+			CaptionLeading:         typo.captionLeading,
+			CaptionBadgeSize:       typo.captionBadgeSize,
 		}, &ExportReport{
 			BookTitle:  bookTitle,
 			PageCount:  pb.pageNumber,
@@ -456,34 +462,36 @@ func buildTemplateData(
 
 // resolvedTypography holds resolved font/size values with defaults applied.
 type resolvedTypography struct {
-	bodyFontLatex     string
-	headingFontLatex  string
-	bodyFontSize      float64
-	bodyLineHeight    float64
-	h1FontSize        float64
-	h1Leading         float64
-	h2FontSize        float64
-	h2Leading         float64
-	captionOpacity    int
-	captionFontSize   float64
-	captionLeading    float64
-	captionBadgeSize  float64
-	headingColorBleed float64
+	bodyFontDeclaration    string
+	headingFontDeclaration string
+	bodyFontSize           float64
+	bodyLineHeight         float64
+	h1FontSize             float64
+	h1Leading              float64
+	h2FontSize             float64
+	h2Leading              float64
+	captionOpacity         int
+	captionFontSize        float64
+	captionLeading         float64
+	captionBadgeSize       float64
+	headingColorBleed      float64
 }
 
 // resolveBookTypography resolves typography settings from a PhotoBook with fallbacks.
 func resolveBookTypography(book *database.PhotoBook) resolvedTypography {
+	defaultBody, _ := GetFont(DefaultBodyFont)
+	defaultHeading, _ := GetFont(DefaultHeadingFont)
 	rt := resolvedTypography{
-		bodyFontLatex:     "PT Serif",
-		headingFontLatex:  "Source Sans 3",
-		bodyFontSize:      DefaultBodyFontSize,
-		bodyLineHeight:    DefaultBodyLineHeight,
-		h1FontSize:        DefaultH1FontSize,
-		h2FontSize:        DefaultH2FontSize,
-		captionOpacity:    int(DefaultCaptionOpacity * 100),
-		captionFontSize:   DefaultCaptionFontSize,
-		captionBadgeSize:  DefaultCaptionBadgeSize,
-		headingColorBleed: DefaultHeadingColorBleed,
+		bodyFontDeclaration:    defaultBody.LatexDeclaration(`\setmainfont`),
+		headingFontDeclaration: defaultHeading.LatexDeclaration(`\setsansfont`),
+		bodyFontSize:           DefaultBodyFontSize,
+		bodyLineHeight:         DefaultBodyLineHeight,
+		h1FontSize:             DefaultH1FontSize,
+		h2FontSize:             DefaultH2FontSize,
+		captionOpacity:         int(DefaultCaptionOpacity * 100),
+		captionFontSize:        DefaultCaptionFontSize,
+		captionBadgeSize:       DefaultCaptionBadgeSize,
+		headingColorBleed:      DefaultHeadingColorBleed,
 	}
 
 	if book != nil {
@@ -497,13 +505,13 @@ func resolveBookTypography(book *database.PhotoBook) resolvedTypography {
 	return rt
 }
 
-// applyBookFonts overrides font names from book settings when available.
+// applyBookFonts overrides font declarations from book settings when available.
 func applyBookFonts(rt *resolvedTypography, book *database.PhotoBook) {
 	if f, ok := GetFont(book.BodyFont); ok && f.LatexName != "" {
-		rt.bodyFontLatex = f.LatexName
+		rt.bodyFontDeclaration = f.LatexDeclaration(`\setmainfont`)
 	}
 	if f, ok := GetFont(book.HeadingFont); ok && f.LatexName != "" {
-		rt.headingFontLatex = f.LatexName
+		rt.headingFontDeclaration = f.LatexDeclaration(`\setsansfont`)
 	}
 }
 
@@ -1370,20 +1378,20 @@ func GenerateSinglePagePDF(
 			Title: "",
 			Pages: []TemplatePage{tmplPage},
 		}},
-		PageW:            PageW,
-		PageH:            PageH,
-		BodyFontLatex:    typo.bodyFontLatex,
-		HeadingFontLatex: typo.headingFontLatex,
-		BodyFontSize:     typo.bodyFontSize,
-		BodyLineHeight:   typo.bodyLineHeight,
-		H1FontSize:       typo.h1FontSize,
-		H1Leading:        typo.h1Leading,
-		H2FontSize:       typo.h2FontSize,
-		H2Leading:        typo.h2Leading,
-		CaptionOpacity:   typo.captionOpacity,
-		CaptionFontSize:  typo.captionFontSize,
-		CaptionLeading:   typo.captionLeading,
-		CaptionBadgeSize: typo.captionBadgeSize,
+		PageW:                  PageW,
+		PageH:                  PageH,
+		BodyFontDeclaration:    typo.bodyFontDeclaration,
+		HeadingFontDeclaration: typo.headingFontDeclaration,
+		BodyFontSize:           typo.bodyFontSize,
+		BodyLineHeight:         typo.bodyLineHeight,
+		H1FontSize:             typo.h1FontSize,
+		H1Leading:              typo.h1Leading,
+		H2FontSize:             typo.h2FontSize,
+		H2Leading:              typo.h2Leading,
+		CaptionOpacity:         typo.captionOpacity,
+		CaptionFontSize:        typo.captionFontSize,
+		CaptionLeading:         typo.captionLeading,
+		CaptionBadgeSize:       typo.captionBadgeSize,
 	}
 
 	pdfData, err := compileLatex(ctx, data, tmpDir)

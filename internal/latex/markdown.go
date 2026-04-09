@@ -120,20 +120,23 @@ func markdownToLatexInternal(md, chapterColor string, typo TypographyConfig, ble
 			continue
 		}
 
-		// Unordered list (- or *).
+		// Unordered list (- or *). labelindent=0pt anchors the bullet at the
+		// parbox left edge so it aligns with the body text above; without it,
+		// enumitem inherits a non-zero default labelindent that visibly
+		// pushes the entire list to the right.
 		if isUnorderedListItem(trimmed) {
 			items, newI := collectListItems(lines, i, isUnorderedListItem, stripListMarker)
-			out = append(out, `\begin{itemize}[nosep,leftmargin=1.5em]`)
+			out = append(out, `\begin{itemize}[nosep,leftmargin=1.2em,labelindent=0pt,labelsep=0.4em,itemindent=0pt]`)
 			out = append(out, items...)
 			out = append(out, `\end{itemize}`)
 			i = newI
 			continue
 		}
 
-		// Ordered list.
+		// Ordered list. Same labelindent=0pt anchoring as unordered lists.
 		if isOrderedListItem(trimmed) {
 			items, newI := collectListItems(lines, i, isOrderedListItem, stripOrderedListMarker)
-			out = append(out, `\begin{enumerate}[nosep,leftmargin=1.5em]`)
+			out = append(out, `\begin{enumerate}[nosep,leftmargin=1.6em,labelindent=0pt,labelsep=0.4em,itemindent=0pt]`)
 			out = append(out, items...)
 			out = append(out, `\end{enumerate}`)
 			i = newI

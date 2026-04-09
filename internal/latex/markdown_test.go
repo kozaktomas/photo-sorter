@@ -62,7 +62,7 @@ func TestMarkdownToLatex_BoldAndItalic(t *testing.T) {
 func TestMarkdownToLatex_UnorderedList(t *testing.T) {
 	input := "- First item\n- Second item\n- Third item"
 	got := MarkdownToLatex(input)
-	if !strings.Contains(got, `\begin{itemize}[nosep,leftmargin=1.5em]`) {
+	if !strings.Contains(got, `\begin{itemize}[nosep,leftmargin=1.2em,labelindent=0pt,labelsep=0.4em,itemindent=0pt]`) {
 		t.Errorf("expected \\begin{itemize}, got %q", got)
 	}
 	if !strings.Contains(got, `\item First item`) {
@@ -90,7 +90,7 @@ func TestMarkdownToLatex_UnorderedListAsterisk(t *testing.T) {
 func TestMarkdownToLatex_OrderedList(t *testing.T) {
 	input := "1. Alpha\n2. Beta\n3. Gamma"
 	got := MarkdownToLatex(input)
-	if !strings.Contains(got, `\begin{enumerate}[nosep,leftmargin=1.5em]`) {
+	if !strings.Contains(got, `\begin{enumerate}[nosep,leftmargin=1.6em,labelindent=0pt,labelsep=0.4em,itemindent=0pt]`) {
 		t.Errorf("expected \\begin{enumerate}, got %q", got)
 	}
 	if !strings.Contains(got, `\item Alpha`) {

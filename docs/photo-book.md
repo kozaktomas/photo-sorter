@@ -415,7 +415,9 @@ Each book has configurable typography settings that control both PDF rendering a
 | `heading_color_bleed` | 4.0 mm | 0–20 mm | How far colored heading boxes extend beyond content width into margins |
 | `caption_badge_size` | 4.0 mm | 2–12 mm | Square dimension of footer caption marker badges (matches on-photo overlay at default 4 mm) |
 
-**Font Registry:** 24 fonts available (13 serif, 11 sans-serif), defined in `internal/latex/fonts.go`. Each font has a `LatexName` (for `fontspec` in LuaLaTeX) and `GoogleFamily`/`GoogleSpec` (for browser preview — non–Google Fonts use a visually similar fallback). Fonts are validated on save via `latex.ValidateFont()`.
+**Font Registry:** 24 fonts available (13 serif, 11 sans-serif), defined in `internal/latex/fonts.go`. Each font has a `LatexName` (for `fontspec` family lookup in LuaLaTeX) and `GoogleFamily`/`GoogleSpec` (for browser preview — non–Google Fonts use a visually similar fallback). Fonts are validated on save via `latex.ValidateFont()`.
+
+Variable fonts where `fontspec`'s family auto-detection fails to find a Bold face (Crimson Pro, Lora, Merriweather, Bitter, Gelasio, Source Serif 4, Cormorant Garamond, Nunito Sans, Raleway, Montserrat) carry additional `LatexFile` / `LatexItalicFile` fields naming the upright and italic variable-font files (e.g. `CrimsonPro[wght].ttf`). `FontEntry.LatexDeclaration()` then emits a bracket-file `\setmainfont` / `\setsansfont` command with explicit `wght=400` / `wght=700` axis features so `\textbf{}` and `\textbf{\textit{}}` render the correct weights instead of falling back to the regular face. Static fonts and well-behaved variable fonts (Noto Serif, Open Sans, Roboto, Inter, IBM Plex Sans, Noto Sans) keep the simpler family-name declaration.
 
 **Available fonts:**
 - **Serif:** PT Serif (default body), Libertinus Serif, EB Garamond, Lora, Merriweather, Noto Serif, Crimson Pro, Source Serif 4, Cormorant Garamond, Bitter, Gelasio, Bookman Old Style, URW Bookman
