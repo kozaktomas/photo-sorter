@@ -160,6 +160,26 @@ RUN apk update && \
       curl -fsSL -o /usr/share/fonts/truetype/firasans/$f.ttf \
         "https://github.com/google/fonts/raw/main/ofl/firasans/$f.ttf" || exit 1; \
     done && \
+    # Raleway (sans-serif) - variable font
+    mkdir -p /usr/share/fonts/truetype/raleway && \
+    curl -fsSL -o "/usr/share/fonts/truetype/raleway/Raleway[wght].ttf" \
+      "https://github.com/google/fonts/raw/main/ofl/raleway/Raleway%5Bwght%5D.ttf" && \
+    curl -fsSL -o "/usr/share/fonts/truetype/raleway/Raleway-Italic[wght].ttf" \
+      "https://github.com/google/fonts/raw/main/ofl/raleway/Raleway-Italic%5Bwght%5D.ttf" && \
+    # Montserrat (sans-serif) - variable font
+    mkdir -p /usr/share/fonts/truetype/montserrat && \
+    curl -fsSL -o "/usr/share/fonts/truetype/montserrat/Montserrat[wght].ttf" \
+      "https://github.com/google/fonts/raw/main/ofl/montserrat/Montserrat%5Bwght%5D.ttf" && \
+    curl -fsSL -o "/usr/share/fonts/truetype/montserrat/Montserrat-Italic[wght].ttf" \
+      "https://github.com/google/fonts/raw/main/ofl/montserrat/Montserrat-Italic%5Bwght%5D.ttf" && \
+    # URW Bookman (serif) - free Bookman clone from Artifex (bundled with Ghostscript).
+    # Alpine has no fonts-urw-base35 package, so we fetch the OTFs directly.
+    # Family name reported by fontconfig: "URW Bookman" (Light/Demi weights).
+    mkdir -p /usr/share/fonts/opentype/urw-bookman && \
+    for f in URWBookman-Light URWBookman-LightItalic URWBookman-Demi URWBookman-DemiItalic; do \
+      curl -fsSL -o /usr/share/fonts/opentype/urw-bookman/$f.otf \
+        "https://raw.githubusercontent.com/ArtifexSoftware/urw-base35-fonts/master/fonts/$f.otf" || exit 1; \
+    done && \
     # Install enumitem.sty from CTAN (avoids pulling huge texmf-dist-latexextra)
     mkdir -p /usr/share/texmf-dist/tex/latex/enumitem && \
     curl -fsSL -o /usr/share/texmf-dist/tex/latex/enumitem/enumitem.sty \

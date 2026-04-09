@@ -412,11 +412,13 @@ Each book has configurable typography settings that control both PDF rendering a
 | `caption_font_size` | 9.0 pt | 6–16 pt | Photo caption size |
 | `heading_color_bleed` | 4.0 mm | 0–20 mm | How far colored heading boxes extend beyond content width into margins |
 
-**Font Registry:** 20 Google Fonts available (11 serif, 9 sans-serif), defined in `internal/latex/fonts.go`. Each font has a `LatexName` (for `fontspec` in LuaLaTeX) and `GoogleFamily`/`GoogleSpec` (for browser preview). Fonts are validated on save via `latex.ValidateFont()`.
+**Font Registry:** 23 fonts available (12 serif, 11 sans-serif), defined in `internal/latex/fonts.go`. Each font has a `LatexName` (for `fontspec` in LuaLaTeX) and `GoogleFamily`/`GoogleSpec` (for browser preview — non–Google Fonts use a visually similar fallback). Fonts are validated on save via `latex.ValidateFont()`.
 
 **Available fonts:**
-- **Serif:** PT Serif (default body), Libertinus Serif, EB Garamond, Lora, Merriweather, Noto Serif, Crimson Pro, Source Serif 4, Cormorant Garamond, Bitter
-- **Sans-serif:** Source Sans 3 (default headings), PT Sans, Noto Sans, Open Sans, Lato, Roboto, Inter, Fira Sans, IBM Plex Sans, Nunito Sans
+- **Serif:** PT Serif (default body), Libertinus Serif, EB Garamond, Lora, Merriweather, Noto Serif, Crimson Pro, Source Serif 4, Cormorant Garamond, Bitter, Bookman Old Style, URW Bookman
+- **Sans-serif:** Source Sans 3 (default headings), PT Sans, Noto Sans, Open Sans, Lato, Roboto, Inter, Fira Sans, IBM Plex Sans, Nunito Sans, Raleway, Montserrat
+
+> **Note:** Bookman Old Style is a proprietary Microsoft font and is not bundled with the Docker image — selecting it will fail PDF export until the TTF files are added to a `fonts/` directory and copied into the image. Use `URW Bookman` (a free clone shipped via Artifex's `urw-base35` set) as a drop-in alternative.
 
 **Font API:** `GET /api/v1/fonts` returns all available fonts with `id`, `display_name`, `category`, `google_family`, `google_spec`.
 

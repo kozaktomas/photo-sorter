@@ -116,6 +116,31 @@ var fontRegistry = map[string]FontEntry{
 		GoogleFamily: "Bitter",
 		GoogleSpec:   "ital,wght@0,400;0,600;0,700;1,400;1,600;1,700",
 	},
+	"bookman-old-style": {
+		ID:          "bookman-old-style",
+		DisplayName: "Bookman Old Style",
+		Category:    "serif",
+		// Blocker: Bookman Old Style is a proprietary Microsoft font and cannot
+		// be freely redistributed. The font is not installed in the Docker image,
+		// so PDF export will fail when this font is selected until the TTF files
+		// are obtained from a licensed source and added to fonts/. Use the
+		// "urw-bookman" entry below for a free Bookman alternative.
+		LatexName: "Bookman Old Style",
+		// Libre Baskerville is used as the Google Fonts fallback for the web
+		// preview because Bookman Old Style is not available on Google Fonts.
+		GoogleFamily: "Libre+Baskerville",
+		GoogleSpec:   "ital,wght@0,400;0,700;1,400",
+	},
+	"urw-bookman": {
+		ID:          "urw-bookman",
+		DisplayName: "URW Bookman",
+		Category:    "serif",
+		LatexName:   "URW Bookman",
+		// Libre Baskerville is used as the Google Fonts fallback for the web
+		// preview because URW Bookman is not available on Google Fonts.
+		GoogleFamily: "Libre+Baskerville",
+		GoogleSpec:   "ital,wght@0,400;0,700;1,400",
+	},
 
 	// --- Sans-serif ---
 	"source-sans-3": {
@@ -196,6 +221,22 @@ var fontRegistry = map[string]FontEntry{
 		Category:     "sans-serif",
 		LatexName:    "Nunito Sans",
 		GoogleFamily: "Nunito+Sans",
+		GoogleSpec:   "ital,wght@0,400;0,600;0,700;1,400;1,600;1,700",
+	},
+	"raleway": {
+		ID:           "raleway",
+		DisplayName:  "Raleway",
+		Category:     "sans-serif",
+		LatexName:    "Raleway",
+		GoogleFamily: "Raleway",
+		GoogleSpec:   "ital,wght@0,400;0,600;0,700;1,400;1,600;1,700",
+	},
+	"montserrat": {
+		ID:           "montserrat",
+		DisplayName:  "Montserrat",
+		Category:     "sans-serif",
+		LatexName:    "Montserrat",
+		GoogleFamily: "Montserrat",
 		GoogleSpec:   "ital,wght@0,400;0,600;0,700;1,400;1,600;1,700",
 	},
 }
