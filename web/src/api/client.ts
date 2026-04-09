@@ -576,6 +576,8 @@ export async function updateBook(id: string, updates: {
   h2_font_size?: number;
   caption_opacity?: number;
   caption_font_size?: number;
+  heading_color_bleed?: number;
+  caption_badge_size?: number;
 }): Promise<void> {
   await request(`/books/${id}`, {
     method: 'PUT',

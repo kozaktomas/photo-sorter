@@ -860,35 +860,20 @@ func TestComputeZones(t *testing.T) {
 	})
 }
 
-// --- formatSlotNumbers ---
-
-func TestFormatSlotNumbers(t *testing.T) {
-	tests := []struct {
-		name string
-		nums []int
-		want string
-	}{
-		{"empty", nil, ""},
-		{"single", []int{1}, "1"},
-		{"two consecutive", []int{1, 2}, "1\u20132"},
-		{"three consecutive", []int{1, 2, 3}, "1\u20133"},
-		{"two non-consecutive", []int{1, 3}, "1, 3"},
-		{"range then single", []int{1, 2, 3, 5}, "1\u20133, 5"},
-		{"single then range", []int{1, 3, 4, 5}, "1, 3\u20135"},
-		{"mixed", []int{1, 2, 4, 6, 7, 8}, "1\u20132, 4, 6\u20138"},
-		{"all separate", []int{1, 3, 5}, "1, 3, 5"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := formatSlotNumbers(tt.nums)
-			if got != tt.want {
-				t.Errorf("formatSlotNumbers(%v) = %q, want %q", tt.nums, got, tt.want)
-			}
-		})
-	}
-}
-
 // --- mergeFooterCaptions ---
+
+// equalInts is a small helper for slice comparison in tests.
+func equalInts(a, b []int) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
+}
 
 func TestMergeFooterCaptions(t *testing.T) {
 	t.Run("empty", func(t *testing.T) {
@@ -899,25 +884,25 @@ func TestMergeFooterCaptions(t *testing.T) {
 	})
 
 	t.Run("single caption", func(t *testing.T) {
-		caps := []FooterCaption{{Marker: "1", Caption: "Photo A"}}
+		caps := []FooterCaption{{Markers: []int{1}, Caption: "Photo A"}}
 		got := mergeFooterCaptions(caps)
-		if len(got) != 1 || got[0].Marker != "1" || got[0].Caption != "Photo A" {
+		if len(got) != 1 || !equalInts(got[0].Markers, []int{1}) || got[0].Caption != "Photo A" {
 			t.Errorf("unexpected result: %v", got)
 		}
 	})
 
-	t.Run("all same caption", func(t *testing.T) {
+	t.Run("all same caption keeps individual markers", func(t *testing.T) {
 		caps := []FooterCaption{
-			{Marker: "1", Caption: "Same"},
-			{Marker: "2", Caption: "Same"},
-			{Marker: "3", Caption: "Same"},
+			{Markers: []int{1}, Caption: "Same"},
+			{Markers: []int{2}, Caption: "Same"},
+			{Markers: []int{3}, Caption: "Same"},
 		}
 		got := mergeFooterCaptions(caps)
 		if len(got) != 1 {
 			t.Fatalf("expected 1 merged caption, got %d", len(got))
 		}
-		if got[0].Marker != "1\u20133" {
-			t.Errorf("marker = %q, want %q", got[0].Marker, "1\u20133")
+		if !equalInts(got[0].Markers, []int{1, 2, 3}) {
+			t.Errorf("markers = %v, want [1 2 3]", got[0].Markers)
 		}
 		if got[0].Caption != "Same" {
 			t.Errorf("caption = %q, want %q", got[0].Caption, "Same")
@@ -926,44 +911,44 @@ func TestMergeFooterCaptions(t *testing.T) {
 
 	t.Run("all different captions", func(t *testing.T) {
 		caps := []FooterCaption{
-			{Marker: "1", Caption: "A"},
-			{Marker: "2", Caption: "B"},
-			{Marker: "3", Caption: "C"},
+			{Markers: []int{1}, Caption: "A"},
+			{Markers: []int{2}, Caption: "B"},
+			{Markers: []int{3}, Caption: "C"},
 		}
 		got := mergeFooterCaptions(caps)
 		if len(got) != 3 {
 			t.Fatalf("expected 3 captions, got %d", len(got))
 		}
-		for i, want := range []string{"1", "2", "3"} {
-			if got[i].Marker != want {
-				t.Errorf("got[%d].Marker = %q, want %q", i, got[i].Marker, want)
+		for i, want := range [][]int{{1}, {2}, {3}} {
+			if !equalInts(got[i].Markers, want) {
+				t.Errorf("got[%d].Markers = %v, want %v", i, got[i].Markers, want)
 			}
 		}
 	})
 
 	t.Run("partial merge non-consecutive", func(t *testing.T) {
 		caps := []FooterCaption{
-			{Marker: "1", Caption: "Same"},
-			{Marker: "2", Caption: "Different"},
-			{Marker: "3", Caption: "Same"},
+			{Markers: []int{1}, Caption: "Same"},
+			{Markers: []int{2}, Caption: "Different"},
+			{Markers: []int{3}, Caption: "Same"},
 		}
 		got := mergeFooterCaptions(caps)
 		if len(got) != 2 {
 			t.Fatalf("expected 2 captions, got %d", len(got))
 		}
-		if got[0].Marker != "1, 3" || got[0].Caption != "Same" {
-			t.Errorf("got[0] = {%q, %q}, want {%q, %q}", got[0].Marker, got[0].Caption, "1, 3", "Same")
+		if !equalInts(got[0].Markers, []int{1, 3}) || got[0].Caption != "Same" {
+			t.Errorf("got[0] = {%v, %q}, want {[1 3], %q}", got[0].Markers, got[0].Caption, "Same")
 		}
-		if got[1].Marker != "2" || got[1].Caption != "Different" {
-			t.Errorf("got[1] = {%q, %q}, want {%q, %q}", got[1].Marker, got[1].Caption, "2", "Different")
+		if !equalInts(got[1].Markers, []int{2}) || got[1].Caption != "Different" {
+			t.Errorf("got[1] = {%v, %q}, want {[2], %q}", got[1].Markers, got[1].Caption, "Different")
 		}
 	})
 
 	t.Run("preserves first occurrence order", func(t *testing.T) {
 		caps := []FooterCaption{
-			{Marker: "1", Caption: "B"},
-			{Marker: "2", Caption: "A"},
-			{Marker: "3", Caption: "B"},
+			{Markers: []int{1}, Caption: "B"},
+			{Markers: []int{2}, Caption: "A"},
+			{Markers: []int{3}, Caption: "B"},
 		}
 		got := mergeFooterCaptions(caps)
 		if len(got) != 2 {
@@ -978,21 +963,33 @@ func TestMergeFooterCaptions(t *testing.T) {
 		}
 	})
 
-	t.Run("no markers", func(t *testing.T) {
+	t.Run("merged markers are sorted", func(t *testing.T) {
 		caps := []FooterCaption{
-			{Marker: "", Caption: "Solo"},
+			{Markers: []int{3}, Caption: "Same"},
+			{Markers: []int{1}, Caption: "Same"},
+			{Markers: []int{2}, Caption: "Same"},
 		}
 		got := mergeFooterCaptions(caps)
-		if len(got) != 1 || got[0].Marker != "" {
+		if len(got) != 1 || !equalInts(got[0].Markers, []int{1, 2, 3}) {
+			t.Errorf("expected sorted [1 2 3], got %v", got[0].Markers)
+		}
+	})
+
+	t.Run("no markers", func(t *testing.T) {
+		caps := []FooterCaption{
+			{Markers: nil, Caption: "Solo"},
+		}
+		got := mergeFooterCaptions(caps)
+		if len(got) != 1 || len(got[0].Markers) != 0 {
 			t.Errorf("unexpected result: %v", got)
 		}
 	})
 
 	t.Run("preserves chapter color", func(t *testing.T) {
 		caps := []FooterCaption{
-			{Marker: "1", Caption: "A", ChapterColor: "8B0000"},
-			{Marker: "2", Caption: "A", ChapterColor: "8B0000"},
-			{Marker: "3", Caption: "B", ChapterColor: "8B0000"},
+			{Markers: []int{1}, Caption: "A", ChapterColor: "8B0000"},
+			{Markers: []int{2}, Caption: "A", ChapterColor: "8B0000"},
+			{Markers: []int{3}, Caption: "B", ChapterColor: "8B0000"},
 		}
 		got := mergeFooterCaptions(caps)
 		if len(got) != 2 {
@@ -1048,6 +1045,7 @@ func TestCaptionBadgeTemplate(t *testing.T) {
 			H1FontSize: 18, H1Leading: 22,
 			H2FontSize: 13, H2Leading: 16,
 			CaptionOpacity: 50, CaptionFontSize: 9, CaptionLeading: 11,
+			CaptionBadgeSize: 4.0,
 		}
 	}
 
@@ -1067,11 +1065,12 @@ func TestCaptionBadgeTemplate(t *testing.T) {
 
 	t.Run("badge with chapter color uses captionbadge", func(t *testing.T) {
 		out := renderBookTemplate(t, makeData([]FooterCaption{
-			{Marker: "1", Caption: "Photo A", ChapterColor: "8B0000"},
+			{Markers: []int{1}, Caption: "Photo A", ChapterColor: "8B0000"},
 		}))
 		line := captionLine(out)
-		if !strings.Contains(line, `\captionbadge{8B0000}{white}{1}`) {
-			t.Errorf("expected \\captionbadge{8B0000}{white}{1} in caption line, got: %q", line)
+		// Args: size_mm, font_pt (= size×1.5), bg_hex, text_color, marker.
+		if !strings.Contains(line, `\captionbadge{4.00}{6.00}{8B0000}{white}{1}`) {
+			t.Errorf("expected \\captionbadge{4.00}{6.00}{8B0000}{white}{1} in caption line, got: %q", line)
 		}
 		if strings.Contains(line, `\captionbadgefb{`) {
 			t.Errorf("did not expect fallback badge usage in caption line, got: %q", line)
@@ -1080,21 +1079,35 @@ func TestCaptionBadgeTemplate(t *testing.T) {
 
 	t.Run("badge without chapter color uses fallback", func(t *testing.T) {
 		out := renderBookTemplate(t, makeData([]FooterCaption{
-			{Marker: "1", Caption: "Photo A"},
+			{Markers: []int{1}, Caption: "Photo A"},
 		}))
 		line := captionLine(out)
-		if !strings.Contains(line, `\captionbadgefb{1}`) {
-			t.Errorf("expected \\captionbadgefb{1} in caption line, got: %q", line)
+		if !strings.Contains(line, `\captionbadgefb{4.00}{6.00}{1}`) {
+			t.Errorf("expected \\captionbadgefb{4.00}{6.00}{1} in caption line, got: %q", line)
 		}
 	})
 
-	t.Run("merged marker range renders inside badge", func(t *testing.T) {
+	t.Run("shared caption renders one badge per marker", func(t *testing.T) {
 		out := renderBookTemplate(t, makeData([]FooterCaption{
-			{Marker: "1\u20133", Caption: "Same caption", ChapterColor: "FFFFFF"},
+			{Markers: []int{1, 2, 3}, Caption: "Same caption", ChapterColor: "FFFFFF"},
 		}))
 		// White background should pick black text via contrastTextColor.
-		if !strings.Contains(out, `\captionbadge{FFFFFF}{black}{1`+"\u2013"+`3}`) {
-			t.Errorf("expected merged-range badge with black text, got:\n%s", out)
+		// Three photos sharing one caption produce three side-by-side badges
+		// separated by \thinspace.
+		want := `\captionbadge{4.00}{6.00}{FFFFFF}{black}{1}\thinspace \captionbadge{4.00}{6.00}{FFFFFF}{black}{2}\thinspace \captionbadge{4.00}{6.00}{FFFFFF}{black}{3}`
+		if !strings.Contains(out, want) {
+			t.Errorf("expected per-marker badges %q, got:\n%s", want, out)
+		}
+	})
+
+	t.Run("custom badge size flows into badge command and scales font", func(t *testing.T) {
+		data := makeData([]FooterCaption{
+			{Markers: []int{1}, Caption: "Photo A", ChapterColor: "8B0000"},
+		})
+		data.CaptionBadgeSize = 6.0 // 6 mm → 9 pt font
+		out := renderBookTemplate(t, data)
+		if !strings.Contains(out, `\captionbadge{6.00}{9.00}{8B0000}{white}{1}`) {
+			t.Errorf("expected custom size 6mm with 9pt font, got:\n%s", out)
 		}
 	})
 

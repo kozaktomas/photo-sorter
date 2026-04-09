@@ -588,6 +588,7 @@
         "captionOpacity": "Průhlednost popisků",
         "captionFontSize": "Velikost popisků",
         "headingColorBleed": "Přesah boxu nadpisu",
+        "captionBadgeSize": "Velikost badge popisků",
         "serif": "Patkové",
         "sansSerif": "Bezpatkové",
         "saving": "Ukládám...",

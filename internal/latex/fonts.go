@@ -31,6 +31,11 @@ const (
 	DefaultCaptionFontSize = 9.0
 	// DefaultHeadingColorBleed is the default bleed (mm) for colored heading boxes.
 	DefaultHeadingColorBleed = 4.0
+	// DefaultCaptionBadgeSize is the default size (mm) of footer caption
+	// marker badges. Each badge is rendered as a fixed mm-square TikZ node so
+	// every marker has identical outer dimensions regardless of which digit it
+	// contains. The default matches the on-photo overlay badge (4×4 mm).
+	DefaultCaptionBadgeSize = 4.0
 )
 
 // fontRegistry contains all available fonts indexed by ID.

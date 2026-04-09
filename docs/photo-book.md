@@ -70,6 +70,7 @@ Chapter color: `internal/database/postgres/migrations/020_add_chapter_color.sql`
 Book typography (fonts, sizes, caption opacity): `internal/database/postgres/migrations/021_add_book_typography.sql`
 Caption font size (standalone): `internal/database/postgres/migrations/022_add_caption_font_size.sql`
 Heading color bleed: `internal/database/postgres/migrations/023_add_heading_color_bleed.sql`
+Caption badge size: `internal/database/postgres/migrations/024_add_caption_badge_size.sql`
 
 ### Tables
 
@@ -87,6 +88,7 @@ photo_books
 ├── caption_opacity (REAL, default 0.85, range 0.0-1.0)
 ├── caption_font_size (REAL, default 9.0 pt)
 ├── heading_color_bleed (REAL, default 4.0 mm, range 0–20 mm)
+├── caption_badge_size (REAL, default 4.0 mm, range 2–12 mm)
 ├── created_at
 └── updated_at
 
@@ -160,7 +162,7 @@ Deleting a book cascades to all chapters, sections, pages, and slots.
 | GET | `/api/v1/books` | List all books |
 | POST | `/api/v1/books` | Create a book (`{ title }`) |
 | GET | `/api/v1/books/:id` | Get book with sections and pages |
-| PUT | `/api/v1/books/:id` | Update book (`{ title, description, body_font, heading_font, body_font_size, body_line_height, h1_font_size, h2_font_size, caption_opacity, caption_font_size, heading_color_bleed }`) |
+| PUT | `/api/v1/books/:id` | Update book (`{ title, description, body_font, heading_font, body_font_size, body_line_height, h1_font_size, h2_font_size, caption_opacity, caption_font_size, heading_color_bleed, caption_badge_size }`) |
 | DELETE | `/api/v1/books/:id` | Delete book (cascades) |
 
 ### Chapters
@@ -411,6 +413,7 @@ Each book has configurable typography settings that control both PDF rendering a
 | `caption_opacity` | 0.85 | 0.0–1.0 | Caption text opacity (LaTeX `black!N`) |
 | `caption_font_size` | 9.0 pt | 6–16 pt | Photo caption size |
 | `heading_color_bleed` | 4.0 mm | 0–20 mm | How far colored heading boxes extend beyond content width into margins |
+| `caption_badge_size` | 4.0 mm | 2–12 mm | Square dimension of footer caption marker badges (matches on-photo overlay at default 4 mm) |
 
 **Font Registry:** 23 fonts available (12 serif, 11 sans-serif), defined in `internal/latex/fonts.go`. Each font has a `LatexName` (for `fontspec` in LuaLaTeX) and `GoogleFamily`/`GoogleSpec` (for browser preview — non–Google Fonts use a visually similar fallback). Fonts are validated on save via `latex.ValidateFont()`.
 

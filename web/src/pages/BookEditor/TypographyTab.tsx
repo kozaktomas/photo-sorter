@@ -240,6 +240,13 @@ function TypographySettingsSection({ book, onRefresh }: { book: BookDetail; onRe
           suffix="mm"
           onChange={(v) => handleNumberChange('heading_color_bleed', v)}
         />
+        <NumberInput
+          label={t('books.editor.typography.captionBadgeSize')}
+          value={book.caption_badge_size}
+          min={2} max={12} step={0.5}
+          suffix="mm"
+          onChange={(v) => handleNumberChange('caption_badge_size', v)}
+        />
       </div>
 
       {/* Live preview */}

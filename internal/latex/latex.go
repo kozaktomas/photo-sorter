@@ -17,7 +17,6 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"sync"
 	"text/template"
@@ -60,11 +59,13 @@ type ReportPhoto struct {
 // --- Template Types ---
 
 // FooterCaption holds a numbered caption for the footer zone.
-// Marker is a formatted string like "1", "1–3", or "1, 3" for merged captions.
+// Markers is the slice of marker numbers attached to this caption — one badge
+// is rendered per marker (e.g. three photos sharing the same caption produce
+// three side-by-side badges, not a merged "1–3" range).
 // ChapterColor is the hex color (without #) used to style the marker badge;
 // empty string means no chapter color (badge falls back to black at 55% opacity).
 type FooterCaption struct {
-	Marker       string
+	Markers      []int
 	Caption      string
 	ChapterColor string
 }
@@ -168,6 +169,7 @@ type TemplateData struct {
 	CaptionOpacity   int     // 0-100 for LaTeX black!N notation
 	CaptionFontSize  float64 // e.g. 9.0
 	CaptionLeading   float64 // e.g. 11.0
+	CaptionBadgeSize float64 // e.g. 4.0 (mm) — square dimension of footer caption badges
 }
 
 // photoImage holds downloaded photo data for dimension lookup.
@@ -443,6 +445,7 @@ func buildTemplateData(
 			CaptionOpacity:   typo.captionOpacity,
 			CaptionFontSize:  typo.captionFontSize,
 			CaptionLeading:   typo.captionLeading,
+			CaptionBadgeSize: typo.captionBadgeSize,
 		}, &ExportReport{
 			BookTitle:  bookTitle,
 			PageCount:  pb.pageNumber,
@@ -464,6 +467,7 @@ type resolvedTypography struct {
 	captionOpacity    int
 	captionFontSize   float64
 	captionLeading    float64
+	captionBadgeSize  float64
 	headingColorBleed float64
 }
 
@@ -478,6 +482,7 @@ func resolveBookTypography(book *database.PhotoBook) resolvedTypography {
 		h2FontSize:        DefaultH2FontSize,
 		captionOpacity:    int(DefaultCaptionOpacity * 100),
 		captionFontSize:   DefaultCaptionFontSize,
+		captionBadgeSize:  DefaultCaptionBadgeSize,
 		headingColorBleed: DefaultHeadingColorBleed,
 	}
 
@@ -521,6 +526,9 @@ func applyBookSizes(rt *resolvedTypography, book *database.PhotoBook) {
 	}
 	if book.CaptionFontSize > 0 {
 		rt.captionFontSize = book.CaptionFontSize
+	}
+	if book.CaptionBadgeSize > 0 {
+		rt.captionBadgeSize = book.CaptionBadgeSize
 	}
 	if book.HeadingColorBleed > 0 {
 		rt.headingColorBleed = book.HeadingColorBleed
@@ -728,12 +736,12 @@ func buildFooterCaptions(ct captionTracking, chapterColor string) []FooterCaptio
 	footerCaptions := make([]FooterCaption, 0, len(ct.captions))
 	for _, sc := range ct.captions {
 		marker := ct.markerMap[sc.slotIdx]
-		markerStr := ""
+		var markers []int
 		if marker > 0 {
-			markerStr = strconv.Itoa(marker)
+			markers = []int{marker}
 		}
 		footerCaptions = append(footerCaptions, FooterCaption{
-			Marker:       markerStr,
+			Markers:      markers,
 			Caption:      sc.caption,
 			ChapterColor: chapterColor,
 		})
@@ -741,84 +749,36 @@ func buildFooterCaptions(ct captionTracking, chapterColor string) []FooterCaptio
 	return mergeFooterCaptions(footerCaptions)
 }
 
-// mergeFooterCaptions groups footer captions by identical text and merges their
-// marker numbers into ranges (e.g. "1–3") or comma-separated lists (e.g. "1, 3").
+// mergeFooterCaptions groups footer captions by identical text. Each photo's
+// marker remains a separate badge — the template renders one badge per entry
+// in Markers — but identical caption text only appears once.
 // Order is preserved by first occurrence.
 func mergeFooterCaptions(caps []FooterCaption) []FooterCaption {
 	if len(caps) <= 1 {
 		return caps
 	}
 
-	type group struct {
-		caption      string
-		chapterColor string
-		markers      []int
-	}
-
-	var groups []group
+	var groups []FooterCaption
 	seen := make(map[string]int) // caption text -> index in groups
 
 	for _, c := range caps {
-		num, _ := strconv.Atoi(c.Marker)
 		idx, ok := seen[c.Caption]
 		if ok {
-			groups[idx].markers = append(groups[idx].markers, num)
+			groups[idx].Markers = append(groups[idx].Markers, c.Markers...)
 		} else {
 			seen[c.Caption] = len(groups)
-			groups = append(groups, group{
-				caption:      c.Caption,
-				chapterColor: c.ChapterColor,
-				markers:      []int{num},
+			groups = append(groups, FooterCaption{
+				Markers:      append([]int(nil), c.Markers...),
+				Caption:      c.Caption,
+				ChapterColor: c.ChapterColor,
 			})
 		}
 	}
 
-	result := make([]FooterCaption, 0, len(groups))
-	for _, g := range groups {
-		sort.Ints(g.markers)
-		result = append(result, FooterCaption{
-			Marker:       formatSlotNumbers(g.markers),
-			Caption:      g.caption,
-			ChapterColor: g.chapterColor,
-		})
+	for i := range groups {
+		sort.Ints(groups[i].Markers)
 	}
-	return result
-}
-
-// formatSlotNumbers formats a sorted slice of marker numbers into a compact
-// string using en-dashes for consecutive ranges and commas otherwise.
-// Examples: [1] -> "1", [1,2,3] -> "1–3", [1,3] -> "1, 3", [1,2,3,5] -> "1–3, 5".
-func formatSlotNumbers(nums []int) string {
-	if len(nums) == 0 {
-		return ""
-	}
-	if len(nums) == 1 {
-		return strconv.Itoa(nums[0])
-	}
-
-	var parts []string
-	rangeStart := nums[0]
-	rangeEnd := nums[0]
-
-	for i := 1; i < len(nums); i++ {
-		if nums[i] == rangeEnd+1 {
-			rangeEnd = nums[i]
-		} else {
-			parts = append(parts, formatRange(rangeStart, rangeEnd))
-			rangeStart = nums[i]
-			rangeEnd = nums[i]
-		}
-	}
-	parts = append(parts, formatRange(rangeStart, rangeEnd))
-	return strings.Join(parts, ", ")
-}
-
-// formatRange formats a single range: "1" for a single number, "1–3" for a range.
-func formatRange(start, end int) string {
-	if start == end {
-		return strconv.Itoa(start)
-	}
-	return strconv.Itoa(start) + "\u2013" + strconv.Itoa(end)
+	return groups
 }
 
 // buildSlots builds template slots, report photos, and footer captions for a page.
@@ -1332,6 +1292,7 @@ func GenerateSinglePagePDF(
 		CaptionOpacity:   typo.captionOpacity,
 		CaptionFontSize:  typo.captionFontSize,
 		CaptionLeading:   typo.captionLeading,
+		CaptionBadgeSize: typo.captionBadgeSize,
 	}
 
 	pdfData, err := compileLatex(ctx, data, tmpDir)
