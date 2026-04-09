@@ -120,10 +120,31 @@
   \end{scope}
 % --- Footer zone ---
 {{- if $page.HasCaptions}}
+  % Captions footer.
+  %
+  % Layout strategy:
+  %   - Each caption (badges + text) is wrapped in \mbox{} so it never breaks
+  %     mid-sentence. The only break point between captions is the \quad glue.
+  %   - align=flush left disables justification. Without it, TeX would try to
+  %     justify, fail to find stretchable glue (mbox + \quad are both rigid),
+  %     and produce an overfull hbox instead of breaking between captions.
+  %   - \microtypesetup{expansion=false} disables microtype's font expansion
+  %     for this block. Otherwise microtype silently shrinks glyphs by ~2% to
+  %     squeeze a tight caption line within the target width, leaving the
+  %     line crammed against the right edge with no breathing room.
+  %   - Caption text may contain newlines (\n in the source string). Each
+  %     newline becomes a hard \\ break inside the caption block: inline
+  %     newlines split a caption into stacked mbox segments, a trailing
+  %     newline forces the next caption to start on a new line. The full
+  %     LaTeX is built in renderFooterCaptionsLatex (latex.go) so the
+  %     template stays readable.
+  {\microtypesetup{expansion=false}%
   \node[anchor=north west,inner sep=0,text width={{printf "%.2f" $page.CaptionBlockW}}mm,
+    align=flush left,
     font=\fontsize{ {{- printf "%.0f" $.CaptionFontSize -}} }{ {{- printf "%.0f" $.CaptionLeading -}} }\selectfont,text=black!{{$.CaptionOpacity}}]
     at ({{printf "%.2f" $page.CaptionBlockX}},{{printf "%.2f" $page.CaptionBlockY}})
-    {{print "{"}}{{- range $ci, $cap := $page.Captions}}{{- if gt $ci 0}}\quad {{end}}{{- range $mi, $m := $cap.Markers}}{{- if gt $mi 0}}\thinspace {{end}}{{- if $cap.ChapterColor}}\captionbadge{{print "{"}}{{printf "%.2f" $.CaptionBadgeSize}}{{print "}{"}}{{printf "%.2f" (mulFloat $.CaptionBadgeSize 1.5)}}{{print "}{"}}{{$cap.ChapterColor}}{{print "}{"}}{{contrastTextColor $cap.ChapterColor}}{{print "}{"}}{{$m}}{{print "}"}}{{- else}}\captionbadgefb{{print "{"}}{{printf "%.2f" $.CaptionBadgeSize}}{{print "}{"}}{{printf "%.2f" (mulFloat $.CaptionBadgeSize 1.5)}}{{print "}{"}}{{$m}}{{print "}"}}{{- end}}{{- end}}{{- if $cap.Markers}}\, {{end}}{{latexEscape $cap.Caption}}{{- end}}{{print "}"}};
+    { {{- renderFooterCaption $page.Captions $.CaptionBadgeSize -}} };
+  }%
 {{- end}}
   \node[anchor={{$page.FolioAnchor}},inner sep=0,font=\fontsize{9}{11}\selectfont,text=black!35]
     at ({{printf "%.2f" $page.FolioX}},{{printf "%.2f" $page.FolioY}})

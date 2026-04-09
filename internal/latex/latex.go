@@ -634,7 +634,15 @@ func (pb *pageBuilder) buildContentPage(p database.BookPage, chapterColor string
 	hasCaptions := len(footerCaptions) > 0
 	if hasCaptions {
 		captionBlockX = contentLeftX
-		captionBlockY = footerRuleY - 4.0 // 1 baseline unit below rule
+		// Anchor the caption block 1mm below the canvas bottom (anchor=north,
+		// so this is the TOP of the text). The captions then grow downward
+		// toward the folio. With this position, a single-line caption keeps
+		// ~8mm of clearance to the folio, while a two-line caption (which
+		// happens whenever the caption text wraps) still leaves ~5mm — enough
+		// breathing room so the folio never feels glued to the bottom line.
+		// Three-line captions are tight; if they become common, consider
+		// shrinking the caption font instead of stealing from the folio gap.
+		captionBlockY = footerRuleY - 1.0
 		captionBlockW = contentW
 	}
 
@@ -941,12 +949,95 @@ func bookTemplateFuncMap(typoConfig TypographyConfig) template.FuncMap {
 		"markdownToLatexColor": func(md, color string, bleedL, bleedR float64) string {
 			return MarkdownToLatexWithTypography(md, color, bleedL, bleedR, typoConfig)
 		},
-		"contrastTextColor": contrastTextColorOrWhite,
-		"addFloat":          func(a, b float64) float64 { return a + b },
-		"subtractFloat":     func(a, b float64) float64 { return a - b },
-		"mulFloat":          func(a, b float64) float64 { return a * b },
-		"divFloat":          func(a, b float64) float64 { return a / b },
+		"contrastTextColor":   contrastTextColorOrWhite,
+		"renderFooterCaption": renderFooterCaptionsLatex,
+		"addFloat":            func(a, b float64) float64 { return a + b },
+		"subtractFloat":       func(a, b float64) float64 { return a - b },
+		"mulFloat":            func(a, b float64) float64 { return a * b },
+		"divFloat":            func(a, b float64) float64 { return a / b },
 	}
+}
+
+// renderFooterCaptionsLatex builds the full LaTeX content of the footer caption
+// block from the page's captions. The returned string sits between the outer
+// {...} braces of the tikz \node containing it.
+//
+// Each caption (badges + text) is wrapped in \mbox{} so it never breaks
+// mid-sentence. Captions are joined by \quad — the only valid line break point
+// in the paragraph. Newlines inside a caption's text become hard line breaks
+// (\\) that split the caption into multiple \mbox segments stacked vertically;
+// only the first segment carries the badges. A trailing newline at the end of
+// a caption text forces a hard break before the next caption (no leading
+// \quad on the new line) so users can author the exact wrap they want.
+func renderFooterCaptionsLatex(caps []FooterCaption, badgeSize float64) string {
+	if len(caps) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	for i, c := range caps {
+		if i > 0 {
+			// Skip the inter-caption \quad if the previous caption ended with
+			// a hard break — otherwise the new line would start with a 1em
+			// indent.
+			if !strings.HasSuffix(caps[i-1].Caption, "\n") {
+				b.WriteString(`\quad `)
+			}
+		}
+		writeFooterCaption(&b, c, badgeSize)
+	}
+	return b.String()
+}
+
+// writeFooterCaption renders one caption (badges + text, with optional inline
+// hard breaks) into b. The caller is responsible for inter-caption separators.
+func writeFooterCaption(b *strings.Builder, c FooterCaption, badgeSize float64) {
+	badges := buildCaptionBadges(c, badgeSize)
+	// Split text on newlines. The first segment carries the badges; subsequent
+	// segments are plain mboxes. A trailing newline produces an empty final
+	// segment which becomes a bare \\ (no empty mbox).
+	segments := strings.Split(c.Caption, "\n")
+	for i, seg := range segments {
+		switch {
+		case i == 0:
+			b.WriteString(`\mbox{`)
+			b.WriteString(badges)
+			if len(c.Markers) > 0 && seg != "" {
+				b.WriteString(`\, `)
+			}
+			b.WriteString(latexEscape(seg))
+			b.WriteString(`}`)
+		case seg == "":
+			// Trailing newline: emit a hard break with no follow-up mbox.
+			b.WriteString(`\\`)
+		default:
+			b.WriteString(`\\\mbox{`)
+			b.WriteString(latexEscape(seg))
+			b.WriteString(`}`)
+		}
+	}
+}
+
+// buildCaptionBadges renders the marker badges for one caption (one badge per
+// marker, separated by \thinspace).
+func buildCaptionBadges(c FooterCaption, badgeSize float64) string {
+	if len(c.Markers) == 0 {
+		return ""
+	}
+	fontSize := badgeSize * 1.5
+	var b strings.Builder
+	for i, m := range c.Markers {
+		if i > 0 {
+			b.WriteString(`\thinspace `)
+		}
+		if c.ChapterColor != "" {
+			fmt.Fprintf(&b, `\captionbadge{%.2f}{%.2f}{%s}{%s}{%d}`,
+				badgeSize, fontSize, c.ChapterColor, contrastTextColorOrWhite(c.ChapterColor), m)
+		} else {
+			fmt.Fprintf(&b, `\captionbadgefb{%.2f}{%.2f}{%d}`,
+				badgeSize, fontSize, m)
+		}
+	}
+	return b.String()
 }
 
 // contrastTextColorOrWhite returns the LaTeX color name (white or black) that

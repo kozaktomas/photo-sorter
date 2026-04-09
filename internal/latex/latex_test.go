@@ -1120,4 +1120,73 @@ func TestCaptionBadgeTemplate(t *testing.T) {
 			t.Errorf("expected \\captionbadgefb definition in preamble")
 		}
 	})
+
+	t.Run("each caption is wrapped in mbox so it stays on one line", func(t *testing.T) {
+		// Two captions on the same page; LaTeX must only consider the
+		// inter-caption \quad as a break point, never a space inside a
+		// caption. Wrapping each caption (badges + text) in \mbox{...}
+		// achieves that.
+		out := renderBookTemplate(t, makeData([]FooterCaption{
+			{Markers: []int{1}, Caption: "Photo A", ChapterColor: "8B0000"},
+			{Markers: []int{2}, Caption: "Photo B with longer text", ChapterColor: "8B0000"},
+		}))
+		wantA := `\mbox{\captionbadge{4.00}{6.00}{8B0000}{white}{1}\, Photo A}`
+		wantB := `\mbox{\captionbadge{4.00}{6.00}{8B0000}{white}{2}\, Photo B with longer text}`
+		if !strings.Contains(out, wantA) {
+			t.Errorf("expected first caption wrapped as %q, got:\n%s", wantA, out)
+		}
+		if !strings.Contains(out, wantB) {
+			t.Errorf("expected second caption wrapped as %q, got:\n%s", wantB, out)
+		}
+		// And the two captions are still separated by \quad.
+		if !strings.Contains(out, wantA+`\quad `+wantB) {
+			t.Errorf("expected captions joined by \\quad, got:\n%s", out)
+		}
+		// The caption block must disable microtype font expansion so TeX
+		// cannot silently squeeze a too-long caption line by 1-2% to make
+		// it "fit" within the target width.
+		if !strings.Contains(out, `\microtypesetup{expansion=false}`) {
+			t.Errorf("expected \\microtypesetup{expansion=false} in caption block, got:\n%s", out)
+		}
+	})
+
+	t.Run("inline newline in caption text becomes hard break with stacked mboxes", func(t *testing.T) {
+		out := renderBookTemplate(t, makeData([]FooterCaption{
+			{Markers: []int{1}, Caption: "Line 1\nLine 2", ChapterColor: "8B0000"},
+		}))
+		want := `\mbox{\captionbadge{4.00}{6.00}{8B0000}{white}{1}\, Line 1}\\\mbox{Line 2}`
+		if !strings.Contains(out, want) {
+			t.Errorf("expected stacked mboxes %q, got:\n%s", want, out)
+		}
+	})
+
+	t.Run("trailing newline forces a break and skips inter-caption quad", func(t *testing.T) {
+		out := renderBookTemplate(t, makeData([]FooterCaption{
+			{Markers: []int{1}, Caption: "Photo A\n", ChapterColor: "8B0000"},
+			{Markers: []int{2}, Caption: "Photo B", ChapterColor: "8B0000"},
+		}))
+		// Trailing \n on cap1 produces a bare \\ (no empty mbox), and cap2
+		// follows directly with no leading \quad — so the new line starts
+		// at the left margin instead of being indented by 1em.
+		want := `\mbox{\captionbadge{4.00}{6.00}{8B0000}{white}{1}\, Photo A}\\\mbox{\captionbadge{4.00}{6.00}{8B0000}{white}{2}\, Photo B}`
+		if !strings.Contains(out, want) {
+			t.Errorf("expected break with no leading quad %q, got:\n%s", want, out)
+		}
+		// Sanity: there must NOT be a \quad between the trailing-break caption
+		// and the next one.
+		bad := `\\\quad `
+		if strings.Contains(out, bad) {
+			t.Errorf("did not expect %q in output, got:\n%s", bad, out)
+		}
+	})
+
+	t.Run("plain caption without newlines is unchanged", func(t *testing.T) {
+		out := renderBookTemplate(t, makeData([]FooterCaption{
+			{Markers: []int{1}, Caption: "Just text", ChapterColor: "8B0000"},
+		}))
+		want := `\mbox{\captionbadge{4.00}{6.00}{8B0000}{white}{1}\, Just text}`
+		if !strings.Contains(out, want) {
+			t.Errorf("expected plain mbox %q, got:\n%s", want, out)
+		}
+	})
 }
