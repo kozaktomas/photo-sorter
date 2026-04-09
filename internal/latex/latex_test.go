@@ -1,8 +1,11 @@
 package latex
 
 import (
+	"bytes"
 	"math"
+	"strings"
 	"testing"
+	"text/template"
 
 	"github.com/kozaktomas/photo-sorter/internal/database"
 )
@@ -982,6 +985,127 @@ func TestMergeFooterCaptions(t *testing.T) {
 		got := mergeFooterCaptions(caps)
 		if len(got) != 1 || got[0].Marker != "" {
 			t.Errorf("unexpected result: %v", got)
+		}
+	})
+
+	t.Run("preserves chapter color", func(t *testing.T) {
+		caps := []FooterCaption{
+			{Marker: "1", Caption: "A", ChapterColor: "8B0000"},
+			{Marker: "2", Caption: "A", ChapterColor: "8B0000"},
+			{Marker: "3", Caption: "B", ChapterColor: "8B0000"},
+		}
+		got := mergeFooterCaptions(caps)
+		if len(got) != 2 {
+			t.Fatalf("expected 2 merged captions, got %d", len(got))
+		}
+		for i, c := range got {
+			if c.ChapterColor != "8B0000" {
+				t.Errorf("got[%d].ChapterColor = %q, want %q", i, c.ChapterColor, "8B0000")
+			}
+		}
+	})
+}
+
+// --- book.tex caption badge rendering ---
+
+// renderBookTemplate parses and executes the embedded book.tex template against
+// the given TemplateData and returns the rendered LaTeX source. It uses the
+// same funcMap as compileLatex so caption-badge branches are exercised
+// end-to-end without invoking lualatex.
+func renderBookTemplate(t *testing.T, data TemplateData) string {
+	t.Helper()
+	funcMap := bookTemplateFuncMap(TypographyConfig{
+		H1Size: data.H1FontSize, H1Leading: data.H1Leading,
+		H2Size: data.H2FontSize, H2Leading: data.H2Leading,
+	})
+	tmpl, err := template.New("book.tex").Funcs(funcMap).ParseFS(templateFS, "templates/book.tex")
+	if err != nil {
+		t.Fatalf("parse template: %v", err)
+	}
+	var buf bytes.Buffer
+	if err := tmpl.Execute(&buf, data); err != nil {
+		t.Fatalf("execute template: %v", err)
+	}
+	return buf.String()
+}
+
+func TestCaptionBadgeTemplate(t *testing.T) {
+	makeData := func(captions []FooterCaption) TemplateData {
+		return TemplateData{
+			Sections: []TemplateSection{{
+				Pages: []TemplatePage{{
+					IsLast:      true,
+					PageNumber:  1,
+					Style:       "modern",
+					HasCaptions: true,
+					Captions:    captions,
+					FolioAnchor: "south east",
+				}},
+			}},
+			SinglePage:       true,
+			BodyFontLatex:    "PT Serif",
+			HeadingFontLatex: "Source Sans 3",
+			BodyFontSize:     11, BodyLineHeight: 15,
+			H1FontSize: 18, H1Leading: 22,
+			H2FontSize: 13, H2Leading: 16,
+			CaptionOpacity: 50, CaptionFontSize: 9, CaptionLeading: 11,
+		}
+	}
+
+	// captionLine extracts the caption tikz node line that holds the marker badges,
+	// so assertions ignore the preamble \newcommand definitions.
+	captionLine := func(out string) string {
+		for line := range strings.SplitSeq(out, "\n") {
+			if strings.Contains(line, `\captionbadge`) && strings.Contains(line, "Photo A") {
+				return line
+			}
+			if strings.Contains(line, `\captionbadgefb`) && strings.Contains(line, "Photo A") {
+				return line
+			}
+		}
+		return ""
+	}
+
+	t.Run("badge with chapter color uses captionbadge", func(t *testing.T) {
+		out := renderBookTemplate(t, makeData([]FooterCaption{
+			{Marker: "1", Caption: "Photo A", ChapterColor: "8B0000"},
+		}))
+		line := captionLine(out)
+		if !strings.Contains(line, `\captionbadge{8B0000}{white}{1}`) {
+			t.Errorf("expected \\captionbadge{8B0000}{white}{1} in caption line, got: %q", line)
+		}
+		if strings.Contains(line, `\captionbadgefb{`) {
+			t.Errorf("did not expect fallback badge usage in caption line, got: %q", line)
+		}
+	})
+
+	t.Run("badge without chapter color uses fallback", func(t *testing.T) {
+		out := renderBookTemplate(t, makeData([]FooterCaption{
+			{Marker: "1", Caption: "Photo A"},
+		}))
+		line := captionLine(out)
+		if !strings.Contains(line, `\captionbadgefb{1}`) {
+			t.Errorf("expected \\captionbadgefb{1} in caption line, got: %q", line)
+		}
+	})
+
+	t.Run("merged marker range renders inside badge", func(t *testing.T) {
+		out := renderBookTemplate(t, makeData([]FooterCaption{
+			{Marker: "1\u20133", Caption: "Same caption", ChapterColor: "FFFFFF"},
+		}))
+		// White background should pick black text via contrastTextColor.
+		if !strings.Contains(out, `\captionbadge{FFFFFF}{black}{1`+"\u2013"+`3}`) {
+			t.Errorf("expected merged-range badge with black text, got:\n%s", out)
+		}
+	})
+
+	t.Run("preamble defines captionbadge command", func(t *testing.T) {
+		out := renderBookTemplate(t, makeData(nil))
+		if !strings.Contains(out, `\newcommand{\captionbadge}`) {
+			t.Errorf("expected \\captionbadge definition in preamble")
+		}
+		if !strings.Contains(out, `\newcommand{\captionbadgefb}`) {
+			t.Errorf("expected \\captionbadgefb definition in preamble")
 		}
 	})
 }

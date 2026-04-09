@@ -61,9 +61,12 @@ type ReportPhoto struct {
 
 // FooterCaption holds a numbered caption for the footer zone.
 // Marker is a formatted string like "1", "1–3", or "1, 3" for merged captions.
+// ChapterColor is the hex color (without #) used to style the marker badge;
+// empty string means no chapter color (badge falls back to black at 55% opacity).
 type FooterCaption struct {
-	Marker  string
-	Caption string
+	Marker       string
+	Caption      string
+	ChapterColor string
 }
 
 // TemplateSlot holds pre-computed TikZ coordinates for one photo or text slot.
@@ -720,7 +723,9 @@ func placeCaptionMarker(ts *TemplateSlot, markerNum int, cfg LayoutConfig, isRec
 }
 
 // buildFooterCaptions creates footer caption entries from caption tracking data.
-func buildFooterCaptions(ct captionTracking) []FooterCaption {
+// chapterColor is propagated to every caption so the template can render the
+// marker as a colored badge matching the photo overlay badge style.
+func buildFooterCaptions(ct captionTracking, chapterColor string) []FooterCaption {
 	footerCaptions := make([]FooterCaption, 0, len(ct.captions))
 	for _, sc := range ct.captions {
 		marker := ct.markerMap[sc.slotIdx]
@@ -729,8 +734,9 @@ func buildFooterCaptions(ct captionTracking) []FooterCaption {
 			markerStr = strconv.Itoa(marker)
 		}
 		footerCaptions = append(footerCaptions, FooterCaption{
-			Marker:  markerStr,
-			Caption: sc.caption,
+			Marker:       markerStr,
+			Caption:      sc.caption,
+			ChapterColor: chapterColor,
 		})
 	}
 	return mergeFooterCaptions(footerCaptions)
@@ -745,8 +751,9 @@ func mergeFooterCaptions(caps []FooterCaption) []FooterCaption {
 	}
 
 	type group struct {
-		caption string
-		markers []int
+		caption      string
+		chapterColor string
+		markers      []int
 	}
 
 	var groups []group
@@ -759,7 +766,11 @@ func mergeFooterCaptions(caps []FooterCaption) []FooterCaption {
 			groups[idx].markers = append(groups[idx].markers, num)
 		} else {
 			seen[c.Caption] = len(groups)
-			groups = append(groups, group{caption: c.Caption, markers: []int{num}})
+			groups = append(groups, group{
+				caption:      c.Caption,
+				chapterColor: c.ChapterColor,
+				markers:      []int{num},
+			})
 		}
 	}
 
@@ -767,8 +778,9 @@ func mergeFooterCaptions(caps []FooterCaption) []FooterCaption {
 	for _, g := range groups {
 		sort.Ints(g.markers)
 		result = append(result, FooterCaption{
-			Marker:  formatSlotNumbers(g.markers),
-			Caption: g.caption,
+			Marker:       formatSlotNumbers(g.markers),
+			Caption:      g.caption,
+			ChapterColor: g.chapterColor,
 		})
 	}
 	return result
@@ -865,7 +877,7 @@ func (pb *pageBuilder) buildSlots(
 
 	applyTextSlotPadding(tmplSlots, p.Format, pb.headingColorBleed)
 
-	return tmplSlots, reportPhotos, buildFooterCaptions(ct)
+	return tmplSlots, reportPhotos, buildFooterCaptions(ct, chapterColor)
 }
 
 // textPadMM is the inner padding (mm) added to text slots adjacent to photos.
@@ -960,6 +972,35 @@ func latexEscape(s string) string {
 	return czechTypography(latexEscapeRaw(s))
 }
 
+// bookTemplateFuncMap returns the template.FuncMap used by book.tex. It is
+// shared between compileLatex and tests so the rendering paths exercised by
+// tests stay in sync with production output.
+func bookTemplateFuncMap(typoConfig TypographyConfig) template.FuncMap {
+	return template.FuncMap{
+		"latexEscape":     latexEscape,
+		"markdownToLatex": MarkdownToLatex,
+		"markdownToLatexColor": func(md, color string, bleedL, bleedR float64) string {
+			return MarkdownToLatexWithTypography(md, color, bleedL, bleedR, typoConfig)
+		},
+		"contrastTextColor": contrastTextColorOrWhite,
+		"addFloat":          func(a, b float64) float64 { return a + b },
+		"subtractFloat":     func(a, b float64) float64 { return a - b },
+		"mulFloat":          func(a, b float64) float64 { return a * b },
+		"divFloat":          func(a, b float64) float64 { return a / b },
+	}
+}
+
+// contrastTextColorOrWhite returns the LaTeX color name (white or black) that
+// gives the best contrast against the given background hex. Empty hex (no
+// chapter color) defaults to white because the fallback marker background is
+// dark (black at 55% opacity).
+func contrastTextColorOrWhite(hexColor string) string {
+	if hexColor == "" {
+		return "white"
+	}
+	return contrastTextColorLatex(hexColor)
+}
+
 // compileLatex writes the template and runs lualatex, returning the PDF bytes.
 func compileLatex(ctx context.Context, data TemplateData, tmpDir string) ([]byte, error) {
 	typoConfig := TypographyConfig{
@@ -968,23 +1009,7 @@ func compileLatex(ctx context.Context, data TemplateData, tmpDir string) ([]byte
 		H2Size:    data.H2FontSize,
 		H2Leading: data.H2Leading,
 	}
-	funcMap := template.FuncMap{
-		"latexEscape":     latexEscape,
-		"markdownToLatex": MarkdownToLatex,
-		"markdownToLatexColor": func(md, color string, bleedL, bleedR float64) string {
-			return MarkdownToLatexWithTypography(md, color, bleedL, bleedR, typoConfig)
-		},
-		"contrastTextColor": func(hexColor string) string {
-			if hexColor == "" {
-				return "white"
-			}
-			return contrastTextColorLatex(hexColor)
-		},
-		"addFloat":      func(a, b float64) float64 { return a + b },
-		"subtractFloat": func(a, b float64) float64 { return a - b },
-		"mulFloat":      func(a, b float64) float64 { return a * b },
-		"divFloat":      func(a, b float64) float64 { return a / b },
-	}
+	funcMap := bookTemplateFuncMap(typoConfig)
 	tmpl, err := template.New("book.tex").Funcs(funcMap).ParseFS(templateFS, "templates/book.tex")
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse template: %w", err)
