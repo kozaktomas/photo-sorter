@@ -947,6 +947,35 @@ func latexEscape(s string) string {
 	return czechTypography(latexEscapeRaw(s))
 }
 
+// latexEscapeCaptionRaw escapes special LaTeX characters like latexEscapeRaw,
+// but preserves `~` so it can be used as a LaTeX non-breaking space in captions.
+func latexEscapeCaptionRaw(s string) string {
+	replacer := strings.NewReplacer(
+		`\`, `\textbackslash{}`,
+		`{`, `\{`,
+		`}`, `\}`,
+		`%`, `\%`,
+		`&`, `\&`,
+		`#`, `\#`,
+		`$`, `\$`,
+		`_`, `\_`,
+		`^`, `\textasciicircum{}`,
+	)
+	return replacer.Replace(s)
+}
+
+// latexEscapeCaption escapes caption text for LaTeX. Unlike latexEscape, it
+// supports three lightweight inline formatting features: **bold**, *italic*,
+// and `~` as a non-breaking space. No other markdown syntax (headings, lists,
+// blockquotes, tables) is recognized. Czech typography rules still apply.
+func latexEscapeCaption(s string) string {
+	escaped := latexEscapeCaptionRaw(s)
+	// Bold before italic so `**text**` is matched before the inner `*text*`.
+	escaped = boldRe.ReplaceAllString(escaped, `\textbf{$1}`)
+	escaped = italicRe.ReplaceAllString(escaped, `\textit{$1}`)
+	return czechTypography(escaped)
+}
+
 // bookTemplateFuncMap returns the template.FuncMap used by book.tex. It is
 // shared between compileLatex and tests so the rendering paths exercised by
 // tests stay in sync with production output.
@@ -1012,14 +1041,14 @@ func writeFooterCaption(b *strings.Builder, c FooterCaption, badgeSize float64) 
 			if len(c.Markers) > 0 && seg != "" {
 				b.WriteString(`\, `)
 			}
-			b.WriteString(latexEscape(seg))
+			b.WriteString(latexEscapeCaption(seg))
 			b.WriteString(`}`)
 		case seg == "":
 			// Trailing newline: emit a hard break with no follow-up mbox.
 			b.WriteString(`\\`)
 		default:
 			b.WriteString(`\\\mbox{`)
-			b.WriteString(latexEscape(seg))
+			b.WriteString(latexEscapeCaption(seg))
 			b.WriteString(`}`)
 		}
 	}

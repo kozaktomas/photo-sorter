@@ -785,6 +785,149 @@ func TestLatexEscape(t *testing.T) {
 	})
 }
 
+// --- latexEscapeCaptionRaw ---
+
+func TestLatexEscapeCaptionRaw(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    string
+		expected string
+	}{
+		{"backslash", `\`, `\textbackslash{}`},
+		{"left brace", `{`, `\{`},
+		{"right brace", `}`, `\}`},
+		{"percent", `%`, `\%`},
+		{"ampersand", `&`, `\&`},
+		{"hash", `#`, `\#`},
+		{"dollar", `$`, `\$`},
+		{"underscore", `_`, `\_`},
+		{"caret", `^`, `\textasciicircum{}`},
+		{"tilde preserved", `~`, `~`},
+		{"empty string", "", ""},
+		{"tilde between words", `100~ml`, `100~ml`},
+		{"mixed", `Hello & 100% ~world`, `Hello \& 100\% ~world`},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := latexEscapeCaptionRaw(tt.input)
+			if got != tt.expected {
+				t.Errorf("latexEscapeCaptionRaw(%q) = %q, want %q", tt.input, got, tt.expected)
+			}
+		})
+	}
+}
+
+// --- latexEscapeCaption ---
+
+func TestLatexEscapeCaption(t *testing.T) {
+	t.Run("bold", func(t *testing.T) {
+		got := latexEscapeCaption(`**bold**`)
+		want := `\textbf{bold}`
+		if got != want {
+			t.Errorf("latexEscapeCaption(%q) = %q, want %q", `**bold**`, got, want)
+		}
+	})
+
+	t.Run("italic", func(t *testing.T) {
+		got := latexEscapeCaption(`*italic*`)
+		want := `\textit{italic}`
+		if got != want {
+			t.Errorf("latexEscapeCaption(%q) = %q, want %q", `*italic*`, got, want)
+		}
+	})
+
+	t.Run("bold then italic on separate words", func(t *testing.T) {
+		got := latexEscapeCaption(`**one** two *three*`)
+		want := `\textbf{one} two \textit{three}`
+		if got != want {
+			t.Errorf("latexEscapeCaption = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("tilde preserved as non-breaking space", func(t *testing.T) {
+		got := latexEscapeCaption(`100~ml`)
+		want := `100~ml`
+		if got != want {
+			t.Errorf("latexEscapeCaption(%q) = %q, want %q", `100~ml`, got, want)
+		}
+	})
+
+	t.Run("bare tilde preserved", func(t *testing.T) {
+		got := latexEscapeCaption(`~`)
+		want := `~`
+		if got != want {
+			t.Errorf("latexEscapeCaption(%q) = %q, want %q", `~`, got, want)
+		}
+	})
+
+	t.Run("other LaTeX specials still escaped", func(t *testing.T) {
+		got := latexEscapeCaption(`Bill & Ted, 50% #tag $price`)
+		want := `Bill \& Ted, 50\% \#tag \$price`
+		if got != want {
+			t.Errorf("latexEscapeCaption = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("caret still escaped", func(t *testing.T) {
+		got := latexEscapeCaption(`a^b`)
+		want := `a\textasciicircum{}b`
+		if got != want {
+			t.Errorf("latexEscapeCaption = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("backslash still escaped", func(t *testing.T) {
+		got := latexEscapeCaption(`a\b`)
+		want := `a\textbackslash{}b`
+		if got != want {
+			t.Errorf("latexEscapeCaption = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("czech typography still applied", func(t *testing.T) {
+		got := latexEscapeCaption("v lese")
+		want := "v~lese"
+		if got != want {
+			t.Errorf("latexEscapeCaption = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("czech typography applies outside bold", func(t *testing.T) {
+		// Inside \textbf{...} the `v` is preceded by `{`, which is neither
+		// start-of-string nor whitespace, so czechTypographyRe does not match.
+		// Outside bold, `a` is preceded by a space and gets the NBSP.
+		got := latexEscapeCaption("**v lese** a doma")
+		want := `\textbf{v lese} a~doma`
+		if got != want {
+			t.Errorf("latexEscapeCaption = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("bold combined with tilde and ampersand", func(t *testing.T) {
+		got := latexEscapeCaption(`**Pepa & Jana** 100~ml`)
+		want := `\textbf{Pepa \& Jana} 100~ml`
+		if got != want {
+			t.Errorf("latexEscapeCaption = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("no formatting plain text", func(t *testing.T) {
+		got := latexEscapeCaption("Just text")
+		want := "Just text"
+		if got != want {
+			t.Errorf("latexEscapeCaption = %q, want %q", got, want)
+		}
+	})
+
+	t.Run("empty string", func(t *testing.T) {
+		got := latexEscapeCaption("")
+		want := ""
+		if got != want {
+			t.Errorf("latexEscapeCaption = %q, want %q", got, want)
+		}
+	})
+}
+
 // --- computeZones ---
 
 func TestComputeZones(t *testing.T) {
@@ -1187,6 +1330,16 @@ func TestCaptionBadgeTemplate(t *testing.T) {
 		want := `\mbox{\captionbadge{4.00}{6.00}{8B0000}{white}{1}\, Just text}`
 		if !strings.Contains(out, want) {
 			t.Errorf("expected plain mbox %q, got:\n%s", want, out)
+		}
+	})
+
+	t.Run("caption bold italic and tilde render through template", func(t *testing.T) {
+		out := renderBookTemplate(t, makeData([]FooterCaption{
+			{Markers: []int{1}, Caption: "**Bold** and *italic* with 100~ml", ChapterColor: "8B0000"},
+		}))
+		want := `\mbox{\captionbadge{4.00}{6.00}{8B0000}{white}{1}\, \textbf{Bold} and \textit{italic} with 100~ml}`
+		if !strings.Contains(out, want) {
+			t.Errorf("expected formatted caption %q in output:\n%s", want, out)
 		}
 	})
 }
