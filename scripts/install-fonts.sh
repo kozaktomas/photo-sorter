@@ -121,68 +121,68 @@ fi
 
 # === Google Fonts: variable fonts (upright + italic) ========================
 echo "Lora..."
-fetch_to "$DEST_ROOT/truetype/lora" "Lora[wght].ttf"        "$GFONTS_BASE/lora/Lora%5Bwght%5D.ttf"
-fetch_to "$DEST_ROOT/truetype/lora" "Lora-Italic[wght].ttf" "$GFONTS_BASE/lora/Lora-Italic%5Bwght%5D.ttf"
+fetch_to "$DEST_ROOT/truetype/lora" "Lora-wght.ttf"        "$GFONTS_BASE/lora/Lora%5Bwght%5D.ttf"
+fetch_to "$DEST_ROOT/truetype/lora" "Lora-Italic-wght.ttf" "$GFONTS_BASE/lora/Lora-Italic%5Bwght%5D.ttf"
 
 echo "Merriweather..."
-fetch_to "$DEST_ROOT/truetype/merriweather" "Merriweather[opsz,wdth,wght].ttf"        "$GFONTS_BASE/merriweather/Merriweather%5Bopsz%2Cwdth%2Cwght%5D.ttf"
-fetch_to "$DEST_ROOT/truetype/merriweather" "Merriweather-Italic[opsz,wdth,wght].ttf" "$GFONTS_BASE/merriweather/Merriweather-Italic%5Bopsz%2Cwdth%2Cwght%5D.ttf"
+fetch_to "$DEST_ROOT/truetype/merriweather" "Merriweather-opsz-wdth-wght.ttf"        "$GFONTS_BASE/merriweather/Merriweather%5Bopsz%2Cwdth%2Cwght%5D.ttf"
+fetch_to "$DEST_ROOT/truetype/merriweather" "Merriweather-Italic-opsz-wdth-wght.ttf" "$GFONTS_BASE/merriweather/Merriweather-Italic%5Bopsz%2Cwdth%2Cwght%5D.ttf"
 
 echo "Noto Serif..."
-fetch_to "$DEST_ROOT/truetype/notoserif" "NotoSerif[wdth,wght].ttf"        "$GFONTS_BASE/notoserif/NotoSerif%5Bwdth%2Cwght%5D.ttf"
-fetch_to "$DEST_ROOT/truetype/notoserif" "NotoSerif-Italic[wdth,wght].ttf" "$GFONTS_BASE/notoserif/NotoSerif-Italic%5Bwdth%2Cwght%5D.ttf"
+fetch_to "$DEST_ROOT/truetype/notoserif" "NotoSerif-wdth-wght.ttf"        "$GFONTS_BASE/notoserif/NotoSerif%5Bwdth%2Cwght%5D.ttf"
+fetch_to "$DEST_ROOT/truetype/notoserif" "NotoSerif-Italic-wdth-wght.ttf" "$GFONTS_BASE/notoserif/NotoSerif-Italic%5Bwdth%2Cwght%5D.ttf"
 
 echo "Crimson Pro..."
-fetch_to "$DEST_ROOT/truetype/crimsonpro" "CrimsonPro[wght].ttf"        "$GFONTS_BASE/crimsonpro/CrimsonPro%5Bwght%5D.ttf"
-fetch_to "$DEST_ROOT/truetype/crimsonpro" "CrimsonPro-Italic[wght].ttf" "$GFONTS_BASE/crimsonpro/CrimsonPro-Italic%5Bwght%5D.ttf"
+fetch_to "$DEST_ROOT/truetype/crimsonpro" "CrimsonPro-wght.ttf"        "$GFONTS_BASE/crimsonpro/CrimsonPro%5Bwght%5D.ttf"
+fetch_to "$DEST_ROOT/truetype/crimsonpro" "CrimsonPro-Italic-wght.ttf" "$GFONTS_BASE/crimsonpro/CrimsonPro-Italic%5Bwght%5D.ttf"
 
 echo "Source Serif 4..."
-fetch_to "$DEST_ROOT/truetype/sourceserif4" "SourceSerif4[opsz,wght].ttf"        "$GFONTS_BASE/sourceserif4/SourceSerif4%5Bopsz%2Cwght%5D.ttf"
-fetch_to "$DEST_ROOT/truetype/sourceserif4" "SourceSerif4-Italic[opsz,wght].ttf" "$GFONTS_BASE/sourceserif4/SourceSerif4-Italic%5Bopsz%2Cwght%5D.ttf"
+fetch_to "$DEST_ROOT/truetype/sourceserif4" "SourceSerif4-opsz-wght.ttf"        "$GFONTS_BASE/sourceserif4/SourceSerif4%5Bopsz%2Cwght%5D.ttf"
+fetch_to "$DEST_ROOT/truetype/sourceserif4" "SourceSerif4-Italic-opsz-wght.ttf" "$GFONTS_BASE/sourceserif4/SourceSerif4-Italic%5Bopsz%2Cwght%5D.ttf"
 
 echo "Cormorant Garamond..."
-fetch_to "$DEST_ROOT/truetype/cormorantgaramond" "CormorantGaramond[wght].ttf"        "$GFONTS_BASE/cormorantgaramond/CormorantGaramond%5Bwght%5D.ttf"
-fetch_to "$DEST_ROOT/truetype/cormorantgaramond" "CormorantGaramond-Italic[wght].ttf" "$GFONTS_BASE/cormorantgaramond/CormorantGaramond-Italic%5Bwght%5D.ttf"
+fetch_to "$DEST_ROOT/truetype/cormorantgaramond" "CormorantGaramond-wght.ttf"        "$GFONTS_BASE/cormorantgaramond/CormorantGaramond%5Bwght%5D.ttf"
+fetch_to "$DEST_ROOT/truetype/cormorantgaramond" "CormorantGaramond-Italic-wght.ttf" "$GFONTS_BASE/cormorantgaramond/CormorantGaramond-Italic%5Bwght%5D.ttf"
 
 echo "Bitter..."
-fetch_to "$DEST_ROOT/truetype/bitter" "Bitter[wght].ttf"        "$GFONTS_BASE/bitter/Bitter%5Bwght%5D.ttf"
-fetch_to "$DEST_ROOT/truetype/bitter" "Bitter-Italic[wght].ttf" "$GFONTS_BASE/bitter/Bitter-Italic%5Bwght%5D.ttf"
+fetch_to "$DEST_ROOT/truetype/bitter" "Bitter-wght.ttf"        "$GFONTS_BASE/bitter/Bitter%5Bwght%5D.ttf"
+fetch_to "$DEST_ROOT/truetype/bitter" "Bitter-Italic-wght.ttf" "$GFONTS_BASE/bitter/Bitter-Italic%5Bwght%5D.ttf"
 
 echo "Gelasio..."
-fetch_to "$DEST_ROOT/truetype/gelasio" "Gelasio[wght].ttf"        "$GFONTS_BASE/gelasio/Gelasio%5Bwght%5D.ttf"
-fetch_to "$DEST_ROOT/truetype/gelasio" "Gelasio-Italic[wght].ttf" "$GFONTS_BASE/gelasio/Gelasio-Italic%5Bwght%5D.ttf"
+fetch_to "$DEST_ROOT/truetype/gelasio" "Gelasio-wght.ttf"        "$GFONTS_BASE/gelasio/Gelasio%5Bwght%5D.ttf"
+fetch_to "$DEST_ROOT/truetype/gelasio" "Gelasio-Italic-wght.ttf" "$GFONTS_BASE/gelasio/Gelasio-Italic%5Bwght%5D.ttf"
 
 echo "Noto Sans..."
-fetch_to "$DEST_ROOT/truetype/notosans" "NotoSans[wdth,wght].ttf"        "$GFONTS_BASE/notosans/NotoSans%5Bwdth%2Cwght%5D.ttf"
-fetch_to "$DEST_ROOT/truetype/notosans" "NotoSans-Italic[wdth,wght].ttf" "$GFONTS_BASE/notosans/NotoSans-Italic%5Bwdth%2Cwght%5D.ttf"
+fetch_to "$DEST_ROOT/truetype/notosans" "NotoSans-wdth-wght.ttf"        "$GFONTS_BASE/notosans/NotoSans%5Bwdth%2Cwght%5D.ttf"
+fetch_to "$DEST_ROOT/truetype/notosans" "NotoSans-Italic-wdth-wght.ttf" "$GFONTS_BASE/notosans/NotoSans-Italic%5Bwdth%2Cwght%5D.ttf"
 
 echo "Open Sans..."
-fetch_to "$DEST_ROOT/truetype/opensans" "OpenSans[wdth,wght].ttf"        "$GFONTS_BASE/opensans/OpenSans%5Bwdth%2Cwght%5D.ttf"
-fetch_to "$DEST_ROOT/truetype/opensans" "OpenSans-Italic[wdth,wght].ttf" "$GFONTS_BASE/opensans/OpenSans-Italic%5Bwdth%2Cwght%5D.ttf"
+fetch_to "$DEST_ROOT/truetype/opensans" "OpenSans-wdth-wght.ttf"        "$GFONTS_BASE/opensans/OpenSans%5Bwdth%2Cwght%5D.ttf"
+fetch_to "$DEST_ROOT/truetype/opensans" "OpenSans-Italic-wdth-wght.ttf" "$GFONTS_BASE/opensans/OpenSans-Italic%5Bwdth%2Cwght%5D.ttf"
 
 echo "Roboto..."
-fetch_to "$DEST_ROOT/truetype/roboto" "Roboto[wdth,wght].ttf"        "$GFONTS_BASE/roboto/Roboto%5Bwdth%2Cwght%5D.ttf"
-fetch_to "$DEST_ROOT/truetype/roboto" "Roboto-Italic[wdth,wght].ttf" "$GFONTS_BASE/roboto/Roboto-Italic%5Bwdth%2Cwght%5D.ttf"
+fetch_to "$DEST_ROOT/truetype/roboto" "Roboto-wdth-wght.ttf"        "$GFONTS_BASE/roboto/Roboto%5Bwdth%2Cwght%5D.ttf"
+fetch_to "$DEST_ROOT/truetype/roboto" "Roboto-Italic-wdth-wght.ttf" "$GFONTS_BASE/roboto/Roboto-Italic%5Bwdth%2Cwght%5D.ttf"
 
 echo "Inter..."
-fetch_to "$DEST_ROOT/truetype/inter" "Inter[opsz,wght].ttf"        "$GFONTS_BASE/inter/Inter%5Bopsz%2Cwght%5D.ttf"
-fetch_to "$DEST_ROOT/truetype/inter" "Inter-Italic[opsz,wght].ttf" "$GFONTS_BASE/inter/Inter-Italic%5Bopsz%2Cwght%5D.ttf"
+fetch_to "$DEST_ROOT/truetype/inter" "Inter-opsz-wght.ttf"        "$GFONTS_BASE/inter/Inter%5Bopsz%2Cwght%5D.ttf"
+fetch_to "$DEST_ROOT/truetype/inter" "Inter-Italic-opsz-wght.ttf" "$GFONTS_BASE/inter/Inter-Italic%5Bopsz%2Cwght%5D.ttf"
 
 echo "IBM Plex Sans..."
-fetch_to "$DEST_ROOT/truetype/ibmplexsans" "IBMPlexSans[wdth,wght].ttf"        "$GFONTS_BASE/ibmplexsans/IBMPlexSans%5Bwdth%2Cwght%5D.ttf"
-fetch_to "$DEST_ROOT/truetype/ibmplexsans" "IBMPlexSans-Italic[wdth,wght].ttf" "$GFONTS_BASE/ibmplexsans/IBMPlexSans-Italic%5Bwdth%2Cwght%5D.ttf"
+fetch_to "$DEST_ROOT/truetype/ibmplexsans" "IBMPlexSans-wdth-wght.ttf"        "$GFONTS_BASE/ibmplexsans/IBMPlexSans%5Bwdth%2Cwght%5D.ttf"
+fetch_to "$DEST_ROOT/truetype/ibmplexsans" "IBMPlexSans-Italic-wdth-wght.ttf" "$GFONTS_BASE/ibmplexsans/IBMPlexSans-Italic%5Bwdth%2Cwght%5D.ttf"
 
 echo "Nunito Sans..."
-fetch_to "$DEST_ROOT/truetype/nunitosans" "NunitoSans[YTLC,opsz,wdth,wght].ttf"        "$GFONTS_BASE/nunitosans/NunitoSans%5BYTLC%2Copsz%2Cwdth%2Cwght%5D.ttf"
-fetch_to "$DEST_ROOT/truetype/nunitosans" "NunitoSans-Italic[YTLC,opsz,wdth,wght].ttf" "$GFONTS_BASE/nunitosans/NunitoSans-Italic%5BYTLC%2Copsz%2Cwdth%2Cwght%5D.ttf"
+fetch_to "$DEST_ROOT/truetype/nunitosans" "NunitoSans-YTLC-opsz-wdth-wght.ttf"        "$GFONTS_BASE/nunitosans/NunitoSans%5BYTLC%2Copsz%2Cwdth%2Cwght%5D.ttf"
+fetch_to "$DEST_ROOT/truetype/nunitosans" "NunitoSans-Italic-YTLC-opsz-wdth-wght.ttf" "$GFONTS_BASE/nunitosans/NunitoSans-Italic%5BYTLC%2Copsz%2Cwdth%2Cwght%5D.ttf"
 
 echo "Raleway..."
-fetch_to "$DEST_ROOT/truetype/raleway" "Raleway[wght].ttf"        "$GFONTS_BASE/raleway/Raleway%5Bwght%5D.ttf"
-fetch_to "$DEST_ROOT/truetype/raleway" "Raleway-Italic[wght].ttf" "$GFONTS_BASE/raleway/Raleway-Italic%5Bwght%5D.ttf"
+fetch_to "$DEST_ROOT/truetype/raleway" "Raleway-wght.ttf"        "$GFONTS_BASE/raleway/Raleway%5Bwght%5D.ttf"
+fetch_to "$DEST_ROOT/truetype/raleway" "Raleway-Italic-wght.ttf" "$GFONTS_BASE/raleway/Raleway-Italic%5Bwght%5D.ttf"
 
 echo "Montserrat..."
-fetch_to "$DEST_ROOT/truetype/montserrat" "Montserrat[wght].ttf"        "$GFONTS_BASE/montserrat/Montserrat%5Bwght%5D.ttf"
-fetch_to "$DEST_ROOT/truetype/montserrat" "Montserrat-Italic[wght].ttf" "$GFONTS_BASE/montserrat/Montserrat-Italic%5Bwght%5D.ttf"
+fetch_to "$DEST_ROOT/truetype/montserrat" "Montserrat-wght.ttf"        "$GFONTS_BASE/montserrat/Montserrat%5Bwght%5D.ttf"
+fetch_to "$DEST_ROOT/truetype/montserrat" "Montserrat-Italic-wght.ttf" "$GFONTS_BASE/montserrat/Montserrat-Italic%5Bwght%5D.ttf"
 
 # === Google Fonts: static fonts (4 files: Regular, Bold, Italic, BoldItalic) ===
 echo "Lato..."
