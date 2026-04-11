@@ -1032,8 +1032,20 @@ func writeFooterCaption(b *strings.Builder, c FooterCaption, badgeSize float64) 
 	badges := buildCaptionBadges(c, badgeSize)
 	// Split text on newlines. The first segment carries the badges; subsequent
 	// segments are plain mboxes. A trailing newline produces an empty final
-	// segment which becomes a bare \\ (no empty mbox).
-	segments := strings.Split(c.Caption, "\n")
+	// segment which becomes a bare \\ (no empty mbox). Consecutive empty
+	// segments (from multiple newlines) are collapsed to avoid emitting
+	// multiple \\ in a row which causes "There's no line here to end".
+	rawSegments := strings.Split(c.Caption, "\n")
+	segments := make([]string, 0, len(rawSegments))
+	prevEmpty := false
+	for _, seg := range rawSegments {
+		empty := seg == ""
+		if empty && prevEmpty {
+			continue // collapse consecutive empty segments
+		}
+		segments = append(segments, seg)
+		prevEmpty = empty
+	}
 	for i, seg := range segments {
 		switch {
 		case i == 0:
