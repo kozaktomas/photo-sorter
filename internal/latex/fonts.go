@@ -2,6 +2,7 @@ package latex
 
 import (
 	"fmt"
+	"os"
 	"sort"
 )
 
@@ -11,42 +12,63 @@ type FontEntry struct {
 	DisplayName string `json:"display_name"`
 	Category    string `json:"category"` // "serif" or "sans-serif"
 	LatexName   string `json:"-"`        // fontspec family name for LuaLaTeX
-	// LatexFile / LatexItalicFile are filename-based overrides for variable
-	// fonts where fontspec's family auto-detection fails to find the Bold
-	// face. When set, the font is loaded via the bracket-file syntax with
-	// explicit wght axis features so \textbf{} renders proper bold weight.
-	// Filenames must NOT contain square brackets (fontspec nests them).
-	// Requires a pre-built luaotfload font cache to resolve filenames.
+	// LatexFile / LatexItalicFile / LatexFontDir are for variable fonts
+	// where fontspec cannot auto-detect bold. LatexDeclaration uses
+	// fontspec's Path= option for direct filesystem lookup (no brackets,
+	// no luaotfload cache needed). LatexFontDir is the subdirectory
+	// under the font root (e.g. "truetype/crimsonpro").
 	LatexFile       string `json:"-"`
 	LatexItalicFile string `json:"-"`
+	LatexFontDir    string `json:"-"`
 	GoogleFamily    string `json:"google_family"` // URL-safe Google Fonts family
 	GoogleSpec      string `json:"google_spec"`   // Google Fonts weight/style spec
 }
 
 // LatexDeclaration returns a complete fontspec command (\setmainfont or
-// \setsansfont) configured for this font. For static fonts it emits a simple
-// family-name declaration. For variable fonts with LatexFile set, it emits
-// the bracket-file form with explicit wght axis features so bold and
-// bold-italic shapes render correctly. command must be the full LaTeX
-// command including the leading backslash, e.g. `\setmainfont` or
-// `\setsansfont`.
-func (f FontEntry) LatexDeclaration(command string) string {
-	if f.LatexFile != "" && f.LatexItalicFile != "" {
+// \setsansfont) configured for this font. fontRoot is the base directory
+// where fonts are installed (e.g. "/usr/share/fonts"); use FindFontRoot
+// to detect it. For static fonts it emits a simple family-name declaration.
+// For variable fonts with LatexFile set, it uses fontspec's Path= option
+// for direct filesystem lookup with explicit wght axis features.
+// command must be the full LaTeX command including the leading backslash,
+// e.g. `\setmainfont` or `\setsansfont`.
+func (f FontEntry) LatexDeclaration(command, fontRoot string) string {
+	if f.LatexFile != "" && f.LatexItalicFile != "" && f.LatexFontDir != "" {
+		fontPath := fontRoot + "/" + f.LatexFontDir + "/"
 		return fmt.Sprintf(
-			"%s{[%s]}[\n"+
+			"%s{%s}[\n"+
+				"  Path=%s,\n"+
 				"  Ligatures=TeX,\n"+
-				"  ItalicFont={[%s]},\n"+
-				"  BoldFont={[%s]},\n"+
-				"  BoldItalicFont={[%s]},\n"+
+				"  ItalicFont=%s,\n"+
+				"  BoldFont=%s,\n"+
+				"  BoldItalicFont=%s,\n"+
 				"  UprightFeatures={RawFeature={+axis={wght=400}}},\n"+
 				"  ItalicFeatures={RawFeature={+axis={wght=400}}},\n"+
 				"  BoldFeatures={RawFeature={+axis={wght=700}}},\n"+
 				"  BoldItalicFeatures={RawFeature={+axis={wght=700}}},\n"+
 				"]",
-			command, f.LatexFile, f.LatexItalicFile, f.LatexFile, f.LatexItalicFile,
+			command, f.LatexFile, fontPath, f.LatexItalicFile, f.LatexFile, f.LatexItalicFile,
 		)
 	}
 	return fmt.Sprintf("%s{%s}[\n  Ligatures=TeX,\n]", command, f.LatexName)
+}
+
+// fontRootSearchPaths are checked in order to find the installed font root.
+var fontRootSearchPaths = []string{
+	"/usr/share/fonts",                    // Docker (Alpine)
+	"/usr/local/share/fonts/photo-sorter", // dev (make install-fonts)
+}
+
+// FindFontRoot returns the first font root directory that contains the
+// sentinel font file (CrimsonPro). Returns an empty string if not found.
+func FindFontRoot() string {
+	for _, root := range fontRootSearchPaths {
+		sentinel := root + "/truetype/crimsonpro/CrimsonPro-wght.ttf"
+		if _, err := os.Stat(sentinel); err == nil {
+			return root
+		}
+	}
+	return ""
 }
 
 const (
@@ -109,6 +131,7 @@ var fontRegistry = map[string]FontEntry{
 		LatexName:       "Lora",
 		LatexFile:       "Lora-wght.ttf",
 		LatexItalicFile: "Lora-Italic-wght.ttf",
+		LatexFontDir:    "truetype/lora",
 		GoogleFamily:    "Lora",
 		GoogleSpec:      "ital,wght@0,400;0,700;1,400;1,700",
 	},
@@ -119,6 +142,7 @@ var fontRegistry = map[string]FontEntry{
 		LatexName:       "Merriweather",
 		LatexFile:       "Merriweather-opsz-wdth-wght.ttf",
 		LatexItalicFile: "Merriweather-Italic-opsz-wdth-wght.ttf",
+		LatexFontDir:    "truetype/merriweather",
 		GoogleFamily:    "Merriweather",
 		GoogleSpec:      "ital,wght@0,300;0,400;0,700;1,300;1,400;1,700",
 	},
@@ -137,6 +161,7 @@ var fontRegistry = map[string]FontEntry{
 		LatexName:       "Crimson Pro",
 		LatexFile:       "CrimsonPro-wght.ttf",
 		LatexItalicFile: "CrimsonPro-Italic-wght.ttf",
+		LatexFontDir:    "truetype/crimsonpro",
 		GoogleFamily:    "Crimson+Pro",
 		GoogleSpec:      "ital,wght@0,400;0,600;0,700;1,400;1,600;1,700",
 	},
@@ -147,6 +172,7 @@ var fontRegistry = map[string]FontEntry{
 		LatexName:       "Source Serif 4",
 		LatexFile:       "SourceSerif4-opsz-wght.ttf",
 		LatexItalicFile: "SourceSerif4-Italic-opsz-wght.ttf",
+		LatexFontDir:    "truetype/sourceserif4",
 		GoogleFamily:    "Source+Serif+4",
 		GoogleSpec:      "ital,wght@0,400;0,600;0,700;1,400;1,600;1,700",
 	},
@@ -157,6 +183,7 @@ var fontRegistry = map[string]FontEntry{
 		LatexName:       "Cormorant Garamond",
 		LatexFile:       "CormorantGaramond-wght.ttf",
 		LatexItalicFile: "CormorantGaramond-Italic-wght.ttf",
+		LatexFontDir:    "truetype/cormorantgaramond",
 		GoogleFamily:    "Cormorant+Garamond",
 		GoogleSpec:      "ital,wght@0,400;0,600;0,700;1,400;1,600;1,700",
 	},
@@ -167,6 +194,7 @@ var fontRegistry = map[string]FontEntry{
 		LatexName:       "Bitter",
 		LatexFile:       "Bitter-wght.ttf",
 		LatexItalicFile: "Bitter-Italic-wght.ttf",
+		LatexFontDir:    "truetype/bitter",
 		GoogleFamily:    "Bitter",
 		GoogleSpec:      "ital,wght@0,400;0,600;0,700;1,400;1,600;1,700",
 	},
@@ -177,6 +205,7 @@ var fontRegistry = map[string]FontEntry{
 		LatexName:       "Gelasio",
 		LatexFile:       "Gelasio-wght.ttf",
 		LatexItalicFile: "Gelasio-Italic-wght.ttf",
+		LatexFontDir:    "truetype/gelasio",
 		GoogleFamily:    "Gelasio",
 		GoogleSpec:      "ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600;1,700",
 	},
@@ -286,6 +315,7 @@ var fontRegistry = map[string]FontEntry{
 		LatexName:       "Nunito Sans",
 		LatexFile:       "NunitoSans-YTLC-opsz-wdth-wght.ttf",
 		LatexItalicFile: "NunitoSans-Italic-YTLC-opsz-wdth-wght.ttf",
+		LatexFontDir:    "truetype/nunitosans",
 		GoogleFamily:    "Nunito+Sans",
 		GoogleSpec:      "ital,wght@0,400;0,600;0,700;1,400;1,600;1,700",
 	},
@@ -296,6 +326,7 @@ var fontRegistry = map[string]FontEntry{
 		LatexName:       "Raleway",
 		LatexFile:       "Raleway-wght.ttf",
 		LatexItalicFile: "Raleway-Italic-wght.ttf",
+		LatexFontDir:    "truetype/raleway",
 		GoogleFamily:    "Raleway",
 		GoogleSpec:      "ital,wght@0,400;0,600;0,700;1,400;1,600;1,700",
 	},
@@ -306,6 +337,7 @@ var fontRegistry = map[string]FontEntry{
 		LatexName:       "Montserrat",
 		LatexFile:       "Montserrat-wght.ttf",
 		LatexItalicFile: "Montserrat-Italic-wght.ttf",
+		LatexFontDir:    "truetype/montserrat",
 		GoogleFamily:    "Montserrat",
 		GoogleSpec:      "ital,wght@0,400;0,600;0,700;1,400;1,600;1,700",
 	},

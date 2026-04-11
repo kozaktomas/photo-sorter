@@ -479,11 +479,12 @@ type resolvedTypography struct {
 
 // resolveBookTypography resolves typography settings from a PhotoBook with fallbacks.
 func resolveBookTypography(book *database.PhotoBook) resolvedTypography {
+	fontRoot := FindFontRoot()
 	defaultBody, _ := GetFont(DefaultBodyFont)
 	defaultHeading, _ := GetFont(DefaultHeadingFont)
 	rt := resolvedTypography{
-		bodyFontDeclaration:    defaultBody.LatexDeclaration(`\setmainfont`),
-		headingFontDeclaration: defaultHeading.LatexDeclaration(`\setsansfont`),
+		bodyFontDeclaration:    defaultBody.LatexDeclaration(`\setmainfont`, fontRoot),
+		headingFontDeclaration: defaultHeading.LatexDeclaration(`\setsansfont`, fontRoot),
 		bodyFontSize:           DefaultBodyFontSize,
 		bodyLineHeight:         DefaultBodyLineHeight,
 		h1FontSize:             DefaultH1FontSize,
@@ -495,7 +496,7 @@ func resolveBookTypography(book *database.PhotoBook) resolvedTypography {
 	}
 
 	if book != nil {
-		applyBookFonts(&rt, book)
+		applyBookFonts(&rt, book, fontRoot)
 		applyBookSizes(&rt, book)
 	}
 
@@ -506,12 +507,12 @@ func resolveBookTypography(book *database.PhotoBook) resolvedTypography {
 }
 
 // applyBookFonts overrides font declarations from book settings when available.
-func applyBookFonts(rt *resolvedTypography, book *database.PhotoBook) {
+func applyBookFonts(rt *resolvedTypography, book *database.PhotoBook, fontRoot string) {
 	if f, ok := GetFont(book.BodyFont); ok && f.LatexName != "" {
-		rt.bodyFontDeclaration = f.LatexDeclaration(`\setmainfont`)
+		rt.bodyFontDeclaration = f.LatexDeclaration(`\setmainfont`, fontRoot)
 	}
 	if f, ok := GetFont(book.HeadingFont); ok && f.LatexName != "" {
-		rt.headingFontDeclaration = f.LatexDeclaration(`\setsansfont`)
+		rt.headingFontDeclaration = f.LatexDeclaration(`\setsansfont`, fontRoot)
 	}
 }
 
