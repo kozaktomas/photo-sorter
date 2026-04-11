@@ -11,35 +11,39 @@ type FontEntry struct {
 	DisplayName string `json:"display_name"`
 	Category    string `json:"category"` // "serif" or "sans-serif"
 	LatexName   string `json:"-"`        // fontspec family name for LuaLaTeX
-	// VariableFont marks fonts where fontspec cannot auto-detect bold
-	// faces. When true, LatexDeclaration emits explicit BoldFont /
-	// BoldItalicFont options with luaotfload ":style=" queries and
-	// wght axis features so \textbf{} renders proper bold weight.
-	VariableFont bool   `json:"-"`
-	GoogleFamily string `json:"google_family"` // URL-safe Google Fonts family
-	GoogleSpec   string `json:"google_spec"`   // Google Fonts weight/style spec
+	// LatexFile / LatexItalicFile are filename-based overrides for variable
+	// fonts where fontspec's family auto-detection fails to find the Bold
+	// face. When set, the font is loaded via the bracket-file syntax with
+	// explicit wght axis features so \textbf{} renders proper bold weight.
+	// Filenames must NOT contain square brackets (fontspec nests them).
+	// Requires a pre-built luaotfload font cache to resolve filenames.
+	LatexFile       string `json:"-"`
+	LatexItalicFile string `json:"-"`
+	GoogleFamily    string `json:"google_family"` // URL-safe Google Fonts family
+	GoogleSpec      string `json:"google_spec"`   // Google Fonts weight/style spec
 }
 
 // LatexDeclaration returns a complete fontspec command (\setmainfont or
 // \setsansfont) configured for this font. For static fonts it emits a simple
-// family-name declaration. For variable fonts it adds explicit BoldFont /
-// BoldItalicFont with luaotfload ":style=" queries and wght axis features
-// because fontspec cannot auto-detect bold faces in variable fonts.
-// command must be the full LaTeX command including the leading backslash,
-// e.g. `\setmainfont` or `\setsansfont`.
+// family-name declaration. For variable fonts with LatexFile set, it emits
+// the bracket-file form with explicit wght axis features so bold and
+// bold-italic shapes render correctly. command must be the full LaTeX
+// command including the leading backslash, e.g. `\setmainfont` or
+// `\setsansfont`.
 func (f FontEntry) LatexDeclaration(command string) string {
-	if f.VariableFont {
+	if f.LatexFile != "" && f.LatexItalicFile != "" {
 		return fmt.Sprintf(
-			"%s{%s}[\n"+
+			"%s{[%s]}[\n"+
 				"  Ligatures=TeX,\n"+
-				"  BoldFont={%s:style=Bold},\n"+
-				"  BoldItalicFont={%s:style=Bold Italic},\n"+
+				"  ItalicFont={[%s]},\n"+
+				"  BoldFont={[%s]},\n"+
+				"  BoldItalicFont={[%s]},\n"+
 				"  UprightFeatures={RawFeature={+axis={wght=400}}},\n"+
 				"  ItalicFeatures={RawFeature={+axis={wght=400}}},\n"+
 				"  BoldFeatures={RawFeature={+axis={wght=700}}},\n"+
 				"  BoldItalicFeatures={RawFeature={+axis={wght=700}}},\n"+
 				"]",
-			command, f.LatexName, f.LatexName, f.LatexName,
+			command, f.LatexFile, f.LatexItalicFile, f.LatexFile, f.LatexItalicFile,
 		)
 	}
 	return fmt.Sprintf("%s{%s}[\n  Ligatures=TeX,\n]", command, f.LatexName)
@@ -99,22 +103,24 @@ var fontRegistry = map[string]FontEntry{
 		GoogleSpec:   "ital,wght@0,400;0,600;0,700;1,400;1,600;1,700",
 	},
 	"lora": {
-		ID:           "lora",
-		DisplayName:  "Lora",
-		Category:     "serif",
-		LatexName:    "Lora",
-		VariableFont: true,
-		GoogleFamily: "Lora",
-		GoogleSpec:   "ital,wght@0,400;0,700;1,400;1,700",
+		ID:              "lora",
+		DisplayName:     "Lora",
+		Category:        "serif",
+		LatexName:       "Lora",
+		LatexFile:       "Lora-wght.ttf",
+		LatexItalicFile: "Lora-Italic-wght.ttf",
+		GoogleFamily:    "Lora",
+		GoogleSpec:      "ital,wght@0,400;0,700;1,400;1,700",
 	},
 	"merriweather": {
-		ID:           "merriweather",
-		DisplayName:  "Merriweather",
-		Category:     "serif",
-		LatexName:    "Merriweather",
-		VariableFont: true,
-		GoogleFamily: "Merriweather",
-		GoogleSpec:   "ital,wght@0,300;0,400;0,700;1,300;1,400;1,700",
+		ID:              "merriweather",
+		DisplayName:     "Merriweather",
+		Category:        "serif",
+		LatexName:       "Merriweather",
+		LatexFile:       "Merriweather-opsz-wdth-wght.ttf",
+		LatexItalicFile: "Merriweather-Italic-opsz-wdth-wght.ttf",
+		GoogleFamily:    "Merriweather",
+		GoogleSpec:      "ital,wght@0,300;0,400;0,700;1,300;1,400;1,700",
 	},
 	"noto-serif": {
 		ID:           "noto-serif",
@@ -125,49 +131,54 @@ var fontRegistry = map[string]FontEntry{
 		GoogleSpec:   "ital,wght@0,400;0,700;1,400;1,700",
 	},
 	"crimson-pro": {
-		ID:           "crimson-pro",
-		DisplayName:  "Crimson Pro",
-		Category:     "serif",
-		LatexName:    "Crimson Pro",
-		VariableFont: true,
-		GoogleFamily: "Crimson+Pro",
-		GoogleSpec:   "ital,wght@0,400;0,600;0,700;1,400;1,600;1,700",
+		ID:              "crimson-pro",
+		DisplayName:     "Crimson Pro",
+		Category:        "serif",
+		LatexName:       "Crimson Pro",
+		LatexFile:       "CrimsonPro-wght.ttf",
+		LatexItalicFile: "CrimsonPro-Italic-wght.ttf",
+		GoogleFamily:    "Crimson+Pro",
+		GoogleSpec:      "ital,wght@0,400;0,600;0,700;1,400;1,600;1,700",
 	},
 	"source-serif": {
-		ID:           "source-serif",
-		DisplayName:  "Source Serif 4",
-		Category:     "serif",
-		LatexName:    "Source Serif 4",
-		VariableFont: true,
-		GoogleFamily: "Source+Serif+4",
-		GoogleSpec:   "ital,wght@0,400;0,600;0,700;1,400;1,600;1,700",
+		ID:              "source-serif",
+		DisplayName:     "Source Serif 4",
+		Category:        "serif",
+		LatexName:       "Source Serif 4",
+		LatexFile:       "SourceSerif4-opsz-wght.ttf",
+		LatexItalicFile: "SourceSerif4-Italic-opsz-wght.ttf",
+		GoogleFamily:    "Source+Serif+4",
+		GoogleSpec:      "ital,wght@0,400;0,600;0,700;1,400;1,600;1,700",
 	},
 	"cormorant": {
-		ID:           "cormorant",
-		DisplayName:  "Cormorant Garamond",
-		Category:     "serif",
-		LatexName:    "Cormorant Garamond",
-		VariableFont: true,
-		GoogleFamily: "Cormorant+Garamond",
-		GoogleSpec:   "ital,wght@0,400;0,600;0,700;1,400;1,600;1,700",
+		ID:              "cormorant",
+		DisplayName:     "Cormorant Garamond",
+		Category:        "serif",
+		LatexName:       "Cormorant Garamond",
+		LatexFile:       "CormorantGaramond-wght.ttf",
+		LatexItalicFile: "CormorantGaramond-Italic-wght.ttf",
+		GoogleFamily:    "Cormorant+Garamond",
+		GoogleSpec:      "ital,wght@0,400;0,600;0,700;1,400;1,600;1,700",
 	},
 	"bitter": {
-		ID:           "bitter",
-		DisplayName:  "Bitter",
-		Category:     "serif",
-		LatexName:    "Bitter",
-		VariableFont: true,
-		GoogleFamily: "Bitter",
-		GoogleSpec:   "ital,wght@0,400;0,600;0,700;1,400;1,600;1,700",
+		ID:              "bitter",
+		DisplayName:     "Bitter",
+		Category:        "serif",
+		LatexName:       "Bitter",
+		LatexFile:       "Bitter-wght.ttf",
+		LatexItalicFile: "Bitter-Italic-wght.ttf",
+		GoogleFamily:    "Bitter",
+		GoogleSpec:      "ital,wght@0,400;0,600;0,700;1,400;1,600;1,700",
 	},
 	"gelasio": {
-		ID:           "gelasio",
-		DisplayName:  "Gelasio",
-		Category:     "serif",
-		LatexName:    "Gelasio",
-		VariableFont: true,
-		GoogleFamily: "Gelasio",
-		GoogleSpec:   "ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600;1,700",
+		ID:              "gelasio",
+		DisplayName:     "Gelasio",
+		Category:        "serif",
+		LatexName:       "Gelasio",
+		LatexFile:       "Gelasio-wght.ttf",
+		LatexItalicFile: "Gelasio-Italic-wght.ttf",
+		GoogleFamily:    "Gelasio",
+		GoogleSpec:      "ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600;1,700",
 	},
 	"bookman-old-style": {
 		ID:          "bookman-old-style",
@@ -269,31 +280,34 @@ var fontRegistry = map[string]FontEntry{
 		GoogleSpec:   "ital,wght@0,400;0,600;0,700;1,400;1,600;1,700",
 	},
 	"nunito-sans": {
-		ID:           "nunito-sans",
-		DisplayName:  "Nunito Sans",
-		Category:     "sans-serif",
-		LatexName:    "Nunito Sans",
-		VariableFont: true,
-		GoogleFamily: "Nunito+Sans",
-		GoogleSpec:   "ital,wght@0,400;0,600;0,700;1,400;1,600;1,700",
+		ID:              "nunito-sans",
+		DisplayName:     "Nunito Sans",
+		Category:        "sans-serif",
+		LatexName:       "Nunito Sans",
+		LatexFile:       "NunitoSans-YTLC-opsz-wdth-wght.ttf",
+		LatexItalicFile: "NunitoSans-Italic-YTLC-opsz-wdth-wght.ttf",
+		GoogleFamily:    "Nunito+Sans",
+		GoogleSpec:      "ital,wght@0,400;0,600;0,700;1,400;1,600;1,700",
 	},
 	"raleway": {
-		ID:           "raleway",
-		DisplayName:  "Raleway",
-		Category:     "sans-serif",
-		LatexName:    "Raleway",
-		VariableFont: true,
-		GoogleFamily: "Raleway",
-		GoogleSpec:   "ital,wght@0,400;0,600;0,700;1,400;1,600;1,700",
+		ID:              "raleway",
+		DisplayName:     "Raleway",
+		Category:        "sans-serif",
+		LatexName:       "Raleway",
+		LatexFile:       "Raleway-wght.ttf",
+		LatexItalicFile: "Raleway-Italic-wght.ttf",
+		GoogleFamily:    "Raleway",
+		GoogleSpec:      "ital,wght@0,400;0,600;0,700;1,400;1,600;1,700",
 	},
 	"montserrat": {
-		ID:           "montserrat",
-		DisplayName:  "Montserrat",
-		Category:     "sans-serif",
-		LatexName:    "Montserrat",
-		VariableFont: true,
-		GoogleFamily: "Montserrat",
-		GoogleSpec:   "ital,wght@0,400;0,600;0,700;1,400;1,600;1,700",
+		ID:              "montserrat",
+		DisplayName:     "Montserrat",
+		Category:        "sans-serif",
+		LatexName:       "Montserrat",
+		LatexFile:       "Montserrat-wght.ttf",
+		LatexItalicFile: "Montserrat-Italic-wght.ttf",
+		GoogleFamily:    "Montserrat",
+		GoogleSpec:      "ital,wght@0,400;0,600;0,700;1,400;1,600;1,700",
 	},
 }
 

@@ -1113,16 +1113,16 @@ func compileLatex(ctx context.Context, data TemplateData, tmpDir string) ([]byte
 	// Run lualatex twice — second pass resolves remember picture positions.
 	// Arguments are safe (tmpDir from os.MkdirTemp, texPath derived from it).
 	//
-	// All TEXMF* and HOME vars are set to tmpDir so luaotfload builds a fresh
-	// font database there. The pre-built Docker cache at /var/cache/luatex-cache
-	// cannot be used because luaotfload's cache detection fails when lualatex is
-	// invoked via Go's exec.Command (works from shell but not from Go — likely a
-	// difference in how the fontloader-basics-gen cache writability check behaves
-	// with Go's fork+exec). Font database generation adds ~2s per export.
+	// HOME is set to tmpDir so luaotfload writes its per-run cache there
+	// (prevents "permission denied" from a read-only HOME). TEXMFCACHE and
+	// TEXMFVAR are NOT overridden — they inherit from the process environment
+	// so luaotfload finds the pre-built font database (Docker sets these to
+	// /var/cache/luatex-cache; dev environments use the system default).
+	// The font database must exist; without it, bracket-file font lookups
+	// fail. Docker pre-generates it via luaotfload-tool --update; dev
+	// environments get it from make install-fonts + luaotfload-tool.
 	latexEnv := setEnvVars(os.Environ(), map[string]string{
-		"TEXMFCACHE": tmpDir,
-		"TEXMFVAR":   tmpDir,
-		"HOME":       tmpDir,
+		"HOME": tmpDir,
 	})
 	for pass := range 2 {
 		cmd := exec.CommandContext(ctx, "lualatex", //nolint:gosec
