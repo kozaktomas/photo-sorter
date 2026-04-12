@@ -2,13 +2,14 @@ import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { BookOpen, ArrowLeft, Pencil, Trash2, Check, X, Download, BarChart3 } from 'lucide-react';
-import { updateBook, deleteBook, exportBookPDF, preflightBook, getFonts } from '../../api/client';
+import { updateBook, deleteBook, preflightBook, getFonts } from '../../api/client';
 import type { PreflightResponse } from '../../types';
 import { LoadingState } from '../../components/LoadingState';
 import { setFontRegistry, getBookTypographyCSSVars } from '../../constants/bookTypography';
 import { loadFontByInfo } from '../../utils/fontLoader';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { useBookData } from './hooks/useBookData';
+import { useBookExportJob } from './hooks/useBookExportJob';
 import { BookStatsPanel } from './BookStatsPanel';
 import { SectionsTab } from './SectionsTab';
 import { PagesTab } from './PagesTab';
@@ -18,6 +19,7 @@ import { TextsTab } from './TextsTab';
 import { TypographyTab } from './TypographyTab';
 import { PreflightModal } from './PreflightModal';
 import { KeyboardShortcutsHelp } from './KeyboardShortcutsHelp';
+import { ExportProgressModal } from './ExportProgressModal';
 
 type Tab = 'sections' | 'pages' | 'preview' | 'duplicates' | 'texts' | 'typography';
 
@@ -110,8 +112,9 @@ export function BookEditorPage() {
 
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState('');
-  const [exporting, setExporting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const exportJob = useBookExportJob();
+  const exporting = exportJob.isActive;
   const [preflightData, setPreflightData] = useState<PreflightResponse | null>(null);
   const [preflightLoading, setPreflightLoading] = useState(false);
   const [showPreflight, setShowPreflight] = useState(false);
@@ -181,11 +184,7 @@ export function BookEditorPage() {
     if (!book || exporting) return;
     setShowPreflight(false);
     setPreflightData(null);
-    setExporting(true);
-    try {
-      await exportBookPDF(book.id);
-    } catch (e) { console.error('Failed to export PDF:', e); }
-    setExporting(false);
+    await exportJob.start(book.id);
   };
 
   const handleGoToPage = (pageNumber: number) => {
@@ -390,6 +389,12 @@ export function BookEditorPage() {
           onGoToPage={handleGoToPage}
         />
       )}
+
+      <ExportProgressModal
+        state={exportJob.state}
+        onCancel={() => void exportJob.cancel()}
+        onDismiss={exportJob.reset}
+      />
     </div>
   );
 }

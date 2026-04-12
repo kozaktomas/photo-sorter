@@ -728,7 +728,12 @@ The Web UI communicates with these backend endpoints:
 | GET | `/api/v1/photos/:uid/books` | Get photo book/section memberships |
 | POST | `/api/v1/books/:id/sections/:sectionId/auto-layout` | Auto-generate pages from unassigned photos |
 | GET | `/api/v1/books/:id/preflight` | Validate book before PDF export |
-| GET | `/api/v1/books/:id/export-pdf` | Export book as PDF |
+| GET | `/api/v1/books/:id/export-pdf` | Export book as PDF (synchronous, for CLI/MCP) |
+| POST | `/api/v1/books/:id/export-pdf/job` | Start background PDF export job (UI flow) |
+| GET | `/api/v1/book-export/:jobId` | Get export job state |
+| GET | `/api/v1/book-export/:jobId/events` | SSE stream of export progress events |
+| GET | `/api/v1/book-export/:jobId/download` | Download compiled PDF (streams temp file) |
+| DELETE | `/api/v1/book-export/:jobId` | Cancel export job |
 | PUT | `/api/v1/pages/:id/slots/:index/crop` | Update crop for a slot |
 | POST | `/api/v1/text/check` | AI text check (spelling, grammar) |
 | POST | `/api/v1/text/check-and-save` | AI text check with database persistence |

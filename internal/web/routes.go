@@ -25,6 +25,7 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 	processHandler := handlers.NewProcessHandler(s.config, sessionManager, facesHandler, photosHandler, statsHandler)
 	uploadHandler := handlers.NewUploadHandler(s.config, sessionManager, processHandler)
 	booksHandler := handlers.NewBooksHandler(s.config, sessionManager)
+	s.booksHandler = booksHandler
 	textHandler := handlers.NewTextHandler(s.config)
 	textVersionsHandler := handlers.NewTextVersionsHandler()
 
@@ -143,6 +144,11 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 			r.Post("/books/{id}/sections/{sectionId}/auto-layout", booksHandler.AutoLayout)
 			r.Get("/books/{id}/preflight", booksHandler.Preflight)
 			r.Get("/books/{id}/export-pdf", booksHandler.ExportPDF)
+			r.Post("/books/{id}/export-pdf/job", booksHandler.StartExportJob)
+			r.Get("/book-export/{jobId}", booksHandler.GetExportJob)
+			r.Get("/book-export/{jobId}/events", booksHandler.StreamExportJobEvents)
+			r.Get("/book-export/{jobId}/download", booksHandler.DownloadExport)
+			r.Delete("/book-export/{jobId}", booksHandler.CancelExportJob)
 			r.Get("/books/{id}/text-check-status", textHandler.TextCheckStatus)
 
 			// Text AI operations.

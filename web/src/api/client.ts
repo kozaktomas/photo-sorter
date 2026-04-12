@@ -891,3 +891,78 @@ export async function exportBookPDF(bookId: string): Promise<void> {
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
 }
+
+// --- Background PDF export job (progress-bar UX) ---
+
+export interface BookExportJob {
+  id: string;
+  book_id: string;
+  book_title: string;
+  status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+  phase: string;
+  current: number;
+  total: number;
+  file_size?: number;
+  filename?: string;
+  error?: string;
+  started_at: string;
+  completed_at?: string;
+  consumed: boolean;
+}
+
+export interface BookExportJobStartResponse {
+  job_id: string;
+  book_id: string;
+  book_title: string;
+  status: string;
+}
+
+export interface BookExportJobConflict {
+  error: string;
+  job_id: string;
+  status: string;
+}
+
+/**
+ * Starts a new background PDF export job. On 409 Conflict (an export is
+ * already running for the same book), returns the existing job info so the
+ * caller can reattach to its SSE stream instead of starting a new one.
+ */
+export async function startBookExportJob(
+  bookId: string,
+): Promise<{ jobId: string; reattached: boolean }> {
+  const response = await fetch(`${API_BASE}/books/${bookId}/export-pdf/job`, {
+    method: 'POST',
+    credentials: 'include',
+  });
+  if (response.status === 409) {
+    const conflict = (await response.json()) as BookExportJobConflict;
+    return { jobId: conflict.job_id, reattached: true };
+  }
+  if (!response.ok) {
+    const errorData = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+    const errorMessage = typeof errorData.error === 'string' ? errorData.error : 'Failed to start PDF export';
+    throw new Error(errorMessage);
+  }
+  const started = (await response.json()) as BookExportJobStartResponse;
+  return { jobId: started.job_id, reattached: false };
+}
+
+export async function getBookExportJob(jobId: string): Promise<BookExportJob> {
+  return request<BookExportJob>(`/book-export/${jobId}`);
+}
+
+export function getBookExportJobEventsUrl(jobId: string): string {
+  return `${API_BASE}/book-export/${jobId}/events`;
+}
+
+export function getBookExportJobDownloadUrl(jobId: string): string {
+  return `${API_BASE}/book-export/${jobId}/download`;
+}
+
+export async function cancelBookExportJob(jobId: string): Promise<void> {
+  await fetch(`${API_BASE}/book-export/${jobId}`, {
+    method: 'DELETE',
+    credentials: 'include',
+  });
+}

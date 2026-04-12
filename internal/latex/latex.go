@@ -19,6 +19,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"text/template"
 
 	"github.com/kozaktomas/photo-sorter/internal/database"
@@ -29,6 +30,23 @@ import (
 var templateFS embed.FS
 
 // --- Export Report Types ---
+
+// ProgressInfo is reported by GeneratePDFWithCallbacks to track export phases.
+// Phase is one of: "downloading_photos", "compiling_pass1", "compiling_pass2".
+// Current/Total are phase-local (e.g. downloaded photo count). PhotoUID is
+// populated only for downloading_photos events.
+type ProgressInfo struct {
+	Phase    string
+	Current  int
+	Total    int
+	PhotoUID string
+}
+
+// ExportOptions are optional parameters for GeneratePDFWithCallbacks.
+type ExportOptions struct {
+	Debug      bool
+	OnProgress func(ProgressInfo)
+}
 
 // ExportReport contains metadata about a PDF export for quality analysis.
 type ExportReport struct {
@@ -220,15 +238,25 @@ const (
 func GeneratePDF(
 	ctx context.Context, pp *photoprism.PhotoPrism, br database.BookReader, bookID string,
 ) ([]byte, *ExportReport, error) {
-	return GeneratePDFWithOptions(ctx, pp, br, bookID, false)
+	return GeneratePDFWithCallbacks(ctx, pp, br, bookID, ExportOptions{})
 }
 
 // GeneratePDFWithOptions renders a photo book to PDF with optional debug overlay.
-//
-//nolint:cyclop // Orchestration function that fetches multiple resources.
 func GeneratePDFWithOptions(
 	ctx context.Context, pp *photoprism.PhotoPrism,
 	br database.BookReader, bookID string, debug bool,
+) ([]byte, *ExportReport, error) {
+	return GeneratePDFWithCallbacks(ctx, pp, br, bookID, ExportOptions{Debug: debug})
+}
+
+// GeneratePDFWithCallbacks renders a photo book to PDF, emitting progress via
+// opts.OnProgress if non-nil. Phases: downloading_photos, compiling_pass1,
+// compiling_pass2.
+//
+//nolint:cyclop // Orchestration function that fetches multiple resources.
+func GeneratePDFWithCallbacks(
+	ctx context.Context, pp *photoprism.PhotoPrism,
+	br database.BookReader, bookID string, opts ExportOptions,
 ) ([]byte, *ExportReport, error) {
 	book, err := br.GetBook(ctx, bookID)
 	if err != nil || book == nil {
@@ -264,12 +292,12 @@ func GeneratePDFWithOptions(
 	}
 	defer os.RemoveAll(tmpDir)
 
-	photos := downloadPhotos(ctx, pp, uidSet, tmpDir)
+	photos := downloadPhotosWithProgress(ctx, pp, uidSet, tmpDir, opts.OnProgress)
 	groups := groupPagesBySection(pages, sections, chapters)
 	config := DefaultLayoutConfig()
 	data, report := buildTemplateData(groups, photos, captions, config, book)
 
-	if debug {
+	if opts.Debug {
 		applyDebugOverlay(&data, config)
 	}
 
@@ -282,7 +310,7 @@ func GeneratePDFWithOptions(
 
 	addDPIWarnings(report)
 
-	pdfData, err := compileLatex(ctx, data, tmpDir)
+	pdfData, err := compileLatexWithProgress(ctx, data, tmpDir, opts.OnProgress)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -1103,6 +1131,14 @@ func contrastTextColorOrWhite(hexColor string) string {
 
 // compileLatex writes the template and runs lualatex, returning the PDF bytes.
 func compileLatex(ctx context.Context, data TemplateData, tmpDir string) ([]byte, error) {
+	return compileLatexWithProgress(ctx, data, tmpDir, nil)
+}
+
+// compileLatexWithProgress writes the template and runs lualatex twice,
+// reporting phase transitions to onProgress (which may be nil).
+func compileLatexWithProgress(
+	ctx context.Context, data TemplateData, tmpDir string, onProgress func(ProgressInfo),
+) ([]byte, error) {
 	typoConfig := TypographyConfig{
 		H1Size:    data.H1FontSize,
 		H1Leading: data.H1Leading,
@@ -1137,7 +1173,11 @@ func compileLatex(ctx context.Context, data TemplateData, tmpDir string) ([]byte
 	latexEnv := setEnvVars(os.Environ(), map[string]string{
 		"HOME": tmpDir,
 	})
+	passPhases := [2]string{"compiling_pass1", "compiling_pass2"}
 	for pass := range 2 {
+		if onProgress != nil {
+			onProgress(ProgressInfo{Phase: passPhases[pass]})
+		}
 		cmd := exec.CommandContext(ctx, "lualatex", //nolint:gosec
 			"-interaction=nonstopmode",
 			"-output-directory="+tmpDir,
@@ -1175,35 +1215,70 @@ func downloadPhotos(
 	ctx context.Context, pp *photoprism.PhotoPrism,
 	uids map[string]bool, tmpDir string,
 ) map[string]photoImage {
+	return downloadPhotosWithProgress(ctx, pp, uids, tmpDir, nil)
+}
+
+// downloadPhotosWithProgress fetches photos concurrently, reporting progress
+// via onProgress after each photo (whether it succeeded or failed) so the
+// progress bar reaches 100% even if some photos fail. onProgress may be nil.
+func downloadPhotosWithProgress(
+	ctx context.Context, pp *photoprism.PhotoPrism,
+	uids map[string]bool, tmpDir string,
+	onProgress func(ProgressInfo),
+) map[string]photoImage {
 	result := make(map[string]photoImage)
 	var mu sync.Mutex
 
-	jobs := make(chan string, len(uids))
+	total := len(uids)
+	if onProgress != nil {
+		onProgress(ProgressInfo{Phase: "downloading_photos", Current: 0, Total: total})
+	}
+
+	jobs := make(chan string, total)
 	for uid := range uids {
 		jobs <- uid
 	}
 	close(jobs)
 
+	var counter atomic.Int64
 	var wg sync.WaitGroup
-	for range downloadConcurrency {
-		wg.Go(func() {
-			for uid := range jobs {
-				if ctx.Err() != nil {
-					return
-				}
-				img, err := downloadPhoto(pp, uid, tmpDir)
-				if err != nil {
-					log.Printf("WARNING: failed to download photo %s: %v", uid, err)
-					continue
-				}
-				mu.Lock()
-				result[uid] = *img
-				mu.Unlock()
+	worker := func() {
+		for uid := range jobs {
+			if ctx.Err() != nil {
+				return
 			}
-		})
+			downloadOnePhoto(pp, uid, tmpDir, result, &mu)
+			if onProgress != nil {
+				onProgress(ProgressInfo{
+					Phase:    "downloading_photos",
+					Current:  int(counter.Add(1)),
+					Total:    total,
+					PhotoUID: uid,
+				})
+			}
+		}
+	}
+	for range downloadConcurrency {
+		wg.Go(worker)
 	}
 	wg.Wait()
 	return result
+}
+
+// downloadOnePhoto runs a single photo fetch under the shared result lock.
+// Failures are logged and counted as completed so the progress bar advances.
+func downloadOnePhoto(
+	pp *photoprism.PhotoPrism, uid, tmpDir string,
+	result map[string]photoImage, mu *sync.Mutex,
+) {
+	img, err := downloadPhoto(pp, uid, tmpDir)
+	if err != nil {
+		log.Printf("WARNING: failed to download photo %s: %v", uid, err)
+		return
+	}
+	mu.Lock()
+	result[uid] = *img
+	mu.Unlock()
 }
 
 // downloadPhoto fetches a single photo thumbnail and returns its path and dimensions.

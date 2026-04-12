@@ -10,6 +10,29 @@ export type SortJobEvent =
   | { type: 'job_error'; message: string }
   | { type: 'cancelled'; data: null };
 
+// Book export job SSE events
+export interface BookExportProgressData {
+  phase: string;
+  current: number;
+  total: number;
+  photo_uid?: string;
+}
+
+export interface BookExportCompletedData {
+  job_id: string;
+  filename: string;
+  file_size: number;
+  download_url: string;
+}
+
+export type BookExportJobEvent =
+  | { type: 'status'; data: unknown }
+  | { type: 'started'; data: null }
+  | { type: 'progress'; data: BookExportProgressData }
+  | { type: 'completed'; data: BookExportCompletedData }
+  | { type: 'job_error'; message: string }
+  | { type: 'cancelled'; data: null };
+
 // Process job SSE events
 export type ProcessJobEvent =
   | { type: 'status'; data: ProcessJob }

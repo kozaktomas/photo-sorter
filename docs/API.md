@@ -2253,6 +2253,116 @@ Generates and downloads a print-ready A4 landscape PDF of the book. Features inc
 | 500 | PDF generation failed (LaTeX error, photo download error) |
 | 503 | `lualatex` not installed on server |
 
+This endpoint is synchronous: the request blocks for the entire export (~4 min on large books) and then streams the PDF bytes. It remains for CLI / curl / MCP callers that want a single request. The web UI uses the asynchronous job flow below instead, so users see real-time progress.
+
+#### Export Book as PDF (job-based, with progress)
+
+The UI-facing flow splits export into a background job plus a separate
+download so the browser can show two progress bars: one for server-side
+generation (photo download + lualatex) and one for the actual file
+transfer. The rendered PDF is kept on disk as a temp file — not in memory
+— so a 700 MB book export costs the server ~0 resident memory per job.
+
+Only one export per book can be running at a time; a second `POST` for the
+same book returns `409 Conflict` with the existing `job_id` so the client
+can reattach to the SSE stream.
+
+**Start the job**
+
+```
+POST /books/{id}/export-pdf/job
+```
+
+Query parameters: `format=debug` to enable the debug overlay (same as the
+synchronous endpoint). Returns `202 Accepted`:
+
+```json
+{
+  "job_id": "9cac027d-7feb-43f4-8533-739e5556ab24",
+  "book_id": "9797de58-a0ec-4330-8173-b7ce5b198f33",
+  "book_title": "My Book",
+  "status": "pending"
+}
+```
+
+On conflict (`409`):
+```json
+{
+  "error": "export already in progress for this book",
+  "job_id": "<existing-job-id>",
+  "status": "running"
+}
+```
+
+**Get current job state**
+
+```
+GET /book-export/{jobId}
+```
+
+Returns the `BookExportJob` object (status, phase, counters, filename,
+file_size, consumed flag, timestamps).
+
+**Stream progress via SSE**
+
+```
+GET /book-export/{jobId}/events
+```
+
+Server-Sent Events stream. Emitted event types:
+
+| Event        | Data payload |
+|--------------|--------------|
+| `status`     | Full `BookExportJob` snapshot (sent once on connect) |
+| `started`    | `null` — job has begun |
+| `progress`   | `{phase, current, total, photo_uid?}` — `phase` is one of `fetching_metadata`, `downloading_photos`, `compiling_pass1`, `compiling_pass2`. `current`/`total` are only meaningful during `downloading_photos`. |
+| `completed`  | `{job_id, filename, file_size, download_url}` |
+| `job_error`  | `{message}` |
+| `cancelled`  | `null` |
+
+The SSE connection closes once the job reaches a terminal state
+(`completed` / `failed` / `cancelled`).
+
+**Download the compiled PDF**
+
+```
+GET /book-export/{jobId}/download
+```
+
+Streams the temp file via `http.ServeContent`, which populates
+`Content-Length` and supports range requests so the browser's
+`fetch().body.getReader()` loop can report bytes-loaded in real time.
+Headers:
+
+- `Content-Type: application/pdf`
+- `Content-Disposition: attachment; filename="<book-title>.pdf"`
+- `X-Accel-Buffering: no` — disables reverse-proxy buffering so chunks
+  flow through nginx/Caddy unbuffered (no-op when not behind a proxy).
+- `Cache-Control: no-store`
+
+After a successful download the job is marked `consumed=true` and its TTL
+is shortened to **10 minutes** so a mid-download network blip can retry
+without re-running the 4-minute export. Completed-but-unconsumed exports
+live for **1 hour**; failed/cancelled jobs live for **5 minutes**. A
+sweeper goroutine deletes expired jobs and their temp files.
+
+| Status | Description |
+|--------|-------------|
+| 404 | Job not found |
+| 409 | Job is not `completed` yet |
+| 410 | Export file is no longer available (TTL elapsed) |
+
+**Cancel the job**
+
+```
+DELETE /book-export/{jobId}
+```
+
+Cancels the job's context (which `SIGKILL`s any running `lualatex`
+process), removes the temp file if present, and emits a `cancelled` SSE
+event. Idempotent — returns `{"cancelled": true}` regardless of current
+status.
+
 #### Export Single Page as PDF
 
 ```

@@ -542,6 +542,18 @@ Returns `application/pdf` with `Content-Disposition: attachment`.
 - 503: `lualatex` not installed
 - 500: LaTeX compilation or other error
 
+**Synchronous vs. background job:** the `GET /export-pdf` endpoint above is synchronous — the request blocks for the entire ~4-minute export. It is preserved for CLI / curl / MCP callers. The web UI uses a separate asynchronous job flow so users see two progress bars (server-side generation + client-side download):
+
+```
+POST   /api/v1/books/:id/export-pdf/job      # 202 { job_id } (409 if one is running for the same book)
+GET    /api/v1/book-export/:jobId            # current state
+GET    /api/v1/book-export/:jobId/events     # SSE stream: progress, completed, job_error, cancelled
+GET    /api/v1/book-export/:jobId/download   # streams compiled PDF via http.ServeContent
+DELETE /api/v1/book-export/:jobId            # cancel (SIGKILLs lualatex, removes temp file)
+```
+
+Progress is emitted at phase granularity: `fetching_metadata`, `downloading_photos` (with per-photo `current`/`total` via an atomic counter), `compiling_pass1`, `compiling_pass2`. The compiled PDF is written to a temp file (not kept in memory — 700 MB books are routine in production) and served via `http.ServeContent`, which handles `Content-Length` and range requests. A TTL sweeper keeps completed-but-unconsumed exports for 1 hour, consumed exports for 10 minutes (retry window for network blips), and failed/cancelled jobs for 5 minutes. Only one active export per book is permitted at a time. See `docs/API.md` for the full event payload schemas.
+
 ## Backend Architecture
 
 ### Go Files
@@ -553,6 +565,7 @@ Returns `application/pdf` with `Content-Disposition: attachment`.
 | `internal/database/provider.go` | `RegisterBookWriter()`, `GetBookWriter()`, `GetBookReader()` |
 | `internal/database/postgres/books.go` | `BookRepository` implementing `BookWriter` |
 | `internal/web/handlers/books.go` | `BooksHandler` with all REST endpoints |
+| `internal/web/handlers/book_export_job.go` | `BookExportJob` + manager, 5 job-flow handlers, background runner with progress translator |
 | `internal/web/routes.go` | Route registration (18 routes) |
 | `cmd/serve.go` | Repository creation and registration |
 

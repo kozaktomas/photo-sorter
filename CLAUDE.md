@@ -161,7 +161,7 @@ This is a CLI tool that sorts photos in PhotoPrism using AI providers. Built wit
 - **internal/database/** - PostgreSQL storage with pgvector for embeddings and faces data
 - **internal/facematch/** - Face matching utilities (IoU computation, bbox conversion, name normalization, marker matching)
 - **internal/constants/** - Shared constants (page sizes, thresholds, concurrency, upload limits)
-- **internal/latex/** - PDF export via LaTeX (markdown-to-LaTeX, layout validation, 12-column grid, font registry, templates)
+- **internal/latex/** - PDF export via LaTeX (markdown-to-LaTeX, layout validation, 12-column grid, font registry, templates). `GeneratePDFWithCallbacks` accepts an `ExportOptions.OnProgress` callback so the web job flow can emit SSE progress events for photo downloads and lualatex passes. The original `GeneratePDF`/`GeneratePDFWithOptions` entry points delegate with a nil callback.
 - **internal/web/** - Web server with Chi router, REST API handlers, and SSE for real-time updates
 - **web/** - React + TypeScript + TailwindCSS frontend (built with Vite, i18n with Czech + English)
 
@@ -503,7 +503,12 @@ Session cookies use `HttpOnly`, `SameSite=Strict`, and auto-detect `Secure` flag
 - `DELETE /api/v1/pages/{id}/slots/{index}` - Clear page slot
 - `POST /api/v1/books/{id}/sections/{sectionId}/auto-layout` - Auto-generate pages from unassigned section photos
 - `GET /api/v1/books/{id}/preflight` - Validate book before PDF export (empty slots, low DPI, unplaced photos)
-- `GET /api/v1/books/{id}/export-pdf` - Export book as PDF (requires lualatex)
+- `GET /api/v1/books/{id}/export-pdf` - Export book as PDF synchronously (blocking ~4 min, for CLI/MCP)
+- `POST /api/v1/books/{id}/export-pdf/job` - Start background PDF export job (UI flow, returns `{job_id}`; 409 if one is running for the same book)
+- `GET /api/v1/book-export/{jobId}` - Get export job state
+- `GET /api/v1/book-export/{jobId}/events` - SSE stream of progress events (phases: `fetching_metadata`, `downloading_photos`, `compiling_pass1`, `compiling_pass2`)
+- `GET /api/v1/book-export/{jobId}/download` - Stream compiled PDF temp file (supports range, sets `X-Accel-Buffering: no`)
+- `DELETE /api/v1/book-export/{jobId}` - Cancel export job (SIGKILLs lualatex, removes temp file)
 - `GET /api/v1/pages/{id}/export-pdf` - Export single page as PDF (inline preview, requires lualatex)
 - `POST /api/v1/text/check` - AI text check (spelling, grammar, diacritics) via GPT-4.1-mini
 - `POST /api/v1/text/check-and-save` - AI text check with database persistence
@@ -583,13 +588,13 @@ web/src/
 │   ├── Compare/               # Side-by-side comparison (hooks/useCompareState.ts)
 │   ├── Books/                 # Photo books list
 │   ├── BookEditor/            # Book editor (sections, pages, preview, typography, texts, duplicates)
-│   │   ├── hooks/useBookData.ts, hooks/useUndoRedo.ts
+│   │   ├── hooks/useBookData.ts, hooks/useUndoRedo.ts, hooks/useBookExportJob.ts
 │   │   ├── BookStatsPanel.tsx, KeyboardShortcutsHelp.tsx
 │   │   ├── SectionsTab.tsx, SectionSidebar.tsx, SectionPhotoPool.tsx
 │   │   ├── PagesTab.tsx, PageSidebar.tsx, PageMinimap.tsx, PageTemplate.tsx, PageSlot.tsx
 │   │   ├── UnassignedPool.tsx, PreviewTab.tsx, PreviewModal.tsx
 │   │   ├── TypographyTab.tsx, TextsTab.tsx, DuplicatesTab.tsx
-│   │   ├── PhotoBrowserModal.tsx, PhotoDescriptionDialog.tsx
+│   │   ├── ExportProgressModal.tsx, PhotoBrowserModal.tsx, PhotoDescriptionDialog.tsx
 │   │   └── PhotoActionOverlay.tsx, PhotoInfoOverlay.tsx
 │   ├── Slideshow/             # Photo slideshow (hooks/useSlideshow.ts, useSlideshowPhotos.ts)
 │   ├── SuggestAlbums/         # Album completion
@@ -618,6 +623,7 @@ internal/web/handlers/
 ├── face_outliers.go, face_photos.go            # Outlier detection, photo faces
 ├── face_helpers.go                             # Shared face helpers
 ├── books.go                                    # BooksHandler: books, chapters, sections, pages, slots, fonts
+├── book_export_job.go                          # BookExportJob type, manager with TTL sweeper, 5 job-flow handlers on BooksHandler, background runner that translates latex progress into SSE events
 ├── text.go                                     # TextHandler: AI text check, rewrite, consistency, check-and-save
 ├── text_versions.go                            # TextVersionsHandler: text version history and restore
 └── jobs.go                                     # Sort job status

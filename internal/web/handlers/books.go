@@ -26,11 +26,36 @@ import (
 type BooksHandler struct {
 	config         *config.Config
 	sessionManager *middleware.SessionManager
+	exportJobs     *BookExportJobManager
 }
+
+// Book export format query-string values for ExportPDF.
+const (
+	exportFormatTest   = "test"
+	exportFormatDebug  = "debug"
+	exportFormatReport = "report"
+)
+
+// Book page style values (for goconst — referenced from several places).
+const (
+	pageStyleArchival = "archival"
+)
 
 // NewBooksHandler creates a new books handler.
 func NewBooksHandler(cfg *config.Config, sm *middleware.SessionManager) *BooksHandler {
-	return &BooksHandler{config: cfg, sessionManager: sm}
+	return &BooksHandler{
+		config:         cfg,
+		sessionManager: sm,
+		exportJobs:     NewBookExportJobManager(),
+	}
+}
+
+// Shutdown releases resources held by the handler (in particular, the
+// export job manager's sweeper goroutine and any leftover temp files).
+func (h *BooksHandler) Shutdown() {
+	if h.exportJobs != nil {
+		h.exportJobs.Shutdown()
+	}
 }
 
 func getBookWriter(r *http.Request, w http.ResponseWriter) database.BookWriter {
@@ -835,7 +860,7 @@ func (h *BooksHandler) CreatePage(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "section_id is required")
 		return
 	}
-	if req.Style != "" && req.Style != "modern" && req.Style != "archival" {
+	if req.Style != "" && req.Style != "modern" && req.Style != pageStyleArchival {
 		respondError(w, http.StatusBadRequest, "style must be 'modern' or 'archival'")
 		return
 	}
@@ -907,7 +932,7 @@ func applyFormatUpdate(page *database.BookPage, format string) string {
 }
 
 func applyStyleUpdate(page *database.BookPage, style string) string {
-	if style != "modern" && style != "archival" {
+	if style != "modern" && style != pageStyleArchival {
 		return "style must be 'modern' or 'archival'"
 	}
 	page.Style = style
@@ -1872,25 +1897,25 @@ func (h *BooksHandler) ExportPDF(w http.ResponseWriter, r *http.Request) {
 	}
 
 	format := r.URL.Query().Get("format")
-	if format == "test" {
+	if format == exportFormatTest {
 		handleTestExport(w, r, book.Title)
 		return
 	}
 
 	// Debug and normal exports both use GeneratePDFWithOptions.
-	pdfData, report, err := latex.GeneratePDFWithOptions(r.Context(), pp, bw, id, format == "debug")
+	pdfData, report, err := latex.GeneratePDFWithOptions(r.Context(), pp, bw, id, format == exportFormatDebug)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Sprintf("PDF generation failed: %v", err))
 		return
 	}
 
-	if format == "report" {
+	if format == exportFormatReport {
 		respondJSON(w, http.StatusOK, report)
 		return
 	}
 
 	suffix := ""
-	if format == "debug" {
+	if format == exportFormatDebug {
 		suffix = "-debug"
 	}
 	writePDFResponse(w, pdfData, book.Title+suffix, report)

@@ -22,6 +22,7 @@ type Server struct {
 	jobManager     *handlers.JobManager
 	sessionManager *middleware.SessionManager
 	mcpHandler     http.Handler // nil if MCP not enabled
+	booksHandler   *handlers.BooksHandler
 }
 
 // NewServer creates a new web server.
@@ -91,6 +92,12 @@ func (s *Server) Shutdown(ctx context.Context) error {
 
 	if err := s.httpServer.Shutdown(ctx); err != nil {
 		return fmt.Errorf("shutting down server: %w", err)
+	}
+
+	// Release background workers and temp files owned by handlers after the
+	// HTTP server has stopped accepting requests.
+	if s.booksHandler != nil {
+		s.booksHandler.Shutdown()
 	}
 	return nil
 }
