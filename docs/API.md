@@ -1993,11 +1993,12 @@ PUT /pages/{id}
   "section_id": "section-uuid",
   "description": "Page title",
   "style": "archival",
-  "split_position": 0.6
+  "split_position": 0.6,
+  "hide_page_number": true
 }
 ```
 
-All fields are optional.
+All fields are optional. Setting `hide_page_number: true` suppresses the folio on that page only — pagination continues uninterrupted, so pages after it keep their normal numbers.
 
 #### Reorder Pages
 
@@ -2385,7 +2386,7 @@ status.
 GET /pages/{id}/export-pdf
 ```
 
-Generates a PDF of a single book page for quick preview. The output is pixel-identical to the corresponding page in the full book export — the page number, recto/verso side (and therefore mirrored margins and folio placement), and printer crop marks all match the page's actual position in the book. The position is computed by sorting all book pages via the same section/sort order used by the full book export and counting non-empty pages up to and including the target.
+Generates a PDF of a single book page for quick preview. The output is pixel-identical to the corresponding page in the full book export — the page number, recto/verso side (and therefore mirrored margins and folio placement), and printer crop marks all match the page's actual position in the book. The position is computed by sorting all book pages via the same section/sort order used by the full book export and counting **every** page (including pages with no photos and no text) up to and including the target, so single-page export folios always agree with full-book export folios.
 
 **Response (200):** Binary PDF file with headers:
 - `Content-Type: application/pdf`

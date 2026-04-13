@@ -126,6 +126,7 @@ book_pages
 ├── format (CHECK: 4_landscape, 2l_1p, 1p_2l, 2_portrait, 1_fullscreen)
 ├── style (CHECK: modern, archival; DEFAULT 'modern')
 ├── split_position (REAL, default 0.5, range 0.2-0.8, for 2l_1p/1p_2l formats)
+├── hide_page_number (BOOLEAN, default false; suppresses folio rendering on this page only — pagination of other pages is unaffected, migration 025)
 ├── description (text displayed at top of page)
 ├── sort_order
 ├── created_at
@@ -341,6 +342,10 @@ Pages are numbered continuously from 1. Folio renders in 8.5/10pt `black!35`, mi
 - Verso (even): bottom-left (`south west` anchor)
 
 A 0.4pt separation rule (`black!50`) spans the full content width between canvas and footer zones.
+
+**Empty pages are preserved.** A page with no photos and no text in any of its slots still renders into the export — the canvas zone is empty, but the page frame, separation rule, and folio are drawn as usual, and the page is counted in pagination so subsequent pages keep their expected folios. Use this for deliberate blank pages (section breaks, placeholders).
+
+**Per-page folio suppression.** Setting `hide_page_number = true` on a page suppresses rendering of *that page's* folio number only. The page is still counted, so pages that follow it keep their continuous numbering — the suppressed page just shows an empty corner where the folio would have been. Useful for full-bleed photos, divider pages, or any page where the folio would visually intrude.
 
 ### Gutter-Safe Zone
 
