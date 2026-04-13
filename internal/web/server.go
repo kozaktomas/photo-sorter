@@ -48,12 +48,17 @@ func NewServer(
 		mcpHandler:     mcpHandler,
 	}
 
-	// Set up middleware stack.
+	// Middleware stack. chiMiddleware.Timeout is deliberately NOT applied
+	// at this level — it would kill SSE progress streams, large PDF
+	// downloads, and long multipart uploads after 5 minutes. It is applied
+	// inside setupRoutes on the short-lived sub-group instead. The
+	// http.Server.WriteTimeout below is the other half of that story; it
+	// stays at 5 min and is disabled per-request via the NoWriteDeadline
+	// middleware on the long-running routes.
 	r.Use(chiMiddleware.RequestID)
 	r.Use(chiMiddleware.RealIP)
 	r.Use(chiMiddleware.Logger)
 	r.Use(chiMiddleware.Recoverer)
-	r.Use(chiMiddleware.Timeout(5 * time.Minute))
 	r.Use(middleware.CORS())
 	r.Use(middleware.SecurityHeaders())
 
@@ -62,10 +67,13 @@ func NewServer(
 
 	// Create HTTP server.
 	s.httpServer = &http.Server{
-		Addr:         fmt.Sprintf("%s:%d", host, port),
-		Handler:      r,
-		ReadTimeout:  30 * time.Second,
-		WriteTimeout: 5 * time.Minute, // Long timeout for SSE and uploads
+		Addr:        fmt.Sprintf("%s:%d", host, port),
+		Handler:     r,
+		ReadTimeout: 30 * time.Second,
+		// Applied to short-lived routes. Long-running routes (SSE streams,
+		// book export, large downloads, multipart uploads) disable this
+		// per-request via the NoWriteDeadline middleware — see routes.go.
+		WriteTimeout: 5 * time.Minute,
 		IdleTimeout:  60 * time.Second,
 	}
 

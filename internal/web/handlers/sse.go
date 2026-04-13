@@ -1,10 +1,21 @@
 package handlers
 
 import (
+	"io"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 )
+
+// sseHeartbeatInterval is the period at which streamSSEEvents emits an SSE
+// comment frame ("keepalive") to keep intermediate reverse proxies (nginx,
+// traefik, cloudflare tunnel) from closing an idle connection during long
+// silent phases — e.g., the lualatex compile passes of a book export, which
+// can run for several minutes without emitting any progress event.
+//
+// Exposed as a var so tests can shrink it.
+var sseHeartbeatInterval = 15 * time.Second
 
 // isJobTerminal returns true if the job status is a terminal state.
 func isJobTerminal(status JobStatus) bool {
@@ -60,10 +71,18 @@ func streamSSEEvents(
 
 	sendSSEEvent(w, flusher, "status", getInitialData(job))
 
+	heartbeat := time.NewTicker(sseHeartbeatInterval)
+	defer heartbeat.Stop()
+
 	for {
 		select {
 		case <-r.Context().Done():
 			return
+		case <-heartbeat.C:
+			if _, err := io.WriteString(w, ": keepalive\n\n"); err != nil {
+				return
+			}
+			flusher.Flush()
 		case event, ok := <-eventCh:
 			if !ok {
 				return

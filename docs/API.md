@@ -1499,6 +1499,22 @@ The API supports Server-Sent Events for real-time job progress monitoring.
 **Endpoints:**
 - `GET /sort/{jobId}/events` - Sort job progress
 - `GET /process/{jobId}/events` - Process job progress
+- `GET /upload/{jobId}/events` - Upload job progress
+- `GET /book-export/{jobId}/events` - Book PDF export progress
+
+**Keepalive:** All `*/events` endpoints emit an SSE comment frame
+(`: keepalive\n\n`) every 15 seconds. Browser `EventSource` clients silently
+drop comments, so this is invisible at the application level — it exists
+purely to keep idle TCP connections alive through reverse proxies (nginx,
+traefik, cloudflare tunnel) during silent phases such as the
+`compiling_pass1`/`compiling_pass2` phases of a book export.
+
+**No 5-minute ceiling:** SSE streams, `GET /book-export/{jobId}/download`,
+`GET /books/{id}/export-pdf`, `GET /pages/{id}/export-pdf`,
+`POST /upload`, and `POST /upload/job` are not subject to the 5-minute chi
+request timeout or the 5-minute `http.Server.WriteTimeout` that apply to
+other endpoints — they run as long as the client stays connected.
+Client-disconnect cancellation still works via request-context propagation.
 
 **Connection:**
 ```javascript

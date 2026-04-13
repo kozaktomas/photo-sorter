@@ -4,8 +4,10 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	chiMiddleware "github.com/go-chi/chi/v5/middleware"
 	"github.com/kozaktomas/photo-sorter/internal/web/handlers"
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 	"github.com/kozaktomas/photo-sorter/internal/web/static"
@@ -44,122 +46,146 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 			r.Use(middleware.RequireAuth(sessionManager))
 			r.Use(middleware.WithPhotoPrismClient(s.config))
 
-			// Albums.
-			r.Get("/albums", albumsHandler.List)
-			r.Post("/albums", albumsHandler.Create)
-			r.Get("/albums/{uid}", albumsHandler.Get)
-			r.Get("/albums/{uid}/photos", albumsHandler.GetPhotos)
-			r.Post("/albums/{uid}/photos", albumsHandler.AddPhotos)
-			r.Delete("/albums/{uid}/photos", albumsHandler.ClearPhotos)
-			r.Delete("/albums/{uid}/photos/batch", albumsHandler.RemovePhotos)
+			// --- Short-lived endpoints ---
+			// 5-minute chi Timeout + 5-minute http.Server WriteTimeout
+			// apply here: suitable for CRUD where stuck requests should
+			// be killed promptly.
+			r.Group(func(r chi.Router) {
+				r.Use(chiMiddleware.Timeout(5 * time.Minute))
 
-			// Labels.
-			r.Get("/labels", labelsHandler.List)
-			r.Get("/labels/{uid}", labelsHandler.Get)
-			r.Put("/labels/{uid}", labelsHandler.Update)
-			r.Delete("/labels", labelsHandler.BatchDelete)
+				// Albums.
+				r.Get("/albums", albumsHandler.List)
+				r.Post("/albums", albumsHandler.Create)
+				r.Get("/albums/{uid}", albumsHandler.Get)
+				r.Get("/albums/{uid}/photos", albumsHandler.GetPhotos)
+				r.Post("/albums/{uid}/photos", albumsHandler.AddPhotos)
+				r.Delete("/albums/{uid}/photos", albumsHandler.ClearPhotos)
+				r.Delete("/albums/{uid}/photos/batch", albumsHandler.RemovePhotos)
 
-			// Photos.
-			r.Get("/photos", photosHandler.List)
-			r.Get("/photos/{uid}", photosHandler.Get)
-			r.Put("/photos/{uid}", photosHandler.Update)
-			r.Get("/photos/{uid}/thumb/{size}", photosHandler.Thumbnail)
-			r.Get("/photos/{uid}/faces", facesHandler.GetPhotoFaces)
-			r.Post("/photos/{uid}/faces/compute", facesHandler.ComputeFaces)
-			r.Get("/photos/{uid}/estimate-era", photosHandler.EstimateEra)
-			r.Get("/photos/{uid}/albums", albumsHandler.GetPhotoAlbums)
-			r.Get("/photos/{uid}/books", booksHandler.GetPhotoBookMemberships)
-			r.Post("/photos/similar", photosHandler.FindSimilar)
-			r.Post("/photos/similar/collection", photosHandler.FindSimilarToCollection)
-			r.Post("/photos/batch/labels", photosHandler.BatchAddLabels)
-			r.Post("/photos/batch/edit", photosHandler.BatchEdit)
-			r.Post("/photos/batch/archive", photosHandler.BatchArchive)
-			r.Post("/photos/duplicates", photosHandler.FindDuplicates)
-			r.Post("/photos/suggest-albums", photosHandler.SuggestAlbums)
-			r.Post("/photos/search-by-text", photosHandler.SearchByText)
+				// Labels.
+				r.Get("/labels", labelsHandler.List)
+				r.Get("/labels/{uid}", labelsHandler.Get)
+				r.Put("/labels/{uid}", labelsHandler.Update)
+				r.Delete("/labels", labelsHandler.BatchDelete)
 
-			// Sort (long-running operations).
-			r.Post("/sort", sortHandler.Start)
-			r.Get("/sort/{jobId}", sortHandler.Status)
-			r.Get("/sort/{jobId}/events", sortHandler.Events)
-			r.Delete("/sort/{jobId}", sortHandler.Cancel)
+				// Photos.
+				r.Get("/photos", photosHandler.List)
+				r.Get("/photos/{uid}", photosHandler.Get)
+				r.Put("/photos/{uid}", photosHandler.Update)
+				r.Get("/photos/{uid}/thumb/{size}", photosHandler.Thumbnail)
+				r.Get("/photos/{uid}/faces", facesHandler.GetPhotoFaces)
+				r.Post("/photos/{uid}/faces/compute", facesHandler.ComputeFaces)
+				r.Get("/photos/{uid}/estimate-era", photosHandler.EstimateEra)
+				r.Get("/photos/{uid}/albums", albumsHandler.GetPhotoAlbums)
+				r.Get("/photos/{uid}/books", booksHandler.GetPhotoBookMemberships)
+				r.Post("/photos/similar", photosHandler.FindSimilar)
+				r.Post("/photos/similar/collection", photosHandler.FindSimilarToCollection)
+				r.Post("/photos/batch/labels", photosHandler.BatchAddLabels)
+				r.Post("/photos/batch/edit", photosHandler.BatchEdit)
+				r.Post("/photos/batch/archive", photosHandler.BatchArchive)
+				r.Post("/photos/duplicates", photosHandler.FindDuplicates)
+				r.Post("/photos/suggest-albums", photosHandler.SuggestAlbums)
+				r.Post("/photos/search-by-text", photosHandler.SearchByText)
 
-			// Upload.
-			r.Post("/upload", uploadHandler.Upload)
-			r.Post("/upload/job", uploadHandler.StartJob)
-			r.Get("/upload/{jobId}/events", uploadHandler.GetJobEvents)
-			r.Delete("/upload/{jobId}", uploadHandler.CancelJob)
+				// Sort (start/poll/cancel; progress stream is in the long group).
+				r.Post("/sort", sortHandler.Start)
+				r.Get("/sort/{jobId}", sortHandler.Status)
+				r.Delete("/sort/{jobId}", sortHandler.Cancel)
 
-			// Config.
-			r.Get("/config", configHandler.Get)
+				// Upload cancel (the upload endpoints themselves are in the long group).
+				r.Delete("/upload/{jobId}", uploadHandler.CancelJob)
 
-			// Stats.
-			r.Get("/stats", statsHandler.Get)
+				// Config.
+				r.Get("/config", configHandler.Get)
 
-			// Faces.
-			r.Get("/subjects", facesHandler.ListSubjects)
-			r.Get("/subjects/{uid}", facesHandler.GetSubject)
-			r.Put("/subjects/{uid}", facesHandler.UpdateSubject)
-			r.Post("/faces/match", facesHandler.Match)
-			r.Post("/faces/apply", facesHandler.Apply)
-			r.Post("/faces/outliers", facesHandler.FindOutliers)
+				// Stats.
+				r.Get("/stats", statsHandler.Get)
 
-			// Process (embeddings & face detection).
-			r.Post("/process", processHandler.Start)
-			r.Get("/process/{jobId}/events", processHandler.Events)
-			r.Delete("/process/{jobId}", processHandler.Cancel)
-			r.Post("/process/rebuild-index", processHandler.RebuildIndex)
-			r.Post("/process/sync-cache", processHandler.SyncCache)
+				// Faces.
+				r.Get("/subjects", facesHandler.ListSubjects)
+				r.Get("/subjects/{uid}", facesHandler.GetSubject)
+				r.Put("/subjects/{uid}", facesHandler.UpdateSubject)
+				r.Post("/faces/match", facesHandler.Match)
+				r.Post("/faces/apply", facesHandler.Apply)
+				r.Post("/faces/outliers", facesHandler.FindOutliers)
 
-			// Fonts.
-			r.Get("/fonts", booksHandler.ListFonts)
+				// Process (start/cancel/rebuild/sync; progress stream is in the long group).
+				r.Post("/process", processHandler.Start)
+				r.Delete("/process/{jobId}", processHandler.Cancel)
+				r.Post("/process/rebuild-index", processHandler.RebuildIndex)
+				r.Post("/process/sync-cache", processHandler.SyncCache)
 
-			// Photo Books.
-			r.Get("/books", booksHandler.ListBooks)
-			r.Post("/books", booksHandler.CreateBook)
-			r.Get("/books/{id}", booksHandler.GetBook)
-			r.Put("/books/{id}", booksHandler.UpdateBook)
-			r.Delete("/books/{id}", booksHandler.DeleteBook)
-			r.Post("/books/{id}/chapters", booksHandler.CreateChapter)
-			r.Put("/books/{id}/chapters/reorder", booksHandler.ReorderChapters)
-			r.Put("/chapters/{id}", booksHandler.UpdateChapter)
-			r.Delete("/chapters/{id}", booksHandler.DeleteChapter)
-			r.Post("/books/{id}/sections", booksHandler.CreateSection)
-			r.Put("/books/{id}/sections/reorder", booksHandler.ReorderSections)
-			r.Put("/sections/{id}", booksHandler.UpdateSection)
-			r.Delete("/sections/{id}", booksHandler.DeleteSection)
-			r.Get("/sections/{id}/photos", booksHandler.GetSectionPhotos)
-			r.Post("/sections/{id}/photos", booksHandler.AddSectionPhotos)
-			r.Delete("/sections/{id}/photos", booksHandler.RemoveSectionPhotos)
-			r.Put("/sections/{id}/photos/{photoUid}/description", booksHandler.UpdatePhotoDescription)
-			r.Post("/books/{id}/pages", booksHandler.CreatePage)
-			r.Put("/books/{id}/pages/reorder", booksHandler.ReorderPages)
-			r.Put("/pages/{id}", booksHandler.UpdatePage)
-			r.Delete("/pages/{id}", booksHandler.DeletePage)
-			r.Put("/pages/{id}/slots/{index}", booksHandler.AssignSlot)
-			r.Put("/pages/{id}/slots/{index}/crop", booksHandler.UpdateSlotCrop)
-			r.Post("/pages/{id}/slots/swap", booksHandler.SwapSlots)
-			r.Delete("/pages/{id}/slots/{index}", booksHandler.ClearSlot)
-			r.Get("/pages/{id}/export-pdf", booksHandler.ExportPagePDF)
-			r.Post("/books/{id}/sections/{sectionId}/auto-layout", booksHandler.AutoLayout)
-			r.Get("/books/{id}/preflight", booksHandler.Preflight)
-			r.Get("/books/{id}/export-pdf", booksHandler.ExportPDF)
-			r.Post("/books/{id}/export-pdf/job", booksHandler.StartExportJob)
-			r.Get("/book-export/{jobId}", booksHandler.GetExportJob)
-			r.Get("/book-export/{jobId}/events", booksHandler.StreamExportJobEvents)
-			r.Get("/book-export/{jobId}/download", booksHandler.DownloadExport)
-			r.Delete("/book-export/{jobId}", booksHandler.CancelExportJob)
-			r.Get("/books/{id}/text-check-status", textHandler.TextCheckStatus)
+				// Fonts.
+				r.Get("/fonts", booksHandler.ListFonts)
 
-			// Text AI operations.
-			r.Post("/text/check", textHandler.Check)
-			r.Post("/text/check-and-save", textHandler.CheckAndSave)
-			r.Post("/text/rewrite", textHandler.Rewrite)
-			r.Post("/text/consistency", textHandler.Consistency)
+				// Photo Books.
+				r.Get("/books", booksHandler.ListBooks)
+				r.Post("/books", booksHandler.CreateBook)
+				r.Get("/books/{id}", booksHandler.GetBook)
+				r.Put("/books/{id}", booksHandler.UpdateBook)
+				r.Delete("/books/{id}", booksHandler.DeleteBook)
+				r.Post("/books/{id}/chapters", booksHandler.CreateChapter)
+				r.Put("/books/{id}/chapters/reorder", booksHandler.ReorderChapters)
+				r.Put("/chapters/{id}", booksHandler.UpdateChapter)
+				r.Delete("/chapters/{id}", booksHandler.DeleteChapter)
+				r.Post("/books/{id}/sections", booksHandler.CreateSection)
+				r.Put("/books/{id}/sections/reorder", booksHandler.ReorderSections)
+				r.Put("/sections/{id}", booksHandler.UpdateSection)
+				r.Delete("/sections/{id}", booksHandler.DeleteSection)
+				r.Get("/sections/{id}/photos", booksHandler.GetSectionPhotos)
+				r.Post("/sections/{id}/photos", booksHandler.AddSectionPhotos)
+				r.Delete("/sections/{id}/photos", booksHandler.RemoveSectionPhotos)
+				r.Put("/sections/{id}/photos/{photoUid}/description", booksHandler.UpdatePhotoDescription)
+				r.Post("/books/{id}/pages", booksHandler.CreatePage)
+				r.Put("/books/{id}/pages/reorder", booksHandler.ReorderPages)
+				r.Put("/pages/{id}", booksHandler.UpdatePage)
+				r.Delete("/pages/{id}", booksHandler.DeletePage)
+				r.Put("/pages/{id}/slots/{index}", booksHandler.AssignSlot)
+				r.Put("/pages/{id}/slots/{index}/crop", booksHandler.UpdateSlotCrop)
+				r.Post("/pages/{id}/slots/swap", booksHandler.SwapSlots)
+				r.Delete("/pages/{id}/slots/{index}", booksHandler.ClearSlot)
+				r.Post("/books/{id}/sections/{sectionId}/auto-layout", booksHandler.AutoLayout)
+				r.Get("/books/{id}/preflight", booksHandler.Preflight)
+				r.Post("/books/{id}/export-pdf/job", booksHandler.StartExportJob)
+				r.Get("/book-export/{jobId}", booksHandler.GetExportJob)
+				r.Delete("/book-export/{jobId}", booksHandler.CancelExportJob)
+				r.Get("/books/{id}/text-check-status", textHandler.TextCheckStatus)
 
-			// Text version history.
-			r.Get("/text-versions", textVersionsHandler.List)
-			r.Post("/text-versions/{id}/restore", textVersionsHandler.Restore)
+				// Text AI operations.
+				r.Post("/text/check", textHandler.Check)
+				r.Post("/text/check-and-save", textHandler.CheckAndSave)
+				r.Post("/text/rewrite", textHandler.Rewrite)
+				r.Post("/text/consistency", textHandler.Consistency)
+
+				// Text version history.
+				r.Get("/text-versions", textVersionsHandler.List)
+				r.Post("/text-versions/{id}/restore", textVersionsHandler.Restore)
+			})
+
+			// --- Long-running / streaming endpoints ---
+			// No chi Timeout. NoWriteDeadline lifts the per-connection
+			// http.Server.WriteTimeout so SSE progress streams, synchronous
+			// PDF generation, large downloads, and multipart uploads can run
+			// as long as the client stays connected. Cancellation still
+			// propagates via r.Context() when the client disconnects.
+			r.Group(func(r chi.Router) {
+				r.Use(middleware.NoWriteDeadline)
+
+				// SSE progress streams.
+				r.Get("/sort/{jobId}/events", sortHandler.Events)
+				r.Get("/upload/{jobId}/events", uploadHandler.GetJobEvents)
+				r.Get("/process/{jobId}/events", processHandler.Events)
+				r.Get("/book-export/{jobId}/events", booksHandler.StreamExportJobEvents)
+
+				// Large multipart uploads.
+				r.Post("/upload", uploadHandler.Upload)
+				r.Post("/upload/job", uploadHandler.StartJob)
+
+				// Synchronous PDF generation (CLI/MCP) and large downloads.
+				r.Get("/books/{id}/export-pdf", booksHandler.ExportPDF)
+				r.Get("/pages/{id}/export-pdf", booksHandler.ExportPagePDF)
+				r.Get("/book-export/{jobId}/download", booksHandler.DownloadExport)
+			})
 		})
 	})
 
