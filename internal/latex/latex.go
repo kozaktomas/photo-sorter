@@ -131,11 +131,12 @@ type TemplateSlot struct {
 
 // TemplatePage holds slots for a single page.
 type TemplatePage struct {
-	Slots      []TemplateSlot
-	IsLast     bool
-	PageNumber int    // continuous page number (1-based)
-	IsRecto    bool   // true for odd pages (right-hand, recto)
-	Style      string // "modern" or "archival"
+	Slots          []TemplateSlot
+	IsLast         bool
+	PageNumber     int    // continuous page number (1-based)
+	IsRecto        bool   // true for odd pages (right-hand, recto)
+	Style          string // "modern" or "archival"
+	HidePageNumber bool   // suppress folio rendering on this page (numbering continues)
 	// Content area bounds.
 	ContentLeftX  float64
 	ContentRightX float64
@@ -572,27 +573,13 @@ func applyBookSizes(rt *resolvedTypography, book *database.PhotoBook) {
 	rt.headingColorBleed = book.HeadingColorBleed
 }
 
-// IsPageEmpty returns true if a page has no content (no photos, no text in any slot).
-func IsPageEmpty(p database.BookPage) bool {
-	if len(p.Slots) == 0 {
-		return true
-	}
-	for _, s := range p.Slots {
-		if s.PhotoUID != "" || s.TextContent != "" {
-			return false
-		}
-	}
-	return true
-}
-
-// buildSection builds a TemplateSection and accumulates report data.
+// buildSection builds a TemplateSection and accumulates report data. Every
+// page from the section group is rendered, including pages with no photos
+// and no text — they are preserved as blank pages so they keep a folio
+// number and shift the pagination of pages that follow them.
 func (pb *pageBuilder) buildSection(g sectionGroup) TemplateSection {
 	tmplPages := make([]TemplatePage, 0, len(g.pages))
 	for _, p := range g.pages {
-		if IsPageEmpty(p) {
-			pb.totalContentPages-- // adjust total so IsLast works correctly
-			continue
-		}
 		pb.contentPageIdx++
 		pb.pageNumber++
 		tmplPages = append(tmplPages, pb.buildContentPage(p, g.chapterColor))
@@ -666,22 +653,8 @@ func (pb *pageBuilder) buildContentPage(p database.BookPage, chapterColor string
 		Photos:     reportPhotos,
 	})
 
-	// Caption block position.
-	var captionBlockX, captionBlockY, captionBlockW float64
-	hasCaptions := len(footerCaptions) > 0
-	if hasCaptions {
-		captionBlockX = contentLeftX
-		// Anchor the caption block 1mm below the canvas bottom (anchor=north,
-		// so this is the TOP of the text). The captions then grow downward
-		// toward the folio. With this position, a single-line caption keeps
-		// ~8mm of clearance to the folio, while a two-line caption (which
-		// happens whenever the caption text wraps) still leaves ~5mm — enough
-		// breathing room so the folio never feels glued to the bottom line.
-		// Three-line captions are tight; if they become common, consider
-		// shrinking the caption font instead of stealing from the folio gap.
-		captionBlockY = footerRuleY - 1.0
-		captionBlockW = contentW
-	}
+	captionBlockX, captionBlockY, captionBlockW, hasCaptions :=
+		captionBlockPosition(footerCaptions, contentLeftX, contentW, footerRuleY)
 
 	// Expand clip bounds by heading bleed so colored heading boxes
 	// extend into the margins. Photos stay constrained by slot-level clips.
@@ -690,29 +663,50 @@ func (pb *pageBuilder) buildContentPage(p database.BookPage, chapterColor string
 	clipRightX := min(PageW, contentRightX+bleed)
 
 	return TemplatePage{
-		Slots:         tmplSlots,
-		IsLast:        isLast,
-		PageNumber:    pb.pageNumber,
-		IsRecto:       isRecto,
-		Style:         style,
-		ContentLeftX:  contentLeftX,
-		ContentRightX: contentRightX,
-		ContentW:      contentW,
-		ClipLeftX:     clipLeftX,
-		ClipRightX:    clipRightX,
-		HeaderY:       headerY,
-		CanvasTopY:    canvasTopY,
-		CanvasBottomY: canvasBottomY,
-		FooterRuleY:   footerRuleY,
-		FolioX:        folioX,
-		FolioY:        folioY,
-		FolioAnchor:   folioAnchor,
-		Captions:      footerCaptions,
-		CaptionBlockX: captionBlockX,
-		CaptionBlockY: captionBlockY,
-		CaptionBlockW: captionBlockW,
-		HasCaptions:   hasCaptions,
+		Slots:          tmplSlots,
+		IsLast:         isLast,
+		PageNumber:     pb.pageNumber,
+		IsRecto:        isRecto,
+		Style:          style,
+		HidePageNumber: p.HidePageNumber,
+		ContentLeftX:   contentLeftX,
+		ContentRightX:  contentRightX,
+		ContentW:       contentW,
+		ClipLeftX:      clipLeftX,
+		ClipRightX:     clipRightX,
+		HeaderY:        headerY,
+		CanvasTopY:     canvasTopY,
+		CanvasBottomY:  canvasBottomY,
+		FooterRuleY:    footerRuleY,
+		FolioX:         folioX,
+		FolioY:         folioY,
+		FolioAnchor:    folioAnchor,
+		Captions:       footerCaptions,
+		CaptionBlockX:  captionBlockX,
+		CaptionBlockY:  captionBlockY,
+		CaptionBlockW:  captionBlockW,
+		HasCaptions:    hasCaptions,
 	}
+}
+
+// captionBlockPosition computes the footer caption block placement. The
+// block is anchored 1mm below the canvas bottom (anchor=north, so this is
+// the TOP of the text); captions then grow downward toward the folio. With
+// this position, a single-line caption keeps ~8mm of clearance to the
+// folio, while a two-line caption still leaves ~5mm — enough breathing
+// room so the folio never feels glued to the bottom line. Three-line
+// captions are tight; if they become common, consider shrinking the
+// caption font instead of stealing from the folio gap.
+//
+// Returns zero-valued coordinates and hasCaptions=false when there are no
+// captions to render.
+func captionBlockPosition(
+	captions []FooterCaption, contentLeftX, contentW, footerRuleY float64,
+) (x, y, w float64, hasCaptions bool) {
+	if len(captions) == 0 {
+		return 0, 0, 0, false
+	}
+	return contentLeftX, footerRuleY - 1.0, contentW, true
 }
 
 // slotCaption pairs a slot index with its caption text.

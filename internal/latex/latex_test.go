@@ -699,6 +699,51 @@ func TestBuildTemplateData(t *testing.T) {
 			t.Errorf("expected 1 unique photo, got %d", report.PhotoCount)
 		}
 	})
+
+	t.Run("empty pages are preserved in pagination", func(t *testing.T) {
+		// Middle page has zero slots — historically this was dropped from
+		// the export and the third page got folio 2. It must now survive
+		// as a blank page with folio 2, and the third page gets folio 3.
+		groups := []sectionGroup{
+			{sectionID: "s1", title: "S1", pages: []database.BookPage{
+				{ID: "p1", SectionID: "s1", Format: "1_fullscreen",
+					Slots: []database.PageSlot{{SlotIndex: 0, PhotoUID: "photo1"}}},
+				{ID: "p2", SectionID: "s1", Format: "1_fullscreen"}, // no slots
+				{ID: "p3", SectionID: "s1", Format: "1_fullscreen",
+					Slots: []database.PageSlot{{SlotIndex: 0, PhotoUID: "photo3"}}},
+			}},
+		}
+		photos := map[string]photoImage{
+			"photo1": {path: "/tmp/photo1.jpg", width: 3840, height: 2160},
+			"photo3": {path: "/tmp/photo3.jpg", width: 3840, height: 2160},
+		}
+		data, report := buildTemplateData(groups, photos, nil, DefaultLayoutConfig(), nil)
+
+		pages := data.Sections[0].Pages
+		if len(pages) != 3 {
+			t.Fatalf("expected 3 pages, got %d", len(pages))
+		}
+		if pages[0].PageNumber != 1 || pages[1].PageNumber != 2 || pages[2].PageNumber != 3 {
+			t.Errorf("unexpected page numbers: %d, %d, %d",
+				pages[0].PageNumber, pages[1].PageNumber, pages[2].PageNumber)
+		}
+		if !pages[2].IsLast {
+			t.Error("last page should be marked IsLast")
+		}
+		if pages[0].IsLast || pages[1].IsLast {
+			t.Error("only the final page should be IsLast")
+		}
+		if report.PageCount != 3 {
+			t.Errorf("expected PageCount=3, got %d", report.PageCount)
+		}
+		// The blank middle page has a valid tikz frame with no photo/text
+		// slots — all slot entries must have HasPhoto=false and HasText=false.
+		for i, s := range pages[1].Slots {
+			if s.HasPhoto || s.HasText {
+				t.Errorf("middle empty page slot[%d] unexpectedly has content", i)
+			}
+		}
+	})
 }
 
 // --- latexEscapeRaw ---

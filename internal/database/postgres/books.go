@@ -582,10 +582,11 @@ func (r *BookRepository) CreatePage(ctx context.Context, page *database.BookPage
 
 	_, err := r.pool.Exec(ctx,
 		`INSERT INTO book_pages
-		 (id, book_id, section_id, format, style, description, sort_order, split_position, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+		 (id, book_id, section_id, format, style, description, sort_order,
+		  split_position, hide_page_number, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
 		page.ID, page.BookID, sectionID, page.Format, page.Style,
-		page.Description, page.SortOrder, page.SplitPosition,
+		page.Description, page.SortOrder, page.SplitPosition, page.HidePageNumber,
 		page.CreatedAt, page.UpdatedAt)
 	if err != nil {
 		return fmt.Errorf("create page: %w", err)
@@ -598,11 +599,11 @@ func (r *BookRepository) GetPage(ctx context.Context, pageID string) (*database.
 	var p database.BookPage
 	err := r.pool.QueryRow(ctx,
 		`SELECT id, book_id, COALESCE(section_id, ''), format, style,
-		        description, sort_order, split_position, created_at, updated_at
+		        description, sort_order, split_position, hide_page_number, created_at, updated_at
 		 FROM book_pages WHERE id = $1`, pageID).
 		Scan(
 			&p.ID, &p.BookID, &p.SectionID, &p.Format, &p.Style,
-			&p.Description, &p.SortOrder, &p.SplitPosition,
+			&p.Description, &p.SortOrder, &p.SplitPosition, &p.HidePageNumber,
 			&p.CreatedAt, &p.UpdatedAt,
 		)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -623,7 +624,7 @@ func (r *BookRepository) GetPage(ctx context.Context, pageID string) (*database.
 func (r *BookRepository) GetPages(ctx context.Context, bookID string) ([]database.BookPage, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT bp.id, bp.book_id, COALESCE(bp.section_id, ''), bp.format, bp.style,
-		        bp.description, bp.sort_order, bp.split_position, bp.created_at, bp.updated_at
+		        bp.description, bp.sort_order, bp.split_position, bp.hide_page_number, bp.created_at, bp.updated_at
 		 FROM book_pages bp
 		 LEFT JOIN book_sections s ON s.id = bp.section_id
 		 LEFT JOIN book_chapters c ON c.id = s.chapter_id
@@ -638,7 +639,7 @@ func (r *BookRepository) GetPages(ctx context.Context, bookID string) ([]databas
 		var p database.BookPage
 		if err := rows.Scan(
 			&p.ID, &p.BookID, &p.SectionID, &p.Format, &p.Style,
-			&p.Description, &p.SortOrder, &p.SplitPosition,
+			&p.Description, &p.SortOrder, &p.SplitPosition, &p.HidePageNumber,
 			&p.CreatedAt, &p.UpdatedAt,
 		); err != nil {
 			return nil, fmt.Errorf("scan page: %w", err)
@@ -683,7 +684,7 @@ func (r *BookRepository) GetPages(ctx context.Context, bookID string) ([]databas
 	return pages, nil
 }
 
-// UpdatePage updates a page's format, section, style, description, and split position.
+// UpdatePage updates a page's format, section, style, description, split position, and folio visibility.
 func (r *BookRepository) UpdatePage(ctx context.Context, page *database.BookPage) error {
 	page.UpdatedAt = time.Now()
 	var sectionID *string
@@ -695,10 +696,10 @@ func (r *BookRepository) UpdatePage(ctx context.Context, page *database.BookPage
 	}
 	_, err := r.pool.Exec(ctx,
 		`UPDATE book_pages SET section_id = $1, format = $2, style = $3,
-		        description = $4, split_position = $5, updated_at = $6
-		 WHERE id = $7`,
+		        description = $4, split_position = $5, hide_page_number = $6, updated_at = $7
+		 WHERE id = $8`,
 		sectionID, page.Format, page.Style, page.Description,
-		page.SplitPosition, page.UpdatedAt, page.ID)
+		page.SplitPosition, page.HidePageNumber, page.UpdatedAt, page.ID)
 	if err != nil {
 		return fmt.Errorf("update page: %w", err)
 	}

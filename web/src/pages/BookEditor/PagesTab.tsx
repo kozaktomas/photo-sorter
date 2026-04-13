@@ -1368,6 +1368,14 @@ export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRe
     } catch { /* silent */ }
   }, [selectedPage, onRefresh]);
 
+  const handleChangeHidePageNumber = useCallback(async (hide: boolean) => {
+    if (!selectedPage) return;
+    try {
+      await updatePage(selectedPage.id, { hide_page_number: hide });
+      onRefresh();
+    } catch { /* silent */ }
+  }, [selectedPage, onRefresh]);
+
   if (book.pages.length === 0 && !selectedId) {
     return (
       <div className="flex gap-4">
@@ -1451,6 +1459,7 @@ export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRe
                 onAddText={handleAddText}
                 onEditCrop={handleEditCrop}
                 onChangeSplitPosition={handleChangeSplitPosition}
+                onChangeHidePageNumber={handleChangeHidePageNumber}
                 chapterColor={selectedChapterColor}
               />
               <UnassignedPool

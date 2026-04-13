@@ -449,6 +449,7 @@ export interface BookPage {
   style: PageStyle;
   description: string;
   split_position: number | null;
+  hide_page_number: boolean;
   sort_order: number;
   slots: PageSlot[];
 }

@@ -512,6 +512,7 @@
       "cropDragHint": "Drag the box to position, scroll to zoom, drag the corner handle to resize. Only the area inside the box will be visible.",
       "splitPosition": "Split",
       "resetSplit": "Reset",
+      "hidePageNumber": "Hide page number",
       "addChapter": "Add Chapter",
       "chapterTitle": "Chapter title...",
       "noChapter": "Uncategorized",

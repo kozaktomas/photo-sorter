@@ -142,9 +142,11 @@
     { {{- renderFooterCaption $page.Captions $.CaptionBadgeSize -}} };
   }%
 {{- end}}
+{{- if not $page.HidePageNumber}}
   \node[anchor={{$page.FolioAnchor}},inner sep=0,font=\fontsize{9}{11}\selectfont,text=black!35]
     at ({{printf "%.2f" $page.FolioX}},{{printf "%.2f" $page.FolioY}})
     {{print "{"}}{{$page.PageNumber}}{{print "}"}};
+{{- end}}
 {{- if $.DebugOverlay}}
 % --- Debug overlay ---
   \draw[blue!40,line width=0.3pt]

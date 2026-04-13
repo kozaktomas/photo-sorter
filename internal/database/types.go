@@ -127,17 +127,18 @@ type SectionPhoto struct {
 
 // BookPage represents a page with a specific format.
 type BookPage struct {
-	ID            string
-	BookID        string
-	SectionID     string // optional, may be empty
-	Format        string
-	Style         string // "modern" or "archival"
-	Description   string
-	SplitPosition *float64 // nullable; 0.2-0.8 column ratio; nil = format default
-	SortOrder     int
-	Slots         []PageSlot // populated on read
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	ID             string
+	BookID         string
+	SectionID      string // optional, may be empty
+	Format         string
+	Style          string // "modern" or "archival"
+	Description    string
+	SplitPosition  *float64 // nullable; 0.2-0.8 column ratio; nil = format default
+	HidePageNumber bool     // suppress folio rendering on this page (numbering continues)
+	SortOrder      int
+	Slots          []PageSlot // populated on read
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 // PageSlot represents a photo or text assignment to a position on a page.

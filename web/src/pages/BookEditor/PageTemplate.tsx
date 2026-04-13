@@ -26,10 +26,11 @@ interface Props {
   onAddText?: (slotIndex: number) => void;
   onEditCrop?: (slotIndex: number) => void;
   onChangeSplitPosition?: (split: number | null) => void;
+  onChangeHidePageNumber?: (hide: boolean) => void;
   chapterColor?: string;
 }
 
-export function PageTemplate({ page, onClearSlot, sectionPhotos, onEditDescription, onUpdatePageDescription, onChangeFormat, onChangeStyle, onEditText, onAddText, onEditCrop, onChangeSplitPosition, chapterColor }: Props) {
+export function PageTemplate({ page, onClearSlot, sectionPhotos, onEditDescription, onUpdatePageDescription, onChangeFormat, onChangeStyle, onEditText, onAddText, onEditCrop, onChangeSplitPosition, onChangeHidePageNumber, chapterColor }: Props) {
   const { t } = useTranslation('pages');
   const slotCount = pageFormatSlotCount(page.format);
   const gridClasses = getGridClasses(page.format);
@@ -85,8 +86,8 @@ export function PageTemplate({ page, onClearSlot, sectionPhotos, onEditDescripti
         </div>
       )}
 
-      {/* Format, style, and split selectors */}
-      {(onChangeFormat || onChangeStyle) && (
+      {/* Format, style, split, and folio visibility selectors */}
+      {(onChangeFormat || onChangeStyle || onChangeHidePageNumber) && (
         <div className="mb-2 flex items-center gap-4 flex-wrap">
           {onChangeFormat && (
             <div className="flex items-center gap-2">
@@ -138,6 +139,17 @@ export function PageTemplate({ page, onClearSlot, sectionPhotos, onEditDescripti
                 </button>
               )}
             </div>
+          )}
+          {onChangeHidePageNumber && (
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={page.hide_page_number}
+                onChange={(e) => onChangeHidePageNumber(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-600 bg-slate-900 accent-rose-500 focus:outline-none focus-visible:ring-1 focus-visible:ring-rose-500"
+              />
+              <span className="text-xs text-slate-400">{t('books.editor.hidePageNumber')}</span>
+            </label>
           )}
         </div>
       )}

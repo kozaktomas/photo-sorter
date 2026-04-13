@@ -678,7 +678,7 @@ export async function createPage(bookId: string, format: PageFormat, sectionId: 
   });
 }
 
-export async function updatePage(pageId: string, updates: { format?: PageFormat; section_id?: string; description?: string; style?: string; split_position?: number | null }): Promise<void> {
+export async function updatePage(pageId: string, updates: { format?: PageFormat; section_id?: string; description?: string; style?: string; split_position?: number | null; hide_page_number?: boolean }): Promise<void> {
   await request(`/pages/${pageId}`, {
     method: 'PUT',
     body: JSON.stringify(updates),

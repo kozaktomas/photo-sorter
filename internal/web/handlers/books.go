@@ -126,14 +126,15 @@ type sectionPhotoResponse struct {
 }
 
 type pageResponse struct {
-	ID            string         `json:"id"`
-	SectionID     string         `json:"section_id"`
-	Format        string         `json:"format"`
-	Style         string         `json:"style"`
-	Description   string         `json:"description"`
-	SplitPosition *float64       `json:"split_position"`
-	SortOrder     int            `json:"sort_order"`
-	Slots         []slotResponse `json:"slots"`
+	ID             string         `json:"id"`
+	SectionID      string         `json:"section_id"`
+	Format         string         `json:"format"`
+	Style          string         `json:"style"`
+	Description    string         `json:"description"`
+	SplitPosition  *float64       `json:"split_position"`
+	HidePageNumber bool           `json:"hide_page_number"`
+	SortOrder      int            `json:"sort_order"`
+	Slots          []slotResponse `json:"slots"`
 }
 
 type slotResponse struct {
@@ -310,14 +311,15 @@ func buildPageResponses(pages []database.BookPage) []pageResponse {
 			}
 		}
 		pageResps[i] = pageResponse{
-			ID:            p.ID,
-			SectionID:     p.SectionID,
-			Format:        p.Format,
-			Style:         p.Style,
-			Description:   p.Description,
-			SplitPosition: p.SplitPosition,
-			SortOrder:     p.SortOrder,
-			Slots:         slots,
+			ID:             p.ID,
+			SectionID:      p.SectionID,
+			Format:         p.Format,
+			Style:          p.Style,
+			Description:    p.Description,
+			SplitPosition:  p.SplitPosition,
+			HidePageNumber: p.HidePageNumber,
+			SortOrder:      p.SortOrder,
+			Slots:          slots,
 		}
 	}
 	return pageResps
@@ -870,25 +872,27 @@ func (h *BooksHandler) CreatePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respondJSON(w, http.StatusCreated, pageResponse{
-		ID:            page.ID,
-		SectionID:     page.SectionID,
-		Format:        page.Format,
-		Style:         page.Style,
-		Description:   page.Description,
-		SplitPosition: page.SplitPosition,
-		SortOrder:     page.SortOrder,
-		Slots:         []slotResponse{},
+		ID:             page.ID,
+		SectionID:      page.SectionID,
+		Format:         page.Format,
+		Style:          page.Style,
+		Description:    page.Description,
+		SplitPosition:  page.SplitPosition,
+		HidePageNumber: page.HidePageNumber,
+		SortOrder:      page.SortOrder,
+		Slots:          []slotResponse{},
 	})
 }
 
 // updatePageRequest holds the parsed update page request fields.
 // SplitPosition uses json.RawMessage to distinguish "not sent" (nil) from "sent as null" ([]byte("null")).
 type updatePageRequest struct {
-	Format        *string         `json:"format"`
-	SectionID     *string         `json:"section_id"`
-	Description   *string         `json:"description"`
-	Style         *string         `json:"style"`
-	SplitPosition json.RawMessage `json:"split_position"`
+	Format         *string         `json:"format"`
+	SectionID      *string         `json:"section_id"`
+	Description    *string         `json:"description"`
+	Style          *string         `json:"style"`
+	SplitPosition  json.RawMessage `json:"split_position"`
+	HidePageNumber *bool           `json:"hide_page_number"`
 }
 
 // applyPageUpdates applies the request fields to the page, returning an error message if validation fails.
@@ -898,11 +902,8 @@ func applyPageUpdates(page *database.BookPage, req updatePageRequest) string {
 			return errMsg
 		}
 	}
-	if req.SectionID != nil {
-		if *req.SectionID == "" {
-			return "section_id is required"
-		}
-		page.SectionID = *req.SectionID
+	if errMsg := applySectionIDUpdate(page, req.SectionID); errMsg != "" {
+		return errMsg
 	}
 	if req.Description != nil {
 		page.Description = *req.Description
@@ -917,6 +918,22 @@ func applyPageUpdates(page *database.BookPage, req updatePageRequest) string {
 			return errMsg
 		}
 	}
+	if req.HidePageNumber != nil {
+		page.HidePageNumber = *req.HidePageNumber
+	}
+	return ""
+}
+
+// applySectionIDUpdate validates and applies a section_id change. Returns
+// an empty string when the request omits section_id or the update succeeds.
+func applySectionIDUpdate(page *database.BookPage, sectionID *string) string {
+	if sectionID == nil {
+		return ""
+	}
+	if *sectionID == "" {
+		return "section_id is required"
+	}
+	page.SectionID = *sectionID
 	return ""
 }
 
@@ -1959,10 +1976,11 @@ func buildSectionCaptions(ctx context.Context, bw database.BookWriter, sectionID
 	return captions
 }
 
-// computePageNumber returns the 1-based position of pageID in the full book,
-// matching the numbering used by latex.GeneratePDFWithOptions: pages are
-// sorted via latex.SortPagesBySectionOrder and empty pages are skipped.
-// Returns 1 as a safe fallback when the page can't be located.
+// computePageNumber returns the 1-based position of pageID in the full
+// book, matching the numbering used by the PDF export: pages are sorted
+// via latex.SortPagesBySectionOrder and every page — including empty
+// ones — contributes to pagination. Returns 1 as a safe fallback when
+// the page can't be located.
 func computePageNumber(ctx context.Context, bw database.BookWriter, bookID, pageID string) int {
 	pages, err := bw.GetPages(ctx, bookID)
 	if err != nil {
@@ -1973,14 +1991,9 @@ func computePageNumber(ctx context.Context, bw database.BookWriter, bookID, page
 		return 1
 	}
 	latex.SortPagesBySectionOrder(pages, sections)
-	num := 0
-	for _, p := range pages {
-		if latex.IsPageEmpty(p) {
-			continue
-		}
-		num++
+	for i, p := range pages {
 		if p.ID == pageID {
-			return num
+			return i + 1
 		}
 	}
 	return 1
