@@ -567,9 +567,9 @@ func applyBookSizes(rt *resolvedTypography, book *database.PhotoBook) {
 	if book.CaptionBadgeSize > 0 {
 		rt.captionBadgeSize = book.CaptionBadgeSize
 	}
-	if book.HeadingColorBleed > 0 {
-		rt.headingColorBleed = book.HeadingColorBleed
-	}
+	// heading_color_bleed is NOT NULL in the DB, and 0 is an explicit user
+	// choice (no bleed — heading box stops at content edge), so always assign.
+	rt.headingColorBleed = book.HeadingColorBleed
 }
 
 // IsPageEmpty returns true if a page has no content (no photos, no text in any slot).
@@ -884,9 +884,6 @@ func (pb *pageBuilder) buildSlots(
 	return tmplSlots, reportPhotos, buildFooterCaptions(ct, chapterColor)
 }
 
-// textPadMM is the inner padding (mm) added to text slots adjacent to photos.
-const textPadMM = 4.0
-
 // isSlotOnLeftEdge returns true if the slot touches the left page margin.
 func isSlotOnLeftEdge(format string, slotIndex int) bool {
 	switch format {
@@ -923,24 +920,22 @@ func isSlotOnRightEdge(format string, slotIndex int) bool {
 	}
 }
 
-// applyTextSlotPadding sets heading bleed and inner padding on text slots.
-// headingBleed extends the colored heading box equally on both sides.
-// Non-edge sides also get text padding to offset body text from adjacent photos.
+// applyTextSlotPadding configures heading bleed on text slots. The heading
+// color box bleeds outward only on page-margin edges — on interior sides
+// (adjacent to another slot) it stops at the slot boundary so it doesn't
+// collide with the neighbouring photo. Body text fills the full slot width,
+// relying on the column gutter between slots for breathing room, which
+// keeps its right/left edge aligned with adjacent photo edges.
 func applyTextSlotPadding(slots []TemplateSlot, format string, headingBleed float64) {
 	for i := range slots {
 		if !slots[i].HasText {
 			continue
 		}
-		// Heading bleed always extends both sides equally.
-		slots[i].BleedLeftMM = headingBleed
-		slots[i].BleedRightMM = headingBleed
-
-		// Non-edge sides get body text padding to keep text away from adjacent photos.
-		if !isSlotOnLeftEdge(format, i) {
-			slots[i].TextPadLeft = textPadMM
+		if isSlotOnLeftEdge(format, i) {
+			slots[i].BleedLeftMM = headingBleed
 		}
-		if !isSlotOnRightEdge(format, i) {
-			slots[i].TextPadRight = textPadMM
+		if isSlotOnRightEdge(format, i) {
+			slots[i].BleedRightMM = headingBleed
 		}
 	}
 }
