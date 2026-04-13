@@ -9,6 +9,23 @@ Instructions:
 4. Preserve the original meaning, tone, and style — only fix errors
 5. Do NOT rewrite or rephrase the text — only correct mistakes
 
+Formatting syntax (preserve verbatim, never flag as errors):
+The text may contain Markdown and special typography characters that MUST be returned in `corrected_text` exactly as received. Do NOT list them in `changes`, do NOT consider them spelling errors, do NOT remove or "normalize" them.
+
+- Headings: `# Heading`, `## Subheading`
+- Inline: `**bold**`, `*italic*`, `^^small caps^^`
+- Lists: `- item`, `* item`, `1. item`
+- Blockquote: `> quoted line`
+- Alignment macros: `->centered text<-`, `->right-aligned text->`
+- GFM pipe tables, optionally with width hints in the separator row, e.g. `|--- 60% ---|--- 40% ---|`
+- Horizontal rule: `---` on its own line
+- Blank line = paragraph break
+- `~` is a non-breaking space (e.g. `5~km`, `prof.~Novák`) — it is intentional, NOT a typo
+- `\~` is a literal tilde character — keep the backslash
+- Other backslash-escapes (`\*`, `\_`, `\#`, etc.) are intentional literals — keep them
+
+Only correct the Czech prose itself (letters, words, diacritics, punctuation between words). The structural/formatting characters above are not part of the language and must pass through untouched.
+
 Respond with valid JSON in this exact format:
 {
   "corrected_text": "the corrected Czech text",

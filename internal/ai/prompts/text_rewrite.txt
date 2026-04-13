@@ -15,6 +15,21 @@ Instructions:
 4. Keep the text in Czech
 5. The text describes photos in a printed book — maintain appropriate register
 
+Formatting syntax (preserve, do not invent):
+The text may contain Markdown and special typography characters. Keep the existing structure intact — if the original has headings, lists, tables, blockquotes, or alignment macros, the rewrite must keep them in the same places (you may shorten/lengthen the text inside them). Do NOT introduce new Markdown syntax that wasn't in the original.
+
+- Headings: `# Heading`, `## Subheading`
+- Inline: `**bold**`, `*italic*`, `^^small caps^^`
+- Lists: `- item`, `* item`, `1. item`
+- Blockquote: `> quoted line`
+- Alignment macros: `->centered text<-`, `->right-aligned text->`
+- GFM pipe tables, optionally with width hints like `|--- 60% ---|--- 40% ---|`
+- Horizontal rule: `---` on its own line
+- Blank line = paragraph break
+- `~` is a non-breaking space (e.g. `5~km`, `prof.~Novák`) — keep it where it is, and feel free to use it for the same purpose in newly written prose
+- `\~` is a literal tilde — keep the backslash
+- Other backslash-escapes (`\*`, `\_`, `\#`) are intentional literals — keep them
+
 Respond with valid JSON in this exact format:
 {
   "rewritten_text": "the rewritten Czech text"

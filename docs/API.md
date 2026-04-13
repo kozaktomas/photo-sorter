@@ -2407,7 +2407,7 @@ AI-powered text operations for Czech text editing. Requires `OPENAI_TOKEN` to be
 
 ### Check Text
 
-Check Czech text for spelling, diacritics, and grammar issues using GPT-4.1-mini.
+Check Czech text for spelling, diacritics, and grammar issues using GPT-4.1-mini. Markdown syntax (headings, `**bold**`, `*italic*`, `^^small caps^^`, lists, blockquotes, GFM tables, alignment macros `->text<-` / `->text->`, horizontal rules) and special typography characters (`~` for non-breaking space, `\~` for literal tilde, backslash-escapes) are preserved verbatim and not flagged as errors.
 
 ```
 POST /text/check
@@ -2440,7 +2440,7 @@ POST /text/check
 
 ### Rewrite Text
 
-Rewrite Czech text to a target length using GPT-4.1-mini.
+Rewrite Czech text to a target length using GPT-4.1-mini. Existing markdown structure (headings, lists, tables, blockquotes, alignment macros) and special typography characters (`~`, `\~`) are preserved in place — the model only adjusts the prose inside them.
 
 ```
 POST /text/rewrite
@@ -2475,7 +2475,7 @@ POST /text/rewrite
 
 ### Check Text Consistency
 
-Analyze style consistency across multiple Czech texts (e.g., all texts in a book). Returns a consistency score, detected tone, and specific issues.
+Analyze style consistency across multiple Czech texts (e.g., all texts in a book). Returns a consistency score, detected tone, and specific issues. Markdown formatting and special typography characters are ignored for the analysis — only the Czech prose is judged for tone, register, and style.
 
 ```
 POST /text/consistency

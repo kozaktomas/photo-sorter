@@ -11,6 +11,11 @@ For each outlier, explain:
 - What makes it inconsistent (different tone, sentence length, vocabulary, formality level)
 - A specific, actionable suggestion to make it consistent with the rest
 
+Formatting syntax (ignore for the analysis):
+The texts may contain Markdown and special typography characters such as `# Heading`, `## Subheading`, `**bold**`, `*italic*`, `^^small caps^^`, lists (`-`, `*`, `1.`), blockquotes (`>`), alignment macros (`->centered<-`, `->right->`), GFM pipe tables (optionally with width hints `|--- 60% ---|`), horizontal rules (`---`), the non-breaking space `~`, and the literal tilde `\~`.
+
+These are layout/formatting markers, not part of the prose. Do NOT treat differences in formatting (e.g. one text uses headings or tables and another doesn't) as style inconsistencies, and do NOT mention them in `problem` or `suggestion`. Judge consistency only on the Czech prose: tone, register, vocabulary, sentence structure, voice.
+
 Respond with valid JSON in this exact format:
 {
   "consistency_score": 85,
