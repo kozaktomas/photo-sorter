@@ -33,7 +33,8 @@ Chapters provide an optional grouping level between books and sections. Sections
 | `2l_1p` | 3 | 2 landscape (stacked vertically, left) + 1 portrait (right, full height) |
 | `1p_2l` | 3 | 1 portrait (left, full height) + 2 landscape (stacked vertically, right) |
 | `2_portrait` | 2 | 2 portrait photos side by side |
-| `1_fullscreen` | 1 | Single fullscreen photo |
+| `1_fullscreen` | 1 | Single photo filling the safe canvas (margins for folio + captions) |
+| `1_fullbleed` | 1 | Single photo covering the **entire page including 3 mm print bleed** — folio and footer captions are automatically suppressed for the page. Manual selection only (not produced by auto-layout). |
 
 ### Layout Diagrams
 
@@ -45,12 +46,12 @@ Chapters provide an optional grouping level between books and sections. Sections
 |  2   |  3   |       |   1 L  |    |     |    |   2 L  |     |        |        |
 +------+------+       +--------+----+     +----+--------+     +--------+--------+
 
-1_fullscreen:
-+-------------+
-|             |
-|      0      |
-|             |
-+-------------+
+1_fullscreen:         1_fullbleed:
++-------------+       +=============+
+|             |       |             |
+|      0      |       |      0      |  ← extends past trim line by 3 mm
+|             |       |             |    on every side; no folio, no captions
++-------------+       +=============+
 ```
 
 The `2l_1p` and `1p_2l` formats use a `2fr:1fr` / `1fr:2fr` column ratio so the landscape side is wider than the portrait side.
@@ -71,6 +72,7 @@ Book typography (fonts, sizes, caption opacity): `internal/database/postgres/mig
 Caption font size (standalone): `internal/database/postgres/migrations/022_add_caption_font_size.sql`
 Heading color bleed: `internal/database/postgres/migrations/023_add_heading_color_bleed.sql`
 Caption badge size: `internal/database/postgres/migrations/024_add_caption_badge_size.sql`
+Full-bleed format: `internal/database/postgres/migrations/027_add_1_fullbleed_format.sql`
 
 ### Tables
 
@@ -123,7 +125,7 @@ book_pages
 ├── id (PK)
 ├── book_id (FK → photo_books, CASCADE)
 ├── section_id (FK → book_sections, SET NULL)
-├── format (CHECK: 4_landscape, 2l_1p, 1p_2l, 2_portrait, 1_fullscreen)
+├── format (CHECK: 4_landscape, 2l_1p, 1p_2l, 2_portrait, 1_fullscreen, 1_fullbleed)
 ├── style (CHECK: modern, archival; DEFAULT 'modern')
 ├── split_position (REAL, default 0.5, range 0.2-0.8, for 2l_1p/1p_2l formats)
 ├── hide_page_number (BOOLEAN, default false; suppresses folio rendering on this page only — pagination of other pages is unaffected, migration 025)
@@ -344,6 +346,7 @@ Zones sum exactly to page height: 10 + 4 + 172 + 8 + 16 = 210mm.
 | Format | Slot | Columns | Width | Height |
 |--------|------|---------|-------|--------|
 | `1_fullscreen` | 0 | 1-12 | 265mm | 172mm |
+| `1_fullbleed` | 0 | full page + bleed | 303mm | 216mm |
 | `2_portrait` | 0,1 | 1-6, 7-12 | 130.5mm | 172mm |
 | `4_landscape` | 0-3 | 1-6/7-12 × top/bottom | 130.5mm | 84mm |
 | `2l_1p` | 0,1 (landscape) | 1-8 stacked | 175.3mm | 84mm |
@@ -352,6 +355,8 @@ Zones sum exactly to page height: 10 + 4 + 172 + 8 + 16 = 210mm.
 | `1p_2l` | 1,2 (landscape) | 5-12 stacked | 175.3mm | 84mm |
 
 Half-canvas height: (172 - 4) / 2 = 84mm.
+
+`1_fullbleed` is the only format that bypasses the 12-column grid and the safe canvas: the photo is placed at TikZ coordinates `(-3, -3) → (300, 213)` mm so it covers the full 303 × 216 mm bleed area defined by `templates/book.tex`'s `crop` package. Folio rendering is forced off and the footer captions strip is suppressed for the page (pagination of other pages is unaffected).
 
 **Note:** For `2l_1p` and `1p_2l` formats, the column split can be adjusted via the `split_position` field on `book_pages` (default 0.5 = 8:4 columns). This allows customizing the width ratio between landscape and portrait slots.
 
@@ -518,7 +523,7 @@ GET /api/v1/books/:id/export-pdf?format=test
 The test PDF contains 6 pages:
 1. **Grid overlay**: Red column boundaries, blue canvas bounds, green header/footer zones
 2. **Baseline overlay**: Gray 4mm horizontal lines within the canvas zone
-3. **Format samples**: One page per format (`1_fullscreen`, `2_portrait`, `4_landscape`, `2l_1p`, `1p_2l`) with colored placeholder rectangles labeled with dimensions
+3. **Format samples**: One page per format (`1_fullscreen`, `1_fullbleed`, `2_portrait`, `4_landscape`, `2l_1p`, `1p_2l`) with colored placeholder rectangles labeled with dimensions
 4-5. **Additional format samples** (continued)
 6. **Gutter-safe visualization**: Red overlay on the 8mm gutter-safe zone with sample marker placement
 
@@ -539,12 +544,13 @@ With asymmetric margins (20mm inside, 12mm outside) and 4mm column gutters:
 | `4_landscape` | each | 130.5 × 84 | 1.55:1 | 3:2 landscape |
 | `2_portrait` | each | 130.5 × 172 | 0.76:1 | 3:4 portrait |
 | `1_fullscreen` | single | 265 × 172 | 1.54:1 | 3:2 landscape |
+| `1_fullbleed` | single | 303 × 216 | 1.40:1 | full A4+bleed |
 | `2l_1p` | landscape | 175.3 × 84 | 2.09:1 | panoramic |
 | `2l_1p` | portrait | 85.7 × 172 | 0.50:1 | narrow portrait |
 | `1p_2l` | portrait | 85.7 × 172 | 0.50:1 | narrow portrait |
 | `1p_2l` | landscape | 175.3 × 84 | 2.09:1 | panoramic |
 
-`4_landscape`, `2_portrait`, and `1_fullscreen` work well with standard photo ratios. The mixed formats (`2l_1p`, `1p_2l`) use 8:4 column splits for wider/narrower slots.
+`4_landscape`, `2_portrait`, and `1_fullscreen` work well with standard photo ratios. The mixed formats (`2l_1p`, `1p_2l`) use 8:4 column splits for wider/narrower slots. `1_fullbleed` covers the full A4+bleed area; the photo's intrinsic ratio is preserved by object-cover cropping (use `crop_x`/`crop_y`/`crop_scale` on the slot to control framing).
 
 ### Print Preparation Checklist
 
@@ -704,6 +710,7 @@ The page templates use Tailwind CSS grid classes:
 | `1p_2l` | `grid-cols-[1fr_2fr] grid-rows-2` | Slot 0: `row-span-2` |
 | `2_portrait` | `grid-cols-2 grid-rows-1` | All slots auto-placed |
 | `1_fullscreen` | `grid-cols-1 grid-rows-1` | Single slot fills page |
+| `1_fullbleed` | `grid-cols-1 grid-rows-1` | Single slot fills page; the editor preview drops the card padding (`p-0 overflow-hidden`) so the photo extends to the card edge, mirroring the print full-bleed |
 
 ### Internationalization
 

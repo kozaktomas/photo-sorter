@@ -515,7 +515,7 @@ export interface TextVersion {
   created_at: string;
 }
 
-export type PageFormat = '4_landscape' | '2l_1p' | '1p_2l' | '2_portrait' | '1_fullscreen';
+export type PageFormat = '4_landscape' | '2l_1p' | '1p_2l' | '2_portrait' | '1_fullscreen' | '1_fullbleed';
 
 // Upload job types
 export interface UploadJobResult {

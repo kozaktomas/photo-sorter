@@ -233,6 +233,8 @@ func PageFormatSlotCount(format string) int {
 		return 2
 	case "1_fullscreen":
 		return 1
+	case "1_fullbleed":
+		return 1
 	default:
 		return 0
 	}

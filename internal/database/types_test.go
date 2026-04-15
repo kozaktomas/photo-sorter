@@ -12,6 +12,7 @@ func TestPageFormatSlotCount(t *testing.T) {
 		{"1p_2l", 3},
 		{"2_portrait", 2},
 		{"1_fullscreen", 1},
+		{"1_fullbleed", 1},
 		{"unknown", 0},
 		{"", 0},
 		{"4_LANDSCAPE", 0},

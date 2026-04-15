@@ -744,6 +744,81 @@ func TestBuildTemplateData(t *testing.T) {
 			}
 		}
 	})
+
+	t.Run("1_fullbleed page covers full bleed area and suppresses folio + captions", func(t *testing.T) {
+		groups := []sectionGroup{
+			{sectionID: "s1", title: "S1", pages: []database.BookPage{
+				{ID: "p1", SectionID: "s1", Format: "1_fullbleed",
+					Slots: []database.PageSlot{{SlotIndex: 0, PhotoUID: "photo1"}}},
+			}},
+		}
+		photos := map[string]photoImage{
+			"photo1": {path: "/tmp/photo1.jpg", width: 4000, height: 3000},
+		}
+		data, report := buildTemplateData(groups, photos, nil, DefaultLayoutConfig(), nil)
+
+		if len(data.Sections) != 1 || len(data.Sections[0].Pages) != 1 {
+			t.Fatalf("expected 1 section with 1 page")
+		}
+		page := data.Sections[0].Pages[0]
+
+		// Canvas clip must span the bleed area, not the safe canvas.
+		if page.ClipLeftX != -BleedMM {
+			t.Errorf("ClipLeftX = %.2f, want %.2f", page.ClipLeftX, -BleedMM)
+		}
+		if page.ClipRightX != PageW+BleedMM {
+			t.Errorf("ClipRightX = %.2f, want %.2f", page.ClipRightX, PageW+BleedMM)
+		}
+		if page.CanvasBottomY != -BleedMM {
+			t.Errorf("CanvasBottomY = %.2f, want %.2f", page.CanvasBottomY, -BleedMM)
+		}
+		if page.CanvasTopY != PageH+BleedMM {
+			t.Errorf("CanvasTopY = %.2f, want %.2f", page.CanvasTopY, PageH+BleedMM)
+		}
+
+		// Folio and captions must be suppressed.
+		if !page.HidePageNumber {
+			t.Error("HidePageNumber should be true for 1_fullbleed")
+		}
+		if page.HasCaptions {
+			t.Error("HasCaptions should be false for 1_fullbleed")
+		}
+
+		// Single photo slot covering the full bleed rectangle in TikZ coords.
+		if len(page.Slots) != 1 {
+			t.Fatalf("expected 1 slot, got %d", len(page.Slots))
+		}
+		s := page.Slots[0]
+		if !s.HasPhoto {
+			t.Error("slot should have a photo")
+		}
+		if s.BorderX != -BleedMM {
+			t.Errorf("BorderX = %.2f, want %.2f", s.BorderX, -BleedMM)
+		}
+		if s.BorderY != -BleedMM {
+			t.Errorf("BorderY = %.2f, want %.2f", s.BorderY, -BleedMM)
+		}
+		if s.BorderW != PageW+2*BleedMM {
+			t.Errorf("BorderW = %.2f, want %.2f", s.BorderW, PageW+2*BleedMM)
+		}
+		if s.BorderH != PageH+2*BleedMM {
+			t.Errorf("BorderH = %.2f, want %.2f", s.BorderH, PageH+2*BleedMM)
+		}
+		// Clip rect should equal border rect (no archival inset for fullbleed).
+		if s.ClipX != s.BorderX || s.ClipY != s.BorderY ||
+			s.ClipW != s.BorderW || s.ClipH != s.BorderH {
+			t.Errorf("clip rect != border rect: clip=(%.2f,%.2f,%.2f,%.2f) border=(%.2f,%.2f,%.2f,%.2f)",
+				s.ClipX, s.ClipY, s.ClipW, s.ClipH,
+				s.BorderX, s.BorderY, s.BorderW, s.BorderH)
+		}
+
+		if report.PageCount != 1 {
+			t.Errorf("PageCount = %d, want 1", report.PageCount)
+		}
+		if report.PhotoCount != 1 {
+			t.Errorf("PhotoCount = %d, want 1", report.PhotoCount)
+		}
+	})
 }
 
 // --- latexEscapeRaw ---

@@ -14,6 +14,7 @@ const FORMAT_SHORT_KEYS: Record<string, string> = {
   '1p_2l': '1P+2L',
   '2_portrait': '2P',
   '1_fullscreen': 'FS',
+  '1_fullbleed': 'FB',
 };
 
 export function BookStatsPanel({ book, sectionPhotos }: BookStatsPanelProps) {

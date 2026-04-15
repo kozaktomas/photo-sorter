@@ -638,6 +638,10 @@ func (pb *pageBuilder) computeZones(isRecto bool) (
 
 // buildContentPage builds a single TemplatePage with slots and accumulates report data.
 func (pb *pageBuilder) buildContentPage(p database.BookPage, chapterColor string) TemplatePage {
+	if p.Format == FormatFullbleed {
+		return pb.buildFullBleedPage(p, chapterColor)
+	}
+
 	isLast := pb.contentPageIdx == pb.totalContentPages
 	isRecto := pb.pageNumber%2 == 1
 	style := p.Style
@@ -702,6 +706,95 @@ func (pb *pageBuilder) buildContentPage(p database.BookPage, chapterColor string
 		CaptionBlockY:  captionBlockY,
 		CaptionBlockW:  captionBlockW,
 		HasCaptions:    hasCaptions,
+	}
+}
+
+// buildFullBleedPage builds a 1_fullbleed page: a single photo covering the
+// entire bleed area (303×216mm = A4 + 3mm bleed on every side). Folio and
+// footer captions are suppressed automatically; only the photo renders.
+//
+// This path is fully separate from buildContentPage's grid+canvas pipeline:
+// it places the photo via buildPhotoSlotNew with substituted contentLeftX
+// and canvasTopY so the resulting border/clip rectangle covers (-3,-3) to
+// (300,213) in TikZ page coordinates. The TemplatePage's clip bounds are
+// expanded to the same area so the canvas-level clip in the template does
+// not crop the photo back to the safe area.
+func (pb *pageBuilder) buildFullBleedPage(p database.BookPage, chapterColor string) TemplatePage {
+	isLast := pb.contentPageIdx == pb.totalContentPages
+	isRecto := pb.pageNumber%2 == 1
+
+	// Compute zone fields for struct consistency. None of them affect the
+	// rendered output for fullbleed (template branches on Slots / HasCaptions
+	// / HidePageNumber, all of which we override below) but we fill them so
+	// the TemplatePage struct stays consistent if some downstream code reads
+	// them by mistake. canvasTopY / canvasBottomY are intentionally
+	// discarded — they are replaced by the bleed-extended values below.
+	contentLeftX, contentRightX, headerY, _, _,
+		footerRuleY, folioX, folioY, folioAnchor := pb.computeZones(isRecto)
+
+	var tmplSlots []TemplateSlot
+	var reportPhotos []ReportPhoto
+
+	ps := getPageSlot(p, 0)
+	if ps.PhotoUID != "" {
+		if img, ok := pb.photos[ps.PhotoUID]; ok {
+			cropScale := ps.CropScale
+			if cropScale <= 0 {
+				cropScale = 1.0
+			}
+			fullSlot := SlotRect{
+				X: 0,
+				Y: 0,
+				W: PageW + 2*BleedMM,
+				H: PageH + 2*BleedMM,
+			}
+			ts := buildPhotoSlotNew(
+				fullSlot, img,
+				-BleedMM, PageH+BleedMM,
+				false, 0,
+				ps.CropX, ps.CropY, cropScale,
+			)
+			ts.ChapterColor = chapterColor
+			tmplSlots = []TemplateSlot{ts}
+
+			pb.photoSet[ps.PhotoUID] = true
+			reportPhotos = append(reportPhotos, ReportPhoto{
+				PhotoUID:     ps.PhotoUID,
+				SlotIndex:    0,
+				EffectiveDPI: ts.EffectiveDPI,
+				LowRes:       ts.EffectiveDPI > 0 && ts.EffectiveDPI < lowResDPIThreshold,
+			})
+		}
+	}
+
+	pb.reportPages = append(pb.reportPages, ReportPage{
+		PageNumber: pb.pageNumber,
+		Format:     p.Format,
+		Title:      p.Description,
+		Photos:     reportPhotos,
+	})
+
+	return TemplatePage{
+		Slots:          tmplSlots,
+		IsLast:         isLast,
+		PageNumber:     pb.pageNumber,
+		IsRecto:        isRecto,
+		Style:          "modern",
+		HidePageNumber: true,
+		ContentLeftX:   contentLeftX,
+		ContentRightX:  contentRightX,
+		ContentW:       pb.config.ContentWidth(),
+		ClipLeftX:      -BleedMM,
+		ClipRightX:     PageW + BleedMM,
+		HeaderY:        headerY,
+		CanvasTopY:     PageH + BleedMM,
+		CanvasBottomY:  -BleedMM,
+		FooterRuleY:    footerRuleY,
+		FolioX:         folioX,
+		FolioY:         folioY,
+		FolioAnchor:    folioAnchor,
+		Captions:       nil,
+		HasCaptions:    false,
 	}
 }
 
@@ -904,6 +997,8 @@ func isSlotOnLeftEdge(format string, slotIndex int) bool {
 	switch format {
 	case FormatFullscreen:
 		return true
+	case FormatFullbleed:
+		return true
 	case Format2Portrait:
 		return slotIndex == 0
 	case Format4Landscape:
@@ -921,6 +1016,8 @@ func isSlotOnLeftEdge(format string, slotIndex int) bool {
 func isSlotOnRightEdge(format string, slotIndex int) bool {
 	switch format {
 	case FormatFullscreen:
+		return true
+	case FormatFullbleed:
 		return true
 	case Format2Portrait:
 		return slotIndex == 1

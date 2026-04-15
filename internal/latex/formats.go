@@ -6,9 +6,15 @@ const (
 	PageH = 210.0
 )
 
+// BleedMM is the print bleed margin extending each side of the trimmed page.
+// Must stay in sync with the crop package config in templates/book.tex
+// (width=303truemm, height=216truemm, i.e. 297+2·3, 210+2·3).
+const BleedMM = 3.0
+
 // Page format identifiers.
 const (
 	FormatFullscreen = "1_fullscreen"
+	FormatFullbleed  = "1_fullbleed"
 	Format2Portrait  = "2_portrait"
 	Format4Landscape = "4_landscape"
 	Format2L1P       = "2l_1p"
@@ -97,6 +103,17 @@ func FormatSlotsGrid(format string, config LayoutConfig) []SlotRect {
 	switch format {
 	case FormatFullscreen:
 		// Slot 0: cols 1-12, full canvas.
+		return []SlotRect{
+			{0, 0, cw, ch},
+		}
+
+	case FormatFullbleed:
+		// Fallback only: real full-bleed slot is built directly in
+		// buildFullBleedPage, which bypasses the canvas-relative grid and
+		// places a single slot covering the entire bleed area
+		// (-BleedMM, -BleedMM) → (PageW+BleedMM, PageH+BleedMM).
+		// This case exists so callers that only need slot count / shape
+		// (e.g. preflight, the frontend grid logic) get a sensible value.
 		return []SlotRect{
 			{0, 0, cw, ch},
 		}

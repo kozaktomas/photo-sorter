@@ -130,13 +130,14 @@ function SortablePageItem({ page, globalIndex, isSelected, onSelect, onDelete, i
   );
 }
 
-const PAGE_FORMATS: PageFormat[] = ['4_landscape', '2l_1p', '1p_2l', '2_portrait', '1_fullscreen'];
+const PAGE_FORMATS: PageFormat[] = ['4_landscape', '2l_1p', '1p_2l', '2_portrait', '1_fullscreen', '1_fullbleed'];
 const FORMAT_LABEL_KEYS: Record<PageFormat, string> = {
   '4_landscape': 'books.editor.format4Landscape',
   '2l_1p': 'books.editor.format2l1p',
   '1p_2l': 'books.editor.format1p2l',
   '2_portrait': 'books.editor.format2Portrait',
   '1_fullscreen': 'books.editor.format1Fullscreen',
+  '1_fullbleed': 'books.editor.format1Fullbleed',
 };
 
 function QuickAddButton({ bookId, sectionId, openSectionId, onToggle, onCreated }: {

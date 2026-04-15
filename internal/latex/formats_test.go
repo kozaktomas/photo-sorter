@@ -83,6 +83,7 @@ func TestFormatSlotsGrid_SlotCounts(t *testing.T) {
 		count  int
 	}{
 		{"1_fullscreen", 1},
+		{"1_fullbleed", 1},
 		{"2_portrait", 2},
 		{"4_landscape", 4},
 		{"2l_1p", 3},
@@ -100,7 +101,7 @@ func TestFormatSlotsGrid_SlotCounts(t *testing.T) {
 
 func TestFormatSlotsGrid_SlotsWithinBounds(t *testing.T) {
 	cfg := DefaultLayoutConfig()
-	formats := []string{"1_fullscreen", "2_portrait", "4_landscape", "2l_1p", "1p_2l"}
+	formats := []string{"1_fullscreen", "1_fullbleed", "2_portrait", "4_landscape", "2l_1p", "1p_2l"}
 	for _, format := range formats {
 		t.Run(format, func(t *testing.T) {
 			slots := FormatSlotsGrid(format, cfg)

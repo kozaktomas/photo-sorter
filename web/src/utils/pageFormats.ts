@@ -8,6 +8,7 @@ export function pageFormatSlotCount(format: PageFormat): number {
     case '1p_2l': return 3;
     case '2_portrait': return 2;
     case '1_fullscreen': return 1;
+    case '1_fullbleed': return 1;
   }
 }
 
@@ -18,6 +19,7 @@ export function pageFormatLabelKey(format: PageFormat): string {
     case '1p_2l': return 'books.editor.formatShort1p2l';
     case '2_portrait': return 'books.editor.formatShort2Portrait';
     case '1_fullscreen': return 'books.editor.formatShort1Fullscreen';
+    case '1_fullbleed': return 'books.editor.formatShort1Fullbleed';
   }
 }
 
@@ -30,11 +32,11 @@ export function defaultSplitPosition(format: PageFormat): number {
 }
 
 export function isMultiColumn(format: PageFormat): boolean {
-  return format !== '1_fullscreen';
+  return format !== '1_fullscreen' && format !== '1_fullbleed';
 }
 
 export function getGridColumnStyle(format: PageFormat, splitPosition: number | null): CSSProperties {
-  if (format === '1_fullscreen') return {};
+  if (format === '1_fullscreen' || format === '1_fullbleed') return {};
   const split = splitPosition ?? defaultSplitPosition(format);
   return { gridTemplateColumns: `${split}fr ${1 - split}fr` };
 }
@@ -50,6 +52,8 @@ export function getGridClasses(format: PageFormat): string {
     case '2_portrait':
       return 'grid grid-rows-1';
     case '1_fullscreen':
+      return 'grid grid-cols-1 grid-rows-1';
+    case '1_fullbleed':
       return 'grid grid-cols-1 grid-rows-1';
   }
 }
@@ -107,6 +111,8 @@ export function getSlotH1Bleed(format: string, slotIndex: number): { left: boole
   switch (format) {
     case '1_fullscreen':
       return { left: true, right: true };
+    case '1_fullbleed':
+      return { left: true, right: true };
     case '2_portrait':
       return { left: slotIndex === 0, right: slotIndex === 1 };
     case '4_landscape':
@@ -153,6 +159,8 @@ export function getSlotRects(format: PageFormat, splitPosition: number | null): 
   switch (format) {
     case '1_fullscreen':
       return [{ x: 0, y: 0, w: CONTENT_WIDTH, h: CANVAS_HEIGHT }];
+    case '1_fullbleed':
+      return [{ x: 0, y: 0, w: CONTENT_WIDTH, h: CANVAS_HEIGHT }];
     case '2_portrait':
       return [
         { x: 0, y: 0, w: leftW, h: CANVAS_HEIGHT },
@@ -182,7 +190,7 @@ export function getSlotRects(format: PageFormat, splitPosition: number | null): 
 
 /** Returns the physical slot dimensions [widthMm, heightMm] for a given slot in a page format. */
 function getSlotDimensionsMm(format: PageFormat, slotIndex: number, splitPosition?: number | null): [number, number] {
-  if (splitPosition != null && format !== '1_fullscreen') {
+  if (splitPosition != null && format !== '1_fullscreen' && format !== '1_fullbleed') {
     const availW = CONTENT_WIDTH - COLUMN_GUTTER;
     const leftW = availW * splitPosition;
     const rightW = availW * (1 - splitPosition);
@@ -206,6 +214,8 @@ function getSlotDimensionsMm(format: PageFormat, slotIndex: number, splitPositio
   const halfW = colSpanWidth(6);
   switch (format) {
     case '1_fullscreen':
+      return [CONTENT_WIDTH, CANVAS_HEIGHT];
+    case '1_fullbleed':
       return [CONTENT_WIDTH, CANVAS_HEIGHT];
     case '2_portrait':
       return [halfW, CANVAS_HEIGHT];
@@ -237,7 +247,7 @@ export function computeEffectiveDpi(
 /** Returns the W/H aspect ratio for a given slot in a page format. */
 export function getSlotAspectRatio(format: PageFormat, slotIndex: number, splitPosition?: number | null): number {
   // With custom split position
-  if (splitPosition != null && format !== '1_fullscreen') {
+  if (splitPosition != null && format !== '1_fullscreen' && format !== '1_fullbleed') {
     const availW = CONTENT_WIDTH - COLUMN_GUTTER;
     const leftW = availW * splitPosition;
     const rightW = availW * (1 - splitPosition);
@@ -263,6 +273,8 @@ export function getSlotAspectRatio(format: PageFormat, slotIndex: number, splitP
 
   switch (format) {
     case '1_fullscreen':
+      return CONTENT_WIDTH / CANVAS_HEIGHT;
+    case '1_fullbleed':
       return CONTENT_WIDTH / CANVAS_HEIGHT;
     case '2_portrait':
       return halfW / CANVAS_HEIGHT;

@@ -4,7 +4,7 @@ import { PageSlotComponent } from './PageSlot';
 import type { BookPage, SectionPhoto, PageFormat, PageStyle } from '../../types';
 import { pageFormatSlotCount, getGridClasses, getGridColumnStyle, getSlotClasses, getSlotPhotoUid, getSlotTextContent, getSlotCrop, getTextSlotPaddingClass, getSlotH1Bleed, isMultiColumn, defaultSplitPosition } from '../../utils/pageFormats';
 
-const ALL_PAGE_FORMATS: PageFormat[] = ['4_landscape', '2l_1p', '1p_2l', '2_portrait', '1_fullscreen'];
+const ALL_PAGE_FORMATS: PageFormat[] = ['4_landscape', '2l_1p', '1p_2l', '2_portrait', '1_fullscreen', '1_fullbleed'];
 
 const formatKeyMap: Record<PageFormat, string> = {
   '4_landscape': '4Landscape',
@@ -12,6 +12,7 @@ const formatKeyMap: Record<PageFormat, string> = {
   '1p_2l': '1p2l',
   '2_portrait': '2Portrait',
   '1_fullscreen': '1Fullscreen',
+  '1_fullbleed': '1Fullbleed',
 };
 
 interface Props {
@@ -156,7 +157,7 @@ export function PageTemplate({ page, onClearSlot, sectionPhotos, onEditDescripti
       )}
 
       <div
-        className={`${gridClasses} gap-2 bg-slate-950 border border-slate-700 rounded-lg p-3`}
+        className={`${gridClasses} gap-2 bg-slate-950 border border-slate-700 rounded-lg ${page.format === '1_fullbleed' ? 'p-0 overflow-hidden' : 'p-3'}`}
         style={{ aspectRatio: '297/210', ...getGridColumnStyle(page.format, page.split_position) }}
       >
         {Array.from({ length: slotCount }, (_, i) => {
