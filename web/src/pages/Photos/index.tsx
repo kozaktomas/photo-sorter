@@ -1,5 +1,5 @@
 import { useEffect, useState, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Loader2, Check, X } from 'lucide-react';
 import { Card, CardContent } from '../../components/Card';
@@ -19,6 +19,7 @@ import type { Photo, Label, Album, Config } from '../../types';
 export function PhotosPage() {
   const { t } = useTranslation(['pages', 'common']);
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   // Filter state from hook
   const filters = usePhotosFilters();
@@ -45,7 +46,9 @@ export function PhotosPage() {
   const handlePhotoClick = (photo: Photo) => {
     // Save current state to cache before navigating
     pagination.saveCache();
-    void navigate(`/photos/${photo.uid}?source=photos`);
+    const params = new URLSearchParams(searchParams);
+    params.set('source', 'photos');
+    void navigate(`/photos/${photo.uid}?${params.toString()}`);
   };
 
   const exitSelectionMode = () => {

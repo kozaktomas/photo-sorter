@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { ArrowLeft, Loader2, AlertCircle, Images, ScanFace, Copy, ExternalLink, User, RefreshCw } from 'lucide-react';
 import { AddToBookDropdown } from './AddToBookDropdown';
@@ -22,6 +22,22 @@ export function PhotoDetailPage() {
   const { t } = useTranslation(['pages', 'common']);
   const { uid } = useParams<{ uid: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  const handleBack = useCallback(() => {
+    const source = searchParams.get('source');
+    if (source === 'photos') {
+      const params = new URLSearchParams();
+      for (const key of ['q', 'year', 'label', 'album', 'sort']) {
+        const value = searchParams.get(key);
+        if (value) params.set(key, value);
+      }
+      const qs = params.toString();
+      void navigate(qs ? `/photos?${qs}` : '/photos');
+      return;
+    }
+    void navigate('/photos');
+  }, [navigate, searchParams]);
 
   const {
     photo,
@@ -156,7 +172,7 @@ export function PhotoDetailPage() {
         <div className="text-center">
           <AlertCircle className="h-12 w-12 text-red-500 mx-auto mb-4" />
           <p className="text-red-400">{photoError || t('common:errors.photoNotFound')}</p>
-          <Button variant="ghost" onClick={() => navigate('/photos')} className="mt-4">
+          <Button variant="ghost" onClick={handleBack} className="mt-4">
             <ArrowLeft className="h-4 w-4 mr-2" />
             {t('common:buttons.goBack')}
           </Button>
@@ -172,7 +188,7 @@ export function PhotoDetailPage() {
       {/* Header */}
       {!fullscreen && <div className="flex items-center justify-between px-6 py-4 border-b border-slate-700 shrink-0">
         <div className="flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={() => navigate('/photos')}>
+          <Button variant="ghost" size="sm" onClick={handleBack}>
             <ArrowLeft className="h-4 w-4 mr-1" />
             {t('pages:photoDetail.back')}
           </Button>

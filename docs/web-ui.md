@@ -101,6 +101,7 @@ Browse all photos in your library with powerful filtering.
   - Bulk actions: Add to Album, Add Label, Favorite
   - When viewing album filter: Remove from Album action
   - Click "Cancel" to exit selection mode
+- **Filter persistence** - Active filters are stored in the URL (`?q=…&year=…&label=…&album=…&sort=…`) and forwarded to Photo Detail, so the back button returns you to the same filtered view with cached photos and scroll position restored
 - **Photo navigation context** - When clicking a photo, navigation arrows and position counter are available in Photo Detail
 - **Photo Detail Modal** - Click any photo to see full details
   - Photo metadata (date, camera, location)
@@ -128,7 +129,7 @@ When accessing a photo from an album, label, or the Photos page, navigation cont
 - **Left/Right arrows** - Semi-transparent navigation buttons appear on hover over the photo
 - **Position counter** - Shows current position (e.g., "22 / 41") at the bottom center on hover
 - **Keyboard navigation** - Use ← and → arrow keys to navigate between photos
-- URL preserves context via query parameter (`?album=xyz`, `?label=slug`, or `?source=photos`)
+- URL preserves context via query parameter (`?album=xyz`, `?label=slug`, or `?source=photos` — the Photos source additionally carries the active `q`/`year`/`label`/`album`/`sort` filters so the back button restores them)
 - Photo list is cached in sessionStorage for fast navigation without extra API calls
 - Direct URL access (e.g., sharing a link) fetches the album/label photos from API automatically (Photos page uses cache only)
 
