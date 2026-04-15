@@ -2737,7 +2737,7 @@ The MCP (Model Context Protocol) server is integrated into the `serve` command. 
 | `list_books` | List all photo books | (none) |
 | `get_book` | Get book detail with chapters, sections, pages | `book_id` (string, required) |
 | `create_book` | Create a new book | `title` (string, required), `description` (string, optional) |
-| `update_book` | Update book title/description | `book_id` (string, required), `title` (string, optional), `description` (string, optional) |
+| `update_book` | Update book title, description, or typography | `book_id` (string, required), `title` (string, optional), `description` (string, optional), `body_font` (string, optional — must exist in font registry), `heading_font` (string, optional), `body_font_size` (number, optional — 6-36 pt), `body_line_height` (number, optional — 8-48 pt), `h1_font_size` (number, optional — 6-36 pt), `h2_font_size` (number, optional — 6-36 pt), `caption_opacity` (number, optional — 0.0-1.0), `caption_font_size` (number, optional — 6-36 pt), `heading_color_bleed` (number, optional — 0-20 mm), `caption_badge_size` (number, optional — 2-12 mm) |
 | `delete_book` | Delete a book and all its content | `book_id` (string, required) |
 
 ### MCP Tools — Chapters
@@ -2766,12 +2766,13 @@ The MCP (Model Context Protocol) server is integrated into the `serve` command. 
 
 | Tool | Description | Parameters |
 |------|-------------|------------|
-| `create_page` | Create a page in a book | `book_id` (string, required), `format` (string, required — `4_landscape`, `2l_1p`, `1p_2l`, `2_portrait`, `1_fullscreen`), `section_id` (string, optional), `style` (string, optional — `modern`, `archival`) |
-| `update_page` | Update page format/section/description | `page_id` (string, required), `format` (string, optional), `section_id` (string, optional), `description` (string, optional), `style` (string, optional), `split_position` (number, optional — 0.2-0.8) |
+| `create_page` | Create a page in a book | `book_id` (string, required), `section_id` (string, required), `format` (string, required — `4_landscape`, `2l_1p`, `1p_2l`, `2_portrait`, `1_fullscreen`, `1_fullbleed`) |
+| `update_page` | Update page format/section/description/folio | `page_id` (string, required), `format` (string, optional — `4_landscape`, `2l_1p`, `1p_2l`, `2_portrait`, `1_fullscreen`, `1_fullbleed`), `section_id` (string, optional), `description` (string, optional), `split_position` (number, optional — 0.2-0.8, only `2l_1p`/`1p_2l`), `hide_page_number` (boolean, optional — suppress folio on this page) |
 | `delete_page` | Delete a page and all slots | `page_id` (string, required) |
 | `reorder_pages` | Reorder pages in a book | `book_id` (string, required), `page_ids` (array of strings, required) |
 | `assign_photo_to_slot` | Assign a photo to a page slot | `page_id` (string, required), `slot_index` (number, required), `photo_uid` (string, required) |
 | `assign_text_to_slot` | Assign markdown text to a slot | `page_id` (string, required), `slot_index` (number, required), `text_content` (string, required) |
+| `assign_captions_slot` | Mark a slot as the captions slot (routes photo captions into it, suppresses bottom strip; at most one per page) | `page_id` (string, required), `slot_index` (number, required) |
 | `clear_slot` | Clear a page slot | `page_id` (string, required), `slot_index` (number, required) |
 | `swap_slots` | Swap two slots on a page | `page_id` (string, required), `slot_a` (number, required), `slot_b` (number, required) |
 | `update_slot_crop` | Update crop position and zoom | `page_id` (string, required), `slot_index` (number, required), `crop_x` (number, required — 0.0-1.0), `crop_y` (number, required — 0.0-1.0), `crop_scale` (number, optional — 0.1-1.0) |

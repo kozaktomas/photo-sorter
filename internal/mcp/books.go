@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	"github.com/kozaktomas/photo-sorter/internal/database"
+	"github.com/kozaktomas/photo-sorter/internal/latex"
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
@@ -118,23 +119,25 @@ type sectionDetailItem struct {
 }
 
 type pageDetailItem struct {
-	ID            string           `json:"id"`
-	SectionID     string           `json:"section_id,omitempty"`
-	Format        string           `json:"format"`
-	Style         string           `json:"style"`
-	Description   string           `json:"description,omitempty"`
-	SplitPosition *float64         `json:"split_position,omitempty"`
-	SortOrder     int              `json:"sort_order"`
-	Slots         []slotDetailItem `json:"slots"`
+	ID             string           `json:"id"`
+	SectionID      string           `json:"section_id,omitempty"`
+	Format         string           `json:"format"`
+	Style          string           `json:"style"`
+	Description    string           `json:"description,omitempty"`
+	SplitPosition  *float64         `json:"split_position,omitempty"`
+	HidePageNumber bool             `json:"hide_page_number,omitempty"`
+	SortOrder      int              `json:"sort_order"`
+	Slots          []slotDetailItem `json:"slots"`
 }
 
 type slotDetailItem struct {
-	SlotIndex   int     `json:"slot_index"`
-	PhotoUID    string  `json:"photo_uid,omitempty"`
-	TextContent string  `json:"text_content,omitempty"`
-	CropX       float64 `json:"crop_x"`
-	CropY       float64 `json:"crop_y"`
-	CropScale   float64 `json:"crop_scale"`
+	SlotIndex      int     `json:"slot_index"`
+	PhotoUID       string  `json:"photo_uid,omitempty"`
+	TextContent    string  `json:"text_content,omitempty"`
+	IsCaptionsSlot bool    `json:"is_captions_slot,omitempty"`
+	CropX          float64 `json:"crop_x"`
+	CropY          float64 `json:"crop_y"`
+	CropScale      float64 `json:"crop_scale"`
 }
 
 func convertPages(pages []database.BookPage) []pageDetailItem {
@@ -144,15 +147,18 @@ func convertPages(pages []database.BookPage) []pageDetailItem {
 		for j, sl := range p.Slots {
 			slots[j] = slotDetailItem{
 				SlotIndex: sl.SlotIndex, PhotoUID: sl.PhotoUID,
-				TextContent: sl.TextContent,
-				CropX:       sl.CropX, CropY: sl.CropY, CropScale: sl.CropScale,
+				TextContent:    sl.TextContent,
+				IsCaptionsSlot: sl.IsCaptionsSlot,
+				CropX:          sl.CropX, CropY: sl.CropY, CropScale: sl.CropScale,
 			}
 		}
 		items[i] = pageDetailItem{
 			ID: p.ID, SectionID: p.SectionID, Format: p.Format,
 			Style: p.Style, Description: p.Description,
-			SplitPosition: p.SplitPosition, SortOrder: p.SortOrder,
-			Slots: slots,
+			SplitPosition:  p.SplitPosition,
+			HidePageNumber: p.HidePageNumber,
+			SortOrder:      p.SortOrder,
+			Slots:          slots,
 		}
 	}
 	return items
@@ -251,6 +257,54 @@ func (s *Server) handleCreateBook(ctx context.Context, req mcp.CallToolRequest) 
 	return jsonResult(result)
 }
 
+// applyBookTypography applies optional typography updates to a book. Returns
+// an error message if validation fails, or empty string on success. Mirrors
+// the validation ranges enforced by the web handler
+// (internal/web/handlers/books.go applySizes/applyFonts) so the two paths
+// stay in sync.
+func applyBookTypography(
+	book *database.PhotoBook, args map[string]any,
+) string {
+	if f := optionalStr(args, "body_font"); f != "" {
+		if !latex.ValidateFont(f) {
+			return fmt.Sprintf("invalid body_font: %q", f)
+		}
+		book.BodyFont = f
+	}
+	if f := optionalStr(args, "heading_font"); f != "" {
+		if !latex.ValidateFont(f) {
+			return fmt.Sprintf("invalid heading_font: %q", f)
+		}
+		book.HeadingFont = f
+	}
+	ranges := []struct {
+		key    string
+		lo, hi float64
+		target *float64
+	}{
+		{"body_font_size", 6, 36, &book.BodyFontSize},
+		{"body_line_height", 8, 48, &book.BodyLineHeight},
+		{"h1_font_size", 6, 36, &book.H1FontSize},
+		{"h2_font_size", 6, 36, &book.H2FontSize},
+		{"caption_opacity", 0, 1, &book.CaptionOpacity},
+		{"caption_font_size", 6, 36, &book.CaptionFontSize},
+		{"heading_color_bleed", 0, 20, &book.HeadingColorBleed},
+		{"caption_badge_size", 2, 12, &book.CaptionBadgeSize},
+	}
+	for _, r := range ranges {
+		v, ok := optionalFloat(args, r.key)
+		if !ok {
+			continue
+		}
+		if v < r.lo || v > r.hi {
+			return fmt.Sprintf(
+				"%s must be between %g and %g", r.key, r.lo, r.hi)
+		}
+		*r.target = v
+	}
+	return ""
+}
+
 func (s *Server) handleUpdateBook(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	args := req.GetArguments()
 	bookID, err := requiredStr(args, "book_id")
@@ -272,21 +326,44 @@ func (s *Server) handleUpdateBook(ctx context.Context, req mcp.CallToolRequest) 
 	if d, ok := args["description"]; ok {
 		book.Description, _ = d.(string)
 	}
+	if errMsg := applyBookTypography(book, args); errMsg != "" {
+		return mcp.NewToolResultError(errMsg), nil
+	}
 
 	if err := s.bookWriter.UpdateBook(s.ctx(), book); err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to update book: %v", err)), nil
 	}
 
 	result := struct {
-		ID          string `json:"id"`
-		Title       string `json:"title"`
-		Description string `json:"description"`
-		UpdatedAt   string `json:"updated_at"`
+		ID                string  `json:"id"`
+		Title             string  `json:"title"`
+		Description       string  `json:"description"`
+		BodyFont          string  `json:"body_font"`
+		HeadingFont       string  `json:"heading_font"`
+		BodyFontSize      float64 `json:"body_font_size"`
+		BodyLineHeight    float64 `json:"body_line_height"`
+		H1FontSize        float64 `json:"h1_font_size"`
+		H2FontSize        float64 `json:"h2_font_size"`
+		CaptionOpacity    float64 `json:"caption_opacity"`
+		CaptionFontSize   float64 `json:"caption_font_size"`
+		HeadingColorBleed float64 `json:"heading_color_bleed"`
+		CaptionBadgeSize  float64 `json:"caption_badge_size"`
+		UpdatedAt         string  `json:"updated_at"`
 	}{
-		ID:          book.ID,
-		Title:       book.Title,
-		Description: book.Description,
-		UpdatedAt:   book.UpdatedAt.Format("2006-01-02T15:04:05Z"),
+		ID:                book.ID,
+		Title:             book.Title,
+		Description:       book.Description,
+		BodyFont:          book.BodyFont,
+		HeadingFont:       book.HeadingFont,
+		BodyFontSize:      book.BodyFontSize,
+		BodyLineHeight:    book.BodyLineHeight,
+		H1FontSize:        book.H1FontSize,
+		H2FontSize:        book.H2FontSize,
+		CaptionOpacity:    book.CaptionOpacity,
+		CaptionFontSize:   book.CaptionFontSize,
+		HeadingColorBleed: book.HeadingColorBleed,
+		CaptionBadgeSize:  book.CaptionBadgeSize,
+		UpdatedAt:         book.UpdatedAt.Format("2006-01-02T15:04:05Z"),
 	}
 	return jsonResult(result)
 }

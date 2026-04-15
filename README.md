@@ -19,7 +19,7 @@ A CLI tool and web interface for organizing photos in [PhotoPrism](https://photo
 - **Album Suggestions** - Find photos missing from albums via HNSW centroid search
 - **Photo Comparison** - Side-by-side photo comparison with metadata diff
 - **Slideshow** - Full-screen photo slideshow with keyboard navigation
-- **MCP Server** - Model Context Protocol server for AI agent integration (48 tools for books, photos, albums, labels, text)
+- **MCP Server** - Model Context Protocol server for AI agent integration (51 tools for books, photos, albums, labels, text)
 - **Web Interface** - Browser-based UI with real-time progress updates via SSE
 - **Internationalization** - Czech and English language support
 - **Dry Run Mode** - Preview changes before applying them

@@ -299,7 +299,9 @@ go run . cache compute-eras [flags]           # Compute CLIP era embedding centr
 
 The MCP server is integrated into the `serve` command. When `MCP_API_TOKEN` is set, MCP endpoints are mounted at `/mcp/sse` and `/mcp/message` on the same HTTP server. If the token is not set, MCP routes are simply not registered.
 
-Exposes 48 MCP tools for photo book management, photo/album/label operations, and AI text tools over HTTP SSE. Server name: `photo-sorter-books`. MCP clients authenticate with `Authorization: Bearer <MCP_API_TOKEN>`.
+Exposes 51 MCP tools for photo book management, photo/album/label operations, and AI text tools over HTTP SSE. Server name: `photo-sorter-books`. MCP clients authenticate with `Authorization: Bearer <MCP_API_TOKEN>`.
+
+Book-side MCP surface is at parity with the web book API for everything except heavy ops: `update_book` accepts the full typography payload (`body_font`, `heading_font`, `body_font_size`, `body_line_height`, `h1_font_size`, `h2_font_size`, `caption_opacity`, `caption_font_size`, `heading_color_bleed`, `caption_badge_size`, validated via `latex.ValidateFont` and the same numeric ranges as the web handler); `update_page` accepts `hide_page_number` for per-page folio suppression; `assign_captions_slot` routes the page's photo captions into a specific slot (at most one per page, maps `database.ErrCaptionsSlotExists` to a clear error). `auto_layout`, `preflight`, and the PDF export job flow are intentionally web-API-only.
 
 **Package structure:**
 ```

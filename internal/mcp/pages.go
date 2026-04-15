@@ -69,12 +69,15 @@ func (s *Server) parsePageIDAndSlot(
 const (
 	createPageDesc = "Create a page in a book. " +
 		"Format determines slot count: " +
-		"4_landscape=4, 2l_1p=3, 1p_2l=3, 2_portrait=2, 1_fullscreen=1"
+		"4_landscape=4, 2l_1p=3, 1p_2l=3, 2_portrait=2, " +
+		"1_fullscreen=1, 1_fullbleed=1"
 	formatDesc = "Page format: 4_landscape (4 slots), " +
 		"2l_1p (3 slots), 1p_2l (3 slots), " +
-		"2_portrait (2 slots), 1_fullscreen (1 slot)"
+		"2_portrait (2 slots), 1_fullscreen (1 slot), " +
+		"1_fullbleed (1 slot, photo covers full page incl. 3mm bleed; " +
+		"folio and footer captions suppressed)"
 	invalidFormatMsg = "invalid format %q — valid: " +
-		"4_landscape, 2l_1p, 1p_2l, 2_portrait, 1_fullscreen"
+		"4_landscape, 2l_1p, 1p_2l, 2_portrait, 1_fullscreen, 1_fullbleed"
 )
 
 // registerPageTools registers page CRUD + reorder tools.
@@ -95,12 +98,13 @@ func (s *Server) registerPageTools() {
 	s.mcpServer.AddTool(
 		mcp.NewTool("update_page",
 			mcp.WithDescription(
-				"Update page format, section, description, or split position"),
+				"Update page format, section, description, split position, "+
+					"or folio suppression"),
 			mcp.WithString("page_id", mcp.Required(),
 				mcp.Description("Page ID (UUID)")),
 			mcp.WithString("format",
 				mcp.Description("New format: 4_landscape, 2l_1p, "+
-					"1p_2l, 2_portrait, 1_fullscreen")),
+					"1p_2l, 2_portrait, 1_fullscreen, 1_fullbleed")),
 			mcp.WithString("section_id",
 				mcp.Description("New section ID (UUID)")),
 			mcp.WithString("description",
@@ -108,6 +112,9 @@ func (s *Server) registerPageTools() {
 			mcp.WithNumber("split_position",
 				mcp.Description("Column split ratio (0.2-0.8), "+
 					"only for 2l_1p/1p_2l formats")),
+			mcp.WithBoolean("hide_page_number",
+				mcp.Description("Suppress folio on this page "+
+					"(numbering of other pages continues)")),
 		),
 		s.handleUpdatePage,
 	)
@@ -164,6 +171,21 @@ func (s *Server) registerSlotAssignTools() {
 				mcp.Description("Markdown text content")),
 		),
 		s.handleAssignTextToSlot,
+	)
+
+	s.mcpServer.AddTool(
+		mcp.NewTool("assign_captions_slot",
+			mcp.WithDescription(
+				"Mark a page slot as the captions slot — "+
+					"the page's photo captions render inside this slot "+
+					"and the bottom captions strip is suppressed. "+
+					"At most one captions slot per page."),
+			mcp.WithString("page_id", mcp.Required(),
+				mcp.Description("Page ID (UUID)")),
+			mcp.WithNumber("slot_index", mcp.Required(),
+				mcp.Description("0-based slot index")),
+		),
+		s.handleAssignCaptionsSlot,
 	)
 
 	s.mcpServer.AddTool(
@@ -252,6 +274,24 @@ func (s *Server) handleCreatePage(
 	return jsonResult(convertPages([]database.BookPage{*created})[0])
 }
 
+// applySplitPosition validates and applies the optional split_position arg.
+func applySplitPosition(
+	page *database.BookPage, args map[string]any,
+) string {
+	sp, ok := optionalFloat(args, "split_position")
+	if !ok {
+		return ""
+	}
+	if sp < 0.2 || sp > 0.8 {
+		return "split_position must be between 0.2 and 0.8"
+	}
+	if page.Format != "2l_1p" && page.Format != "1p_2l" {
+		return "split_position only applies to 2l_1p/1p_2l"
+	}
+	page.SplitPosition = &sp
+	return ""
+}
+
 // applyPageUpdates applies optional update fields to a page.
 // Returns an error message if validation fails.
 func applyPageUpdates(
@@ -269,14 +309,11 @@ func applyPageUpdates(
 	if d, ok := args["description"]; ok {
 		page.Description, _ = d.(string)
 	}
-	if sp, ok := optionalFloat(args, "split_position"); ok {
-		if sp < 0.2 || sp > 0.8 {
-			return "split_position must be between 0.2 and 0.8"
-		}
-		if page.Format != "2l_1p" && page.Format != "1p_2l" {
-			return "split_position only applies to 2l_1p/1p_2l"
-		}
-		page.SplitPosition = &sp
+	if msg := applySplitPosition(page, args); msg != "" {
+		return msg
+	}
+	if hpn, ok := optionalBool(args, "hide_page_number"); ok {
+		page.HidePageNumber = hpn
 	}
 	return ""
 }
@@ -446,6 +483,34 @@ func (s *Server) handleAssignTextToSlot(
 		"slot_index":   slotIndex,
 		"text_content": textContent,
 		"assigned":     true,
+	})
+}
+
+func (s *Server) handleAssignCaptionsSlot(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	args := req.GetArguments()
+	pageID, slotIndex, err := s.parsePageIDAndSlot(args)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	if err := s.bookWriter.AssignCaptionsSlot(
+		s.ctx(), pageID, slotIndex,
+	); err != nil {
+		if errors.Is(err, database.ErrCaptionsSlotExists) {
+			return mcp.NewToolResultError(
+				"page already has a captions slot — clear it first"), nil
+		}
+		return mcp.NewToolResultError(
+			fmt.Sprintf("failed to assign captions slot: %v", err)), nil
+	}
+
+	return jsonResult(map[string]any{
+		"page_id":          pageID,
+		"slot_index":       slotIndex,
+		"is_captions_slot": true,
+		"assigned":         true,
 	})
 }
 

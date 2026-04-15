@@ -129,15 +129,7 @@ func (s *Server) registerBookTools() {
 		s.handleCreateBook,
 	)
 
-	s.mcpServer.AddTool(
-		mcp.NewTool("update_book",
-			mcp.WithDescription("Update book title/description"),
-			mcp.WithString("book_id", mcp.Required(), mcp.Description("Book ID (UUID)")),
-			mcp.WithString("title", mcp.Description("New title")),
-			mcp.WithString("description", mcp.Description("New description")),
-		),
-		s.handleUpdateBook,
-	)
+	s.registerUpdateBookTool()
 
 	s.mcpServer.AddTool(
 		mcp.NewTool("delete_book",
@@ -145,6 +137,42 @@ func (s *Server) registerBookTools() {
 			mcp.WithString("book_id", mcp.Required(), mcp.Description("Book ID (UUID)")),
 		),
 		s.handleDeleteBook,
+	)
+}
+
+// registerUpdateBookTool registers the update_book tool. Extracted because
+// its typography argument surface pushes the parent function past funlen.
+func (s *Server) registerUpdateBookTool() {
+	s.mcpServer.AddTool(
+		mcp.NewTool("update_book",
+			mcp.WithDescription(
+				"Update book title, description, or typography settings"),
+			mcp.WithString("book_id", mcp.Required(),
+				mcp.Description("Book ID (UUID)")),
+			mcp.WithString("title", mcp.Description("New title")),
+			mcp.WithString("description", mcp.Description("New description")),
+			mcp.WithString("body_font",
+				mcp.Description("Body font ID (must exist in font registry)")),
+			mcp.WithString("heading_font",
+				mcp.Description("Heading font ID (must exist in font registry)")),
+			mcp.WithNumber("body_font_size",
+				mcp.Description("Body font size in pt (6-36)")),
+			mcp.WithNumber("body_line_height",
+				mcp.Description("Body line height in pt (8-48)")),
+			mcp.WithNumber("h1_font_size",
+				mcp.Description("H1 heading size in pt (6-36)")),
+			mcp.WithNumber("h2_font_size",
+				mcp.Description("H2 heading size in pt (6-36)")),
+			mcp.WithNumber("caption_opacity",
+				mcp.Description("Photo caption opacity (0.0-1.0)")),
+			mcp.WithNumber("caption_font_size",
+				mcp.Description("Caption font size in pt (6-36)")),
+			mcp.WithNumber("heading_color_bleed",
+				mcp.Description("Chapter color bleed behind headings in mm (0-20)")),
+			mcp.WithNumber("caption_badge_size",
+				mcp.Description("Caption badge size in mm (2-12)")),
+		),
+		s.handleUpdateBook,
 	)
 }
 
