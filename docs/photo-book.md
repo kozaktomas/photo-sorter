@@ -361,7 +361,7 @@ Zones sum exactly to page height: 10 + 4 + 172 + 8 + 16 = 210mm.
 
 Half-canvas height: (172 - 4) / 2 = 84mm.
 
-`1_fullbleed` is the only format that bypasses the 12-column grid and the safe canvas: the photo is placed at TikZ coordinates `(-3, -3) → (300, 213)` mm so it covers the full 303 × 216 mm bleed area defined by `templates/book.tex`'s `crop` package. Folio rendering is forced off and the footer captions strip is suppressed for the page (pagination of other pages is unaffected).
+`1_fullbleed` is the only format that bypasses the 12-column grid and the safe canvas: the photo is placed at TikZ coordinates `(-3.5, -3.5) → (300.5, 213.5)` mm so it covers the full 303 × 216 mm bleed area defined by `templates/book.tex`'s `crop` package, plus a 0.5 mm overflow on each side (`fullBleedRasterEpsilonMM` in `internal/latex/formats.go`) that prevents rasterizer integer-pixel-grid rounding from leaving a sub-mm white row at the page bottom. The overflow is hard-clipped by the PDF media box and invisible in the output. Folio rendering is forced off and the footer captions strip is suppressed for the page (pagination of other pages is unaffected).
 
 **Note:** For `2l_1p` and `1p_2l` formats, the column split can be adjusted via the `split_position` field on `book_pages` (default 0.5 = 8:4 columns). This allows customizing the width ratio between landscape and portrait slots.
 

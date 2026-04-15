@@ -762,18 +762,21 @@ func TestBuildTemplateData(t *testing.T) {
 		}
 		page := data.Sections[0].Pages[0]
 
-		// Canvas clip must span the bleed area, not the safe canvas.
-		if page.ClipLeftX != -BleedMM {
-			t.Errorf("ClipLeftX = %.2f, want %.2f", page.ClipLeftX, -BleedMM)
+		// Canvas clip must span the bleed area, not the safe canvas, and
+		// be expanded by fullBleedRasterEpsilonMM on every side so the
+		// 300 DPI raster has no white row at the bottom edge.
+		eps := fullBleedRasterEpsilonMM
+		if page.ClipLeftX != -BleedMM-eps {
+			t.Errorf("ClipLeftX = %.2f, want %.2f", page.ClipLeftX, -BleedMM-eps)
 		}
-		if page.ClipRightX != PageW+BleedMM {
-			t.Errorf("ClipRightX = %.2f, want %.2f", page.ClipRightX, PageW+BleedMM)
+		if page.ClipRightX != PageW+BleedMM+eps {
+			t.Errorf("ClipRightX = %.2f, want %.2f", page.ClipRightX, PageW+BleedMM+eps)
 		}
-		if page.CanvasBottomY != -BleedMM {
-			t.Errorf("CanvasBottomY = %.2f, want %.2f", page.CanvasBottomY, -BleedMM)
+		if page.CanvasBottomY != -BleedMM-eps {
+			t.Errorf("CanvasBottomY = %.2f, want %.2f", page.CanvasBottomY, -BleedMM-eps)
 		}
-		if page.CanvasTopY != PageH+BleedMM {
-			t.Errorf("CanvasTopY = %.2f, want %.2f", page.CanvasTopY, PageH+BleedMM)
+		if page.CanvasTopY != PageH+BleedMM+eps {
+			t.Errorf("CanvasTopY = %.2f, want %.2f", page.CanvasTopY, PageH+BleedMM+eps)
 		}
 
 		// Folio and captions must be suppressed.
@@ -792,17 +795,17 @@ func TestBuildTemplateData(t *testing.T) {
 		if !s.HasPhoto {
 			t.Error("slot should have a photo")
 		}
-		if s.BorderX != -BleedMM {
-			t.Errorf("BorderX = %.2f, want %.2f", s.BorderX, -BleedMM)
+		if s.BorderX != -BleedMM-eps {
+			t.Errorf("BorderX = %.2f, want %.2f", s.BorderX, -BleedMM-eps)
 		}
-		if s.BorderY != -BleedMM {
-			t.Errorf("BorderY = %.2f, want %.2f", s.BorderY, -BleedMM)
+		if s.BorderY != -BleedMM-eps {
+			t.Errorf("BorderY = %.2f, want %.2f", s.BorderY, -BleedMM-eps)
 		}
-		if s.BorderW != PageW+2*BleedMM {
-			t.Errorf("BorderW = %.2f, want %.2f", s.BorderW, PageW+2*BleedMM)
+		if s.BorderW != PageW+2*BleedMM+2*eps {
+			t.Errorf("BorderW = %.2f, want %.2f", s.BorderW, PageW+2*BleedMM+2*eps)
 		}
-		if s.BorderH != PageH+2*BleedMM {
-			t.Errorf("BorderH = %.2f, want %.2f", s.BorderH, PageH+2*BleedMM)
+		if s.BorderH != PageH+2*BleedMM+2*eps {
+			t.Errorf("BorderH = %.2f, want %.2f", s.BorderH, PageH+2*BleedMM+2*eps)
 		}
 		// Clip rect should equal border rect (no archival inset for fullbleed).
 		if s.ClipX != s.BorderX || s.ClipY != s.BorderY ||

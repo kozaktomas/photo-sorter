@@ -11,6 +11,16 @@ const (
 // (width=303truemm, height=216truemm, i.e. 297+2·3, 210+2·3).
 const BleedMM = 3.0
 
+// fullBleedRasterEpsilonMM expands the 1_fullbleed clip/slot slightly past the
+// PDF media box so rasterizer integer-pixel-grid rounding at the page bottom
+// doesn't leave a sub-mm white row. At 300 DPI the PDF page height (612.283 pt
+// = 216 mm) rounds up to 2552 pixels, so the last raster row sits a fraction
+// of a mm below the filled content — visible as a thin white line in PDF
+// viewers that rasterize the page. The overflow is hard-clipped by the PDF
+// media box and invisible in the output. Do not remove without rasterizing a
+// fullbleed export at 300 DPI and confirming the bottom row is still filled.
+const fullBleedRasterEpsilonMM = 0.5
+
 // Page format identifiers.
 const (
 	FormatFullscreen = "1_fullscreen"

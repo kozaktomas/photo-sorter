@@ -1,5 +1,6 @@
 import type { CSSProperties } from 'react';
 import type { BookPage, PageFormat } from '../types';
+import { PAGE_DIMENSIONS } from '../constants/bookTypography';
 
 export function pageFormatSlotCount(format: PageFormat): number {
   switch (format) {
@@ -133,6 +134,14 @@ const COLUMN_GUTTER = 4;
 const ROW_GAP = 4;
 const GRID_COLUMNS = 12;
 
+// For 1_fullbleed, the photo covers the full A4 + 3mm bleed on every side,
+// not the safe canvas area. These two constants give the real print geometry
+// used by getSlotAspectRatio / getSlotDimensionsMm — callers that need the
+// preview safe-area geometry should use getSlotRects (which deliberately
+// stays on CONTENT_WIDTH × CANVAS_HEIGHT).
+const FULLBLEED_WIDTH = PAGE_DIMENSIONS.pageWidth + 2 * PAGE_DIMENSIONS.bleed;   // 303
+const FULLBLEED_HEIGHT = PAGE_DIMENSIONS.pageHeight + 2 * PAGE_DIMENSIONS.bleed; // 216
+
 const COL_WIDTH = (CONTENT_WIDTH - (GRID_COLUMNS - 1) * COLUMN_GUTTER) / GRID_COLUMNS;
 
 function colSpanWidth(n: number): number {
@@ -160,6 +169,11 @@ export function getSlotRects(format: PageFormat, splitPosition: number | null): 
     case '1_fullscreen':
       return [{ x: 0, y: 0, w: CONTENT_WIDTH, h: CANVAS_HEIGHT }];
     case '1_fullbleed':
+      // Preview-only safe-area rect; the actual print geometry covers the
+      // full 303×216 bleed area — see FULLBLEED_WIDTH/HEIGHT used by
+      // getSlotAspectRatio and getSlotDimensionsMm. Keep the safe-area rect
+      // here so PageLayoutPreview / text-slot editor don't overflow their
+      // safe-area containers.
       return [{ x: 0, y: 0, w: CONTENT_WIDTH, h: CANVAS_HEIGHT }];
     case '2_portrait':
       return [
@@ -216,7 +230,7 @@ function getSlotDimensionsMm(format: PageFormat, slotIndex: number, splitPositio
     case '1_fullscreen':
       return [CONTENT_WIDTH, CANVAS_HEIGHT];
     case '1_fullbleed':
-      return [CONTENT_WIDTH, CANVAS_HEIGHT];
+      return [FULLBLEED_WIDTH, FULLBLEED_HEIGHT];
     case '2_portrait':
       return [halfW, CANVAS_HEIGHT];
     case '4_landscape':
@@ -275,7 +289,7 @@ export function getSlotAspectRatio(format: PageFormat, slotIndex: number, splitP
     case '1_fullscreen':
       return CONTENT_WIDTH / CANVAS_HEIGHT;
     case '1_fullbleed':
-      return CONTENT_WIDTH / CANVAS_HEIGHT;
+      return FULLBLEED_WIDTH / FULLBLEED_HEIGHT;
     case '2_portrait':
       return halfW / CANVAS_HEIGHT;
     case '4_landscape':

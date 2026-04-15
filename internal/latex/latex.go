@@ -742,15 +742,17 @@ func (pb *pageBuilder) buildFullBleedPage(p database.BookPage, chapterColor stri
 			if cropScale <= 0 {
 				cropScale = 1.0
 			}
+			// eps expands the slot past the media box so rasterizers don't
+			// leave a sub-mm white row at the bottom (see formats.go).
+			eps := fullBleedRasterEpsilonMM
 			fullSlot := SlotRect{
-				X: 0,
-				Y: 0,
-				W: PageW + 2*BleedMM,
-				H: PageH + 2*BleedMM,
+				X: 0, Y: 0,
+				W: PageW + 2*BleedMM + 2*eps,
+				H: PageH + 2*BleedMM + 2*eps,
 			}
 			ts := buildPhotoSlotNew(
 				fullSlot, img,
-				-BleedMM, PageH+BleedMM,
+				-BleedMM-eps, PageH+BleedMM+eps,
 				false, 0,
 				ps.CropX, ps.CropY, cropScale,
 			)
@@ -784,11 +786,11 @@ func (pb *pageBuilder) buildFullBleedPage(p database.BookPage, chapterColor stri
 		ContentLeftX:   contentLeftX,
 		ContentRightX:  contentRightX,
 		ContentW:       pb.config.ContentWidth(),
-		ClipLeftX:      -BleedMM,
-		ClipRightX:     PageW + BleedMM,
+		ClipLeftX:      -BleedMM - fullBleedRasterEpsilonMM,
+		ClipRightX:     PageW + BleedMM + fullBleedRasterEpsilonMM,
 		HeaderY:        headerY,
-		CanvasTopY:     PageH + BleedMM,
-		CanvasBottomY:  -BleedMM,
+		CanvasTopY:     PageH + BleedMM + fullBleedRasterEpsilonMM,
+		CanvasBottomY:  -BleedMM - fullBleedRasterEpsilonMM,
 		FooterRuleY:    footerRuleY,
 		FolioX:         folioX,
 		FolioY:         folioY,

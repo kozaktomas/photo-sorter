@@ -111,6 +111,7 @@ export const BOOK_TYPOGRAPHY = {
 export const PAGE_DIMENSIONS = {
   pageWidth: 297,           // A4 landscape
   pageHeight: 210,
+  bleed: 3,                 // mirrors BleedMM in internal/latex/formats.go
   marginInside: 20,
   marginOutside: 12,
   headerHeight: 4,
