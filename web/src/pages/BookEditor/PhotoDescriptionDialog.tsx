@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { X, SpellCheck, ArrowLeftRight, Check, Loader2, DollarSign, History } from 'lucide-react';
 import { getThumbnailUrl, updateSectionPhoto, checkTextAndSave, rewriteText, listTextVersions, restoreTextVersion } from '../../api/client';
+import type { TextSuggestion } from '../../api/client';
+import { CheckSuggestionsList } from './CheckSuggestionsList';
 import { handleMarkdownPaste } from '../../utils/paste';
 import type { TextVersion } from '../../types';
 
@@ -18,6 +20,7 @@ interface CheckResult {
   corrected_text: string;
   readability_score: number;
   changes: string[];
+  suggestions: TextSuggestion[];
   cost_czk: number;
   cached: boolean;
 }
@@ -320,6 +323,7 @@ export function PhotoDescriptionDialog({ sectionId, photoUid, description, note,
                   </div>
                 </>
               )}
+              <CheckSuggestionsList suggestions={checkResult.suggestions} />
               <div className="flex items-center gap-2 pt-1">
                 {checkResult.changes.length > 0 && (
                   <button

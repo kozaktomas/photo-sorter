@@ -2444,11 +2444,15 @@ interface ProcessJobResult {
 
 ## Text AI
 
-AI-powered text operations for Czech text editing. Requires `OPENAI_TOKEN` to be configured.
+AI-powered text operations for Czech text editing. Requires `OPENAI_TOKEN` to be configured. All text endpoints (check / rewrite / consistency) call **GPT-5.4-mini**, configured as a single source of truth in `ai.TextModel`.
 
 ### Check Text
 
-Check Czech text for spelling, diacritics, and grammar issues using GPT-4.1-mini. Markdown syntax (headings, `**bold**`, `*italic*`, `^^small caps^^`, lists, blockquotes, GFM tables, alignment macros `->text<-` / `->text->`, horizontal rules) and special typography characters (`~` for non-breaking space, `\~` for literal tilde, backslash-escapes) are preserved verbatim and not flagged as errors.
+Check Czech text for spelling, diacritics, grammar, and readability problems. Markdown syntax (headings, `**bold**`, `*italic*`, `^^small caps^^`, lists, blockquotes, GFM tables, alignment macros `->text<-` / `->text->`, horizontal rules) and special typography characters (`~` for non-breaking space, `\~` for literal tilde, backslash-escapes) are preserved verbatim and not flagged as errors.
+
+The response contains two separate channels:
+- `changes` — mechanical corrections that can be auto-applied (diacritics, grammar, missing commas). `corrected_text` reflects these.
+- `suggestions` — advisory readability tips that are **not** auto-applied. Each item has `severity` (`major` when the text is genuinely hard to read, `minor` for polish) and a short Czech `message`.
 
 ```
 POST /text/check
@@ -2469,9 +2473,19 @@ POST /text/check
   "changes": [
     "naseho → našeho (diacritics)",
     "v Veselici → ve Veselici (preposition)"
-  ]
+  ],
+  "suggestions": [
+    {
+      "severity": "minor",
+      "message": "Věta je velmi krátká — zvaž doplnění kontextu."
+    }
+  ],
+  "cost_czk": 0.03,
+  "cached": false
 }
 ```
+
+`/text/check` uses only the in-memory cache (it has no source identifiers). Use `/text/check-and-save` when you want the persistent DB cache tier as well.
 
 **Error Responses:**
 | Status | Description |
@@ -2481,7 +2495,7 @@ POST /text/check
 
 ### Rewrite Text
 
-Rewrite Czech text to a target length using GPT-4.1-mini. Existing markdown structure (headings, lists, tables, blockquotes, alignment macros) and special typography characters (`~`, `\~`) are preserved in place — the model only adjusts the prose inside them.
+Rewrite Czech text to a target length. Existing markdown structure (headings, lists, tables, blockquotes, alignment macros) and special typography characters (`~`, `\~`) are preserved in place — the model only adjusts the prose inside them.
 
 ```
 POST /text/rewrite
@@ -2557,7 +2571,11 @@ POST /text/consistency
 
 ### Check Text and Save Result
 
-Run AI text check and persist the result to the database for status tracking.
+Run AI text check and persist the result to the database for status tracking. This endpoint uses a **three-tier cache** (in-memory → DB → OpenAI):
+
+1. **In-memory cache** — keyed by SHA-256 of the text. Fastest; survives for the lifetime of the process.
+2. **Database cache** — keyed by `(source_type, source_id, field)` with `content_hash` verification. Survives server restarts, so an unchanged text never burns a second OpenAI call after a reboot. On a DB hit the in-memory tier is rehydrated and the DB upsert is skipped (no redundant `checked_at` refresh).
+3. **OpenAI** — the actual `gpt-5.4-mini` call, used only on a full cache miss.
 
 ```
 POST /text/check-and-save
@@ -2586,11 +2604,17 @@ POST /text/check-and-save
   "corrected_text": "Fotografie z našeho domu",
   "readability_score": 90,
   "changes": ["naseho → našeho (diacritics)"],
+  "suggestions": [
+    {
+      "severity": "major",
+      "message": "Popisek je natolik strohý, že čtenáři chybí kontext — doplň místo nebo čas."
+    }
+  ],
   "cost_czk": 0.05,
   "cached": false,
   "status": "has_errors",
   "content_hash": "a1b2c3...",
-  "checked_at": "2025-03-31T10:00:00Z"
+  "checked_at": "2026-04-15T22:00:00Z"
 }
 ```
 
@@ -2608,19 +2632,27 @@ GET /books/{id}/text-check-status
   "section_photo:abc123:pq8def456:description": {
     "status": "has_errors",
     "readability_score": 85,
-    "checked_at": "2025-03-31T10:00:00Z",
+    "checked_at": "2026-04-15T22:00:00Z",
     "is_stale": false,
     "corrected_text": "Fotografie z našeho domu",
-    "changes": ["naseho → našeho"]
+    "changes": ["naseho → našeho"],
+    "suggestions": [
+      {
+        "severity": "minor",
+        "message": "Popisek se krátce opakuje v sousední sekci — zvaž obměnu formulace."
+      }
+    ]
   },
   "page_slot:page1:0:text_content": {
     "status": "clean",
     "readability_score": 95,
-    "checked_at": "2025-03-31T09:30:00Z",
+    "checked_at": "2026-04-15T21:30:00Z",
     "is_stale": true
   }
 }
 ```
+
+`suggestions` is returned whenever the persisted check has advisory items (regardless of `status`). `corrected_text` and `changes` are only returned for `has_errors` rows.
 
 The `is_stale` flag indicates the text content has changed since the last check (content hash mismatch). Results with `status: "clean"` omit `corrected_text` and `changes`.
 

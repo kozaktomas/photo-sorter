@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -9,6 +10,7 @@ import (
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/kozaktomas/photo-sorter/internal/ai"
@@ -72,7 +74,7 @@ func (h *TextHandler) setCache(key string, resp map[string]any) {
 const usdToCZK = 23.5
 
 // textModel is the model used for text operations.
-const textModel = "gpt-4.1-mini"
+const textModel = ai.TextModel
 
 // computeCostCZK calculates cost in CZK from token usage and model pricing.
 func (h *TextHandler) computeCostCZK(usage ai.TokenUsage) float64 {
@@ -118,6 +120,7 @@ func (h *TextHandler) Check(w http.ResponseWriter, r *http.Request) {
 		"corrected_text":    result.CorrectedText,
 		"readability_score": result.ReadabilityScore,
 		"changes":           result.Changes,
+		"suggestions":       result.Suggestions,
 		"cost_czk":          h.computeCostCZK(result.Usage),
 		"cached":            false,
 	}
@@ -179,8 +182,10 @@ type checkResult struct {
 	correctedText    string
 	readabilityScore int
 	changes          []string
+	suggestions      []ai.TextSuggestion
 	costCZK          float64
 	cached           bool
+	checkedAt        time.Time // populated only on a DB cache hit
 }
 
 // extractCachedChanges extracts the changes slice from a cached response.
@@ -197,6 +202,28 @@ func extractCachedChanges(cachedResp map[string]any) []string {
 		if s, ok := c.(string); ok {
 			out = append(out, s)
 		}
+	}
+	return out
+}
+
+// extractCachedSuggestions extracts the suggestions slice from a cached response.
+func extractCachedSuggestions(cachedResp map[string]any) []ai.TextSuggestion {
+	if s, ok := cachedResp["suggestions"].([]ai.TextSuggestion); ok {
+		return s
+	}
+	sAny, ok := cachedResp["suggestions"].([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]ai.TextSuggestion, 0, len(sAny))
+	for _, item := range sAny {
+		m, ok := item.(map[string]any)
+		if !ok {
+			continue
+		}
+		sev, _ := m["severity"].(string)
+		msg, _ := m["message"].(string)
+		out = append(out, ai.TextSuggestion{Severity: sev, Message: msg})
 	}
 	return out
 }
@@ -245,7 +272,14 @@ func (h *TextHandler) CheckAndSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cr, err := h.runCheckWithCache(r, req.Text)
+	contentHash := sha256Hex(req.Text)
+	dbKey := database.TextCheckKey{
+		SourceType: req.SourceType,
+		SourceID:   req.SourceID,
+		Field:      req.Field,
+	}
+
+	cr, fromDB, err := h.runCheckWithCache(r, req.Text, dbKey, contentHash)
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, "text check failed: "+err.Error())
 		return
@@ -255,14 +289,104 @@ func (h *TextHandler) CheckAndSave(w http.ResponseWriter, r *http.Request) {
 	if len(cr.changes) > 0 {
 		status = "has_errors"
 	}
-	contentHash := sha256Hex(req.Text)
 
-	store, err := database.GetTextCheckStore(r.Context())
+	dbResult, err := h.persistCheckResult(r.Context(), req, contentHash, status, cr, fromDB)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "database not available: "+err.Error())
+		respondError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
 
+	checkedAt := dbResult.CheckedAt
+	if fromDB {
+		checkedAt = cr.checkedAt
+	}
+
+	respondJSON(w, http.StatusOK, map[string]any{
+		"corrected_text":    cr.correctedText,
+		"readability_score": cr.readabilityScore,
+		"changes":           cr.changes,
+		"suggestions":       cr.suggestions,
+		"cost_czk":          cr.costCZK,
+		"cached":            cr.cached,
+		"status":            status,
+		"content_hash":      contentHash,
+		"checked_at":        checkedAt,
+	})
+}
+
+// runCheckWithCache runs a text check using a three-tier lookup:
+// in-memory cache → persistent DB cache (by source+content hash) → OpenAI.
+// dbKey is optional; pass an empty TextCheckKey to skip the DB tier.
+// The returned fromDB flag lets callers skip an idempotent DB upsert when
+// the result was just read from the database.
+func (h *TextHandler) runCheckWithCache(
+	r *http.Request, text string, dbKey database.TextCheckKey, contentHash string,
+) (*checkResult, bool, error) {
+	key := cacheKey("check", text)
+
+	// Tier 1: in-memory cache
+	if cachedResp, ok := h.getCache(key); ok {
+		correctedText, _ := cachedResp["corrected_text"].(string)
+		return &checkResult{
+			correctedText:    correctedText,
+			readabilityScore: extractCachedScore(cachedResp),
+			changes:          extractCachedChanges(cachedResp),
+			suggestions:      extractCachedSuggestions(cachedResp),
+			cached:           true,
+		}, false, nil
+	}
+
+	// Tier 2: persistent DB cache — keyed by (source, id, field) + content hash.
+	// Survives server restart, so after a reboot the next click on Check
+	// for an unchanged text does not burn an OpenAI call.
+	if dbKey.SourceType != "" && contentHash != "" {
+		if cr, ok := h.lookupDBCache(r.Context(), dbKey, contentHash); ok {
+			// Hydrate the in-memory tier so subsequent hits in this session
+			// skip even the DB round trip.
+			h.setCache(key, map[string]any{
+				"corrected_text":    cr.correctedText,
+				"readability_score": cr.readabilityScore,
+				"changes":           cr.changes,
+				"suggestions":       cr.suggestions,
+				"cost_czk":          0.0,
+				"cached":            false,
+			})
+			return cr, true, nil
+		}
+	}
+
+	// Tier 3: call OpenAI
+	result, err := ai.CheckText(r.Context(), h.config.OpenAI.Token, text)
+	if err != nil {
+		return nil, false, fmt.Errorf("check text: %w", err)
+	}
+	costCZK := h.computeCostCZK(result.Usage)
+	h.setCache(key, map[string]any{
+		"corrected_text":    result.CorrectedText,
+		"readability_score": result.ReadabilityScore,
+		"changes":           result.Changes,
+		"suggestions":       result.Suggestions,
+		"cost_czk":          costCZK,
+		"cached":            false,
+	})
+	return &checkResult{
+		correctedText:    result.CorrectedText,
+		readabilityScore: result.ReadabilityScore,
+		changes:          result.Changes,
+		suggestions:      result.Suggestions,
+		costCZK:          costCZK,
+	}, false, nil
+}
+
+// persistCheckResult builds a database.TextCheckResult from a checkResult
+// and upserts it. When fromDB is true the upsert is skipped — the row is
+// already present with the same content hash, so rewriting it would only
+// bump checked_at for no gain. Returns the (populated) dbResult so callers
+// can forward CheckedAt to the response.
+func (h *TextHandler) persistCheckResult(
+	ctx context.Context, req checkAndSaveRequest, contentHash, status string,
+	cr *checkResult, fromDB bool,
+) (*database.TextCheckResult, error) {
 	dbResult := &database.TextCheckResult{
 		SourceType:       req.SourceType,
 		SourceID:         req.SourceID,
@@ -274,64 +398,71 @@ func (h *TextHandler) CheckAndSave(w http.ResponseWriter, r *http.Request) {
 		Changes:          cr.changes,
 		CostCZK:          cr.costCZK,
 	}
-	if err := store.SaveTextCheckResult(r.Context(), dbResult); err != nil {
-		respondError(w, http.StatusInternalServerError, "failed to save check result: "+err.Error())
-		return
+	if fromDB {
+		return dbResult, nil
 	}
 
-	respondJSON(w, http.StatusOK, map[string]any{
-		"corrected_text":    cr.correctedText,
-		"readability_score": cr.readabilityScore,
-		"changes":           cr.changes,
-		"cost_czk":          cr.costCZK,
-		"cached":            cr.cached,
-		"status":            status,
-		"content_hash":      contentHash,
-		"checked_at":        dbResult.CheckedAt,
-	})
+	store, err := database.GetTextCheckStore(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("database not available: %w", err)
+	}
+	dbSuggestions := make([]database.TextSuggestion, len(cr.suggestions))
+	for i, s := range cr.suggestions {
+		dbSuggestions[i] = database.TextSuggestion{Severity: s.Severity, Message: s.Message}
+	}
+	dbResult.Suggestions = dbSuggestions
+	if err := store.SaveTextCheckResult(ctx, dbResult); err != nil {
+		return nil, fmt.Errorf("failed to save check result: %w", err)
+	}
+	return dbResult, nil
 }
 
-// runCheckWithCache runs a text check, using the in-memory cache if available.
-func (h *TextHandler) runCheckWithCache(r *http.Request, text string) (*checkResult, error) {
-	key := cacheKey("check", text)
-	if cachedResp, ok := h.getCache(key); ok {
-		correctedText, _ := cachedResp["corrected_text"].(string)
-		return &checkResult{
-			correctedText:    correctedText,
-			readabilityScore: extractCachedScore(cachedResp),
-			changes:          extractCachedChanges(cachedResp),
-			cached:           true,
-		}, nil
-	}
-
-	result, err := ai.CheckText(r.Context(), h.config.OpenAI.Token, text)
+// lookupDBCache looks up a persisted text check result in the database
+// and returns it as a checkResult if the content hash matches the current
+// text. Returns (nil, false) when the DB has no matching entry.
+func (h *TextHandler) lookupDBCache(
+	ctx context.Context, key database.TextCheckKey, contentHash string,
+) (*checkResult, bool) {
+	store, err := database.GetTextCheckStore(ctx)
 	if err != nil {
-		return nil, fmt.Errorf("check text: %w", err)
+		return nil, false
 	}
-	costCZK := h.computeCostCZK(result.Usage)
-	h.setCache(key, map[string]any{
-		"corrected_text":    result.CorrectedText,
-		"readability_score": result.ReadabilityScore,
-		"changes":           result.Changes,
-		"cost_czk":          costCZK,
-		"cached":            false,
-	})
+	results, err := store.GetTextCheckResults(ctx, []database.TextCheckKey{key})
+	if err != nil {
+		return nil, false
+	}
+	mapKey := key.SourceType + ":" + key.SourceID + ":" + key.Field
+	existing, ok := results[mapKey]
+	if !ok || existing.ContentHash != contentHash {
+		return nil, false
+	}
+	score := 0
+	if existing.ReadabilityScore != nil {
+		score = *existing.ReadabilityScore
+	}
+	suggestions := make([]ai.TextSuggestion, len(existing.Suggestions))
+	for i, s := range existing.Suggestions {
+		suggestions[i] = ai.TextSuggestion{Severity: s.Severity, Message: s.Message}
+	}
 	return &checkResult{
-		correctedText:    result.CorrectedText,
-		readabilityScore: result.ReadabilityScore,
-		changes:          result.Changes,
-		costCZK:          costCZK,
-	}, nil
+		correctedText:    existing.CorrectedText,
+		readabilityScore: score,
+		changes:          existing.Changes,
+		suggestions:      suggestions,
+		cached:           true,
+		checkedAt:        existing.CheckedAt,
+	}, true
 }
 
 // textCheckStatusEntry is the JSON response shape for a single check status entry.
 type textCheckStatusEntry struct {
-	Status           string   `json:"status"`
-	ReadabilityScore *int     `json:"readability_score,omitempty"`
-	CheckedAt        string   `json:"checked_at"`
-	IsStale          bool     `json:"is_stale"`
-	CorrectedText    string   `json:"corrected_text,omitempty"`
-	Changes          []string `json:"changes,omitempty"`
+	Status           string                    `json:"status"`
+	ReadabilityScore *int                      `json:"readability_score,omitempty"`
+	CheckedAt        string                    `json:"checked_at"`
+	IsStale          bool                      `json:"is_stale"`
+	CorrectedText    string                    `json:"corrected_text,omitempty"`
+	Changes          []string                  `json:"changes,omitempty"`
+	Suggestions      []database.TextSuggestion `json:"suggestions,omitempty"`
 }
 
 // TextCheckStatus handles GET /api/v1/books/{id}/text-check-status.
@@ -372,6 +503,7 @@ func (h *TextHandler) TextCheckStatus(w http.ResponseWriter, r *http.Request) {
 			ReadabilityScore: result.ReadabilityScore,
 			CheckedAt:        result.CheckedAt.Format("2006-01-02T15:04:05Z07:00"),
 			IsStale:          isStale,
+			Suggestions:      result.Suggestions,
 		}
 		if result.Status == "has_errors" {
 			entry.CorrectedText = result.CorrectedText

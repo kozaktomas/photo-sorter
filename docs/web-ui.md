@@ -546,7 +546,7 @@ Five-tab editor for organizing a photo book.
 - **Photo Pool** - Grid of photos in the selected section with thumbnails
 - **Drag-and-Drop Between Sections** - Select photos and drag them to a different section in the sidebar. Multi-photo dragging supported. Visual feedback shows rose border on drop target and count badge on drag overlay. Target sections without empty capacity are visually dimmed
 - **Add by Photo ID** - Inline text input to quickly add a photo by pasting its UID (validates existence, checks for duplicates)
-- **Description Editing** - Click a photo to open the PhotoDescriptionDialog modal for editing description and note (same modal as Pages tab). Includes AI-powered text check (spelling/grammar) and text rewrite (length adjustment) buttons powered by GPT-4.1-mini
+- **Description Editing** - Click a photo to open the PhotoDescriptionDialog modal for editing description and note (same modal as Pages tab). Includes AI-powered text check (spelling/grammar + readability suggestions) and text rewrite (length adjustment) buttons powered by GPT-5.4-mini
 - **Bulk Selection** - Select multiple photos for batch removal
 - **Photo Browser Modal** - Full-screen modal to browse the entire library, search, and add photos to a section. Album and label filters use autocomplete comboboxes. Already-added photos are grayed out
 
@@ -586,13 +586,15 @@ Five-tab editor for organizing a photo book.
 - Empty state when no duplicates exist
 
 **Texts Tab:**
-- Overview of all text content in the book (section photo descriptions, notes, text slots)
-- **Stats Panel** - Total texts, word count, character count, reading time estimate
-- **Text Search** - Filter texts by content
-- **Batch AI Text Check** - Run AI text check on all texts with progress tracking. Results persisted to database with stale detection (content hash mismatch)
+- Overview of all text content in the book (section photo descriptions, text slots). Each row shows a breadcrumb with **type** (photo caption / text), **chapter** (with color dot), **section**, and **clickable page number(s)** — clicking a page number switches to the Pages tab and selects that page
+- Entries are sorted globally by page number (unplaced items last)
+- **Stats Panel** - Total texts, checked count, texts with errors, stale checks, count of major readability issues, total reading time
+- **Text Search** - Filter texts by content, chapter, section, or page number
+- **Batch AI Text Check** - Run AI text check on all texts with progress tracking. Results persisted to database via three-tier cache (in-memory → DB → OpenAI). After server restart, unchanged texts are served from DB cache without burning a fresh OpenAI call
+- **Readability Suggestions** - Every text check returns advisory readability/flow items in `suggestions[]`. Severity `major` (red) flags hard-to-read text; `minor` (amber) is polish. Displayed below the mechanical changes in the expanded panel; rendered via the shared `CheckSuggestionsList` component used by all three AI check surfaces (Texts tab, TextSlotDialog, PhotoDescriptionDialog). A warning triangle with a count appears next to the row status indicator whenever any suggestions exist
 - **Style Consistency Check** - AI analysis of style consistency across all book texts (tone, issues, score)
 - **Text Version History** - View and restore previous versions of any text field (up to 20 versions)
-- **Duplicate/Similar Text Detection** - Find texts with similar content across the book
+- **Download Texts** - Button in the toolbar exports all texts as a structured JSON file (`<book-slug>-texts.json`) containing chapter, section, page, slot, and content. Intended for external LLM analysis
 
 **Export PDF:**
 - Click "Export PDF" in the editor header to generate a print-ready A4 landscape PDF
@@ -879,8 +881,9 @@ web/src/
 │   │   ├── UnassignedPool.tsx
 │   │   ├── PreviewTab.tsx
 │   │   ├── PreviewModal.tsx      # Preview modal for fullscreen view
-│   │   ├── TextsTab.tsx          # Texts tab with stats and AI operations
-│   │   ├── DuplicatesTab.tsx     # Cross-section duplicate finder
+│   │   ├── TextsTab.tsx          # Texts tab: breadcrumbs, AI check with suggestions, JSON download
+│   │   ├── CheckSuggestionsList.tsx # Shared readability-suggestions list (major/minor severity)
+│   │   ├── DuplicatesTab.tsx     # Cross-section duplicate photo finder
 │   │   └── index.tsx
 │   └── SuggestAlbums/       # Album completion
 │       └── index.tsx

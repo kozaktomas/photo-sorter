@@ -274,10 +274,15 @@ Deleting a book cascades to all chapters, sections, pages, and slots.
 
 ### Text AI
 
+All text endpoints use **GPT-5.4-mini** (single source of truth: `ai.TextModel`). `/text/check-and-save` runs a three-tier cache (in-memory → DB by `(source_type, source_id, field)` + content hash → OpenAI).
+
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/v1/text/check` | Check Czech text for spelling/grammar (`{ text }`) |
+| POST | `/api/v1/text/check` | Check Czech text for spelling, grammar, and readability (`{ text }`). Response includes `changes[]` (mechanical fixes) and `suggestions[]` (`{ severity: major\|minor, message }`) |
+| POST | `/api/v1/text/check-and-save` | Like `/text/check` but keyed by `(source_type, source_id, field)` and persisted to `text_check_results` for cross-session cache and stale detection |
 | POST | `/api/v1/text/rewrite` | Rewrite text to target length (`{ text, target_length }`) |
+| POST | `/api/v1/text/consistency` | Style consistency analysis across a set of texts |
+| GET | `/api/v1/books/{id}/text-check-status` | Persisted check status per text field, including `suggestions[]` |
 
 ## PDF Export
 

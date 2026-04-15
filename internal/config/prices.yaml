@@ -10,6 +10,14 @@ models:
       input: 0.20
       output: 0.80
 
+  gpt-5.4-mini:  # text check / rewrite / consistency
+    standard:
+      input: 0.75
+      output: 4.50
+    batch:
+      input: 0.375
+      output: 2.25
+
   gemini-2.5-flash:
     standard:
       input: 0.30

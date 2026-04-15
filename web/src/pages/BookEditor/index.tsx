@@ -200,9 +200,13 @@ export function BookEditorPage() {
   };
 
   const handleNavigateToPage = useCallback((pageId: string) => {
-    handleTabChange('pages');
-    handlePageSelect(pageId);
-  }, [handleTabChange, handlePageSelect]);
+    setSearchParams(prev => {
+      const next = new URLSearchParams(prev);
+      next.set('tab', 'pages');
+      next.set('page', pageId);
+      return next;
+    }, { replace: true });
+  }, [setSearchParams]);
 
   const handleNavigateToSection = useCallback((sectionId: string) => {
     setSearchParams(prev => {

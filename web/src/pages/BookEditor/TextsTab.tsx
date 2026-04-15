@@ -1,23 +1,36 @@
-import { useState, useMemo, useCallback, useRef, useEffect } from 'react';
+import { useState, useMemo, useCallback, useRef, useEffect, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { SpellCheck, ArrowLeftRight, Loader2, Check, DollarSign, ChevronDown, ChevronUp, ExternalLink, X, BarChart3, Copy, Search } from 'lucide-react';
+import { SpellCheck, ArrowLeftRight, Loader2, Check, DollarSign, ChevronDown, ChevronUp, ExternalLink, X, BarChart3, Search, Image as ImageIcon, Type, Download, AlertTriangle } from 'lucide-react';
 import { checkTextAndSave, rewriteText, checkTextConsistency, updateSectionPhoto, assignTextSlot, getTextCheckStatus } from '../../api/client';
-import type { TextCheckStatusEntry } from '../../api/client';
+import type { TextCheckStatusEntry, TextSuggestion } from '../../api/client';
 import { StatsGrid } from '../../components/StatsGrid';
-import { findDuplicateTexts } from '../../utils/textSimilarity';
+import { CheckSuggestionsList } from './CheckSuggestionsList';
 import type { BookDetail, SectionPhoto } from '../../types';
 
 type TargetLength = 'much_shorter' | 'shorter' | 'longer' | 'much_longer';
 
 type CheckStatus = 'unchecked' | 'clean' | 'has_errors' | 'stale';
 
+interface EntryChapter {
+  title: string;
+  color: string;
+}
+
+interface PageRef {
+  pageId: string;
+  pageNumber: number;
+  slotIndex: number;
+}
+
 interface TextEntry {
   id: string;
   text: string;
   source: 'section_photo' | 'text_slot';
+  sectionId: string;
+  sectionTitle: string;
+  chapter: EntryChapter | null;
+  pageRefs: PageRef[];
   // Section photo fields
-  sectionId?: string;
-  sectionTitle?: string;
   photoUid?: string;
   photoNote?: string;
   // Text slot fields
@@ -30,6 +43,7 @@ interface CheckResult {
   corrected_text: string;
   readability_score: number;
   changes: string[];
+  suggestions: TextSuggestion[];
   cost_czk: number;
   cached: boolean;
 }
@@ -135,11 +149,43 @@ export function TextsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, on
 
   // Build text entries from book data
   const textEntries = useMemo<TextEntry[]>(() => {
+    // Global page numbering by sort_order
+    const sortedPages = [...book.pages].sort((a, b) => a.sort_order - b.sort_order);
+    const globalPageByPageId = new Map<string, number>();
+    const pageRefsByPhotoUid = new Map<string, PageRef[]>();
+    for (let i = 0; i < sortedPages.length; i++) {
+      const page = sortedPages[i];
+      const num = i + 1;
+      globalPageByPageId.set(page.id, num);
+      const seenOnPage = new Map<string, number>();
+      for (const slot of page.slots) {
+        if (!slot.photo_uid || seenOnPage.has(slot.photo_uid)) continue;
+        seenOnPage.set(slot.photo_uid, slot.slot_index);
+        const ref: PageRef = { pageId: page.id, pageNumber: num, slotIndex: slot.slot_index };
+        const existing = pageRefsByPhotoUid.get(slot.photo_uid);
+        if (existing) existing.push(ref);
+        else pageRefsByPhotoUid.set(slot.photo_uid, [ref]);
+      }
+    }
+
+    // Chapter lookup by section id
+    const chapterById = new Map<string, EntryChapter>();
+    for (const ch of book.chapters) {
+      chapterById.set(ch.id, { title: ch.title, color: ch.color });
+    }
+    const chapterBySectionId = new Map<string, EntryChapter | null>();
+    const sectionById = new Map<string, typeof book.sections[number]>();
+    for (const section of book.sections) {
+      sectionById.set(section.id, section);
+      chapterBySectionId.set(section.id, section.chapter_id ? chapterById.get(section.chapter_id) ?? null : null);
+    }
+
     const entries: TextEntry[] = [];
 
     // Photo descriptions from sections
     for (const section of book.sections) {
       const photos = sectionPhotos[section.id] || [];
+      const chapter = chapterBySectionId.get(section.id) ?? null;
       for (const photo of photos) {
         if (photo.description?.trim()) {
           entries.push({
@@ -148,6 +194,8 @@ export function TextsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, on
             source: 'section_photo',
             sectionId: section.id,
             sectionTitle: section.title,
+            chapter,
+            pageRefs: pageRefsByPhotoUid.get(photo.photo_uid) ?? [],
             photoUid: photo.photo_uid,
             photoNote: photo.note,
           });
@@ -159,25 +207,39 @@ export function TextsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, on
     for (const page of book.pages) {
       for (const slot of page.slots) {
         if (slot.text_content?.trim()) {
-          const pageIndex = book.pages
-            .filter(p => p.section_id === page.section_id)
-            .findIndex(p => p.id === page.id);
+          const section = sectionById.get(page.section_id);
+          const chapter = chapterBySectionId.get(page.section_id) ?? null;
+          const globalPage = globalPageByPageId.get(page.id) ?? 0;
           entries.push({
             id: `ts-${page.id}-${slot.slot_index}`,
             text: slot.text_content,
             source: 'text_slot',
+            sectionId: page.section_id,
+            sectionTitle: section?.title ?? '?',
+            chapter,
+            pageRefs: globalPage > 0 ? [{ pageId: page.id, pageNumber: globalPage, slotIndex: slot.slot_index }] : [],
             pageId: page.id,
-            pageNumber: pageIndex + 1,
+            pageNumber: globalPage,
             slotIndex: slot.slot_index,
           });
         }
       }
     }
 
+    // Sort by first page number, then by slot index; unplaced items go last
+    entries.sort((a, b) => {
+      const pa = a.pageRefs[0]?.pageNumber ?? Number.POSITIVE_INFINITY;
+      const pb = b.pageRefs[0]?.pageNumber ?? Number.POSITIVE_INFINITY;
+      if (pa !== pb) return pa - pb;
+      const sa = a.pageRefs[0]?.slotIndex ?? Number.POSITIVE_INFINITY;
+      const sb = b.pageRefs[0]?.slotIndex ?? Number.POSITIVE_INFINITY;
+      return sa - sb;
+    });
+
     return entries;
   }, [book, sectionPhotos]);
 
-  // Merge persisted results into check statuses
+  // Merge persisted results into check statuses + hydrate suggestions
   useEffect(() => {
     if (Object.keys(persistedResults).length === 0) return;
     setCheckStatuses(prev => {
@@ -197,6 +259,27 @@ export function TextsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, on
       }
       return next;
     });
+    setCheckResults(prev => {
+      const next = { ...prev };
+      for (const entry of textEntries) {
+        if (next[entry.id]) continue;
+        const persistedKey = getPersistedKey(entry);
+        const persisted = persistedResults[persistedKey];
+        if (!persisted || persisted.is_stale) continue;
+        const hasSuggestions = (persisted.suggestions?.length ?? 0) > 0;
+        const hasChanges = (persisted.changes?.length ?? 0) > 0;
+        if (!hasSuggestions && !hasChanges) continue;
+        next[entry.id] = {
+          corrected_text: persisted.corrected_text ?? '',
+          readability_score: persisted.readability_score ?? 0,
+          changes: persisted.changes ?? [],
+          suggestions: persisted.suggestions ?? [],
+          cost_czk: 0,
+          cached: true,
+        };
+      }
+      return next;
+    });
   }, [persistedResults, textEntries, getPersistedKey]);
 
   // Stats
@@ -204,6 +287,9 @@ export function TextsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, on
   const checkedCount = Object.values(checkStatuses).filter(s => s === 'clean').length;
   const errorCount = Object.values(checkStatuses).filter(s => s === 'has_errors').length;
   const staleCount = Object.values(checkStatuses).filter(s => s === 'stale').length;
+  const majorSuggestionCount = Object.values(checkResults).filter(
+    r => r.suggestions?.some(s => s.severity === 'major')
+  ).length;
   const totalReadingTime = useMemo(() => {
     let total = 0;
     for (const e of textEntries) {
@@ -214,21 +300,18 @@ export function TextsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, on
     return Math.ceil(total * 2) / 2;
   }, [textEntries]);
 
-  // Duplicate detection
-  const duplicatePairs = useMemo(
-    () => findDuplicateTexts(textEntries.map(e => ({ id: e.id, text: e.text }))),
-    [textEntries],
-  );
-
   // Filtered entries based on search
   const filteredEntries = useMemo(() => {
     if (!searchQuery.trim()) return textEntries;
     const q = searchQuery.toLowerCase();
     return textEntries.filter(entry => {
-      const source = entry.source === 'section_photo'
-        ? (entry.sectionTitle || '').toLowerCase()
-        : `page ${entry.pageNumber} slot ${(entry.slotIndex ?? 0) + 1}`.toLowerCase();
-      return entry.text.toLowerCase().includes(q) || source.includes(q);
+      const haystack = [
+        entry.text,
+        entry.sectionTitle,
+        entry.chapter?.title ?? '',
+        entry.pageRefs.map(r => r.pageNumber).join(' '),
+      ].join(' ').toLowerCase();
+      return haystack.includes(q);
     });
   }, [textEntries, searchQuery]);
 
@@ -255,7 +338,7 @@ export function TextsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, on
     setExpandedId(entry.id);
     try {
       const source = getSourceInfo(entry);
-      let result: { corrected_text: string; readability_score: number; changes: string[]; cost_czk: number; cached: boolean };
+      let result: CheckResult;
       if (source) {
         result = await checkTextAndSave(source.sourceType, source.sourceId, source.field, entry.text);
       } else {
@@ -349,7 +432,7 @@ export function TextsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, on
 
       try {
         const source = getSourceInfo(entry);
-        let result: { corrected_text: string; readability_score: number; changes: string[]; cost_czk: number; cached: boolean };
+        let result: CheckResult;
         if (source) {
           result = await checkTextAndSave(source.sourceType, source.sourceId, source.field, entry.text);
         } else {
@@ -375,6 +458,33 @@ export function TextsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, on
   const handleCancelBatch = useCallback(() => {
     batchCancelledRef.current = true;
   }, []);
+
+  const handleDownloadTexts = useCallback(() => {
+    const payload = {
+      book: { id: book.id, title: book.title },
+      exported_at: new Date().toISOString(),
+      count: textEntries.length,
+      texts: textEntries.map(e => ({
+        id: e.id,
+        type: e.source === 'section_photo' ? 'photo_caption' : 'text_slot',
+        chapter: e.chapter?.title ?? null,
+        section: e.sectionTitle,
+        pages: e.pageRefs.map(r => r.pageNumber),
+        slot: e.source === 'text_slot' && e.slotIndex != null ? e.slotIndex + 1 : null,
+        text: e.text,
+      })),
+    };
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const slug = book.title.trim().toLowerCase().replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-+|-+$/g, '') || 'book';
+    a.download = `${slug}-texts.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [book.id, book.title, textEntries]);
 
   const handleConsistencyCheck = useCallback(async () => {
     if (textEntries.length < 2) return;
@@ -411,11 +521,59 @@ export function TextsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, on
     }
   };
 
-  const getSourceLabel = (entry: TextEntry) => {
-    if (entry.source === 'section_photo') {
-      return t('books.editor.sectionPhotoSource', { section: entry.sectionTitle || '?' });
-    }
-    return t('books.editor.pageSlotSource', { page: entry.pageNumber, slot: (entry.slotIndex ?? 0) + 1 });
+  const getSourceLabel = (entry: TextEntry): ReactNode => {
+    const isPhoto = entry.source === 'section_photo';
+    const typeLabel = isPhoto ? t('books.editor.textTypePhoto') : t('books.editor.textTypeSlot');
+    const TypeIcon = isPhoto ? ImageIcon : Type;
+    const pageLinks = entry.pageRefs.length === 0 ? (
+      <span className="text-slate-400">{t('books.editor.textLocationUnplaced')}</span>
+    ) : (
+      <span className="inline-flex items-center flex-wrap gap-x-1">
+        <span className="text-slate-400">{t('books.editor.pageLabel')}</span>
+        {entry.pageRefs.map((ref, i) => (
+          <span key={ref.pageId} className="inline-flex items-center">
+            {i > 0 && <span className="text-slate-500 mr-1">,</span>}
+            <button
+              type="button"
+              onClick={e => { e.stopPropagation(); onNavigateToPage(ref.pageId); }}
+              className="text-indigo-400 hover:text-indigo-300 hover:underline transition-colors"
+              title={t('books.editor.goToPage')}
+            >
+              {ref.pageNumber}
+            </button>
+          </span>
+        ))}
+        {!isPhoto && entry.slotIndex != null && (
+          <span className="text-slate-400">, {t('books.editor.slotLabel', { slot: entry.slotIndex + 1 })}</span>
+        )}
+      </span>
+    );
+    return (
+      <span className="inline-flex items-center flex-wrap gap-x-1.5 gap-y-0.5">
+        <span className="inline-flex items-center gap-1 text-slate-400">
+          <TypeIcon className="h-3 w-3" />
+          {typeLabel}
+        </span>
+        <span className="text-slate-600">·</span>
+        {entry.chapter && (
+          <>
+            <span className="inline-flex items-center gap-1">
+              {entry.chapter.color && (
+                <span
+                  className="inline-block w-2 h-2 rounded-full flex-shrink-0"
+                  style={{ backgroundColor: entry.chapter.color }}
+                />
+              )}
+              <span className="text-slate-400">{entry.chapter.title}</span>
+            </span>
+            <span className="text-slate-600">›</span>
+          </>
+        )}
+        <span className="text-slate-400">{entry.sectionTitle}</span>
+        <span className="text-slate-600">·</span>
+        {pageLinks}
+      </span>
+    );
   };
 
   const lengthOptions: { value: TargetLength; labelKey: string }[] = [
@@ -441,7 +599,7 @@ export function TextsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, on
           { value: checkedCount, label: t('books.editor.checkedTexts'), color: 'green' },
           { value: errorCount, label: t('books.editor.textsWithErrors'), color: 'red' },
           { value: staleCount, label: t('books.editor.staleCheck'), color: staleCount > 0 ? 'yellow' : 'white' },
-          { value: duplicatePairs.length, label: t('books.editor.duplicateTexts'), color: duplicatePairs.length > 0 ? 'yellow' : 'white' },
+          { value: majorSuggestionCount, label: t('books.editor.majorSuggestions'), color: majorSuggestionCount > 0 ? 'red' : 'white' },
           { value: `~${totalReadingTime} min`, label: t('books.editor.totalReadingTime'), color: 'white' },
         ]}
       />
@@ -490,6 +648,15 @@ export function TextsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, on
                 {isConsistencyChecking ? <Loader2 className="h-4 w-4 animate-spin" /> : <BarChart3 className="h-4 w-4" />}
                 <DollarSign className="h-3.5 w-3.5 -ml-1 opacity-60" />
                 {t('books.editor.consistencyCheck')}
+              </button>
+              <button
+                onClick={handleDownloadTexts}
+                disabled={textEntries.length === 0}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded bg-slate-700 hover:bg-slate-600 disabled:opacity-40 disabled:cursor-not-allowed text-slate-200 transition-colors"
+                title={t('books.editor.downloadTextsTitle')}
+              >
+                <Download className="h-4 w-4" />
+                {t('books.editor.downloadTexts')}
               </button>
               {batchTotalCost !== null && (
                 <span className="text-sm text-slate-400">
@@ -555,7 +722,7 @@ export function TextsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, on
                           {entry ? (entry.text.length > 80 ? entry.text.slice(0, 80) + '...' : entry.text) : issue.text_id}
                         </p>
                         {entry && (
-                          <p className="text-xs text-slate-500 mt-0.5">{getSourceLabel(entry)}</p>
+                          <div className="text-xs text-slate-500 mt-0.5">{getSourceLabel(entry)}</div>
                         )}
                       </div>
                       {entry && (
@@ -641,18 +808,37 @@ export function TextsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, on
                     <p className="text-sm text-slate-200 truncate">
                       {highlightMatch(entry.text, 100)}
                     </p>
-                    <p className="text-xs text-slate-500 mt-0.5">
+                    <div className="text-xs text-slate-500 mt-0.5 flex items-center flex-wrap gap-x-1.5">
                       {getSourceLabel(entry)}
                       {(() => {
                         const wc = entry.text.trim().split(/\s+/).filter(Boolean).length;
                         if (wc === 0) return null;
                         const rt = wc < 10 ? null : Math.ceil((wc / 200) * 2) / 2;
-                        return <> · {rt === null ? t('books.editor.readingTimeShort') : t('books.editor.readingTime', { time: rt })}</>;
+                        return (
+                          <>
+                            <span className="text-slate-600">·</span>
+                            <span>{rt === null ? t('books.editor.readingTimeShort') : t('books.editor.readingTime', { time: rt })}</span>
+                          </>
+                        );
                       })()}
-                    </p>
+                    </div>
                   </div>
                   <div className="flex items-center gap-3 flex-shrink-0">
                     {getStatusIndicator(entry.id)}
+                    {(() => {
+                      const suggestions = checkResult?.suggestions ?? [];
+                      if (suggestions.length === 0) return null;
+                      const hasMajor = suggestions.some(s => s.severity === 'major');
+                      return (
+                        <span
+                          className={`inline-flex items-center gap-0.5 text-xs ${hasMajor ? 'text-red-400' : 'text-amber-400'}`}
+                          title={t('books.editor.readabilitySuggestionsCount', { count: suggestions.length })}
+                        >
+                          <AlertTriangle className="h-3.5 w-3.5" />
+                          {suggestions.length}
+                        </span>
+                      );
+                    })()}
 
                     {/* Actions */}
                     <button
@@ -697,7 +883,7 @@ export function TextsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, on
                     )}
                     {entry.source === 'section_photo' && entry.sectionId && (
                       <button
-                        onClick={e => { e.stopPropagation(); onNavigateToSection(entry.sectionId!); }}
+                        onClick={e => { e.stopPropagation(); onNavigateToSection(entry.sectionId); }}
                         className="inline-flex items-center gap-1 px-2 py-1 text-xs text-slate-400 hover:text-white transition-colors"
                         title={t('books.editor.goToSection')}
                       >
@@ -746,6 +932,7 @@ export function TextsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, on
                             </div>
                           </>
                         )}
+                        <CheckSuggestionsList suggestions={checkResult.suggestions} />
                         <div className="flex items-center gap-2 pt-1">
                           {checkResult.changes.length > 0 && (
                             <button
@@ -805,81 +992,6 @@ export function TextsTab({ book, sectionPhotos, loadSectionPhotos, onRefresh, on
         </div>
       )}
 
-      {/* Duplicate texts */}
-      {textEntries.length > 0 && (
-        <div className="space-y-3">
-          <div className="flex items-center gap-2">
-            <Copy className="h-4 w-4 text-yellow-400" />
-            <h3 className="text-sm font-medium text-slate-200">{t('books.editor.duplicateTexts')}</h3>
-            {duplicatePairs.length > 0 && (
-              <span className="text-xs text-yellow-400">({duplicatePairs.length})</span>
-            )}
-          </div>
-          {duplicatePairs.length === 0 ? (
-            <p className="text-sm text-slate-500 text-center py-4">{t('books.editor.noDuplicates')}</p>
-          ) : (
-            <div className="space-y-2">
-              {duplicatePairs.map((pair, idx) => {
-                const entryA = textEntries.find(e => e.id === pair.entryA.id);
-                const entryB = textEntries.find(e => e.id === pair.entryB.id);
-                return (
-                  <div key={idx} className="bg-slate-800 rounded-lg p-3 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-medium text-yellow-400">
-                        {t('books.editor.similarity', { percent: Math.round(pair.similarity * 100) })}
-                      </span>
-                    </div>
-                    {/* Text A */}
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs text-slate-300 truncate">
-                          {pair.entryA.text.length > 80 ? pair.entryA.text.slice(0, 80) + '...' : pair.entryA.text}
-                        </p>
-                        {entryA && (
-                          <p className="text-xs text-slate-500 mt-0.5">{getSourceLabel(entryA)}</p>
-                        )}
-                      </div>
-                      {entryA && (
-                        <button
-                          onClick={() => {
-                            if (entryA.source === 'text_slot' && entryA.pageId) onNavigateToPage(entryA.pageId);
-                            else if (entryA.source === 'section_photo' && entryA.sectionId) onNavigateToSection(entryA.sectionId);
-                          }}
-                          className="text-xs text-yellow-400 hover:text-yellow-300 flex-shrink-0 transition-colors"
-                        >
-                          {t('books.editor.goToText')}
-                        </button>
-                      )}
-                    </div>
-                    {/* Text B */}
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs text-slate-300 truncate">
-                          {pair.entryB.text.length > 80 ? pair.entryB.text.slice(0, 80) + '...' : pair.entryB.text}
-                        </p>
-                        {entryB && (
-                          <p className="text-xs text-slate-500 mt-0.5">{getSourceLabel(entryB)}</p>
-                        )}
-                      </div>
-                      {entryB && (
-                        <button
-                          onClick={() => {
-                            if (entryB.source === 'text_slot' && entryB.pageId) onNavigateToPage(entryB.pageId);
-                            else if (entryB.source === 'section_photo' && entryB.sectionId) onNavigateToSection(entryB.sectionId);
-                          }}
-                          className="text-xs text-yellow-400 hover:text-yellow-300 flex-shrink-0 transition-colors"
-                        >
-                          {t('books.editor.goToText')}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }

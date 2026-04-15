@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -22,8 +23,8 @@ func NewTextCheckRepository(pool *Pool) *TextCheckRepository {
 const upsertTextCheckSQL = `
 INSERT INTO text_check_results
   (source_type, source_id, field, content_hash,
-   status, readability_score, corrected_text, changes, cost_czk)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+   status, readability_score, corrected_text, changes, suggestions, cost_czk)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 ON CONFLICT (source_type, source_id, field)
 DO UPDATE SET
   content_hash = EXCLUDED.content_hash,
@@ -31,6 +32,7 @@ DO UPDATE SET
   readability_score = EXCLUDED.readability_score,
   corrected_text = EXCLUDED.corrected_text,
   changes = EXCLUDED.changes,
+  suggestions = EXCLUDED.suggestions,
   cost_czk = EXCLUDED.cost_czk,
   checked_at = NOW()
 RETURNING id, checked_at`
@@ -43,11 +45,15 @@ func (r *TextCheckRepository) SaveTextCheckResult(
 	if err != nil {
 		return fmt.Errorf("marshal changes: %w", err)
 	}
+	suggestionsJSON, err := json.Marshal(result.Suggestions)
+	if err != nil {
+		return fmt.Errorf("marshal suggestions: %w", err)
+	}
 
 	err = r.pool.QueryRow(ctx, upsertTextCheckSQL,
 		result.SourceType, result.SourceID, result.Field,
 		result.ContentHash, result.Status, result.ReadabilityScore,
-		result.CorrectedText, changesJSON, result.CostCZK,
+		result.CorrectedText, changesJSON, suggestionsJSON, result.CostCZK,
 	).Scan(&result.ID, &result.CheckedAt)
 	if err != nil {
 		return fmt.Errorf("save text check result: %w", err)
@@ -58,7 +64,7 @@ func (r *TextCheckRepository) SaveTextCheckResult(
 const selectTextCheckSQL = `
 SELECT id, source_type, source_id, field, content_hash,
        status, readability_score, corrected_text,
-       changes, cost_czk, checked_at
+       changes, suggestions, cost_czk, checked_at
 FROM text_check_results
 WHERE (source_type, source_id, field) IN (VALUES %s)`
 
@@ -91,20 +97,9 @@ func (r *TextCheckRepository) GetTextCheckResults(
 
 	results := make(map[string]database.TextCheckResult, len(keys))
 	for rows.Next() {
-		var res database.TextCheckResult
-		var changesJSON []byte
-		if err := rows.Scan(
-			&res.ID, &res.SourceType, &res.SourceID, &res.Field,
-			&res.ContentHash, &res.Status, &res.ReadabilityScore,
-			&res.CorrectedText, &changesJSON, &res.CostCZK,
-			&res.CheckedAt,
-		); err != nil {
-			return nil, fmt.Errorf("scan text check result: %w", err)
-		}
-		if changesJSON != nil {
-			if unmErr := json.Unmarshal(changesJSON, &res.Changes); unmErr != nil {
-				return nil, fmt.Errorf("unmarshal changes: %w", unmErr)
-			}
+		res, err := scanTextCheckRow(rows)
+		if err != nil {
+			return nil, err
 		}
 		key := res.SourceType + ":" + res.SourceID + ":" + res.Field
 		results[key] = res
@@ -113,4 +108,30 @@ func (r *TextCheckRepository) GetTextCheckResults(
 		return nil, fmt.Errorf("iterate text check results: %w", err)
 	}
 	return results, nil
+}
+
+// scanTextCheckRow reads a single text_check_results row and unmarshals
+// the JSON columns into the TextCheckResult value.
+func scanTextCheckRow(rows *sql.Rows) (database.TextCheckResult, error) {
+	var res database.TextCheckResult
+	var changesJSON, suggestionsJSON []byte
+	if err := rows.Scan(
+		&res.ID, &res.SourceType, &res.SourceID, &res.Field,
+		&res.ContentHash, &res.Status, &res.ReadabilityScore,
+		&res.CorrectedText, &changesJSON, &suggestionsJSON, &res.CostCZK,
+		&res.CheckedAt,
+	); err != nil {
+		return res, fmt.Errorf("scan text check result: %w", err)
+	}
+	if changesJSON != nil {
+		if err := json.Unmarshal(changesJSON, &res.Changes); err != nil {
+			return res, fmt.Errorf("unmarshal changes: %w", err)
+		}
+	}
+	if suggestionsJSON != nil {
+		if err := json.Unmarshal(suggestionsJSON, &res.Suggestions); err != nil {
+			return res, fmt.Errorf("unmarshal suggestions: %w", err)
+		}
+	}
+	return res, nil
 }

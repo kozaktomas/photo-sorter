@@ -4,6 +4,8 @@ import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, pointerWithin, 
 import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { Type, Heading1, Heading2, Bold, Italic, List, ListOrdered, LayoutGrid, Wand2, Loader2, SpellCheck, ArrowLeftRight, Check, DollarSign, History, Maximize2, Minimize2, Eye, Printer } from 'lucide-react';
 import { assignSlot, assignTextSlot, assignCaptionsSlot, clearSlot, swapSlots, updatePage, updateSlotCrop, reorderPages, getThumbnailUrl, autoLayoutSection, checkTextAndSave, rewriteText, listTextVersions, restoreTextVersion } from '../../api/client';
+import type { TextSuggestion } from '../../api/client';
+import { CheckSuggestionsList } from './CheckSuggestionsList';
 import { MarkdownContent, contrastTextColor, renderMarkdown } from '../../utils/markdown';
 import { handleMarkdownPaste } from '../../utils/paste';
 import { useBookKeyboardNav } from '../../hooks/useBookKeyboardNav';
@@ -97,7 +99,7 @@ function TextSlotDialog({ text, pageId, slotIndex, pageFormat, pageSlots, splitP
 
   // AI text check state
   const [checking, setChecking] = useState(false);
-  const [checkResult, setCheckResult] = useState<{ corrected_text: string; readability_score: number; changes: string[]; cost_czk: number; cached: boolean } | null>(null);
+  const [checkResult, setCheckResult] = useState<{ corrected_text: string; readability_score: number; changes: string[]; suggestions: TextSuggestion[]; cost_czk: number; cached: boolean } | null>(null);
   const [checkError, setCheckError] = useState('');
 
   // AI text rewrite state
@@ -490,6 +492,7 @@ function TextSlotDialog({ text, pageId, slotIndex, pageFormat, pageSlots, splitP
                   </div>
                 </>
               )}
+              <CheckSuggestionsList suggestions={checkResult.suggestions} />
               <div className="flex items-center gap-2 pt-1">
                 {checkResult.changes.length > 0 && (
                   <button

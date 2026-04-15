@@ -17,7 +17,7 @@ import (
 const usdToCZK = 23.5
 
 // textModel is the model used for text operations.
-const textModel = "gpt-4.1-mini"
+const textModel = ai.TextModel
 
 // computeCostCZK calculates cost in CZK from token usage and model pricing.
 func (s *Server) computeCostCZK(usage ai.TokenUsage) float64 {

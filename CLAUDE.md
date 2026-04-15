@@ -340,10 +340,10 @@ internal/database/
     ├── sessions.go     # Session persistence for web auth
     ├── text_versions.go   # TextVersionStore implementation
     ├── text_checks.go     # TextCheckStore implementation
-    └── migrations/     # SQL migrations 001-023 (embedded)
+    └── migrations/     # SQL migrations 001-028 (embedded)
 ```
 
-**Tables:** `embeddings` (768-dim CLIP), `faces` (512-dim ResNet100 with cached PhotoPrism marker data), `era_embeddings` (768-dim CLIP text centroids), `faces_processed` (tracking), `sessions` (with `user_uid` for upload support across restarts), `photo_books` (with typography settings: `body_font`, `heading_font`, `body_font_size`, `body_line_height`, `h1_font_size`, `h2_font_size`, `caption_opacity`, `caption_font_size`, `heading_color_bleed` added in migrations 021-023), `book_chapters` (migration 016, with `color` column added in migration 020 for per-chapter color themes), `book_sections` (with optional `chapter_id`), `section_photos`, `book_pages` (with `split_position` for adjustable column splits in mixed formats, plus `hide_page_number` for per-page folio suppression added in migration 025, and `1_fullbleed` format added to the CHECK constraint in migration 027), `page_slots` (with `text_content` for text-only slots, `is_captions_slot` (BOOLEAN, migration 026) routing photo captions into the slot while suppressing the bottom strip — at most one per page, enforced via partial unique index, `crop_x`/`crop_y`/`crop_scale` for per-photo crop control; photo_uid / text_content / is_captions_slot are mutually exclusive), `text_versions` (migration 017, version history for text fields), `text_check_results` (migration 019, persisted AI text check results with content hash for stale detection).
+**Tables:** `embeddings` (768-dim CLIP), `faces` (512-dim ResNet100 with cached PhotoPrism marker data), `era_embeddings` (768-dim CLIP text centroids), `faces_processed` (tracking), `sessions` (with `user_uid` for upload support across restarts), `photo_books` (with typography settings: `body_font`, `heading_font`, `body_font_size`, `body_line_height`, `h1_font_size`, `h2_font_size`, `caption_opacity`, `caption_font_size`, `heading_color_bleed` added in migrations 021-023), `book_chapters` (migration 016, with `color` column added in migration 020 for per-chapter color themes), `book_sections` (with optional `chapter_id`), `section_photos`, `book_pages` (with `split_position` for adjustable column splits in mixed formats, plus `hide_page_number` for per-page folio suppression added in migration 025, and `1_fullbleed` format added to the CHECK constraint in migration 027), `page_slots` (with `text_content` for text-only slots, `is_captions_slot` (BOOLEAN, migration 026) routing photo captions into the slot while suppressing the bottom strip — at most one per page, enforced via partial unique index, `crop_x`/`crop_y`/`crop_scale` for per-photo crop control; photo_uid / text_content / is_captions_slot are mutually exclusive), `text_versions` (migration 017, version history for text fields), `text_check_results` (migration 019, persisted AI text check results with content hash for stale detection, extended by migration 028 with a `suggestions JSONB` column storing advisory readability recommendations).
 
 **Face name normalization:** `GetFacesBySubjectName` normalizes names via `facematch.NormalizePersonName` (remove diacritics, lowercase, dashes→spaces) using the `unaccent` PostgreSQL extension.
 
@@ -356,7 +356,7 @@ Located in `internal/ai/prompts/` (embedded at compile time):
 - `photo_analysis_with_date.txt` - Labels + description + date estimation
 - `album_date.txt` - Album-wide date estimation from descriptions
 - `clip_translate.txt` - Czech to CLIP-optimized English translation for text search
-- `text_check.txt` - Czech text spelling, diacritics, and grammar checking
+- `text_check.txt` - Czech text spelling, diacritics, grammar checking, and advisory readability suggestions (severity: `major` for hard-to-read text, `minor` for polish tips)
 - `text_rewrite.txt` - Czech text length adjustment (shorter/longer)
 - `text_consistency.txt` - Czech text style consistency analysis across book texts
 
@@ -368,7 +368,7 @@ Located in `internal/ai/prompts/` (embedded at compile time):
 
 ### Pricing Configuration
 
-Model prices are in `internal/config/prices.yaml` (embedded at compile time). Supports per-model standard and batch pricing for gpt-4.1-mini, gemini-2.5-flash, llama3.2-vision (Ollama), and llava (llama.cpp).
+Model prices are in `internal/config/prices.yaml` (embedded at compile time). Supports per-model standard and batch pricing for gpt-4.1-mini (photo analysis + CLIP translate + sort), gpt-5.4-mini (text check / rewrite / consistency — uses `max_completion_tokens` instead of `max_tokens`), gemini-2.5-flash, llama3.2-vision (Ollama), and llava (llama.cpp). The single source of truth for the text operations model is `ai.TextModel` in `internal/ai/text.go`, referenced by both the web handler (`internal/web/handlers/text.go`) and the MCP handler (`internal/mcp/text.go`).
 
 ### Metadata Behavior
 
@@ -510,7 +510,7 @@ Session cookies use `HttpOnly`, `SameSite=Strict`, and auto-detect `Secure` flag
 - `GET /api/v1/book-export/{jobId}/download` - Stream compiled PDF temp file (supports range, sets `X-Accel-Buffering: no`)
 - `DELETE /api/v1/book-export/{jobId}` - Cancel export job (SIGKILLs lualatex, removes temp file)
 - `GET /api/v1/pages/{id}/export-pdf` - Export single page as PDF (inline preview, requires lualatex)
-- `POST /api/v1/text/check` - AI text check (spelling, grammar, diacritics) via GPT-4.1-mini
+- `POST /api/v1/text/check` - AI text check (spelling, grammar, diacritics, readability suggestions) via GPT-5.4-mini. Responses include a `suggestions[]` array where each item has `severity` (`major`/`minor`) and `message`. `CheckAndSave` uses a 3-tier cache: in-memory → DB (by `(source_type, source_id, field)` + `content_hash`) → OpenAI, so unchanged texts never burn a second OpenAI call after a server restart.
 - `POST /api/v1/text/check-and-save` - AI text check with database persistence
 - `POST /api/v1/text/rewrite` - AI text rewrite (length adjustment) via GPT-4.1-mini
 - `POST /api/v1/text/consistency` - AI style consistency check across all book texts via GPT-4.1-mini

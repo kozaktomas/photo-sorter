@@ -13,6 +13,11 @@ import (
 	"github.com/openai/openai-go/shared"
 )
 
+// TextModel is the OpenAI model used for all text operations
+// (check, rewrite, consistency). Single source of truth shared with
+// pricing lookups in the web and MCP handlers.
+const TextModel = "gpt-5.4-mini"
+
 //go:embed prompts/text_check.txt
 var textCheckPrompt string
 
@@ -28,12 +33,20 @@ type TokenUsage struct {
 	CompletionTokens int64 `json:"completion_tokens"`
 }
 
+// TextSuggestion is an advisory readability/flow recommendation
+// returned alongside mechanical corrections.
+type TextSuggestion struct {
+	Severity string `json:"severity"` // "major" or "minor"
+	Message  string `json:"message"`
+}
+
 // TextCheckResult contains the result of a text check operation.
 type TextCheckResult struct {
-	CorrectedText    string     `json:"corrected_text"`
-	ReadabilityScore int        `json:"readability_score"`
-	Changes          []string   `json:"changes"`
-	Usage            TokenUsage `json:"usage"`
+	CorrectedText    string           `json:"corrected_text"`
+	ReadabilityScore int              `json:"readability_score"`
+	Changes          []string         `json:"changes"`
+	Suggestions      []TextSuggestion `json:"suggestions"`
+	Usage            TokenUsage       `json:"usage"`
 }
 
 // TextRewriteResult contains the result of a text rewrite operation.
@@ -62,7 +75,7 @@ func CheckText(ctx context.Context, apiKey string, text string) (*TextCheckResul
 	client := openai.NewClient(option.WithAPIKey(apiKey))
 
 	resp, err := client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
-		Model: openai.ChatModelGPT4_1Mini,
+		Model: TextModel,
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			openai.SystemMessage(textCheckPrompt),
 			openai.UserMessage(text),
@@ -70,7 +83,7 @@ func CheckText(ctx context.Context, apiKey string, text string) (*TextCheckResul
 		ResponseFormat: openai.ChatCompletionNewParamsResponseFormatUnion{
 			OfJSONObject: &shared.ResponseFormatJSONObjectParam{},
 		},
-		MaxTokens: openai.Int(2000),
+		MaxCompletionTokens: openai.Int(3000),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("OpenAI API error: %w", err)
@@ -100,7 +113,7 @@ func RewriteText(ctx context.Context, apiKey string, text string, targetLength s
 	userMessage := fmt.Sprintf("Target length: %s\n\nText:\n%s", targetLength, text)
 
 	resp, err := client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
-		Model: openai.ChatModelGPT4_1Mini,
+		Model: TextModel,
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			openai.SystemMessage(textRewritePrompt),
 			openai.UserMessage(userMessage),
@@ -108,7 +121,7 @@ func RewriteText(ctx context.Context, apiKey string, text string, targetLength s
 		ResponseFormat: openai.ChatCompletionNewParamsResponseFormatUnion{
 			OfJSONObject: &shared.ResponseFormatJSONObjectParam{},
 		},
-		MaxTokens: openai.Int(2000),
+		MaxCompletionTokens: openai.Int(2000),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("OpenAI API error: %w", err)
@@ -151,7 +164,7 @@ func CheckConsistency(
 	}
 
 	resp, err := client.Chat.Completions.New(ctx, openai.ChatCompletionNewParams{
-		Model: openai.ChatModelGPT4_1Mini,
+		Model: TextModel,
 		Messages: []openai.ChatCompletionMessageParamUnion{
 			openai.SystemMessage(textConsistencyPrompt),
 			openai.UserMessage(sb.String()),
@@ -159,7 +172,7 @@ func CheckConsistency(
 		ResponseFormat: openai.ChatCompletionNewParamsResponseFormatUnion{
 			OfJSONObject: &shared.ResponseFormatJSONObjectParam{},
 		},
-		MaxTokens: openai.Int(4000),
+		MaxCompletionTokens: openai.Int(4000),
 	})
 	if err != nil {
 		return nil, fmt.Errorf("OpenAI API error: %w", err)

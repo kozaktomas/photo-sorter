@@ -803,7 +803,12 @@ export async function preflightBook(bookId: string): Promise<PreflightResponse> 
 }
 
 // Text AI operations
-export async function checkText(text: string): Promise<{ corrected_text: string; readability_score: number; changes: string[]; cost_czk: number; cached: boolean }> {
+export interface TextSuggestion {
+  severity: 'major' | 'minor';
+  message: string;
+}
+
+export async function checkText(text: string): Promise<{ corrected_text: string; readability_score: number; changes: string[]; suggestions: TextSuggestion[]; cost_czk: number; cached: boolean }> {
   return request('/text/check', {
     method: 'POST',
     body: JSON.stringify({ text }),
@@ -821,6 +826,7 @@ export interface CheckAndSaveResponse {
   corrected_text: string;
   readability_score: number;
   changes: string[];
+  suggestions: TextSuggestion[];
   cost_czk: number;
   cached: boolean;
   status: 'clean' | 'has_errors';
@@ -844,6 +850,7 @@ export interface TextCheckStatusEntry {
   is_stale: boolean;
   corrected_text?: string;
   changes?: string[];
+  suggestions?: TextSuggestion[];
 }
 
 export async function getTextCheckStatus(bookId: string): Promise<Record<string, TextCheckStatusEntry>> {
