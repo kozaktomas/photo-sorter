@@ -636,6 +636,22 @@ func (pb *pageBuilder) computeZones(isRecto bool) (
 	return contentLeftX, contentRightX, headerY, canvasTopY, canvasBottomY, footerRuleY, folioX, folioY, folioAnchor
 }
 
+// buildAndRouteSlots builds slot templates for a non-fullbleed page and
+// routes the captions slot (if any) before returning.
+func (pb *pageBuilder) buildAndRouteSlots(
+	p database.BookPage, contentLeftX, canvasTopY float64,
+	style string, isRecto bool, chapterColor string,
+) ([]TemplateSlot, []ReportPhoto, []FooterCaption) {
+	slots := FormatSlotsGridWithSplit(p.Format, pb.config, p.SplitPosition)
+	tmplSlots, reportPhotos, footerCaptions := pb.buildSlots(
+		p, slots, contentLeftX, canvasTopY, style, isRecto, chapterColor,
+	)
+	tmplSlots, footerCaptions = routeCaptionsSlot(
+		p, slots, tmplSlots, footerCaptions, contentLeftX, canvasTopY, chapterColor,
+	)
+	return tmplSlots, reportPhotos, footerCaptions
+}
+
 // buildContentPage builds a single TemplatePage with slots and accumulates report data.
 func (pb *pageBuilder) buildContentPage(p database.BookPage, chapterColor string) TemplatePage {
 	if p.Format == FormatFullbleed {
@@ -654,16 +670,8 @@ func (pb *pageBuilder) buildContentPage(p database.BookPage, chapterColor string
 		folioAnchor := pb.computeZones(isRecto)
 	contentW := pb.config.ContentWidth()
 
-	// Build slots using grid system.
-	slots := FormatSlotsGridWithSplit(p.Format, pb.config, p.SplitPosition)
-	tmplSlots, reportPhotos, footerCaptions := pb.buildSlots(
-		p, slots, contentLeftX, canvasTopY, style, isRecto, chapterColor,
-	)
-
-	// If the user marked a slot as the captions slot, route the footer
-	// captions into that slot and suppress the bottom caption strip.
-	tmplSlots, footerCaptions = routeCaptionsSlot(
-		p, slots, tmplSlots, footerCaptions, contentLeftX, canvasTopY, chapterColor,
+	tmplSlots, reportPhotos, footerCaptions := pb.buildAndRouteSlots(
+		p, contentLeftX, canvasTopY, style, isRecto, chapterColor,
 	)
 
 	pb.reportPages = append(pb.reportPages, ReportPage{
@@ -676,8 +684,8 @@ func (pb *pageBuilder) buildContentPage(p database.BookPage, chapterColor string
 	captionBlockX, captionBlockY, captionBlockW, hasCaptions :=
 		captionBlockPosition(footerCaptions, contentLeftX, contentW, footerRuleY)
 
-	// Expand clip bounds by heading bleed so colored heading boxes
-	// extend into the margins. Photos stay constrained by slot-level clips.
+	// Expand clip bounds by heading bleed so colored heading boxes extend
+	// into the margins. Photos stay constrained by slot-level clips.
 	bleed := pb.headingColorBleed
 	clipLeftX := max(0, contentLeftX-bleed)
 	clipRightX := min(PageW, contentRightX+bleed)
@@ -732,42 +740,7 @@ func (pb *pageBuilder) buildFullBleedPage(p database.BookPage, chapterColor stri
 	contentLeftX, contentRightX, headerY, _, _,
 		footerRuleY, folioX, folioY, folioAnchor := pb.computeZones(isRecto)
 
-	var tmplSlots []TemplateSlot
-	var reportPhotos []ReportPhoto
-
-	ps := getPageSlot(p, 0)
-	if ps.PhotoUID != "" {
-		if img, ok := pb.photos[ps.PhotoUID]; ok {
-			cropScale := ps.CropScale
-			if cropScale <= 0 {
-				cropScale = 1.0
-			}
-			// eps expands the slot past the media box so rasterizers don't
-			// leave a sub-mm white row at the bottom (see formats.go).
-			eps := fullBleedRasterEpsilonMM
-			fullSlot := SlotRect{
-				X: 0, Y: 0,
-				W: PageW + 2*BleedMM + 2*eps,
-				H: PageH + 2*BleedMM + 2*eps,
-			}
-			ts := buildPhotoSlotNew(
-				fullSlot, img,
-				-BleedMM-eps, PageH+BleedMM+eps,
-				false, 0,
-				ps.CropX, ps.CropY, cropScale,
-			)
-			ts.ChapterColor = chapterColor
-			tmplSlots = []TemplateSlot{ts}
-
-			pb.photoSet[ps.PhotoUID] = true
-			reportPhotos = append(reportPhotos, ReportPhoto{
-				PhotoUID:     ps.PhotoUID,
-				SlotIndex:    0,
-				EffectiveDPI: ts.EffectiveDPI,
-				LowRes:       ts.EffectiveDPI > 0 && ts.EffectiveDPI < lowResDPIThreshold,
-			})
-		}
-	}
+	tmplSlots, reportPhotos := pb.buildFullBleedPhotoSlot(p, chapterColor)
 
 	pb.reportPages = append(pb.reportPages, ReportPage{
 		PageNumber: pb.pageNumber,
@@ -798,6 +771,48 @@ func (pb *pageBuilder) buildFullBleedPage(p database.BookPage, chapterColor stri
 		Captions:       nil,
 		HasCaptions:    false,
 	}
+}
+
+// buildFullBleedPhotoSlot builds the single full-bleed photo slot for a
+// 1_fullbleed page. Returns nil slices if the page has no photo assigned
+// or the photo isn't in the fetched set.
+func (pb *pageBuilder) buildFullBleedPhotoSlot(
+	p database.BookPage, chapterColor string,
+) ([]TemplateSlot, []ReportPhoto) {
+	ps := getPageSlot(p, 0)
+	if ps.PhotoUID == "" {
+		return nil, nil
+	}
+	img, ok := pb.photos[ps.PhotoUID]
+	if !ok {
+		return nil, nil
+	}
+	cropScale := ps.CropScale
+	if cropScale <= 0 {
+		cropScale = 1.0
+	}
+	// eps expands the slot past the media box so rasterizers don't leave
+	// a sub-mm white row at the bottom (see formats.go).
+	eps := fullBleedRasterEpsilonMM
+	fullSlot := SlotRect{
+		X: 0, Y: 0,
+		W: PageW + 2*BleedMM + 2*eps,
+		H: PageH + 2*BleedMM + 2*eps,
+	}
+	ts := buildPhotoSlotNew(
+		fullSlot, img,
+		-BleedMM-eps, PageH+BleedMM+eps,
+		false, 0,
+		ps.CropX, ps.CropY, cropScale,
+	)
+	ts.ChapterColor = chapterColor
+	pb.photoSet[ps.PhotoUID] = true
+	return []TemplateSlot{ts}, []ReportPhoto{{
+		PhotoUID:     ps.PhotoUID,
+		SlotIndex:    0,
+		EffectiveDPI: ts.EffectiveDPI,
+		LowRes:       ts.EffectiveDPI > 0 && ts.EffectiveDPI < lowResDPIThreshold,
+	}}
 }
 
 // captionBlockPosition computes the footer caption block placement. The
