@@ -318,7 +318,7 @@ The layout uses a 12-column grid with 3 fixed page zones. Configurable via `Layo
 | `FooterHeightMM` | 8.0 | Captions + folio zone |
 | `ArchivalInsetMM` | 3.0 | Mat inset for archival photos |
 | `GutterSafeMM` | 8.0 | Inset from binding edge for safe content placement |
-| `BaselineUnitMM` | 4.0 | Vertical rhythm unit (all spacing is multiples of this) |
+| `BaselineUnitMM` | 4.0 | Vertical rhythm unit (all spacing is multiples of this). Used for grid alignment and the test-page sample marker only — caption marker badges are sized via `caption_badge_size` typography setting, not this constant. |
 
 **Content width**: 297 - 20 - 12 = **265mm**. Column width: (265 - 11×4) / 12 = **18.42mm**.
 
@@ -372,7 +372,7 @@ Captions are sourced from `section_photos.description` (section-scoped). Instead
 
 - **Single-photo pages**: Caption alone in footer, no marker number
 - **Multi-photo pages**: Sequential marker numbers (1, 2, 3...) assigned to photos with captions
-  - **Marker overlay**: 4×4mm bold number (6pt) on outside edge of photo (away from binding). Uses chapter color when set (with auto-contrast text), otherwise white on semi-transparent dark background
+  - **Marker overlay**: bold number on outside edge of photo (away from binding). Square box sized via the `caption_badge_size` typography setting (default 4 mm); inner font scales automatically as `size_mm × 1.5` pt (so 4 mm → 6 pt, 8 mm → 12 pt). Always renders identically to the matching footer caption badge. Uses chapter color when set (with auto-contrast text), otherwise white on semi-transparent dark background
   - **Footer text**: `**1** Caption text  **2** Caption text` in 8/10pt, `black!70`, 4mm below separation rule
 
 ### Page Styles
@@ -465,7 +465,7 @@ Each book has configurable typography settings that control both PDF rendering a
 | `caption_opacity` | 0.85 | 0.0–1.0 | Caption text opacity (LaTeX `black!N`) |
 | `caption_font_size` | 9.0 pt | 6–16 pt | Photo caption size |
 | `heading_color_bleed` | 4.0 mm | 0–20 mm | How far colored heading boxes extend beyond content width into margins |
-| `caption_badge_size` | 4.0 mm | 2–12 mm | Square dimension of footer caption marker badges (matches on-photo overlay at default 4 mm) |
+| `caption_badge_size` | 4.0 mm | 2–12 mm | Square dimension of caption marker badges. Drives both the on-photo overlay marker and the footer caption badge so they always render identically. Inner number scales as `size_mm × 1.5` pt. |
 
 **Font Registry:** 24 fonts available (13 serif, 11 sans-serif), defined in `internal/latex/fonts.go`. Each font has a `LatexName` (for `fontspec` family lookup in LuaLaTeX) and `GoogleFamily`/`GoogleSpec` (for browser preview — non–Google Fonts use a visually similar fallback). Fonts are validated on save via `latex.ValidateFont()`.
 

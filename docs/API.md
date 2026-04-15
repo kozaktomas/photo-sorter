@@ -1779,7 +1779,7 @@ PUT /books/{id}
 }
 ```
 
-All fields are optional (partial updates). Font IDs are validated against the font registry. Size ranges: font sizes 6–36 pt, line height 8–48 pt, caption font size 6–16 pt, opacity 0.0–1.0, heading color bleed 0–20 mm, caption badge size 2–12 mm.
+All fields are optional (partial updates). Font IDs are validated against the font registry. Size ranges: font sizes 6–36 pt, line height 8–48 pt, caption font size 6–16 pt, opacity 0.0–1.0, heading color bleed 0–20 mm, caption badge size 2–12 mm. `caption_badge_size` controls both the on-photo overlay marker and the footer caption badge — the inner number scales automatically as `size_mm × 1.5` pt so the two badges always render identically.
 
 #### Delete Book
 

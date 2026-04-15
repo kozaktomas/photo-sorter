@@ -212,6 +212,7 @@ func TestValidatePages_GutterSafeMarker(t *testing.T) {
 				CaptionMarkerY:       188.0,
 				CaptionMarkerCenterX: 24.0,
 				CaptionMarkerCenterY: 190.0,
+				CaptionMarkerSize:    4.0,
 			},
 		},
 	}

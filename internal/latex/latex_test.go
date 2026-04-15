@@ -1643,3 +1643,54 @@ func TestSlotCaptionIndentMM(t *testing.T) {
 		t.Errorf("custom badge: got %v, want 7.5", got)
 	}
 }
+
+// TestPlaceCaptionMarkerScalesWithBadgeSize verifies that the photo overlay
+// marker shares its size with the footer caption badge: rectangle dimension
+// equals badgeSize and font size equals badgeSize × 1.5. This is the regression
+// guard for the unification — both badges must always render identically.
+func TestPlaceCaptionMarkerScalesWithBadgeSize(t *testing.T) {
+	cases := []struct {
+		name      string
+		badgeSize float64
+		wantFont  float64
+	}{
+		{"default 4mm → 6pt", 4.0, 6.0},
+		{"custom 6mm → 9pt", 6.0, 9.0},
+		{"custom 8mm → 12pt", 8.0, 12.0},
+		{"custom 2mm → 3pt", 2.0, 3.0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ts := TemplateSlot{
+				ClipX: 20.0, ClipY: 24.0,
+				ClipW: 130.0, ClipH: 172.0,
+			}
+			placeCaptionMarker(&ts, 1, tc.badgeSize, true)
+
+			if ts.CaptionMarkerSize != tc.badgeSize {
+				t.Errorf("CaptionMarkerSize = %v, want %v", ts.CaptionMarkerSize, tc.badgeSize)
+			}
+			if ts.CaptionMarkerFontSize != tc.wantFont {
+				t.Errorf("CaptionMarkerFontSize = %v, want %v", ts.CaptionMarkerFontSize, tc.wantFont)
+			}
+			// Center must be in the geometric middle of the rect.
+			wantCenterX := ts.CaptionMarkerX + tc.badgeSize/2
+			wantCenterY := ts.CaptionMarkerY + tc.badgeSize/2
+			if ts.CaptionMarkerCenterX != wantCenterX || ts.CaptionMarkerCenterY != wantCenterY {
+				t.Errorf("center = (%v,%v), want (%v,%v)",
+					ts.CaptionMarkerCenterX, ts.CaptionMarkerCenterY, wantCenterX, wantCenterY)
+			}
+		})
+	}
+}
+
+// TestPlaceCaptionMarkerNoMarker verifies that markerNum <= 0 leaves the slot
+// untouched (CaptionMarker remains 0, dimensions remain zero).
+func TestPlaceCaptionMarkerNoMarker(t *testing.T) {
+	ts := TemplateSlot{ClipX: 20.0, ClipY: 24.0, ClipW: 130.0, ClipH: 172.0}
+	placeCaptionMarker(&ts, 0, 4.0, true)
+	if ts.CaptionMarker != 0 || ts.CaptionMarkerSize != 0 || ts.CaptionMarkerFontSize != 0 {
+		t.Errorf("expected zero values, got marker=%d size=%v font=%v",
+			ts.CaptionMarker, ts.CaptionMarkerSize, ts.CaptionMarkerFontSize)
+	}
+}

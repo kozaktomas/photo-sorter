@@ -128,11 +128,13 @@ type TemplateSlot struct {
 	// RaggedRight: use left-aligned text instead of justified (for narrow columns).
 	RaggedRight bool
 	// Caption marker (1-based; 0 = no marker).
-	CaptionMarker        int
-	CaptionMarkerX       float64 // bottom-left X of marker rect
-	CaptionMarkerY       float64 // bottom-left Y of marker rect
-	CaptionMarkerCenterX float64 // center X for number node
-	CaptionMarkerCenterY float64 // center Y for number node
+	CaptionMarker         int
+	CaptionMarkerX        float64 // bottom-left X of marker rect
+	CaptionMarkerY        float64 // bottom-left Y of marker rect
+	CaptionMarkerCenterX  float64 // center X for number node
+	CaptionMarkerCenterY  float64 // center Y for number node
+	CaptionMarkerSize     float64 // square dimension (mm) — same as caption_badge_size
+	CaptionMarkerFontSize float64 // pt — derived as size_mm × 1.5
 }
 
 // TemplatePage holds slots for a single page.
@@ -232,6 +234,7 @@ type pageBuilder struct {
 	photoSet          map[string]bool
 	reportPages       []ReportPage
 	headingColorBleed float64
+	captionBadgeSize  float64
 }
 
 const (
@@ -456,6 +459,7 @@ func buildTemplateData(
 		captions:          captions,
 		photoSet:          make(map[string]bool),
 		headingColorBleed: typo.headingColorBleed,
+		captionBadgeSize:  typo.captionBadgeSize,
 	}
 	for _, g := range groups {
 		pb.totalContentPages += len(g.pages)
@@ -763,12 +767,15 @@ func buildCaptionTracking(p database.BookPage, slots []SlotRect, captions Captio
 }
 
 // placeCaptionMarker positions a numbered caption marker on a photo slot.
-func placeCaptionMarker(ts *TemplateSlot, markerNum int, cfg LayoutConfig, isRecto bool) {
+// badgeSize (mm) drives both the rectangle dimensions and the inner font size
+// (font_pt = size_mm × 1.5), matching the footer caption badge so the two
+// always render identically.
+func placeCaptionMarker(ts *TemplateSlot, markerNum int, badgeSize float64, isRecto bool) {
 	ts.CaptionMarker = markerNum
 	if markerNum <= 0 {
 		return
 	}
-	markerSize := cfg.BaselineUnitMM
+	markerSize := badgeSize
 	markerInset := markerSize / 2.0
 	if isRecto {
 		ts.CaptionMarkerX = ts.ClipX + ts.ClipW - markerInset - markerSize
@@ -778,6 +785,8 @@ func placeCaptionMarker(ts *TemplateSlot, markerNum int, cfg LayoutConfig, isRec
 	ts.CaptionMarkerY = ts.ClipY + ts.ClipH - markerInset - markerSize
 	ts.CaptionMarkerCenterX = ts.CaptionMarkerX + markerSize/2
 	ts.CaptionMarkerCenterY = ts.CaptionMarkerY + markerSize/2
+	ts.CaptionMarkerSize = markerSize
+	ts.CaptionMarkerFontSize = markerSize * 1.5
 }
 
 // buildFooterCaptions creates footer caption entries from caption tracking data.
@@ -872,7 +881,7 @@ func (pb *pageBuilder) buildSlots(
 			slot, img, contentLeftX, canvasTopY, isArchival,
 			cfg.ArchivalInsetMM, ps.CropX, ps.CropY, cropScale,
 		)
-		placeCaptionMarker(&ts, ct.markerMap[i], cfg, isRecto)
+		placeCaptionMarker(&ts, ct.markerMap[i], pb.captionBadgeSize, isRecto)
 		ts.ChapterColor = chapterColor
 		tmplSlots[i] = ts
 
@@ -1583,6 +1592,7 @@ func GenerateSinglePagePDF(
 		pageNumber:        pageNum - 1, // incremented to pageNum below
 		photoSet:          make(map[string]bool),
 		headingColorBleed: typo.headingColorBleed,
+		captionBadgeSize:  typo.captionBadgeSize,
 	}
 
 	pb.contentPageIdx++

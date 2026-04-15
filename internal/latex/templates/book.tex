@@ -98,8 +98,8 @@
   \fill[black,opacity=0.55]
 {{- end}}
     ({{printf "%.2f" $slot.CaptionMarkerX}},{{printf "%.2f" $slot.CaptionMarkerY}})
-    rectangle ++(4,4);
-  \node[anchor=center,inner sep=0,font=\fontsize{6}{6}\selectfont\bfseries,text={{contrastTextColor $slot.ChapterColor}}]
+    rectangle ++({{printf "%.2f" $slot.CaptionMarkerSize}},{{printf "%.2f" $slot.CaptionMarkerSize}});
+  \node[anchor=center,inner sep=0,font=\fontsize{ {{- printf "%.2f" $slot.CaptionMarkerFontSize -}} }{ {{- printf "%.2f" $slot.CaptionMarkerFontSize -}} }\selectfont\bfseries,text={{contrastTextColor $slot.ChapterColor}}]
     at ({{printf "%.2f" $slot.CaptionMarkerCenterX}},{{printf "%.2f" $slot.CaptionMarkerCenterY}})
     {{print "{"}}{{$slot.CaptionMarker}}{{print "}"}};
 {{- end}}

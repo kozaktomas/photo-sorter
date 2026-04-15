@@ -113,7 +113,7 @@ func validateGutterMarker(page TemplatePage, config LayoutConfig, slotIdx int, s
 	} else {
 		insideEdgeX = page.ContentRightX
 	}
-	markerSize := config.BaselineUnitMM
+	markerSize := slot.CaptionMarkerSize
 	var inGutter bool
 	if page.IsRecto {
 		markerLeftEdge := slot.CaptionMarkerX
