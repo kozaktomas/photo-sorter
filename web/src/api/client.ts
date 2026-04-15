@@ -710,6 +710,13 @@ export async function assignTextSlot(pageId: string, slotIndex: number, textCont
   });
 }
 
+export async function assignCaptionsSlot(pageId: string, slotIndex: number): Promise<void> {
+  await request(`/pages/${pageId}/slots/${slotIndex}`, {
+    method: 'PUT',
+    body: JSON.stringify({ captions: true }),
+  });
+}
+
 export async function swapSlots(pageId: string, slotA: number, slotB: number): Promise<void> {
   await request(`/pages/${pageId}/slots/swap`, {
     method: 'POST',

@@ -1,12 +1,17 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
-import { assignSlot, assignTextSlot, clearSlot, swapSlots } from '../../../api/client';
+import { assignSlot, assignTextSlot, assignCaptionsSlot, clearSlot, swapSlots } from '../../../api/client';
 
 export interface SlotContent {
   photoUid: string;
   textContent: string;
+  isCaptions?: boolean;
 }
 
 const EMPTY_CONTENT: SlotContent = { photoUid: '', textContent: '' };
+
+function isEmptyContent(c: SlotContent): boolean {
+  return !c.photoUid && !c.textContent && !c.isCaptions;
+}
 
 export type SlotAction =
   | { type: 'assign'; pageId: string; slotIndex: number; prev: SlotContent; next: SlotContent }
@@ -25,6 +30,10 @@ async function executeAction(action: SlotAction): Promise<void> {
         await assignSlot(action.pageId, action.slotIndex, action.next.photoUid);
       } else if (action.next.textContent) {
         await assignTextSlot(action.pageId, action.slotIndex, action.next.textContent);
+      } else if (action.next.isCaptions) {
+        await assignCaptionsSlot(action.pageId, action.slotIndex);
+      } else {
+        await clearSlot(action.pageId, action.slotIndex);
       }
       break;
     case 'clear':
@@ -39,7 +48,7 @@ async function executeAction(action: SlotAction): Promise<void> {
 function reverseAction(action: SlotAction): SlotAction {
   switch (action.type) {
     case 'assign':
-      if (action.prev.photoUid || action.prev.textContent) {
+      if (!isEmptyContent(action.prev)) {
         return { type: 'assign', pageId: action.pageId, slotIndex: action.slotIndex, prev: action.next, next: action.prev };
       }
       return { type: 'clear', pageId: action.pageId, slotIndex: action.slotIndex, prev: action.next };

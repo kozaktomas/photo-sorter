@@ -1388,3 +1388,258 @@ func TestCaptionBadgeTemplate(t *testing.T) {
 		}
 	})
 }
+
+// --- Captions slot ---
+
+// buildCaptionsSlotPageData assembles TemplateData with a 4_landscape page:
+// slots 0 and 1 hold photos, slot 3 is the captions slot. Both photos have
+// captions in the CaptionMap so the captions slot list contains 2 entries.
+func buildCaptionsSlotPageData(t *testing.T) (TemplateData, string) {
+	t.Helper()
+	captions := CaptionMap{
+		"s1": {
+			"photoA": "Long caption that wouldn't fit in the bottom strip",
+			"photoB": "Second caption",
+		},
+	}
+	groups := []sectionGroup{
+		{sectionID: "s1", title: "S1", chapterColor: "8B0000", pages: []database.BookPage{
+			{
+				ID:        "p1",
+				SectionID: "s1",
+				Format:    "4_landscape",
+				Slots: []database.PageSlot{
+					{SlotIndex: 0, PhotoUID: "photoA"},
+					{SlotIndex: 1, PhotoUID: "photoB"},
+					{SlotIndex: 3, IsCaptionsSlot: true},
+				},
+			},
+		}},
+	}
+	photos := map[string]photoImage{
+		"photoA": {path: "/tmp/photoA.jpg", width: 2000, height: 3000},
+		"photoB": {path: "/tmp/photoB.jpg", width: 2000, height: 3000},
+	}
+	data, _ := buildTemplateData(groups, photos, captions, DefaultLayoutConfig(), nil)
+	return data, "photoA"
+}
+
+func TestCaptionsSlot_SuppressesFooter(t *testing.T) {
+	data, _ := buildCaptionsSlotPageData(t)
+
+	page := data.Sections[0].Pages[0]
+
+	// Footer caption block must be suppressed for this page.
+	if page.HasCaptions {
+		t.Error("expected HasCaptions=false when a captions slot is present")
+	}
+	if len(page.Captions) != 0 {
+		t.Errorf("expected empty page.Captions, got %d", len(page.Captions))
+	}
+
+	// Slot 3 must be the captions slot with the caption list routed into it.
+	if len(page.Slots) < 4 {
+		t.Fatalf("expected at least 4 slots, got %d", len(page.Slots))
+	}
+	captionsSlot := page.Slots[3]
+	if !captionsSlot.HasCaptionsList {
+		t.Error("expected slot 3 to be a captions slot (HasCaptionsList=true)")
+	}
+	if captionsSlot.HasPhoto || captionsSlot.HasText {
+		t.Error("captions slot must not also be flagged HasPhoto or HasText")
+	}
+	if len(captionsSlot.CaptionsList) != 2 {
+		t.Errorf("expected 2 captions in CaptionsList, got %d", len(captionsSlot.CaptionsList))
+	}
+	// Slots 0 and 1 must still render their photos normally.
+	if !page.Slots[0].HasPhoto {
+		t.Error("expected slot 0 to still be a photo slot")
+	}
+	if !page.Slots[1].HasPhoto {
+		t.Error("expected slot 1 to still be a photo slot")
+	}
+}
+
+func TestCaptionsSlot_RendersThroughTemplate(t *testing.T) {
+	data, _ := buildCaptionsSlotPageData(t)
+	// Populate typography defaults so the template renders.
+	data.BodyFontDeclaration = `\setmainfont{PT Serif}[Ligatures=TeX,]`
+	data.HeadingFontDeclaration = `\setsansfont{Source Sans 3}[Ligatures=TeX,]`
+	data.BodyFontSize = 11
+	data.BodyLineHeight = 15
+	data.H1FontSize = 18
+	data.H1Leading = 22
+	data.H2FontSize = 13
+	data.H2Leading = 16
+	data.CaptionOpacity = 50
+	data.CaptionFontSize = 9
+	data.CaptionLeading = 11
+	data.CaptionBadgeSize = 4.0
+
+	out := renderBookTemplate(t, data)
+
+	// The bottom caption strip (renderFooterCaption) must NOT be emitted for
+	// this page — the only way it would appear is via `{{- renderFooterCaption}}`
+	// inside a minipage, so check that the footer-specific marker is absent.
+	if strings.Contains(out, `renderFooterCaption`) {
+		t.Error("template still references renderFooterCaption at runtime — should be consumed")
+	}
+	// The page's footer block is guarded by `{{- if $page.HasCaptions}}`,
+	// which is false here, so the `\microtypesetup{expansion=false}` block
+	// that wraps the footer caption node must NOT appear. (The in-slot
+	// captions minipage is separately guarded by $slot.HasCaptionsList.)
+	// The minipage itself is an inline marker we can look for:
+	if !strings.Contains(out, `% Captions slot`) {
+		t.Errorf("expected captions-slot LaTeX block in output, got:\n%s", out)
+	}
+	// The caption text must render inside the slot.
+	if !strings.Contains(out, "Long caption that wouldn't fit in the bottom strip") {
+		t.Error("expected caption text to be rendered inside the captions slot")
+	}
+	// Each caption must set hangindent so wrapped lines align with caption
+	// text (not the badge). Default badge size is 4mm + 1.5mm gap = 5.5mm.
+	if !strings.Contains(out, `\hangindent=5.50mm`) {
+		t.Errorf("expected \\hangindent=5.50mm before each caption, got:\n%s", out)
+	}
+	// The badge gap must use a fixed-width \hspace so wrapped lines align
+	// exactly with the start of the caption text on line 1.
+	if !strings.Contains(out, `\hspace{1.50mm}`) {
+		t.Errorf("expected \\hspace{1.50mm} as the badge-to-text gap, got:\n%s", out)
+	}
+	// Captions must be separated by `\par` so they actually stack vertically
+	// rather than flowing as one paragraph. There are 2 captions in the
+	// test fixture, so we expect at least one `\par` between them.
+	if strings.Count(out, `\par `) < 1 {
+		t.Errorf("expected `\\par ` between stacked captions, got:\n%s", out)
+	}
+	// Caption text must be justified inside the slot (no \raggedright). We
+	// look for the captions slot block specifically and assert \raggedright
+	// is absent after the parbox setup line.
+	captionsSection := out
+	if idx := strings.Index(out, "% Captions slot"); idx >= 0 {
+		captionsSection = out[idx:]
+		if end := strings.Index(captionsSection, "\\end{scope}"); end >= 0 {
+			captionsSection = captionsSection[:end]
+		}
+	}
+	if strings.Contains(captionsSection, `\raggedright`) {
+		t.Errorf("captions slot must render justified text, found \\raggedright in:\n%s", captionsSection)
+	}
+	// Critical regression guard: there must NOT be a `%` immediately after
+	// any caption text — that would comment out the next iteration's
+	// `\par`/`\noindent` and make all captions render as a single paragraph.
+	for _, fc := range []string{"Long caption that wouldn't fit in the bottom strip", "Second caption"} {
+		if strings.Contains(out, fc+`%`) {
+			t.Errorf("caption %q must not be followed by a `%%` comment marker", fc)
+		}
+	}
+}
+
+func TestCaptionsSlot_NoCaptionsStillBuilds(t *testing.T) {
+	// Captions slot on a page with no section_photo descriptions — should
+	// still render the slot (as an empty parbox) without panicking.
+	groups := []sectionGroup{
+		{sectionID: "s1", title: "S1", pages: []database.BookPage{
+			{
+				ID:        "p1",
+				SectionID: "s1",
+				Format:    "2_portrait",
+				Slots: []database.PageSlot{
+					{SlotIndex: 0, PhotoUID: "photoA"},
+					{SlotIndex: 1, IsCaptionsSlot: true},
+				},
+			},
+		}},
+	}
+	photos := map[string]photoImage{
+		"photoA": {path: "/tmp/photoA.jpg", width: 2000, height: 3000},
+	}
+	// Empty caption map — no captions anywhere.
+	data, _ := buildTemplateData(groups, photos, CaptionMap{}, DefaultLayoutConfig(), nil)
+
+	page := data.Sections[0].Pages[0]
+	if page.HasCaptions {
+		t.Error("footer should still be suppressed even when captions slot has no captions")
+	}
+	if !page.Slots[1].HasCaptionsList {
+		t.Error("slot 1 must still be flagged as captions slot")
+	}
+	if len(page.Slots[1].CaptionsList) != 0 {
+		t.Errorf("expected empty CaptionsList, got %d", len(page.Slots[1].CaptionsList))
+	}
+}
+
+// --- PageSlot helpers ---
+
+func TestPageSlot_IsCaptions(t *testing.T) {
+	t.Run("captions-only slot is captions", func(t *testing.T) {
+		s := database.PageSlot{IsCaptionsSlot: true}
+		if !s.IsCaptions() {
+			t.Error("expected IsCaptions=true")
+		}
+		if s.IsEmpty() {
+			t.Error("captions slot must not be considered empty")
+		}
+		if s.IsTextSlot() {
+			t.Error("captions slot must not be considered a text slot")
+		}
+	})
+	t.Run("empty slot is empty", func(t *testing.T) {
+		s := database.PageSlot{}
+		if !s.IsEmpty() {
+			t.Error("expected empty slot to be IsEmpty=true")
+		}
+		if s.IsCaptions() {
+			t.Error("empty slot must not be IsCaptions")
+		}
+	})
+}
+
+// --- renderSlotCaptionLatex ---
+
+func TestRenderSlotCaptionLatex(t *testing.T) {
+	t.Run("badge plus caption text", func(t *testing.T) {
+		fc := FooterCaption{Markers: []int{2}, Caption: "Hello", ChapterColor: "8B0000"}
+		got := renderSlotCaptionLatex(fc, 4.0)
+		want := `\captionbadge{4.00}{6.00}{8B0000}{white}{2}\hspace{1.50mm}Hello`
+		if got != want {
+			t.Errorf("got %q, want %q", got, want)
+		}
+	})
+
+	t.Run("no badge for single-photo page", func(t *testing.T) {
+		fc := FooterCaption{Caption: "Only one photo"}
+		got := renderSlotCaptionLatex(fc, 4.0)
+		want := `Only one photo`
+		if got != want {
+			t.Errorf("got %q, want %q", got, want)
+		}
+	})
+
+	t.Run("embedded newline becomes hard break", func(t *testing.T) {
+		fc := FooterCaption{Markers: []int{1}, Caption: "Line 1\nLine 2"}
+		got := renderSlotCaptionLatex(fc, 4.0)
+		if !strings.Contains(got, `Line 1\\Line 2`) {
+			t.Errorf("expected hard break in %q", got)
+		}
+	})
+
+	t.Run("trailing newline is dropped (no dangling break)", func(t *testing.T) {
+		fc := FooterCaption{Markers: []int{1}, Caption: "Caption\n"}
+		got := renderSlotCaptionLatex(fc, 4.0)
+		if strings.HasSuffix(got, `\\`) {
+			t.Errorf("did not expect trailing \\\\, got: %q", got)
+		}
+	})
+}
+
+func TestSlotCaptionIndentMM(t *testing.T) {
+	// Defaults: 4mm badge + 1.5mm gap = 5.5mm.
+	if got := slotCaptionIndentMM(4.0); got != 5.5 {
+		t.Errorf("default badge: got %v, want 5.5", got)
+	}
+	// Custom 6mm badge + 1.5mm gap = 7.5mm.
+	if got := slotCaptionIndentMM(6.0); got != 7.5 {
+		t.Errorf("custom badge: got %v, want 7.5", got)
+	}
+}

@@ -111,6 +111,24 @@
       \parskip=0pt\parindent=0pt\fontsize{ {{- printf "%.0f" $.BodyFontSize -}} }{ {{- printf "%.0f" $.BodyLineHeight -}} }\selectfont{{if $slot.RaggedRight}}\raggedright{{end}}%
       {{markdownToLatexColor $slot.TextContent $slot.ChapterColor $slot.BleedLeftMM $slot.BleedRightMM}}%
     }};
+{{- else if $slot.HasCaptionsList}}
+  % Captions slot — page's photo captions stacked vertically with hanging
+  % indent so wrapped lines align under the caption text (not under the
+  % badge). Each caption is its own paragraph; the badge sits flush left and
+  % wrapped lines are indented by ~badge width + thin gap. The bottom
+  % captions strip is suppressed for this page in Go.
+  {\microtypesetup{expansion=false}%
+  \node[anchor=north west,inner sep=0]
+    at ({{printf "%.2f" $slot.ClipX}},{{printf "%.2f" (addFloat $slot.ClipY $slot.ClipH)}})
+    {\parbox{{print "{"}}{{printf "%.2f" $slot.ClipW}}mm}{%
+      \parskip=0.5\baselineskip\parindent=0pt%
+      \fontsize{ {{- printf "%.0f" $.CaptionFontSize -}} }{ {{- printf "%.0f" $.CaptionLeading -}} }\selectfont
+      \color{black!{{$.CaptionOpacity}}}
+      {{- range $ci, $cap := $slot.CaptionsList}}
+      {{if $ci}}\par {{end}}\noindent\hangindent={{printf "%.2f" (slotCaptionIndentMM $.CaptionBadgeSize)}}mm\relax {{renderSlotCaption $cap $.CaptionBadgeSize}}
+      {{- end}}
+    }};
+  }%
 {{- end}}
 {{- end}}
   \end{scope}

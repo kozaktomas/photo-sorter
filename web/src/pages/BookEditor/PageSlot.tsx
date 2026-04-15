@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useDroppable, useDraggable } from '@dnd-kit/core';
 import { useTranslation } from 'react-i18next';
-import { X, Pencil, Type, Crop } from 'lucide-react';
+import { X, Pencil, Type, Crop, MessageSquareText } from 'lucide-react';
 import { getThumbnailUrl, getPhoto } from '../../api/client';
 import { PhotoActionOverlay } from './PhotoActionOverlay';
 import { PhotoInfoOverlay } from './PhotoInfoOverlay';
@@ -14,6 +14,7 @@ interface Props {
   slotIndex: number;
   photoUid: string;
   textContent?: string;
+  isCaptionsSlot?: boolean;
   cropX?: number;
   cropY?: number;
   cropScale?: number;
@@ -27,6 +28,7 @@ interface Props {
   onEditDescription?: () => void;
   onEditText?: () => void;
   onAddText?: () => void;
+  onAddCaptions?: () => void;
   chapterColor?: string;
   bleedLeft?: boolean;
   bleedRight?: boolean;
@@ -34,7 +36,7 @@ interface Props {
   className?: string;
 }
 
-export function PageSlotComponent({ pageId, slotIndex, photoUid, textContent, cropX, cropY, cropScale, format, splitPosition, onClear, onEditCrop, description, note, fileName, onEditDescription, onEditText, onAddText, chapterColor, bleedLeft, bleedRight, textPaddingClass, className }: Props) {
+export function PageSlotComponent({ pageId, slotIndex, photoUid, textContent, isCaptionsSlot, cropX, cropY, cropScale, format, splitPosition, onClear, onEditCrop, description, note, fileName, onEditDescription, onEditText, onAddText, onAddCaptions, chapterColor, bleedLeft, bleedRight, textPaddingClass, className }: Props) {
   const { t } = useTranslation('pages');
   const [orientation, setOrientation] = useState<'L' | 'P' | null>(null);
   const [dpi, setDpi] = useState<number | null>(null);
@@ -44,12 +46,12 @@ export function PageSlotComponent({ pageId, slotIndex, photoUid, textContent, cr
     data: { pageId, slotIndex, photoUid, textContent },
   });
 
-  const hasContent = !!photoUid || !!textContent;
+  const hasContent = !!photoUid || !!textContent || !!isCaptionsSlot;
   const draggableId = `slot-drag-${pageId}-${slotIndex}`;
   const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
     id: draggableId,
     data: { photoUid, textContent, sourcePageId: pageId, sourceSlotIndex: slotIndex },
-    disabled: !hasContent,
+    disabled: !hasContent || !!isCaptionsSlot,
   });
 
   const combinedRef = useCallback((node: HTMLElement | null) => {
@@ -165,19 +167,45 @@ export function PageSlotComponent({ pageId, slotIndex, photoUid, textContent, cr
             </button>
           )}
         </div>
+      ) : isCaptionsSlot ? (
+        <div className="relative w-full h-full border-2 border-dashed border-rose-500/60 bg-rose-900/10 rounded flex flex-col items-center justify-center text-rose-200 text-xs gap-2 p-3 text-center">
+          <MessageSquareText className="h-5 w-5 text-rose-400" />
+          <span className="font-semibold">{t('books.editor.captionsSlotLabel')}</span>
+          <span className="text-rose-300/80 text-[10px]">{t('books.editor.captionsSlotHint')}</span>
+          <button
+            onClick={onClear}
+            onPointerDown={(e) => e.stopPropagation()}
+            className="absolute top-1 right-1 bg-black/60 hover:bg-red-600 text-white rounded p-0.5 transition-colors"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
       ) : (
         <div className="w-full h-full border-2 border-dashed border-slate-600 rounded flex flex-col items-center justify-center text-slate-500 text-xs gap-2">
           <span>{t('books.editor.dropHere')}</span>
-          {onAddText && (
-            <button
-              onClick={onAddText}
-              onPointerDown={(e) => e.stopPropagation()}
-              className="flex items-center gap-1 px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs transition-colors"
-            >
-              <Type className="h-3 w-3" />
-              {t('books.editor.addText')}
-            </button>
-          )}
+          <div className="flex flex-wrap gap-1 justify-center">
+            {onAddText && (
+              <button
+                onClick={onAddText}
+                onPointerDown={(e) => e.stopPropagation()}
+                className="flex items-center gap-1 px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs transition-colors"
+              >
+                <Type className="h-3 w-3" />
+                {t('books.editor.addText')}
+              </button>
+            )}
+            {onAddCaptions && (
+              <button
+                onClick={onAddCaptions}
+                onPointerDown={(e) => e.stopPropagation()}
+                className="flex items-center gap-1 px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs transition-colors"
+                title={t('books.editor.useForCaptionsTitle')}
+              >
+                <MessageSquareText className="h-3 w-3" />
+                {t('books.editor.useForCaptions')}
+              </button>
+            )}
+          </div>
         </div>
       )}
     </div>

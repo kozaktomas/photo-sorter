@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, pointerWithin, useSensor, useSensors, type DragEndEvent, type DragStartEvent, type Modifier } from '@dnd-kit/core';
 import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { Type, Heading1, Heading2, Bold, Italic, List, ListOrdered, LayoutGrid, Wand2, Loader2, SpellCheck, ArrowLeftRight, Check, DollarSign, History, Maximize2, Minimize2, Eye, Printer } from 'lucide-react';
-import { assignSlot, assignTextSlot, clearSlot, swapSlots, updatePage, updateSlotCrop, reorderPages, getThumbnailUrl, autoLayoutSection, checkTextAndSave, rewriteText, listTextVersions, restoreTextVersion } from '../../api/client';
+import { assignSlot, assignTextSlot, assignCaptionsSlot, clearSlot, swapSlots, updatePage, updateSlotCrop, reorderPages, getThumbnailUrl, autoLayoutSection, checkTextAndSave, rewriteText, listTextVersions, restoreTextVersion } from '../../api/client';
 import { MarkdownContent, contrastTextColor, renderMarkdown } from '../../utils/markdown';
 import { handleMarkdownPaste } from '../../utils/paste';
 import { useBookKeyboardNav } from '../../hooks/useBookKeyboardNav';
@@ -899,7 +899,11 @@ function TextSlotHistoryPanel({
 function getSlotContent(book: BookDetail, pageId: string, slotIndex: number): SlotContent {
   const page = book.pages.find(p => p.id === pageId);
   const slot = page?.slots.find(s => s.slot_index === slotIndex);
-  return { photoUid: slot?.photo_uid || '', textContent: slot?.text_content || '' };
+  return {
+    photoUid: slot?.photo_uid || '',
+    textContent: slot?.text_content || '',
+    isCaptions: !!slot?.is_captions_slot,
+  };
 }
 
 export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRefresh, initialPageId, onPageSelect }: Props) {
@@ -1133,7 +1137,7 @@ export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRe
             tgtSlot.photo_uid = photoUid;
             tgtSlot.text_content = '';
           } else {
-            tgtPage.slots.push({ slot_index: emptySlotIndex, photo_uid: photoUid, text_content: '', crop_x: 0.5, crop_y: 0.5, crop_scale: 1.0, title: '', file_name: '' });
+            tgtPage.slots.push({ slot_index: emptySlotIndex, photo_uid: photoUid, text_content: '', is_captions_slot: false, crop_x: 0.5, crop_y: 0.5, crop_scale: 1.0, title: '', file_name: '' });
           }
         }
         return { ...prev, pages };
@@ -1327,6 +1331,16 @@ export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRe
     setEditingTextSlot({ slotIndex, text: '', pageId: selectedPage.id });
   }, [selectedPage]);
 
+  const handleAddCaptions = useCallback(async (slotIndex: number) => {
+    if (!selectedPage) return;
+    const prev = getSlotContent(book, selectedPage.id, slotIndex);
+    try {
+      await assignCaptionsSlot(selectedPage.id, slotIndex);
+      pushUndo([{ type: 'assign', pageId: selectedPage.id, slotIndex, prev, next: { photoUid: '', textContent: '', isCaptions: true } }]);
+      onRefresh();
+    } catch { /* silent */ }
+  }, [selectedPage, book, pushUndo, onRefresh]);
+
   const handleEditText = useCallback((slotIndex: number) => {
     if (!selectedPage) return;
     const slot = selectedPage.slots.find(s => s.slot_index === slotIndex);
@@ -1457,6 +1471,7 @@ export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRe
                 onChangeStyle={handleChangeStyle}
                 onEditText={handleEditText}
                 onAddText={handleAddText}
+                onAddCaptions={handleAddCaptions}
                 onEditCrop={handleEditCrop}
                 onChangeSplitPosition={handleChangeSplitPosition}
                 onChangeHidePageNumber={handleChangeHidePageNumber}

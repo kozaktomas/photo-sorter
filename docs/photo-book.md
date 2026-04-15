@@ -136,15 +136,62 @@ page_slots
 ├── id (PK, BIGSERIAL)
 ├── page_id (FK → book_pages, CASCADE)
 ├── slot_index
-├── photo_uid (NULL for text slots)
+├── photo_uid (NULL for text/captions slots)
 ├── text_content (TEXT, default '', non-empty for text slots)
+├── is_captions_slot (BOOLEAN, default FALSE, migration 026)
+│                    Routes the page's photo captions into this slot instead
+│                    of the bottom strip. At most one per page.
 ├── crop_x (REAL, default 0.5, range 0.0-1.0, horizontal crop center)
 ├── crop_y (REAL, default 0.5, range 0.0-1.0, vertical crop center)
 ├── crop_scale (REAL, default 1.0, range 0.1-1.0, zoom level: 1.0 = fill, lower = zoom in)
-├── CHECK(photo_uid IS NULL OR text_content = '')  -- mutual exclusivity
+├── CHECK: at most one of {photo_uid, text_content, is_captions_slot} is set
 ├── UNIQUE(page_id, slot_index)
-└── UNIQUE(page_id, photo_uid)
+├── UNIQUE(page_id, photo_uid)
+└── UNIQUE INDEX (page_id) WHERE is_captions_slot
 ```
+
+### Captions slot
+
+A slot can be flipped into "captions mode" instead of holding a photo or text.
+When one of a page's slots is marked as a captions slot, the renderer routes
+the same `FooterCaption` list that would normally go into the bottom caption
+strip into that slot and suppresses the bottom strip for the page. The list
+stacks vertically, one caption per paragraph, with the same numbered badges and
+source text (`section_photos.description`) — only the position changes. Use
+this when a single caption is long enough to overflow the bottom strip.
+
+**Rendering inside the slot:**
+
+- Each caption is its own paragraph (`\par` separator), so they actually
+  stack vertically rather than flowing as one wrapping paragraph.
+- Caption text is **justified** (block-aligned) inside the slot — the
+  slot is wide enough that this looks clean. Last line of each caption
+  remains left-aligned (LaTeX default for `\par`-terminated paragraphs).
+- Each paragraph uses `\hangindent = badge_width + 1.5mm` so wrapped lines
+  align under the first character of the caption text rather than under
+  the badge — same visual pattern as a numbered list:
+
+  ```
+  [1] First caption that wraps to a
+      second line aligned under "First"
+  [2] Second caption
+  ```
+
+- The badge-to-text gap is a fixed `\hspace{1.5mm}` (rather than a
+  font-dependent thin space) so the hanging indent always matches the
+  exact text start position. The constant lives at
+  `latex.slotCaptionBadgeGapMM` and is exposed to `book.tex` via the
+  `slotCaptionIndentMM` template func — bump it in one place if you want
+  more breathing room.
+
+**API:**
+
+- Assign via `PUT /api/v1/pages/:id/slots/:index` with `{ "captions": true }`.
+- Clearing the slot (`DELETE /api/v1/pages/:id/slots/:index`) restores the
+  bottom strip automatically on the next render.
+- Replacing the slot with a photo or text also resets the flag.
+- At most one captions slot per page is allowed; a second assignment returns
+  HTTP 409.
 
 Deleting a book cascades to all chapters, sections, pages, and slots.
 

@@ -88,10 +88,12 @@ type FooterCaption struct {
 	ChapterColor string
 }
 
-// TemplateSlot holds pre-computed TikZ coordinates for one photo or text slot.
+// TemplateSlot holds pre-computed TikZ coordinates for one photo, text, or
+// captions slot.
 type TemplateSlot struct {
-	HasPhoto bool
-	HasText  bool
+	HasPhoto        bool
+	HasText         bool
+	HasCaptionsList bool
 	// Clip rectangle (mm from page bottom-left — TikZ convention).
 	ClipX, ClipY float64
 	ClipW, ClipH float64
@@ -112,6 +114,10 @@ type TemplateSlot struct {
 	TextContent  string
 	TextType     string
 	ChapterColor string // hex color e.g. "8B0000" (without #), empty = no color
+	// CaptionsList holds the footer-caption entries routed into this slot
+	// when the slot is the page's captions slot. The LaTeX template renders
+	// them stacked vertically; the page's bottom captions strip is suppressed.
+	CaptionsList []FooterCaption
 	// Text padding (mm) for text slots adjacent to photos in mixed layouts.
 	TextPadLeft  float64
 	TextPadRight float64
@@ -646,6 +652,12 @@ func (pb *pageBuilder) buildContentPage(p database.BookPage, chapterColor string
 		p, slots, contentLeftX, canvasTopY, style, isRecto, chapterColor,
 	)
 
+	// If the user marked a slot as the captions slot, route the footer
+	// captions into that slot and suppress the bottom caption strip.
+	tmplSlots, footerCaptions = routeCaptionsSlot(
+		p, slots, tmplSlots, footerCaptions, contentLeftX, canvasTopY, chapterColor,
+	)
+
 	pb.reportPages = append(pb.reportPages, ReportPage{
 		PageNumber: pb.pageNumber,
 		Format:     p.Format,
@@ -1006,6 +1018,8 @@ func bookTemplateFuncMap(typoConfig TypographyConfig) template.FuncMap {
 		},
 		"contrastTextColor":   contrastTextColorOrWhite,
 		"renderFooterCaption": renderFooterCaptionsLatex,
+		"renderSlotCaption":   renderSlotCaptionLatex,
+		"slotCaptionIndentMM": slotCaptionIndentMM,
 		"addFloat":            func(a, b float64) float64 { return a + b },
 		"subtractFloat":       func(a, b float64) float64 { return a - b },
 		"mulFloat":            func(a, b float64) float64 { return a * b },
@@ -1039,6 +1053,52 @@ func renderFooterCaptionsLatex(caps []FooterCaption, badgeSize float64) string {
 			}
 		}
 		writeFooterCaption(&b, c, badgeSize)
+	}
+	return b.String()
+}
+
+// slotCaptionBadgeGapMM is the fixed horizontal gap (in mm) between the badge
+// column and the caption text in a captions slot. It MUST stay in sync with
+// the \hangindent value computed by slotCaptionIndentMM so that wrapped lines
+// align under the first text character on line 1.
+const slotCaptionBadgeGapMM = 1.5
+
+// slotCaptionIndentMM is the hangindent value (mm) for a captions slot
+// paragraph: badge width + fixed gap. It is exposed to the LaTeX template via
+// the slotCaptionIndentMM template func and used in renderSlotCaptionLatex.
+func slotCaptionIndentMM(badgeSize float64) float64 {
+	return badgeSize + slotCaptionBadgeGapMM
+}
+
+// renderSlotCaptionLatex builds LaTeX for a single caption inside a captions
+// slot: badges + fixed-width gap + escaped caption text. Unlike
+// renderFooterCaptionsLatex it emits no \quad glue and no \mbox wrapper, so
+// the surrounding parbox can wrap long caption text naturally across multiple
+// lines. The fixed \hspace gap (slotCaptionBadgeGapMM) ensures wrapped lines
+// align under the first text character via \hangindent set in the template.
+// Embedded newlines in the caption text become hard line breaks (\\) inside
+// the caption.
+func renderSlotCaptionLatex(c FooterCaption, badgeSize float64) string {
+	var b strings.Builder
+	badges := buildCaptionBadges(c, badgeSize)
+	b.WriteString(badges)
+	// Split on newlines so authored line breaks inside a caption become hard
+	// breaks in the output. Empty trailing segments are dropped so we don't
+	// emit a bare \\ at the end.
+	segments := strings.Split(c.Caption, "\n")
+	for i, seg := range segments {
+		if seg == "" && i == len(segments)-1 {
+			continue
+		}
+		if i == 0 {
+			if len(c.Markers) > 0 && seg != "" {
+				fmt.Fprintf(&b, `\hspace{%.2fmm}`, slotCaptionBadgeGapMM)
+			}
+			b.WriteString(latexEscapeCaption(seg))
+		} else {
+			b.WriteString(`\\`)
+			b.WriteString(latexEscapeCaption(seg))
+		}
 	}
 	return b.String()
 }
@@ -1326,6 +1386,56 @@ func buildTextSlotNew(slot SlotRect, ps database.PageSlot, contentLeftX, canvasT
 		ClipH:       slot.H,
 		TextContent: ps.TextContent,
 		TextType:    DetectTextType(ps.TextContent),
+	}
+}
+
+// findCaptionsSlotIndex returns the index (into slots) of the slot marked as
+// the captions slot, or -1 if the page has none. At most one captions slot is
+// allowed per page (enforced at the database layer); if multiple are set for
+// any reason, the lowest index wins so behaviour is deterministic.
+func findCaptionsSlotIndex(p database.BookPage, slots []SlotRect) int {
+	for i := range slots {
+		if getPageSlot(p, i).IsCaptions() {
+			return i
+		}
+	}
+	return -1
+}
+
+// routeCaptionsSlot injects the page's footer captions into the slot marked
+// as the captions slot (if any) and clears the returned footer list so the
+// bottom strip is suppressed. When the page has no captions slot, both
+// arguments are returned unchanged.
+func routeCaptionsSlot(
+	p database.BookPage, slots []SlotRect, tmplSlots []TemplateSlot,
+	footerCaptions []FooterCaption, contentLeftX, canvasTopY float64,
+	chapterColor string,
+) ([]TemplateSlot, []FooterCaption) {
+	idx := findCaptionsSlotIndex(p, slots)
+	if idx < 0 {
+		return tmplSlots, footerCaptions
+	}
+	tmplSlots[idx] = buildCaptionsSlotTemplate(
+		slots[idx], contentLeftX, canvasTopY, footerCaptions, chapterColor,
+	)
+	return tmplSlots, nil
+}
+
+// buildCaptionsSlotTemplate creates a TemplateSlot that renders the page's
+// photo captions stacked vertically inside the slot. The page-level bottom
+// captions strip is suppressed when this slot is present.
+func buildCaptionsSlotTemplate(
+	slot SlotRect, contentLeftX, canvasTopY float64,
+	caps []FooterCaption, chapterColor string,
+) TemplateSlot {
+	return TemplateSlot{
+		HasCaptionsList: true,
+		ClipX:           contentLeftX + slot.X,
+		ClipY:           canvasTopY - slot.Y - slot.H,
+		ClipW:           slot.W,
+		ClipH:           slot.H,
+		CaptionsList:    caps,
+		ChapterColor:    chapterColor,
 	}
 }
 

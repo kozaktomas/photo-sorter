@@ -152,6 +152,7 @@ type BookWriter interface {
 	ReorderPages(ctx context.Context, bookID string, pageIDs []string) error
 	AssignSlot(ctx context.Context, pageID string, slotIndex int, photoUID string) error
 	AssignTextSlot(ctx context.Context, pageID string, slotIndex int, textContent string) error
+	AssignCaptionsSlot(ctx context.Context, pageID string, slotIndex int) error
 	ClearSlot(ctx context.Context, pageID string, slotIndex int) error
 	SwapSlots(ctx context.Context, pageID string, slotA int, slotB int) error
 	UpdateSlotCrop(ctx context.Context, pageID string, slotIndex int, cropX, cropY, cropScale float64) error

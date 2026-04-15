@@ -32,7 +32,7 @@ func validatePage(page TemplatePage, config LayoutConfig) []ValidationWarning {
 	var warnings []ValidationWarning
 
 	for i, slot := range page.Slots {
-		if !slot.HasPhoto && !slot.HasText {
+		if !slot.HasPhoto && !slot.HasText && !slot.HasCaptionsList {
 			continue
 		}
 		warnings = append(warnings, validateSlotBounds(page, i, slot)...)
@@ -148,7 +148,7 @@ func validateNoOverlaps(page TemplatePage) []ValidationWarning {
 		}
 		for j := i + 1; j < len(page.Slots); j++ {
 			sj := page.Slots[j]
-			if !sj.HasPhoto && !sj.HasText {
+			if !sj.HasPhoto && !sj.HasText && !sj.HasCaptionsList {
 				continue
 			}
 			if rectsOverlap(si.ClipX, si.ClipY, si.ClipW, si.ClipH, sj.ClipX, sj.ClipY, sj.ClipW, sj.ClipH, eps) {
@@ -176,7 +176,7 @@ func validateGridAlignment(page TemplatePage, config LayoutConfig) []ValidationW
 	}
 
 	for i, slot := range page.Slots {
-		if !slot.HasPhoto && !slot.HasText {
+		if !slot.HasPhoto && !slot.HasText && !slot.HasCaptionsList {
 			continue
 		}
 

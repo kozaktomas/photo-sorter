@@ -1115,7 +1115,7 @@ func TestBooksHandler_AssignSlot_MissingPhotoUID(t *testing.T) {
 	handler.AssignSlot(recorder, req)
 
 	assertStatusCode(t, recorder, http.StatusBadRequest)
-	assertJSONError(t, recorder, "photo_uid or text_content is required")
+	assertJSONError(t, recorder, "photo_uid, text_content, or captions is required")
 }
 
 func TestBooksHandler_AssignSlot_InvalidJSON(t *testing.T) {
@@ -1578,7 +1578,111 @@ func TestBooksHandler_AssignSlot_BothPhotoAndText(t *testing.T) {
 	handler.AssignSlot(recorder, req)
 
 	assertStatusCode(t, recorder, http.StatusBadRequest)
-	assertJSONError(t, recorder, "slot must have either photo_uid or text_content, not both")
+	assertJSONError(t, recorder, "slot must have exactly one of photo_uid, text_content, captions")
+}
+
+func TestBooksHandler_AssignSlot_Captions(t *testing.T) {
+	t.Run("assigns captions slot", func(t *testing.T) {
+		mockBW, handler := setupBookTest(t)
+
+		body := bytes.NewBufferString(`{"captions":true}`)
+		req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/pages/p1/slots/2", body)
+		req.Header.Set("Content-Type", "application/json")
+		req = requestWithChiParams(req, map[string]string{"id": "p1", "index": "2"})
+		recorder := httptest.NewRecorder()
+		handler.AssignSlot(recorder, req)
+
+		assertStatusCode(t, recorder, http.StatusOK)
+		var resp map[string]bool
+		parseJSONResponse(t, recorder, &resp)
+		if !resp["assigned"] {
+			t.Error("expected assigned=true")
+		}
+
+		// Verify the slot is marked as captions slot in the mock.
+		slots, _ := mockBW.GetPageSlots(context.Background(), "p1")
+		var found bool
+		for _, s := range slots {
+			if s.SlotIndex == 2 && s.IsCaptionsSlot {
+				found = true
+			}
+		}
+		if !found {
+			t.Error("expected slot 2 to be flagged as captions slot in mock")
+		}
+	})
+
+	t.Run("rejects captions with photo_uid", func(t *testing.T) {
+		_, handler := setupBookTest(t)
+
+		body := bytes.NewBufferString(`{"captions":true,"photo_uid":"photo1"}`)
+		req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/pages/p1/slots/0", body)
+		req.Header.Set("Content-Type", "application/json")
+		req = requestWithChiParams(req, map[string]string{"id": "p1", "index": "0"})
+		recorder := httptest.NewRecorder()
+		handler.AssignSlot(recorder, req)
+
+		assertStatusCode(t, recorder, http.StatusBadRequest)
+		assertJSONError(t, recorder, "slot must have exactly one of photo_uid, text_content, captions")
+	})
+
+	t.Run("conflict on second captions slot", func(t *testing.T) {
+		mockBW, handler := setupBookTest(t)
+		// Seed an existing captions slot at index 1.
+		if err := mockBW.AssignCaptionsSlot(context.Background(), "p1", 1); err != nil {
+			t.Fatalf("seed captions slot: %v", err)
+		}
+
+		body := bytes.NewBufferString(`{"captions":true}`)
+		req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/pages/p1/slots/2", body)
+		req.Header.Set("Content-Type", "application/json")
+		req = requestWithChiParams(req, map[string]string{"id": "p1", "index": "2"})
+		recorder := httptest.NewRecorder()
+		handler.AssignSlot(recorder, req)
+
+		assertStatusCode(t, recorder, http.StatusConflict)
+		assertJSONError(t, recorder, "this page already has a captions slot")
+	})
+
+	t.Run("reassigning same captions slot index is idempotent", func(t *testing.T) {
+		mockBW, handler := setupBookTest(t)
+		if err := mockBW.AssignCaptionsSlot(context.Background(), "p1", 1); err != nil {
+			t.Fatalf("seed captions slot: %v", err)
+		}
+		// Calling again on the same slot index must succeed — the uniqueness
+		// rule is "at most one captions slot per page", not "cannot reassign".
+		body := bytes.NewBufferString(`{"captions":true}`)
+		req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/pages/p1/slots/1", body)
+		req.Header.Set("Content-Type", "application/json")
+		req = requestWithChiParams(req, map[string]string{"id": "p1", "index": "1"})
+		recorder := httptest.NewRecorder()
+		handler.AssignSlot(recorder, req)
+
+		assertStatusCode(t, recorder, http.StatusOK)
+	})
+
+	t.Run("replacing captions slot with photo clears the flag", func(t *testing.T) {
+		mockBW, handler := setupBookTest(t)
+		if err := mockBW.AssignCaptionsSlot(context.Background(), "p1", 1); err != nil {
+			t.Fatalf("seed captions slot: %v", err)
+		}
+
+		body := bytes.NewBufferString(`{"photo_uid":"photo1"}`)
+		req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/pages/p1/slots/1", body)
+		req.Header.Set("Content-Type", "application/json")
+		req = requestWithChiParams(req, map[string]string{"id": "p1", "index": "1"})
+		recorder := httptest.NewRecorder()
+		handler.AssignSlot(recorder, req)
+
+		assertStatusCode(t, recorder, http.StatusOK)
+
+		slots, _ := mockBW.GetPageSlots(context.Background(), "p1")
+		for _, s := range slots {
+			if s.SlotIndex == 1 && s.IsCaptionsSlot {
+				t.Error("captions flag must be cleared when slot is reassigned to a photo")
+			}
+		}
+	})
 }
 
 // --- UpdatePage split_position ---

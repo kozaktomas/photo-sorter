@@ -2049,6 +2049,30 @@ PUT /pages/{id}/slots/{index}
 
 Supports GFM markdown: headings, bold, italic, lists, blockquotes, and tables. Tables use pipe syntax with optional column width percentages in the separator row (e.g., `|--- 60% ---|--- 40% ---|`).
 
+#### Mark Slot as Captions Slot
+
+```
+PUT /pages/{id}/slots/{index}
+```
+
+**Request:**
+```json
+{
+  "captions": true
+}
+```
+
+Flips a slot into "captions mode": at render time it displays the page's photo captions stacked vertically with numbered badges and a hanging indent (the badge sits flush left, wrapped text aligns under the first text character). The bottom captions strip is suppressed for that page — useful when a single caption is too long to fit in the strip. The captions content is computed at render time from `section_photos.description` (no content is stored on the slot itself).
+
+The three modes (`photo_uid`, `text_content`, `captions`) are mutually exclusive — exactly one must be set per request, otherwise the API returns `400`. At most one captions slot per page is allowed; a second attempt on a different slot returns `409 Conflict`. Replacing a captions slot with a photo or text automatically clears the flag and restores the bottom strip on the next render.
+
+**Response (409 Conflict — when another captions slot already exists on the page):**
+```json
+{
+  "error": "this page already has a captions slot"
+}
+```
+
 #### Update Slot Crop Position
 
 ```

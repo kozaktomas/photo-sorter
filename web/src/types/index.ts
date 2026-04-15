@@ -458,6 +458,7 @@ export interface PageSlot {
   slot_index: number;
   photo_uid: string;
   text_content: string;
+  is_captions_slot: boolean;
   crop_x: number;
   crop_y: number;
   crop_scale: number;

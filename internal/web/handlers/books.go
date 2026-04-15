@@ -138,14 +138,15 @@ type pageResponse struct {
 }
 
 type slotResponse struct {
-	SlotIndex   int     `json:"slot_index"`
-	PhotoUID    string  `json:"photo_uid"`
-	TextContent string  `json:"text_content"`
-	CropX       float64 `json:"crop_x"`
-	CropY       float64 `json:"crop_y"`
-	CropScale   float64 `json:"crop_scale"`
-	Title       string  `json:"title"`
-	FileName    string  `json:"file_name"`
+	SlotIndex      int     `json:"slot_index"`
+	PhotoUID       string  `json:"photo_uid"`
+	TextContent    string  `json:"text_content"`
+	IsCaptionsSlot bool    `json:"is_captions_slot"`
+	CropX          float64 `json:"crop_x"`
+	CropY          float64 `json:"crop_y"`
+	CropScale      float64 `json:"crop_scale"`
+	Title          string  `json:"title"`
+	FileName       string  `json:"file_name"`
 }
 
 // --- Photo Book Memberships ---
@@ -302,12 +303,13 @@ func buildPageResponses(pages []database.BookPage) []pageResponse {
 		slots := make([]slotResponse, len(p.Slots))
 		for j := range p.Slots {
 			slots[j] = slotResponse{
-				SlotIndex:   p.Slots[j].SlotIndex,
-				PhotoUID:    p.Slots[j].PhotoUID,
-				TextContent: p.Slots[j].TextContent,
-				CropX:       p.Slots[j].CropX,
-				CropY:       p.Slots[j].CropY,
-				CropScale:   p.Slots[j].CropScale,
+				SlotIndex:      p.Slots[j].SlotIndex,
+				PhotoUID:       p.Slots[j].PhotoUID,
+				TextContent:    p.Slots[j].TextContent,
+				IsCaptionsSlot: p.Slots[j].IsCaptionsSlot,
+				CropX:          p.Slots[j].CropX,
+				CropY:          p.Slots[j].CropY,
+				CropScale:      p.Slots[j].CropScale,
 			}
 		}
 		pageResps[i] = pageResponse{
@@ -1057,19 +1059,31 @@ func (h *BooksHandler) ReorderPages(w http.ResponseWriter, r *http.Request) {
 type assignSlotRequest struct {
 	PhotoUID    string `json:"photo_uid"`
 	TextContent string `json:"text_content"`
+	Captions    bool   `json:"captions"`
 }
 
 func (r assignSlotRequest) validate() string {
-	if r.PhotoUID != "" && r.TextContent != "" {
-		return "slot must have either photo_uid or text_content, not both"
+	set := 0
+	if r.PhotoUID != "" {
+		set++
 	}
-	if r.PhotoUID == "" && r.TextContent == "" {
-		return "photo_uid or text_content is required"
+	if r.TextContent != "" {
+		set++
+	}
+	if r.Captions {
+		set++
+	}
+	if set == 0 {
+		return "photo_uid, text_content, or captions is required"
+	}
+	if set > 1 {
+		return "slot must have exactly one of photo_uid, text_content, captions"
 	}
 	return ""
 }
 
-// AssignSlot handles PUT /api/v1/pages/:id/slots/:index and assigns a photo or text content to a page slot.
+// AssignSlot handles PUT /api/v1/pages/:id/slots/:index and assigns a photo,
+// text content, or captions-slot marker to a page slot.
 func (h *BooksHandler) AssignSlot(w http.ResponseWriter, r *http.Request) {
 	bw := getBookWriter(r, w)
 	if bw == nil {
@@ -1090,21 +1104,44 @@ func (h *BooksHandler) AssignSlot(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, errMsg)
 		return
 	}
-	if req.TextContent != "" {
-		// Save previous text content as a version before overwriting.
-		saveTextVersionForPageSlot(r, bw, pageID, slotIndex, req.TextContent)
-
-		if err := bw.AssignTextSlot(r.Context(), pageID, slotIndex, req.TextContent); err != nil {
-			respondError(w, http.StatusInternalServerError, "failed to assign text slot")
-			return
-		}
-	} else {
-		if err := bw.AssignSlot(r.Context(), pageID, slotIndex, req.PhotoUID); err != nil {
-			respondError(w, http.StatusInternalServerError, "failed to assign slot")
-			return
-		}
+	if !dispatchSlotAssign(r, w, bw, pageID, slotIndex, req) {
+		return
 	}
 	respondJSON(w, http.StatusOK, map[string]bool{"assigned": true})
+}
+
+// dispatchSlotAssign routes the validated AssignSlot request to the correct
+// writer method and translates backend errors to HTTP responses. Returns true
+// on success; false means the response has already been written.
+func dispatchSlotAssign(
+	r *http.Request, w http.ResponseWriter, bw database.BookWriter,
+	pageID string, slotIndex int, req assignSlotRequest,
+) bool {
+	switch {
+	case req.Captions:
+		err := bw.AssignCaptionsSlot(r.Context(), pageID, slotIndex)
+		if errors.Is(err, database.ErrCaptionsSlotExists) {
+			respondError(w, http.StatusConflict, "this page already has a captions slot")
+			return false
+		}
+		if err != nil {
+			respondError(w, http.StatusInternalServerError, "failed to assign captions slot")
+			return false
+		}
+	case req.TextContent != "":
+		// Save previous text content as a version before overwriting.
+		saveTextVersionForPageSlot(r, bw, pageID, slotIndex, req.TextContent)
+		if err := bw.AssignTextSlot(r.Context(), pageID, slotIndex, req.TextContent); err != nil {
+			respondError(w, http.StatusInternalServerError, "failed to assign text slot")
+			return false
+		}
+	default:
+		if err := bw.AssignSlot(r.Context(), pageID, slotIndex, req.PhotoUID); err != nil {
+			respondError(w, http.StatusInternalServerError, "failed to assign slot")
+			return false
+		}
+	}
+	return true
 }
 
 // SwapSlots handles POST /api/v1/pages/:id/slots/swap and swaps two page slots atomically.

@@ -1,8 +1,14 @@
 package database
 
 import (
+	"errors"
 	"time"
 )
+
+// ErrCaptionsSlotExists is returned by AssignCaptionsSlot when the target page
+// already has a different slot marked as its captions slot. At most one
+// captions slot is allowed per page.
+var ErrCaptionsSlotExists = errors.New("page already has a captions slot")
 
 // StoredEmbedding represents an embedding stored in the database.
 type StoredEmbedding struct {
@@ -141,15 +147,16 @@ type BookPage struct {
 	UpdatedAt      time.Time
 }
 
-// PageSlot represents a photo or text assignment to a position on a page.
-// A slot holds either a PhotoUID or TextContent, never both.
+// PageSlot represents a photo, text, or captions assignment to a position on
+// a page. A slot holds at most one of PhotoUID, TextContent, or IsCaptionsSlot.
 type PageSlot struct {
-	SlotIndex   int
-	PhotoUID    string  // empty = unoccupied (photo)
-	TextContent string  // non-empty = text slot
-	CropX       float64 // 0.0-1.0, default 0.5 (center)
-	CropY       float64 // 0.0-1.0, default 0.5 (center)
-	CropScale   float64 // 0.1-1.0, default 1.0 (no zoom)
+	SlotIndex      int
+	PhotoUID       string  // empty = unoccupied (photo)
+	TextContent    string  // non-empty = text slot
+	IsCaptionsSlot bool    // true = render page's photo captions inline
+	CropX          float64 // 0.0-1.0, default 0.5 (center)
+	CropY          float64 // 0.0-1.0, default 0.5 (center)
+	CropScale      float64 // 0.1-1.0, default 1.0 (no zoom)
 }
 
 // IsTextSlot returns true if this slot contains text content (no photo).
@@ -157,9 +164,14 @@ func (s PageSlot) IsTextSlot() bool {
 	return s.TextContent != "" && s.PhotoUID == ""
 }
 
-// IsEmpty returns true if the slot has neither a photo nor text.
+// IsCaptions returns true if this slot renders the page's photo captions.
+func (s PageSlot) IsCaptions() bool {
+	return s.IsCaptionsSlot
+}
+
+// IsEmpty returns true if the slot has neither a photo, text, nor captions.
 func (s PageSlot) IsEmpty() bool {
-	return s.PhotoUID == "" && s.TextContent == ""
+	return s.PhotoUID == "" && s.TextContent == "" && !s.IsCaptionsSlot
 }
 
 // TextVersion stores a historical snapshot of a text field.

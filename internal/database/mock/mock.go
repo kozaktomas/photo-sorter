@@ -1043,6 +1043,7 @@ func (m *MockBookWriter) AssignSlot(ctx context.Context, pageID string, slotInde
 		if slots[i].SlotIndex == slotIndex {
 			slots[i].PhotoUID = photoUID
 			slots[i].TextContent = ""
+			slots[i].IsCaptionsSlot = false
 			slots[i].CropX = 0.5
 			slots[i].CropY = 0.5
 			slots[i].CropScale = 1.0
@@ -1066,6 +1067,7 @@ func (m *MockBookWriter) AssignTextSlot(ctx context.Context, pageID string, slot
 		if slots[i].SlotIndex == slotIndex {
 			slots[i].PhotoUID = ""
 			slots[i].TextContent = textContent
+			slots[i].IsCaptionsSlot = false
 			m.pageSlots[pageID] = slots
 			return nil
 		}
@@ -1074,7 +1076,39 @@ func (m *MockBookWriter) AssignTextSlot(ctx context.Context, pageID string, slot
 	return nil
 }
 
-// ClearSlot removes the photo assignment from a page slot.
+// AssignCaptionsSlot marks a page slot as the captions slot. Returns
+// database.ErrCaptionsSlotExists if another slot on the same page is already
+// marked as the captions slot.
+func (m *MockBookWriter) AssignCaptionsSlot(ctx context.Context, pageID string, slotIndex int) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	slots := m.pageSlots[pageID]
+	for i := range slots {
+		if slots[i].IsCaptionsSlot && slots[i].SlotIndex != slotIndex {
+			return database.ErrCaptionsSlotExists
+		}
+	}
+	for i := range slots {
+		if slots[i].SlotIndex == slotIndex {
+			slots[i].PhotoUID = ""
+			slots[i].TextContent = ""
+			slots[i].IsCaptionsSlot = true
+			slots[i].CropX = 0.5
+			slots[i].CropY = 0.5
+			slots[i].CropScale = 1.0
+			m.pageSlots[pageID] = slots
+			return nil
+		}
+	}
+	m.pageSlots[pageID] = append(slots, database.PageSlot{
+		SlotIndex:      slotIndex,
+		IsCaptionsSlot: true,
+		CropX:          0.5, CropY: 0.5, CropScale: 1.0,
+	})
+	return nil
+}
+
+// ClearSlot removes the photo, text, or captions assignment from a page slot.
 func (m *MockBookWriter) ClearSlot(ctx context.Context, pageID string, slotIndex int) error {
 	if m.ClearSlotError != nil {
 		return m.ClearSlotError
@@ -1085,6 +1119,8 @@ func (m *MockBookWriter) ClearSlot(ctx context.Context, pageID string, slotIndex
 	for i := range slots {
 		if slots[i].SlotIndex == slotIndex {
 			slots[i].PhotoUID = ""
+			slots[i].TextContent = ""
+			slots[i].IsCaptionsSlot = false
 			m.pageSlots[pageID] = slots
 			return nil
 		}
@@ -1112,6 +1148,7 @@ func (m *MockBookWriter) SwapSlots(ctx context.Context, pageID string, slotA int
 	if idxA >= 0 && idxB >= 0 {
 		slots[idxA].PhotoUID, slots[idxB].PhotoUID = slots[idxB].PhotoUID, slots[idxA].PhotoUID
 		slots[idxA].TextContent, slots[idxB].TextContent = slots[idxB].TextContent, slots[idxA].TextContent
+		slots[idxA].IsCaptionsSlot, slots[idxB].IsCaptionsSlot = slots[idxB].IsCaptionsSlot, slots[idxA].IsCaptionsSlot
 		slots[idxA].CropX, slots[idxB].CropX = slots[idxB].CropX, slots[idxA].CropX
 		slots[idxA].CropY, slots[idxB].CropY = slots[idxB].CropY, slots[idxA].CropY
 		slots[idxA].CropScale, slots[idxB].CropScale = slots[idxB].CropScale, slots[idxA].CropScale

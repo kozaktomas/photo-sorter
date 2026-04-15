@@ -9,7 +9,21 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/kozaktomas/photo-sorter/internal/database"
+	"github.com/lib/pq"
 )
+
+// isUniqueViolation reports whether err is a PostgreSQL unique_violation
+// (SQLSTATE 23505) on the given constraint name. Empty constraint matches any.
+func isUniqueViolation(err error, constraint string) bool {
+	var pqErr *pq.Error
+	if !errors.As(err, &pqErr) {
+		return false
+	}
+	if pqErr.Code != "23505" {
+		return false
+	}
+	return constraint == "" || pqErr.Constraint == constraint
+}
 
 // BookRepository provides PostgreSQL-backed photo book storage.
 type BookRepository struct {
@@ -228,6 +242,8 @@ func (r *BookRepository) GetChapter(ctx context.Context, id string) (*database.B
 }
 
 // GetChapters retrieves all chapters for a book, ordered by sort order.
+//
+//nolint:dupl // Superficially similar row-scan loop to GetPageSlots.
 func (r *BookRepository) GetChapters(ctx context.Context, bookID string) ([]database.BookChapter, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT id, book_id, title, color, sort_order, created_at, updated_at
@@ -653,7 +669,8 @@ func (r *BookRepository) GetPages(ctx context.Context, bookID string) ([]databas
 	// Batch-load all slots for the book in one query.
 	slotRows, err := r.pool.Query(ctx,
 		`SELECT ps.page_id, ps.slot_index, COALESCE(ps.photo_uid, ''),
-		        COALESCE(ps.text_content, ''), ps.crop_x, ps.crop_y, ps.crop_scale
+		        COALESCE(ps.text_content, ''), ps.is_captions_slot,
+		        ps.crop_x, ps.crop_y, ps.crop_scale
 		 FROM page_slots ps
 		 JOIN book_pages bp ON bp.id = ps.page_id
 		 WHERE bp.book_id = $1
@@ -667,7 +684,7 @@ func (r *BookRepository) GetPages(ctx context.Context, bookID string) ([]databas
 		var pageID string
 		var s database.PageSlot
 		if err := slotRows.Scan(
-			&pageID, &s.SlotIndex, &s.PhotoUID, &s.TextContent,
+			&pageID, &s.SlotIndex, &s.PhotoUID, &s.TextContent, &s.IsCaptionsSlot,
 			&s.CropX, &s.CropY, &s.CropScale,
 		); err != nil {
 			return nil, fmt.Errorf("scan slot: %w", err)
@@ -740,10 +757,14 @@ func (r *BookRepository) ReorderPages(ctx context.Context, bookID string, pageID
 // --- Slots ---
 
 // GetPageSlots retrieves all slots for a page, ordered by slot index.
+//
+// would require a generic helper for rows.Scan which we don't have yet.
+//
+//nolint:dupl // Superficially similar row-scan loop to GetChapters; merging
 func (r *BookRepository) GetPageSlots(ctx context.Context, pageID string) ([]database.PageSlot, error) {
 	rows, err := r.pool.Query(ctx,
 		`SELECT slot_index, COALESCE(photo_uid, ''), COALESCE(text_content, ''),
-		        crop_x, crop_y, crop_scale
+		        is_captions_slot, crop_x, crop_y, crop_scale
 		 FROM page_slots WHERE page_id = $1 ORDER BY slot_index`, pageID)
 	if err != nil {
 		return nil, fmt.Errorf("get page slots: %w", err)
@@ -752,7 +773,8 @@ func (r *BookRepository) GetPageSlots(ctx context.Context, pageID string) ([]dat
 	var slots []database.PageSlot
 	for rows.Next() {
 		var s database.PageSlot
-		if err := rows.Scan(&s.SlotIndex, &s.PhotoUID, &s.TextContent, &s.CropX, &s.CropY, &s.CropScale); err != nil {
+		if err := rows.Scan(&s.SlotIndex, &s.PhotoUID, &s.TextContent,
+			&s.IsCaptionsSlot, &s.CropX, &s.CropY, &s.CropScale); err != nil {
 			return nil, fmt.Errorf("scan slot: %w", err)
 		}
 		slots = append(slots, s)
@@ -763,14 +785,17 @@ func (r *BookRepository) GetPageSlots(ctx context.Context, pageID string) ([]dat
 	return slots, nil
 }
 
-// AssignSlot assigns a photo to a page slot, clearing any existing text content.
+// AssignSlot assigns a photo to a page slot, clearing any existing text
+// content or captions-slot flag.
 func (r *BookRepository) AssignSlot(ctx context.Context, pageID string, slotIndex int, photoUID string) error {
 	_, err := r.pool.Exec(ctx,
 		`INSERT INTO page_slots
-		 (page_id, slot_index, photo_uid, text_content, crop_x, crop_y, crop_scale)
-		 VALUES ($1, $2, $3, '', 0.5, 0.5, 1.0)
+		 (page_id, slot_index, photo_uid, text_content, is_captions_slot,
+		  crop_x, crop_y, crop_scale)
+		 VALUES ($1, $2, $3, '', FALSE, 0.5, 0.5, 1.0)
 		 ON CONFLICT (page_id, slot_index) DO UPDATE SET
 		   photo_uid = EXCLUDED.photo_uid, text_content = '',
+		   is_captions_slot = FALSE,
 		   crop_x = 0.5, crop_y = 0.5, crop_scale = 1.0`,
 		pageID, slotIndex, photoUID)
 	if err != nil {
@@ -779,18 +804,45 @@ func (r *BookRepository) AssignSlot(ctx context.Context, pageID string, slotInde
 	return nil
 }
 
-// AssignTextSlot assigns text content to a page slot, clearing any existing photo.
+// AssignTextSlot assigns text content to a page slot, clearing any existing
+// photo or captions-slot flag.
 func (r *BookRepository) AssignTextSlot(ctx context.Context, pageID string, slotIndex int, textContent string) error {
 	_, err := r.pool.Exec(ctx,
 		`INSERT INTO page_slots
-		 (page_id, slot_index, photo_uid, text_content, crop_x, crop_y, crop_scale)
-		 VALUES ($1, $2, NULL, $3, 0.5, 0.5, 1.0)
+		 (page_id, slot_index, photo_uid, text_content, is_captions_slot,
+		  crop_x, crop_y, crop_scale)
+		 VALUES ($1, $2, NULL, $3, FALSE, 0.5, 0.5, 1.0)
 		 ON CONFLICT (page_id, slot_index) DO UPDATE SET
 		   photo_uid = NULL, text_content = EXCLUDED.text_content,
+		   is_captions_slot = FALSE,
 		   crop_x = 0.5, crop_y = 0.5, crop_scale = 1.0`,
 		pageID, slotIndex, textContent)
 	if err != nil {
 		return fmt.Errorf("assign text slot: %w", err)
+	}
+	return nil
+}
+
+// AssignCaptionsSlot marks a page slot as the captions slot. The slot renders
+// the page's photo captions at render time instead of holding a photo or
+// user-authored text. At most one captions slot is allowed per page (enforced
+// by the uniq_page_captions_slot partial unique index — a second call on a
+// different slot index returns ErrCaptionsSlotExists).
+func (r *BookRepository) AssignCaptionsSlot(ctx context.Context, pageID string, slotIndex int) error {
+	_, err := r.pool.Exec(ctx,
+		`INSERT INTO page_slots
+		 (page_id, slot_index, photo_uid, text_content, is_captions_slot,
+		  crop_x, crop_y, crop_scale)
+		 VALUES ($1, $2, NULL, '', TRUE, 0.5, 0.5, 1.0)
+		 ON CONFLICT (page_id, slot_index) DO UPDATE SET
+		   photo_uid = NULL, text_content = '', is_captions_slot = TRUE,
+		   crop_x = 0.5, crop_y = 0.5, crop_scale = 1.0`,
+		pageID, slotIndex)
+	if err != nil {
+		if isUniqueViolation(err, "uniq_page_captions_slot") {
+			return database.ErrCaptionsSlotExists
+		}
+		return fmt.Errorf("assign captions slot: %w", err)
 	}
 	return nil
 }
@@ -814,9 +866,9 @@ func (r *BookRepository) SwapSlots(ctx context.Context, pageID string, slotA int
 	}
 	defer tx.Rollback()
 
-	// Read current slot data (photo_uid + text_content + crop) for both slots.
+	// Read current slot data for both slots (including captions-slot flag).
 	rows, err := tx.QueryContext(ctx,
-		`SELECT slot_index, photo_uid, COALESCE(text_content, ''),
+		`SELECT slot_index, photo_uid, COALESCE(text_content, ''), is_captions_slot,
 		        crop_x, crop_y, crop_scale
 		 FROM page_slots WHERE page_id = $1 AND slot_index IN ($2, $3)`,
 		pageID, slotA, slotB)
@@ -839,16 +891,19 @@ func (r *BookRepository) SwapSlots(ctx context.Context, pageID string, slotA int
 		return fmt.Errorf("swap slots delete: %w", err)
 	}
 
-	// Re-insert with swapped data (crop travels with photo).
+	// Re-insert with swapped data (crop and captions flag travel with content).
 	dataA := slotDataMap[slotA]
 	dataB := slotDataMap[slotB]
 	if _, err := tx.ExecContext(ctx,
 		`INSERT INTO page_slots
-		 (page_id, slot_index, photo_uid, text_content, crop_x, crop_y, crop_scale)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7), ($1, $8, $9, $10, $11, $12, $13)`,
-		pageID, slotA, dataB.photoUID, dataB.textContent,
+		 (page_id, slot_index, photo_uid, text_content, is_captions_slot,
+		  crop_x, crop_y, crop_scale)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8),
+		        ($1, $9, $10, $11, $12, $13, $14, $15)`,
+		pageID,
+		slotA, dataB.photoUID, dataB.textContent, dataB.isCaptionsSlot,
 		dataB.cropX, dataB.cropY, dataB.cropScale,
-		slotB, dataA.photoUID, dataA.textContent,
+		slotB, dataA.photoUID, dataA.textContent, dataA.isCaptionsSlot,
 		dataA.cropX, dataA.cropY, dataA.cropScale,
 	); err != nil {
 		return fmt.Errorf("swap slots insert: %w", err)
@@ -903,13 +958,15 @@ func (r *BookRepository) GetPhotoBookMemberships(
 	return memberships, nil
 }
 
-// slotData holds photo_uid, text_content, and crop values for swap operations.
+// slotData holds photo_uid, text_content, captions flag, and crop values for
+// swap operations.
 type slotData struct {
-	photoUID    *string // nil means NULL in DB
-	textContent string
-	cropX       float64
-	cropY       float64
-	cropScale   float64
+	photoUID       *string // nil means NULL in DB
+	textContent    string
+	isCaptionsSlot bool
+	cropX          float64
+	cropY          float64
+	cropScale      float64
 }
 
 func scanSlotRows(rows *sql.Rows) (map[int]slotData, error) {
@@ -919,11 +976,15 @@ func scanSlotRows(rows *sql.Rows) (map[int]slotData, error) {
 		var idx int
 		var uid *string
 		var text string
+		var isCaptions bool
 		var cropX, cropY, cropScale float64
-		if err := rows.Scan(&idx, &uid, &text, &cropX, &cropY, &cropScale); err != nil {
+		if err := rows.Scan(&idx, &uid, &text, &isCaptions, &cropX, &cropY, &cropScale); err != nil {
 			return nil, fmt.Errorf("scan slot row: %w", err)
 		}
-		result[idx] = slotData{photoUID: uid, textContent: text, cropX: cropX, cropY: cropY, cropScale: cropScale}
+		result[idx] = slotData{
+			photoUID: uid, textContent: text, isCaptionsSlot: isCaptions,
+			cropX: cropX, cropY: cropY, cropScale: cropScale,
+		}
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate slot rows: %w", err)
