@@ -161,7 +161,7 @@
   }%
 {{- end}}
 {{- if not $page.HidePageNumber}}
-  \node[anchor={{$page.FolioAnchor}},inner sep=0,font=\fontsize{9}{11}\selectfont,text=black!35]
+  \node[anchor={{$page.FolioAnchor}},inner sep=0,font=\fontsize{ {{- printf "%.0f" $.CaptionFontSize -}} }{ {{- printf "%.0f" $.CaptionLeading -}} }\selectfont,text=black!85]
     at ({{printf "%.2f" $page.FolioX}},{{printf "%.2f" $page.FolioY}})
     {{print "{"}}{{$page.PageNumber}}{{print "}"}};
 {{- end}}
