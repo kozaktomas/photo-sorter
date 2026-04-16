@@ -86,6 +86,7 @@ type PhotoBook struct {
 	CaptionFontSize   float64
 	HeadingColorBleed float64
 	CaptionBadgeSize  float64
+	BodyTextPadMM     float64
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
 }

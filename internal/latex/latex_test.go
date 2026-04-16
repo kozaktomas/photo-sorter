@@ -1772,3 +1772,181 @@ func TestPlaceCaptionMarkerNoMarker(t *testing.T) {
 			ts.CaptionMarker, ts.CaptionMarkerSize, ts.CaptionMarkerFontSize)
 	}
 }
+
+// TestApplyTextSlotPadding verifies the neighbor-aware logic that adds inner
+// body padding only on the side of a text slot adjacent to a photo, while
+// keeping headings flush with the slot edge via compensating bleed.
+func TestApplyTextSlotPadding(t *testing.T) {
+	const (
+		headingBleed = 4.0
+		bodyTextPad  = 4.0
+	)
+	photo := TemplateSlot{HasPhoto: true}
+	text := TemplateSlot{HasText: true}
+	empty := TemplateSlot{}
+
+	cases := []struct {
+		name     string
+		format   string
+		slots    []TemplateSlot
+		idx      int
+		wantPadL float64
+		wantPadR float64
+		wantBL   float64
+		wantBR   float64
+	}{
+		{
+			name:     "2L1P text on right (idx 2), both left neighbors are photos",
+			format:   Format2L1P,
+			slots:    []TemplateSlot{photo, photo, text},
+			idx:      2,
+			wantPadL: bodyTextPad,
+			wantBL:   bodyTextPad,
+			wantPadR: 0,
+			wantBR:   headingBleed,
+		},
+		{
+			name:     "1P2L text on left (idx 0), right neighbors include photos",
+			format:   Format1P2L,
+			slots:    []TemplateSlot{text, photo, photo},
+			idx:      0,
+			wantPadL: 0,
+			wantBL:   headingBleed,
+			wantPadR: bodyTextPad,
+			wantBR:   bodyTextPad,
+		},
+		{
+			name:     "2Portrait text+text — interior neighbor is text, no padding",
+			format:   Format2Portrait,
+			slots:    []TemplateSlot{text, text},
+			idx:      0,
+			wantPadL: 0,
+			wantBL:   headingBleed,
+			wantPadR: 0,
+			wantBR:   0,
+		},
+		{
+			name:     "2Portrait text+empty — neighbor not a photo, no padding",
+			format:   Format2Portrait,
+			slots:    []TemplateSlot{text, empty},
+			idx:      0,
+			wantPadL: 0,
+			wantBL:   headingBleed,
+			wantPadR: 0,
+			wantBR:   0,
+		},
+		{
+			name:     "4Landscape text@0 with photo@1 → right padding only",
+			format:   Format4Landscape,
+			slots:    []TemplateSlot{text, photo, photo, photo},
+			idx:      0,
+			wantPadL: 0,
+			wantBL:   headingBleed,
+			wantPadR: bodyTextPad,
+			wantBR:   bodyTextPad,
+		},
+		{
+			name:     "4Landscape text@3 with photo@2 → left padding only",
+			format:   Format4Landscape,
+			slots:    []TemplateSlot{photo, photo, photo, text},
+			idx:      3,
+			wantPadL: bodyTextPad,
+			wantBL:   bodyTextPad,
+			wantPadR: 0,
+			wantBR:   headingBleed,
+		},
+		{
+			name:     "Fullscreen text — no neighbors, both edges outer",
+			format:   FormatFullscreen,
+			slots:    []TemplateSlot{text},
+			idx:      0,
+			wantPadL: 0,
+			wantBL:   headingBleed,
+			wantPadR: 0,
+			wantBR:   headingBleed,
+		},
+		{
+			name:     "Fullbleed text — no neighbors, both edges outer",
+			format:   FormatFullbleed,
+			slots:    []TemplateSlot{text},
+			idx:      0,
+			wantPadL: 0,
+			wantBL:   headingBleed,
+			wantPadR: 0,
+			wantBR:   headingBleed,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			slots := make([]TemplateSlot, len(tc.slots))
+			copy(slots, tc.slots)
+			applyTextSlotPadding(slots, tc.format, headingBleed, bodyTextPad)
+			got := slots[tc.idx]
+			if got.TextPadLeft != tc.wantPadL || got.TextPadRight != tc.wantPadR {
+				t.Errorf("padding L/R = %v/%v, want %v/%v",
+					got.TextPadLeft, got.TextPadRight, tc.wantPadL, tc.wantPadR)
+			}
+			if got.BleedLeftMM != tc.wantBL || got.BleedRightMM != tc.wantBR {
+				t.Errorf("bleed L/R = %v/%v, want %v/%v",
+					got.BleedLeftMM, got.BleedRightMM, tc.wantBL, tc.wantBR)
+			}
+		})
+	}
+}
+
+// TestApplyTextSlotPaddingSkipsPhotoSlots verifies that slots containing a
+// photo (HasPhoto=true) are never modified by applyTextSlotPadding.
+func TestApplyTextSlotPaddingSkipsPhotoSlots(t *testing.T) {
+	slots := []TemplateSlot{{HasPhoto: true}, {HasText: true}}
+	applyTextSlotPadding(slots, Format2Portrait, 4.0, 4.0)
+	got := slots[0]
+	if got.TextPadLeft != 0 || got.TextPadRight != 0 ||
+		got.BleedLeftMM != 0 || got.BleedRightMM != 0 {
+		t.Errorf("photo slot unexpectedly modified: %+v", got)
+	}
+}
+
+// TestNeighborMaps spot-checks the per-format neighbor lookup tables to
+// guard against accidental edits to the layout logic.
+func TestNeighborMaps(t *testing.T) {
+	cases := []struct {
+		format    string
+		slot      int
+		wantLeft  []int
+		wantRight []int
+	}{
+		{Format2Portrait, 0, nil, []int{1}},
+		{Format2Portrait, 1, []int{0}, nil},
+		{Format4Landscape, 0, nil, []int{1}},
+		{Format4Landscape, 3, []int{2}, nil},
+		{Format1P2L, 0, nil, []int{1, 2}},
+		{Format1P2L, 2, []int{0}, nil},
+		{Format2L1P, 1, nil, []int{2}},
+		{Format2L1P, 2, []int{0, 1}, nil},
+		{FormatFullscreen, 0, nil, nil},
+		{FormatFullbleed, 0, nil, nil},
+	}
+	eq := func(a, b []int) bool {
+		if len(a) != len(b) {
+			return false
+		}
+		for i := range a {
+			if a[i] != b[i] {
+				return false
+			}
+		}
+		return true
+	}
+	for _, tc := range cases {
+		gotL := leftNeighbors(tc.format, tc.slot)
+		gotR := rightNeighbors(tc.format, tc.slot)
+		if !eq(gotL, tc.wantLeft) {
+			t.Errorf("%s slot %d leftNeighbors = %v, want %v",
+				tc.format, tc.slot, gotL, tc.wantLeft)
+		}
+		if !eq(gotR, tc.wantRight) {
+			t.Errorf("%s slot %d rightNeighbors = %v, want %v",
+				tc.format, tc.slot, gotR, tc.wantRight)
+		}
+	}
+}

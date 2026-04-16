@@ -480,6 +480,7 @@ export interface BookDetail {
   caption_font_size: number;
   heading_color_bleed: number;
   caption_badge_size: number;
+  body_text_pad_mm: number;
   chapters: BookChapter[];
   sections: BookSection[];
   pages: BookPage[];

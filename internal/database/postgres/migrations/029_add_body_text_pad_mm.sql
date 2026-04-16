@@ -1,0 +1,1 @@
+ALTER TABLE photo_books ADD COLUMN IF NOT EXISTS body_text_pad_mm REAL NOT NULL DEFAULT 4.0;

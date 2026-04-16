@@ -235,6 +235,7 @@ type pageBuilder struct {
 	reportPages       []ReportPage
 	headingColorBleed float64
 	captionBadgeSize  float64
+	bodyTextPadMM     float64
 }
 
 const (
@@ -242,6 +243,12 @@ const (
 	lowResDPIThreshold  = 200.0
 	sizeDimHeight       = "height"
 	sizeDimWidth        = "width"
+	// clipSafetyMM is the minimum horizontal expansion of the canvas clip
+	// rectangle beyond the content area. It guarantees that justified body
+	// text on a page-edge text slot has room for typographic overflow
+	// (comma, hyphenation hyphen, italic descender) even when the user
+	// configures heading_color_bleed = 0.
+	clipSafetyMM = 1.0
 )
 
 // GeneratePDF renders a photo book to PDF using lualatex.
@@ -460,6 +467,7 @@ func buildTemplateData(
 		photoSet:          make(map[string]bool),
 		headingColorBleed: typo.headingColorBleed,
 		captionBadgeSize:  typo.captionBadgeSize,
+		bodyTextPadMM:     typo.bodyTextPadMM,
 	}
 	for _, g := range groups {
 		pb.totalContentPages += len(g.pages)
@@ -514,6 +522,7 @@ type resolvedTypography struct {
 	captionLeading         float64
 	captionBadgeSize       float64
 	headingColorBleed      float64
+	bodyTextPadMM          float64
 }
 
 // resolveBookTypography resolves typography settings from a PhotoBook with fallbacks.
@@ -532,6 +541,7 @@ func resolveBookTypography(book *database.PhotoBook) resolvedTypography {
 		captionFontSize:        DefaultCaptionFontSize,
 		captionBadgeSize:       DefaultCaptionBadgeSize,
 		headingColorBleed:      DefaultHeadingColorBleed,
+		bodyTextPadMM:          DefaultBodyTextPadMM,
 	}
 
 	if book != nil {
@@ -581,6 +591,9 @@ func applyBookSizes(rt *resolvedTypography, book *database.PhotoBook) {
 	// heading_color_bleed is NOT NULL in the DB, and 0 is an explicit user
 	// choice (no bleed — heading box stops at content edge), so always assign.
 	rt.headingColorBleed = book.HeadingColorBleed
+	// body_text_pad_mm is NOT NULL in the DB; 0 is an explicit user choice
+	// (no inner padding — body text reaches the slot edge), so always assign.
+	rt.bodyTextPadMM = book.BodyTextPadMM
 }
 
 // buildSection builds a TemplateSection and accumulates report data. Every
@@ -686,7 +699,11 @@ func (pb *pageBuilder) buildContentPage(p database.BookPage, chapterColor string
 
 	// Expand clip bounds by heading bleed so colored heading boxes extend
 	// into the margins. Photos stay constrained by slot-level clips.
-	bleed := pb.headingColorBleed
+	// A small typographic safety margin is always applied (independent of
+	// the heading bleed) so justified body text on a page-edge text slot
+	// doesn't lose its last glyph (comma, hyphenation hyphen, italic
+	// descender) when the user sets heading_color_bleed = 0.
+	bleed := max(pb.headingColorBleed, clipSafetyMM)
 	clipLeftX := max(0, contentLeftX-bleed)
 	clipRightX := min(PageW, contentRightX+bleed)
 
@@ -1004,7 +1021,7 @@ func (pb *pageBuilder) buildSlots(
 		})
 	}
 
-	applyTextSlotPadding(tmplSlots, p.Format, pb.headingColorBleed)
+	applyTextSlotPadding(tmplSlots, p.Format, pb.headingColorBleed, pb.bodyTextPadMM)
 
 	return tmplSlots, reportPhotos, buildFooterCaptions(ct, chapterColor)
 }
@@ -1049,22 +1066,84 @@ func isSlotOnRightEdge(format string, slotIndex int) bool {
 	}
 }
 
-// applyTextSlotPadding configures heading bleed on text slots. The heading
-// color box bleeds outward only on page-margin edges — on interior sides
-// (adjacent to another slot) it stops at the slot boundary so it doesn't
-// collide with the neighbouring photo. Body text fills the full slot width,
-// relying on the column gutter between slots for breathing room, which
-// keeps its right/left edge aligned with adjacent photo edges.
-func applyTextSlotPadding(slots []TemplateSlot, format string, headingBleed float64) {
+// neighborKey identifies a (format, slotIndex) pair for the neighbor maps.
+type neighborKey struct {
+	format string
+	slot   int
+}
+
+// leftNeighborMap holds, for each text-capable format/slot, the indices of
+// slots horizontally adjacent on the left. Missing keys mean "no left
+// neighbor" (i.e. the slot sits on the left page edge).
+var leftNeighborMap = map[neighborKey][]int{
+	{Format2Portrait, 1}:  {0},
+	{Format4Landscape, 1}: {0},
+	{Format4Landscape, 3}: {2},
+	{Format1P2L, 1}:       {0},
+	{Format1P2L, 2}:       {0},
+	{Format2L1P, 2}:       {0, 1},
+}
+
+// rightNeighborMap is the symmetric counterpart of leftNeighborMap.
+var rightNeighborMap = map[neighborKey][]int{
+	{Format2Portrait, 0}:  {1},
+	{Format4Landscape, 0}: {1},
+	{Format4Landscape, 2}: {3},
+	{Format1P2L, 0}:       {1, 2},
+	{Format2L1P, 0}:       {2},
+	{Format2L1P, 1}:       {2},
+}
+
+// leftNeighbors returns indices of slots horizontally adjacent on the left
+// of slotIndex within the same row(s). Empty for slots on the left page edge.
+func leftNeighbors(format string, slotIndex int) []int {
+	return leftNeighborMap[neighborKey{format, slotIndex}]
+}
+
+// rightNeighbors returns indices of slots horizontally adjacent on the right
+// of slotIndex within the same row(s). Empty for slots on the right page edge.
+func rightNeighbors(format string, slotIndex int) []int {
+	return rightNeighborMap[neighborKey{format, slotIndex}]
+}
+
+// anyNeighborIsPhoto returns true if any slot at the given indices is a photo.
+func anyNeighborIsPhoto(slots []TemplateSlot, neighbors []int) bool {
+	for _, idx := range neighbors {
+		if idx < 0 || idx >= len(slots) {
+			continue
+		}
+		if slots[idx].HasPhoto {
+			return true
+		}
+	}
+	return false
+}
+
+// applyTextSlotPadding configures heading bleed and body-text padding on text
+// slots. On page-margin (outer) edges the heading color box bleeds outward
+// to the page edge (headingBleed); body text reaches the slot edge unchanged.
+// On interior edges where the adjacent slot is a photo, body text gets an
+// inner padding (bodyTextPad mm) so it doesn't sit visually pressed against
+// the photo; the heading color box compensates with the same value as bleed
+// so its visual edge still aligns with the slot edge (= the photo edge).
+// Interior edges adjacent to non-photo slots (text/captions/empty) get no
+// padding — only the photo-adjacent side breathes.
+func applyTextSlotPadding(slots []TemplateSlot, format string, headingBleed, bodyTextPad float64) {
 	for i := range slots {
 		if !slots[i].HasText {
 			continue
 		}
 		if isSlotOnLeftEdge(format, i) {
 			slots[i].BleedLeftMM = headingBleed
+		} else if anyNeighborIsPhoto(slots, leftNeighbors(format, i)) {
+			slots[i].TextPadLeft = bodyTextPad
+			slots[i].BleedLeftMM = bodyTextPad
 		}
 		if isSlotOnRightEdge(format, i) {
 			slots[i].BleedRightMM = headingBleed
+		} else if anyNeighborIsPhoto(slots, rightNeighbors(format, i)) {
+			slots[i].TextPadRight = bodyTextPad
+			slots[i].BleedRightMM = bodyTextPad
 		}
 	}
 }
@@ -1707,6 +1786,7 @@ func GenerateSinglePagePDF(
 		photoSet:          make(map[string]bool),
 		headingColorBleed: typo.headingColorBleed,
 		captionBadgeSize:  typo.captionBadgeSize,
+		bodyTextPadMM:     typo.bodyTextPadMM,
 	}
 
 	pb.contentPageIdx++

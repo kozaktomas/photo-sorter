@@ -290,6 +290,7 @@ func applyBookTypography(
 		{"caption_font_size", 6, 36, &book.CaptionFontSize},
 		{"heading_color_bleed", 0, 20, &book.HeadingColorBleed},
 		{"caption_badge_size", 2, 12, &book.CaptionBadgeSize},
+		{"body_text_pad_mm", 0, 10, &book.BodyTextPadMM},
 	}
 	for _, r := range ranges {
 		v, ok := optionalFloat(args, r.key)
@@ -333,23 +334,31 @@ func (s *Server) handleUpdateBook(ctx context.Context, req mcp.CallToolRequest) 
 	if err := s.bookWriter.UpdateBook(s.ctx(), book); err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to update book: %v", err)), nil
 	}
+	return jsonResult(buildUpdateBookResponse(book))
+}
 
-	result := struct {
-		ID                string  `json:"id"`
-		Title             string  `json:"title"`
-		Description       string  `json:"description"`
-		BodyFont          string  `json:"body_font"`
-		HeadingFont       string  `json:"heading_font"`
-		BodyFontSize      float64 `json:"body_font_size"`
-		BodyLineHeight    float64 `json:"body_line_height"`
-		H1FontSize        float64 `json:"h1_font_size"`
-		H2FontSize        float64 `json:"h2_font_size"`
-		CaptionOpacity    float64 `json:"caption_opacity"`
-		CaptionFontSize   float64 `json:"caption_font_size"`
-		HeadingColorBleed float64 `json:"heading_color_bleed"`
-		CaptionBadgeSize  float64 `json:"caption_badge_size"`
-		UpdatedAt         string  `json:"updated_at"`
-	}{
+// updateBookResponse mirrors the typography payload accepted by `update_book`
+// so MCP clients see the resolved values after validation/clamping.
+type updateBookResponse struct {
+	ID                string  `json:"id"`
+	Title             string  `json:"title"`
+	Description       string  `json:"description"`
+	BodyFont          string  `json:"body_font"`
+	HeadingFont       string  `json:"heading_font"`
+	BodyFontSize      float64 `json:"body_font_size"`
+	BodyLineHeight    float64 `json:"body_line_height"`
+	H1FontSize        float64 `json:"h1_font_size"`
+	H2FontSize        float64 `json:"h2_font_size"`
+	CaptionOpacity    float64 `json:"caption_opacity"`
+	CaptionFontSize   float64 `json:"caption_font_size"`
+	HeadingColorBleed float64 `json:"heading_color_bleed"`
+	CaptionBadgeSize  float64 `json:"caption_badge_size"`
+	BodyTextPadMM     float64 `json:"body_text_pad_mm"`
+	UpdatedAt         string  `json:"updated_at"`
+}
+
+func buildUpdateBookResponse(book *database.PhotoBook) updateBookResponse {
+	return updateBookResponse{
 		ID:                book.ID,
 		Title:             book.Title,
 		Description:       book.Description,
@@ -363,9 +372,9 @@ func (s *Server) handleUpdateBook(ctx context.Context, req mcp.CallToolRequest) 
 		CaptionFontSize:   book.CaptionFontSize,
 		HeadingColorBleed: book.HeadingColorBleed,
 		CaptionBadgeSize:  book.CaptionBadgeSize,
+		BodyTextPadMM:     book.BodyTextPadMM,
 		UpdatedAt:         book.UpdatedAt.Format("2006-01-02T15:04:05Z"),
 	}
-	return jsonResult(result)
 }
 
 func (s *Server) handleDeleteBook(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {

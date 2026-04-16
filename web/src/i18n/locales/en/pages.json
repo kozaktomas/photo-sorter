@@ -635,6 +635,7 @@
         "captionFontSize": "Caption size",
         "headingColorBleed": "Heading box bleed",
         "captionBadgeSize": "Caption badge size",
+        "bodyTextPad": "Body text padding next to photo",
         "serif": "Serif",
         "sansSerif": "Sans-serif",
         "saving": "Saving...",

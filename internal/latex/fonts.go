@@ -95,6 +95,11 @@ const (
 	// every marker has identical outer dimensions regardless of which digit it
 	// contains. The default matches the on-photo overlay badge (4×4 mm).
 	DefaultCaptionBadgeSize = 4.0
+	// DefaultBodyTextPadMM is the default inner padding (mm) added to body
+	// text on the side of a text slot adjacent to a photo in mixed layouts.
+	// Headings compensate via BleedLeftMM/BleedRightMM so their colored box
+	// still reaches the slot edge unchanged.
+	DefaultBodyTextPadMM = 4.0
 )
 
 // fontRegistry contains all available fonts indexed by ID.

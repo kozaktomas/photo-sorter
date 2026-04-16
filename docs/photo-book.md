@@ -73,6 +73,7 @@ Caption font size (standalone): `internal/database/postgres/migrations/022_add_c
 Heading color bleed: `internal/database/postgres/migrations/023_add_heading_color_bleed.sql`
 Caption badge size: `internal/database/postgres/migrations/024_add_caption_badge_size.sql`
 Full-bleed format: `internal/database/postgres/migrations/027_add_1_fullbleed_format.sql`
+Body text padding next to photo: `internal/database/postgres/migrations/029_add_body_text_pad_mm.sql`
 
 ### Tables
 
@@ -91,6 +92,7 @@ photo_books
 ├── caption_font_size (REAL, default 9.0 pt)
 ├── heading_color_bleed (REAL, default 4.0 mm, range 0–20 mm)
 ├── caption_badge_size (REAL, default 4.0 mm, range 2–12 mm)
+├── body_text_pad_mm (REAL, default 4.0 mm, range 0–10 mm)
 ├── created_at
 └── updated_at
 
@@ -212,7 +214,7 @@ Deleting a book cascades to all chapters, sections, pages, and slots.
 | GET | `/api/v1/books` | List all books |
 | POST | `/api/v1/books` | Create a book (`{ title }`) |
 | GET | `/api/v1/books/:id` | Get book with sections and pages |
-| PUT | `/api/v1/books/:id` | Update book (`{ title, description, body_font, heading_font, body_font_size, body_line_height, h1_font_size, h2_font_size, caption_opacity, caption_font_size, heading_color_bleed, caption_badge_size }`) |
+| PUT | `/api/v1/books/:id` | Update book (`{ title, description, body_font, heading_font, body_font_size, body_line_height, h1_font_size, h2_font_size, caption_opacity, caption_font_size, heading_color_bleed, caption_badge_size, body_text_pad_mm }`) |
 | DELETE | `/api/v1/books/:id` | Delete book (cascades) |
 
 ### Chapters
@@ -476,6 +478,7 @@ Each book has configurable typography settings that control both PDF rendering a
 | `caption_font_size` | 9.0 pt | 6–16 pt | Photo caption size |
 | `heading_color_bleed` | 4.0 mm | 0–20 mm | How far colored heading boxes extend beyond content width into margins |
 | `caption_badge_size` | 4.0 mm | 2–12 mm | Square dimension of caption marker badges. Drives both the on-photo overlay marker and the footer caption badge so they always render identically. Inner number scales as `size_mm × 1.5` pt. |
+| `body_text_pad_mm` | 4.0 mm | 0–10 mm | Inner horizontal padding added to body text only on the side of a text slot adjacent to a photo in mixed layouts (`2_portrait`, `4_landscape`, `1p_2l`, `2l_1p`). Page-edge sides and sides next to non-photo neighbours (text/captions/empty) get no padding. Headings compensate via the same value so their colored box still reaches the slot edge — heading appearance is unchanged. |
 
 **Font Registry:** 24 fonts available (13 serif, 11 sans-serif), defined in `internal/latex/fonts.go`. Each font has a `LatexName` (for `fontspec` family lookup in LuaLaTeX) and `GoogleFamily`/`GoogleSpec` (for browser preview — non–Google Fonts use a visually similar fallback). Fonts are validated on save via `latex.ValidateFont()`.
 

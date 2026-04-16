@@ -621,6 +621,7 @@
         "captionFontSize": "Velikost popisků",
         "headingColorBleed": "Přesah boxu nadpisu",
         "captionBadgeSize": "Velikost badge popisků",
+        "bodyTextPad": "Padding textu vedle fotky",
         "serif": "Patkové",
         "sansSerif": "Bezpatkové",
         "saving": "Ukládám...",

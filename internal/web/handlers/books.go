@@ -94,6 +94,7 @@ type bookDetailResponse struct {
 	CaptionFontSize   float64           `json:"caption_font_size"`
 	HeadingColorBleed float64           `json:"heading_color_bleed"`
 	CaptionBadgeSize  float64           `json:"caption_badge_size"`
+	BodyTextPadMM     float64           `json:"body_text_pad_mm"`
 	Chapters          []chapterResponse `json:"chapters"`
 	Sections          []sectionResponse `json:"sections"`
 	Pages             []pageResponse    `json:"pages"`
@@ -366,6 +367,7 @@ func buildBookDetailResponse(
 		CaptionFontSize:   book.CaptionFontSize,
 		HeadingColorBleed: book.HeadingColorBleed,
 		CaptionBadgeSize:  book.CaptionBadgeSize,
+		BodyTextPadMM:     book.BodyTextPadMM,
 		Chapters:          chapterResps,
 		Sections:          sectionResps,
 		Pages:             buildPageResponses(pages),
@@ -400,6 +402,7 @@ type bookUpdateRequest struct {
 	CaptionFontSize   *float64 `json:"caption_font_size"`
 	HeadingColorBleed *float64 `json:"heading_color_bleed"`
 	CaptionBadgeSize  *float64 `json:"caption_badge_size"`
+	BodyTextPadMM     *float64 `json:"body_text_pad_mm"`
 }
 
 // applyTo validates and applies the update request fields to a book.
@@ -448,6 +451,7 @@ func (req *bookUpdateRequest) applySizes(book *database.PhotoBook) string {
 		{req.CaptionFontSize, 6, 36, "caption_font_size", &book.CaptionFontSize},
 		{req.HeadingColorBleed, 0, 20, "heading_color_bleed", &book.HeadingColorBleed},
 		{req.CaptionBadgeSize, 2, 12, "caption_badge_size", &book.CaptionBadgeSize},
+		{req.BodyTextPadMM, 0, 10, "body_text_pad_mm", &book.BodyTextPadMM},
 	}
 	for _, r := range ranges {
 		if msg := validateRange(r.val, r.lo, r.hi, r.name); msg != "" {

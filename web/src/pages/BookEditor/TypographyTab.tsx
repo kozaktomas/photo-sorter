@@ -247,6 +247,13 @@ function TypographySettingsSection({ book, onRefresh }: { book: BookDetail; onRe
           suffix="mm"
           onChange={(v) => handleNumberChange('caption_badge_size', v)}
         />
+        <NumberInput
+          label={t('books.editor.typography.bodyTextPad')}
+          value={book.body_text_pad_mm}
+          min={0} max={10} step={0.1}
+          suffix="mm"
+          onChange={(v) => handleNumberChange('body_text_pad_mm', v)}
+        />
       </div>
 
       {/* Live preview */}

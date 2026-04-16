@@ -1775,11 +1775,12 @@ PUT /books/{id}
   "caption_opacity": 0.85,
   "caption_font_size": 9.0,
   "heading_color_bleed": 4.0,
-  "caption_badge_size": 4.0
+  "caption_badge_size": 4.0,
+  "body_text_pad_mm": 4.0
 }
 ```
 
-All fields are optional (partial updates). Font IDs are validated against the font registry. Size ranges: font sizes 6–36 pt, line height 8–48 pt, caption font size 6–16 pt, opacity 0.0–1.0, heading color bleed 0–20 mm, caption badge size 2–12 mm. `caption_badge_size` controls both the on-photo overlay marker and the footer caption badge — the inner number scales automatically as `size_mm × 1.5` pt so the two badges always render identically.
+All fields are optional (partial updates). Font IDs are validated against the font registry. Size ranges: font sizes 6–36 pt, line height 8–48 pt, caption font size 6–16 pt, opacity 0.0–1.0, heading color bleed 0–20 mm, caption badge size 2–12 mm, body text pad 0–10 mm. `caption_badge_size` controls both the on-photo overlay marker and the footer caption badge — the inner number scales automatically as `size_mm × 1.5` pt so the two badges always render identically. `body_text_pad_mm` adds inner horizontal padding to body text on the side of a text slot adjacent to a photo in mixed layouts; the heading color box compensates so heading appearance stays unchanged.
 
 #### Delete Book
 
@@ -2737,7 +2738,7 @@ The MCP (Model Context Protocol) server is integrated into the `serve` command. 
 | `list_books` | List all photo books | (none) |
 | `get_book` | Get book detail with chapters, sections, pages | `book_id` (string, required) |
 | `create_book` | Create a new book | `title` (string, required), `description` (string, optional) |
-| `update_book` | Update book title, description, or typography | `book_id` (string, required), `title` (string, optional), `description` (string, optional), `body_font` (string, optional — must exist in font registry), `heading_font` (string, optional), `body_font_size` (number, optional — 6-36 pt), `body_line_height` (number, optional — 8-48 pt), `h1_font_size` (number, optional — 6-36 pt), `h2_font_size` (number, optional — 6-36 pt), `caption_opacity` (number, optional — 0.0-1.0), `caption_font_size` (number, optional — 6-36 pt), `heading_color_bleed` (number, optional — 0-20 mm), `caption_badge_size` (number, optional — 2-12 mm) |
+| `update_book` | Update book title, description, or typography | `book_id` (string, required), `title` (string, optional), `description` (string, optional), `body_font` (string, optional — must exist in font registry), `heading_font` (string, optional), `body_font_size` (number, optional — 6-36 pt), `body_line_height` (number, optional — 8-48 pt), `h1_font_size` (number, optional — 6-36 pt), `h2_font_size` (number, optional — 6-36 pt), `caption_opacity` (number, optional — 0.0-1.0), `caption_font_size` (number, optional — 6-36 pt), `heading_color_bleed` (number, optional — 0-20 mm), `caption_badge_size` (number, optional — 2-12 mm), `body_text_pad_mm` (number, optional — 0-10 mm; inner padding added to body text only on the side adjacent to a photo in mixed layouts) |
 | `delete_book` | Delete a book and all its content | `book_id` (string, required) |
 
 ### MCP Tools — Chapters

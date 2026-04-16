@@ -171,6 +171,8 @@ func (s *Server) registerUpdateBookTool() {
 				mcp.Description("Chapter color bleed behind headings in mm (0-20)")),
 			mcp.WithNumber("caption_badge_size",
 				mcp.Description("Caption badge size in mm (2-12)")),
+			mcp.WithNumber("body_text_pad_mm",
+				mcp.Description("Inner padding (mm) added to body text on the side adjacent to a photo in mixed layouts (0-10)")),
 		),
 		s.handleUpdateBook,
 	)
