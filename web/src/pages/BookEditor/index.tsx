@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { BookOpen, ArrowLeft, Pencil, Trash2, Check, X, Download, BarChart3 } from 'lucide-react';
-import { updateBook, deleteBook, preflightBook, getFonts } from '../../api/client';
+import { updateBook, deleteBook, preflightBook, getFonts, type PhotoQuality } from '../../api/client';
 import type { PreflightResponse } from '../../types';
 import { LoadingState } from '../../components/LoadingState';
 import { setFontRegistry, getBookTypographyCSSVars } from '../../constants/bookTypography';
@@ -118,6 +118,7 @@ export function BookEditorPage() {
   const [preflightData, setPreflightData] = useState<PreflightResponse | null>(null);
   const [preflightLoading, setPreflightLoading] = useState(false);
   const [showPreflight, setShowPreflight] = useState(false);
+  const [photoQuality, setPhotoQuality] = useState<PhotoQuality>('medium');
   const [showStats, setShowStats] = useState(() => {
     try { return localStorage.getItem(`book-stats-${id}`) === 'true'; } catch { return false; }
   });
@@ -160,31 +161,51 @@ export function BookEditorPage() {
     } catch (e) { console.error('Failed to delete book:', e); }
   };
 
+  const runPreflight = useCallback(
+    async (bookId: string, quality: PhotoQuality) => {
+      setPreflightLoading(true);
+      try {
+        const result = await preflightBook(bookId, quality);
+        setPreflightData(result);
+        return result;
+      } finally {
+        setPreflightLoading(false);
+      }
+    },
+    [],
+  );
+
   const handleExportPDF = async () => {
     if (!book || exporting) return;
-    setPreflightLoading(true);
     setShowPreflight(true);
     try {
-      const result = await preflightBook(book.id);
-      setPreflightData(result);
+      const result = await runPreflight(book.id, photoQuality);
       if (result.ok) {
         // No issues — export directly
         setShowPreflight(false);
         setPreflightData(null);
-        await doExport();
+        await doExport(photoQuality);
       }
     } catch (e) {
       console.error('Preflight failed:', e);
       setShowPreflight(false);
     }
-    setPreflightLoading(false);
   };
 
-  const doExport = async () => {
+  const handlePhotoQualityChange = (q: PhotoQuality) => {
+    setPhotoQuality(q);
+    // The original_downgrade warning only fires for quality=original, so
+    // rerun preflight whenever the user flips the dropdown.
+    if (book) {
+      void runPreflight(book.id, q);
+    }
+  };
+
+  const doExport = async (quality: PhotoQuality) => {
     if (!book || exporting) return;
     setShowPreflight(false);
     setPreflightData(null);
-    await exportJob.start(book.id);
+    await exportJob.start(book.id, quality);
   };
 
   const handleGoToPage = (pageNumber: number) => {
@@ -388,9 +409,11 @@ export function BookEditorPage() {
         <PreflightModal
           data={preflightData ?? { ok: true, errors: [], warnings: [], info: [], summary: { total_pages: 0, total_photos: 0, filled_slots: 0, total_slots: 0 } }}
           loading={preflightLoading}
-          onExport={() => void doExport()}
+          onExport={(q) => void doExport(q)}
           onClose={() => { setShowPreflight(false); setPreflightData(null); }}
           onGoToPage={handleGoToPage}
+          photoQuality={photoQuality}
+          onPhotoQualityChange={handlePhotoQualityChange}
         />
       )}
 

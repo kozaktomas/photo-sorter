@@ -34,20 +34,21 @@ const (
 type BookExportJob struct {
 	EventBroadcaster
 
-	ID          string     `json:"id"`
-	BookID      string     `json:"book_id"`
-	BookTitle   string     `json:"book_title"`
-	Status      JobStatus  `json:"status"`
-	Phase       string     `json:"phase"`
-	Current     int        `json:"current"`
-	Total       int        `json:"total"`
-	FileSize    int64      `json:"file_size,omitempty"`
-	Filename    string     `json:"filename,omitempty"`
-	Error       string     `json:"error,omitempty"`
-	StartedAt   time.Time  `json:"started_at"`
-	CompletedAt *time.Time `json:"completed_at,omitempty"`
-	Consumed    bool       `json:"consumed"`
-	Debug       bool       `json:"debug,omitempty"`
+	ID           string             `json:"id"`
+	BookID       string             `json:"book_id"`
+	BookTitle    string             `json:"book_title"`
+	Status       JobStatus          `json:"status"`
+	Phase        string             `json:"phase"`
+	Current      int                `json:"current"`
+	Total        int                `json:"total"`
+	FileSize     int64              `json:"file_size,omitempty"`
+	Filename     string             `json:"filename,omitempty"`
+	Error        string             `json:"error,omitempty"`
+	StartedAt    time.Time          `json:"started_at"`
+	CompletedAt  *time.Time         `json:"completed_at,omitempty"`
+	Consumed     bool               `json:"consumed"`
+	Debug        bool               `json:"debug,omitempty"`
+	PhotoQuality latex.PhotoQuality `json:"photo_quality,omitempty"`
 
 	pdfPath   string
 	expiresAt time.Time
@@ -117,7 +118,7 @@ func NewBookExportJobManager() *BookExportJobManager {
 // success, or the existing active job (with err != nil) if one is already
 // running for the same book.
 func (m *BookExportJobManager) CreateJob(
-	id, bookID, bookTitle string, debug bool,
+	id, bookID, bookTitle string, debug bool, quality latex.PhotoQuality,
 ) (*BookExportJob, *BookExportJob, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -135,12 +136,13 @@ func (m *BookExportJobManager) CreateJob(
 	}
 
 	job := &BookExportJob{
-		ID:        id,
-		BookID:    bookID,
-		BookTitle: bookTitle,
-		Status:    JobStatusPending,
-		StartedAt: time.Now(),
-		Debug:     debug,
+		ID:           id,
+		BookID:       bookID,
+		BookTitle:    bookTitle,
+		Status:       JobStatusPending,
+		StartedAt:    time.Now(),
+		Debug:        debug,
+		PhotoQuality: quality,
 	}
 	m.jobs[id] = job
 	return job, nil, nil
@@ -248,10 +250,16 @@ func (h *BooksHandler) StartExportJob(w http.ResponseWriter, r *http.Request) {
 	}
 
 	debug := r.URL.Query().Get("format") == exportFormatDebug
+	quality, err := latex.ValidatePhotoQuality(r.URL.Query().Get("photo_quality"))
+	if err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	session := middleware.GetSessionFromContext(r.Context())
 	jobID := uuid.New().String()
 
-	job, existing, err := h.exportJobs.CreateJob(jobID, bookID, book.Title, debug)
+	job, existing, err := h.exportJobs.CreateJob(jobID, bookID, book.Title, debug, quality)
 	if err != nil {
 		respondJSON(w, http.StatusConflict, map[string]any{
 			"error":  "export already in progress for this book",
@@ -264,10 +272,11 @@ func (h *BooksHandler) StartExportJob(w http.ResponseWriter, r *http.Request) {
 	go h.runBookExportJob(job, session) //nolint:gosec // G118 - background job outlives HTTP request
 
 	respondJSON(w, http.StatusAccepted, map[string]any{
-		"job_id":     jobID,
-		"book_id":    bookID,
-		"book_title": book.Title,
-		"status":     string(JobStatusPending),
+		"job_id":        jobID,
+		"book_id":       bookID,
+		"book_title":    book.Title,
+		"status":        string(JobStatusPending),
+		"photo_quality": string(quality),
 	})
 }
 
@@ -430,8 +439,9 @@ func (h *BooksHandler) generateBookPDF(
 	})
 
 	opts := latex.ExportOptions{
-		Debug:      job.Debug,
-		OnProgress: h.exportProgressTranslator(job),
+		Debug:        job.Debug,
+		OnProgress:   h.exportProgressTranslator(job),
+		PhotoQuality: job.PhotoQuality,
 	}
 	pdfData, _, err := latex.GeneratePDFWithCallbacks(ctx, pp, bw, job.BookID, opts)
 	if err != nil {

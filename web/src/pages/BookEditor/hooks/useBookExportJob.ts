@@ -4,6 +4,7 @@ import {
   cancelBookExportJob,
   getBookExportJobEventsUrl,
   getBookExportJobDownloadUrl,
+  type PhotoQuality,
 } from '../../../api/client';
 import { useSSE } from '../../../hooks/useSSE';
 
@@ -249,11 +250,11 @@ export function useBookExportJob() {
 
   useSSE(sseUrl, { onMessage: handleSSEMessage });
 
-  const start = useCallback(async (bookId: string) => {
+  const start = useCallback(async (bookId: string, photoQuality?: PhotoQuality) => {
     startedAtRef.current = Date.now();
     setState({ ...INITIAL_STATE, phase: 'starting', elapsedMs: 0 });
     try {
-      const { jobId } = await startBookExportJob(bookId);
+      const { jobId } = await startBookExportJob(bookId, photoQuality);
       setState(prev => ({ ...prev, jobId, phase: 'fetching_metadata' }));
     } catch (err) {
       setState(prev => ({

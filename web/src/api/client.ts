@@ -798,10 +798,22 @@ export async function autoLayoutSection(bookId: string, sectionId: string): Prom
   });
 }
 
-// Preflight check
-export async function preflightBook(bookId: string): Promise<PreflightResponse> {
-  return request<PreflightResponse>(`/books/${bookId}/preflight`);
+// Preflight check. Pass photoQuality to receive warnings specific to that
+// quality tier (e.g. the original_downgrade warning only fires for
+// 'original').
+export async function preflightBook(
+  bookId: string,
+  photoQuality?: PhotoQuality,
+): Promise<PreflightResponse> {
+  const q = photoQuality ? `?photo_quality=${encodeURIComponent(photoQuality)}` : '';
+  return request<PreflightResponse>(`/books/${bookId}/preflight${q}`);
 }
+
+// PhotoQuality selects the photo resolution tier for a book PDF export.
+// 'low' uses fit_720 thumbnails (preview only), 'medium' uses fit_3840
+// (default), and 'original' downloads full originals and caps the longest
+// side at 8000 px.
+export type PhotoQuality = 'low' | 'medium' | 'original';
 
 // Text AI operations
 export interface TextSuggestion {
@@ -942,11 +954,16 @@ export interface BookExportJobConflict {
  * Starts a new background PDF export job. On 409 Conflict (an export is
  * already running for the same book), returns the existing job info so the
  * caller can reattach to its SSE stream instead of starting a new one.
+ *
+ * photoQuality selects the resolution tier for embedded photos. Defaults to
+ * 'medium' (fit_3840 thumbnails) when omitted.
  */
 export async function startBookExportJob(
   bookId: string,
+  photoQuality?: PhotoQuality,
 ): Promise<{ jobId: string; reattached: boolean }> {
-  const response = await fetch(`${API_BASE}/books/${bookId}/export-pdf/job`, {
+  const q = photoQuality ? `?photo_quality=${encodeURIComponent(photoQuality)}` : '';
+  const response = await fetch(`${API_BASE}/books/${bookId}/export-pdf/job${q}`, {
     method: 'POST',
     credentials: 'include',
   });

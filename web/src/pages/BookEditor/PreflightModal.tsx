@@ -2,13 +2,16 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertTriangle, Info, XCircle, ChevronDown, ChevronRight, Loader2, X } from 'lucide-react';
 import type { PreflightResponse, PreflightIssue } from '../../types';
+import type { PhotoQuality } from '../../api/client';
 
 interface PreflightModalProps {
   data: PreflightResponse;
   loading: boolean;
-  onExport: () => void;
+  onExport: (photoQuality: PhotoQuality) => void;
   onClose: () => void;
   onGoToPage: (pageNumber: number) => void;
+  photoQuality: PhotoQuality;
+  onPhotoQualityChange: (q: PhotoQuality) => void;
 }
 
 function IssueIcon({ level }: { level: 'error' | 'warning' | 'info' }) {
@@ -64,6 +67,11 @@ function formatIssue(issue: PreflightIssue, t: (key: string, opts?: Record<strin
       });
     case 'missing_captions':
       return t('books.editor.preflight.missingCaptions', { count: issue.count });
+    case 'original_downgrade':
+      return t('books.editor.preflight.originalDowngrade', {
+        photo: issue.photo_uid,
+        longest: issue.longest_px,
+      });
     default:
       return issue.type;
   }
@@ -98,7 +106,15 @@ function CollapsibleSection({ title, count, level, children }: {
   );
 }
 
-export function PreflightModal({ data, loading, onExport, onClose, onGoToPage }: PreflightModalProps) {
+export function PreflightModal({
+  data,
+  loading,
+  onExport,
+  onClose,
+  onGoToPage,
+  photoQuality,
+  onPhotoQualityChange,
+}: PreflightModalProps) {
   const { t } = useTranslation('pages');
 
   if (loading) {
@@ -113,6 +129,12 @@ export function PreflightModal({ data, loading, onExport, onClose, onGoToPage }:
   }
 
   const { summary, errors, warnings, info } = data;
+  const qualityHelpKey =
+    photoQuality === 'low'
+      ? 'books.editor.preflight.qualityHelpLow'
+      : photoQuality === 'original'
+        ? 'books.editor.preflight.qualityHelpOriginal'
+        : 'books.editor.preflight.qualityHelpMedium';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
@@ -170,20 +192,38 @@ export function PreflightModal({ data, loading, onExport, onClose, onGoToPage }:
           </CollapsibleSection>
         </div>
 
-        {/* Footer buttons */}
-        <div className="flex items-center justify-end gap-3 px-4 py-3 border-t border-slate-700">
-          <button
-            onClick={onClose}
-            className="px-4 py-2 text-sm font-medium text-slate-300 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors"
-          >
-            {t('books.editor.preflight.cancel')}
-          </button>
-          <button
-            onClick={onExport}
-            className="px-4 py-2 text-sm font-medium text-white bg-rose-600 hover:bg-rose-500 rounded-lg transition-colors"
-          >
-            {t('books.editor.preflight.exportAnyway')}
-          </button>
+        {/* Footer: quality picker + buttons */}
+        <div className="flex flex-col gap-3 px-4 py-3 border-t border-slate-700">
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-medium text-slate-400" htmlFor="preflight-quality">
+              {t('books.editor.preflight.qualityLabel')}
+            </label>
+            <select
+              id="preflight-quality"
+              value={photoQuality}
+              onChange={(e) => onPhotoQualityChange(e.target.value as PhotoQuality)}
+              className="px-2 py-1.5 text-sm bg-slate-800 border border-slate-600 rounded text-white focus:outline-none focus-visible:ring-1 focus-visible:ring-rose-500"
+            >
+              <option value="low">{t('books.editor.preflight.qualityLow')}</option>
+              <option value="medium">{t('books.editor.preflight.qualityMedium')}</option>
+              <option value="original">{t('books.editor.preflight.qualityOriginal')}</option>
+            </select>
+            <span className="text-xs text-slate-500">{t(qualityHelpKey)}</span>
+          </div>
+          <div className="flex items-center justify-end gap-3">
+            <button
+              onClick={onClose}
+              className="px-4 py-2 text-sm font-medium text-slate-300 bg-slate-700 hover:bg-slate-600 rounded-lg transition-colors"
+            >
+              {t('books.editor.preflight.cancel')}
+            </button>
+            <button
+              onClick={() => onExport(photoQuality)}
+              className="px-4 py-2 text-sm font-medium text-white bg-rose-600 hover:bg-rose-500 rounded-lg transition-colors"
+            >
+              {t('books.editor.preflight.exportAnyway')}
+            </button>
+          </div>
         </div>
       </div>
     </div>

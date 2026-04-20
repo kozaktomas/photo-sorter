@@ -504,9 +504,9 @@ Session cookies use `HttpOnly`, `SameSite=Strict`, and auto-detect `Secure` flag
 - `POST /api/v1/pages/{id}/slots/swap` - Swap two slots atomically (`{ slot_a, slot_b }`)
 - `DELETE /api/v1/pages/{id}/slots/{index}` - Clear page slot
 - `POST /api/v1/books/{id}/sections/{sectionId}/auto-layout` - Auto-generate pages from unassigned section photos
-- `GET /api/v1/books/{id}/preflight` - Validate book before PDF export (empty slots, low DPI, unplaced photos)
-- `GET /api/v1/books/{id}/export-pdf` - Export book as PDF synchronously (blocking ~4 min, for CLI/MCP)
-- `POST /api/v1/books/{id}/export-pdf/job` - Start background PDF export job (UI flow, returns `{job_id}`; 409 if one is running for the same book)
+- `GET /api/v1/books/{id}/preflight` - Validate book before PDF export (empty slots, low DPI, unplaced photos). Accepts `photo_quality=low|medium|original` to enable tier-specific warnings (e.g. `original_downgrade` for photos whose primary file is < 3840 px on the longest side).
+- `GET /api/v1/books/{id}/export-pdf` - Export book as PDF synchronously (blocking ~4 min, for CLI/MCP). Accepts `photo_quality=low|medium|original` (default `medium`): `low` uses fit_720 thumbnails for previews, `medium` uses fit_3840 (current behaviour), `original` downloads the full primary file and downscales to a longest-side cap of 8000 px. HEIC/RAW primaries fall back to the fit_7680 thumbnail (pure-Go binary has no HEIC decoder).
+- `POST /api/v1/books/{id}/export-pdf/job` - Start background PDF export job (UI flow, returns `{job_id}`; 409 if one is running for the same book). Accepts the same `photo_quality` query param as the sync endpoint.
 - `GET /api/v1/book-export/{jobId}` - Get export job state
 - `GET /api/v1/book-export/{jobId}/events` - SSE stream of progress events (phases: `fetching_metadata`, `downloading_photos`, `compiling_pass1`, `compiling_pass2`)
 - `GET /api/v1/book-export/{jobId}/download` - Stream compiled PDF temp file (supports range, sets `X-Accel-Buffering: no`)

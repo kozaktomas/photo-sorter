@@ -659,6 +659,7 @@
         "emptySection": "Sekce \"{{section}}\" nemá žádné stránky",
         "unplacedPhotos": "{{count}} neumístěných fotek v \"{{section}}\"",
         "missingCaptions": "{{count}} fotek bez popisků",
+        "originalDowngrade": "Originál fotky {{photo}} má jen {{longest}} px na delší straně — volba „medium“ dává lepší kvalitu než „original“.",
         "goToPage": "Přejít na stránku",
         "exportAnyway": "Přesto exportovat",
         "cancel": "Zrušit",
@@ -668,7 +669,14 @@
         "summaryPhotos_one": "{{count}} fotka",
         "summaryPhotos_few": "{{count}} fotky",
         "summaryPhotos_other": "{{count}} fotek",
-        "summarySlots": "{{filled}}/{{total}} slotů zaplněno"
+        "summarySlots": "{{filled}}/{{total}} slotů zaplněno",
+        "qualityLabel": "Kvalita fotek",
+        "qualityLow": "Nízká (náhled)",
+        "qualityMedium": "Střední (výchozí)",
+        "qualityOriginal": "Originál (tisk)",
+        "qualityHelpLow": "Náhledy fit_720 — jen rychlý náhled",
+        "qualityHelpMedium": "Náhledy fit_3840 — standardní export",
+        "qualityHelpOriginal": "Plné originály, limit 8000 px — výsledek může mít i několik GB"
       }
     }
   },

@@ -673,6 +673,7 @@
         "emptySection": "Section \"{{section}}\" has no pages",
         "unplacedPhotos": "{{count}} unplaced photos in \"{{section}}\"",
         "missingCaptions": "{{count}} photos without captions",
+        "originalDowngrade": "Photo {{photo}} original is only {{longest}} px on the longest side — using \"medium\" gives better quality than \"original\".",
         "goToPage": "Go to page",
         "exportAnyway": "Export anyway",
         "cancel": "Cancel",
@@ -680,7 +681,14 @@
         "summaryPages_other": "{{count}} pages",
         "summaryPhotos_one": "{{count}} photo",
         "summaryPhotos_other": "{{count}} photos",
-        "summarySlots": "{{filled}}/{{total}} slots filled"
+        "summarySlots": "{{filled}}/{{total}} slots filled",
+        "qualityLabel": "Photo quality",
+        "qualityLow": "Low (preview)",
+        "qualityMedium": "Medium (default)",
+        "qualityOriginal": "Original (print)",
+        "qualityHelpLow": "fit_720 thumbnails — fast preview only",
+        "qualityHelpMedium": "fit_3840 thumbnails — standard export",
+        "qualityHelpOriginal": "full originals, capped at 8000 px — multi-GB output possible"
       }
     }
   },

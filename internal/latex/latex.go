@@ -8,7 +8,7 @@ import (
 	"fmt"
 	"image"
 	_ "image/gif"
-	_ "image/jpeg"
+	"image/jpeg"
 	_ "image/png"
 	"log"
 	"math"
@@ -22,9 +22,76 @@ import (
 	"sync/atomic"
 	"text/template"
 
+	_ "golang.org/x/image/bmp"
+	"golang.org/x/image/draw"
+	_ "golang.org/x/image/tiff"
+	_ "golang.org/x/image/webp"
+
 	"github.com/kozaktomas/photo-sorter/internal/database"
 	"github.com/kozaktomas/photo-sorter/internal/photoprism"
 )
+
+// PhotoQuality selects the photo resolution tier used when building the PDF.
+// The zero value ("" or QualityDefault) is equivalent to QualityMedium.
+type PhotoQuality string
+
+// Quality tiers for PDF photo export. Medium is the default and matches the
+// historical behaviour (fit_3840 thumbnails). Low is for quick previews.
+// Original downloads the primary file and resizes it to at most
+// OriginalMaxLongestSidePx on the longest side before embedding.
+const (
+	QualityDefault  PhotoQuality = ""
+	QualityLow      PhotoQuality = "low"
+	QualityMedium   PhotoQuality = "medium"
+	QualityOriginal PhotoQuality = "original"
+
+	// OriginalMaxLongestSidePx is the cap applied to the longest side of an
+	// image when PhotoQuality is QualityOriginal. Photos whose longest side
+	// exceeds this value are downscaled before being embedded in the PDF so
+	// the resulting document stays within a reasonable size. 8000 px is
+	// roughly 300 DPI at A3 and well above what any realistic book layout
+	// needs.
+	OriginalMaxLongestSidePx = 8000
+
+	// originalJPEGQuality is the encoder quality used when re-saving a
+	// decoded original photo. 92 balances print-quality detail with file
+	// size on the final PDF.
+	originalJPEGQuality = 92
+
+	// thumbnailLow / thumbnailMedium / thumbnailOriginalFallback are the
+	// PhotoPrism thumbnail sizes used for each quality tier.
+	thumbnailLow              = "fit_720"
+	thumbnailMedium           = "fit_3840"
+	thumbnailOriginalFallback = "fit_7680"
+)
+
+// normalizeQuality returns the concrete PhotoQuality for q, treating the zero
+// value as QualityMedium.
+func normalizeQuality(q PhotoQuality) PhotoQuality {
+	switch q {
+	case QualityLow, QualityOriginal:
+		return q
+	default:
+		return QualityMedium
+	}
+}
+
+// ValidatePhotoQuality returns a normalized PhotoQuality for s, or an error if
+// s is not a supported value. Empty string is treated as the default
+// (QualityMedium). This is exported for HTTP handlers that validate a query
+// parameter coming from the user.
+func ValidatePhotoQuality(s string) (PhotoQuality, error) {
+	switch PhotoQuality(s) {
+	case QualityDefault, QualityMedium:
+		return QualityMedium, nil
+	case QualityLow:
+		return QualityLow, nil
+	case QualityOriginal:
+		return QualityOriginal, nil
+	default:
+		return QualityMedium, fmt.Errorf("invalid photo_quality %q (want low, medium, or original)", s)
+	}
+}
 
 //go:embed templates/book.tex
 var templateFS embed.FS
@@ -43,9 +110,15 @@ type ProgressInfo struct {
 }
 
 // ExportOptions are optional parameters for GeneratePDFWithCallbacks.
+//
+// PhotoQuality selects the photo resolution tier: QualityLow (fit_720) for
+// quick previews, QualityMedium (fit_3840) for the default behaviour, and
+// QualityOriginal (primary file, resized to at most OriginalMaxLongestSidePx)
+// for print. The zero value is treated as QualityMedium.
 type ExportOptions struct {
-	Debug      bool
-	OnProgress func(ProgressInfo)
+	Debug        bool
+	OnProgress   func(ProgressInfo)
+	PhotoQuality PhotoQuality
 }
 
 // ExportReport contains metadata about a PDF export for quality analysis.
@@ -309,7 +382,7 @@ func GeneratePDFWithCallbacks(
 	}
 	defer os.RemoveAll(tmpDir)
 
-	photos := downloadPhotosWithProgress(ctx, pp, uidSet, tmpDir, opts.OnProgress)
+	photos := downloadPhotosWithProgress(ctx, pp, uidSet, tmpDir, opts.OnProgress, normalizeQuality(opts.PhotoQuality))
 	groups := groupPagesBySection(pages, sections, chapters)
 	config := DefaultLayoutConfig()
 	data, report := buildTemplateData(groups, photos, captions, config, book)
@@ -1466,16 +1539,18 @@ func downloadPhotos(
 	ctx context.Context, pp *photoprism.PhotoPrism,
 	uids map[string]bool, tmpDir string,
 ) map[string]photoImage {
-	return downloadPhotosWithProgress(ctx, pp, uids, tmpDir, nil)
+	return downloadPhotosWithProgress(ctx, pp, uids, tmpDir, nil, QualityMedium)
 }
 
 // downloadPhotosWithProgress fetches photos concurrently, reporting progress
 // via onProgress after each photo (whether it succeeded or failed) so the
 // progress bar reaches 100% even if some photos fail. onProgress may be nil.
+// quality selects the resolution tier (see PhotoQuality).
 func downloadPhotosWithProgress(
 	ctx context.Context, pp *photoprism.PhotoPrism,
 	uids map[string]bool, tmpDir string,
 	onProgress func(ProgressInfo),
+	quality PhotoQuality,
 ) map[string]photoImage {
 	result := make(map[string]photoImage)
 	var mu sync.Mutex
@@ -1498,7 +1573,7 @@ func downloadPhotosWithProgress(
 			if ctx.Err() != nil {
 				return
 			}
-			downloadOnePhoto(pp, uid, tmpDir, result, &mu)
+			downloadOnePhoto(pp, uid, tmpDir, result, &mu, quality)
 			if onProgress != nil {
 				onProgress(ProgressInfo{
 					Phase:    "downloading_photos",
@@ -1521,8 +1596,9 @@ func downloadPhotosWithProgress(
 func downloadOnePhoto(
 	pp *photoprism.PhotoPrism, uid, tmpDir string,
 	result map[string]photoImage, mu *sync.Mutex,
+	quality PhotoQuality,
 ) {
-	img, err := downloadPhoto(pp, uid, tmpDir)
+	img, err := downloadPhoto(pp, uid, tmpDir, quality)
 	if err != nil {
 		log.Printf("WARNING: failed to download photo %s: %v", uid, err)
 		return
@@ -1532,8 +1608,12 @@ func downloadOnePhoto(
 	mu.Unlock()
 }
 
-// downloadPhoto fetches a single photo thumbnail and returns its path and dimensions.
-func downloadPhoto(pp *photoprism.PhotoPrism, uid string, tmpDir string) (*photoImage, error) {
+// downloadPhoto fetches a single photo at the requested quality tier and
+// returns its path and dimensions on disk. The returned file is always a
+// decodable image (JPEG or equivalent) so lualatex can embed it.
+func downloadPhoto(
+	pp *photoprism.PhotoPrism, uid string, tmpDir string, quality PhotoQuality,
+) (*photoImage, error) {
 	photos, err := pp.GetPhotosWithQuery(1, 0, "uid:"+uid)
 	if err != nil || len(photos) == 0 {
 		return nil, fmt.Errorf("photo not found: %s", uid)
@@ -1543,7 +1623,23 @@ func downloadPhoto(pp *photoprism.PhotoPrism, uid string, tmpDir string) (*photo
 		return nil, fmt.Errorf("photo has no hash: %s", uid)
 	}
 
-	data, _, err := pp.GetPhotoThumbnail(hash, "fit_3840")
+	if normalizeQuality(quality) == QualityOriginal {
+		return downloadOriginalPhoto(pp, uid, hash, tmpDir)
+	}
+
+	size := thumbnailMedium
+	if normalizeQuality(quality) == QualityLow {
+		size = thumbnailLow
+	}
+	return downloadThumbnailPhoto(pp, uid, hash, tmpDir, size)
+}
+
+// downloadThumbnailPhoto fetches a single PhotoPrism thumbnail at the given
+// size and returns its path and dimensions.
+func downloadThumbnailPhoto(
+	pp *photoprism.PhotoPrism, uid, hash, tmpDir, size string,
+) (*photoImage, error) {
+	data, _, err := pp.GetPhotoThumbnail(hash, size)
 	if err != nil {
 		return nil, fmt.Errorf("failed to download thumbnail: %w", err)
 	}
@@ -1553,7 +1649,83 @@ func downloadPhoto(pp *photoprism.PhotoPrism, uid string, tmpDir string) (*photo
 		return nil, fmt.Errorf("failed to write photo: %w", err)
 	}
 
-	// Decode dimensions.
+	return inspectPhotoFile(path, uid)
+}
+
+// downloadOriginalPhoto fetches the original primary file, converts it to
+// JPEG if necessary, and caps the longest side at OriginalMaxLongestSidePx.
+// If the primary file cannot be decoded in pure Go (HEIC / RAW formats), the
+// function falls back to PhotoPrism's largest pre-rendered JPEG thumbnail
+// (fit_7680) so the PDF still gets a print-quality image.
+func downloadOriginalPhoto(
+	pp *photoprism.PhotoPrism, uid, hash, tmpDir string,
+) (*photoImage, error) {
+	data, _, err := pp.GetPhotoDownload(uid)
+	if err != nil {
+		return nil, fmt.Errorf("failed to download original: %w", err)
+	}
+
+	img, _, decodeErr := image.Decode(bytes.NewReader(data))
+	if decodeErr != nil {
+		sanitizedUID := strings.NewReplacer("\n", "", "\r", "").Replace(uid)
+		log.Printf(
+			"PDF export: photo %s original format not decodable (%v); "+
+				"falling back to %s thumbnail",
+			sanitizedUID, decodeErr, thumbnailOriginalFallback,
+		)
+		return downloadThumbnailPhoto(pp, uid, hash, tmpDir, thumbnailOriginalFallback)
+	}
+
+	bounds := img.Bounds()
+	longest := max(bounds.Dx(), bounds.Dy())
+
+	if longest > OriginalMaxLongestSidePx {
+		img = resizeToLongestSide(img, OriginalMaxLongestSidePx)
+	}
+
+	path := filepath.Join(tmpDir, uid+".jpg")
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600) //nolint:gosec
+	if err != nil {
+		return nil, fmt.Errorf("failed to create photo file: %w", err)
+	}
+	if err := jpeg.Encode(f, img, &jpeg.Options{Quality: originalJPEGQuality}); err != nil {
+		_ = f.Close()
+		return nil, fmt.Errorf("failed to encode original as JPEG: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return nil, fmt.Errorf("failed to close photo file: %w", err)
+	}
+
+	return inspectPhotoFile(path, uid)
+}
+
+// resizeToLongestSide downscales img so its longest side equals maxPx while
+// preserving aspect ratio. Uses CatmullRom for good print quality.
+func resizeToLongestSide(img image.Image, maxPx int) image.Image {
+	bounds := img.Bounds()
+	w, h := bounds.Dx(), bounds.Dy()
+	var newW, newH int
+	if w >= h {
+		newW = maxPx
+		newH = int(float64(h) * float64(maxPx) / float64(w))
+	} else {
+		newH = maxPx
+		newW = int(float64(w) * float64(maxPx) / float64(h))
+	}
+	if newW < 1 {
+		newW = 1
+	}
+	if newH < 1 {
+		newH = 1
+	}
+	dst := image.NewRGBA(image.Rect(0, 0, newW, newH))
+	draw.CatmullRom.Scale(dst, dst.Bounds(), img, bounds, draw.Over, nil)
+	return dst
+}
+
+// inspectPhotoFile opens the written file, decodes its dimensions, and
+// returns a populated photoImage.
+func inspectPhotoFile(path, uid string) (*photoImage, error) {
 	f, err := os.Open(path) //nolint:gosec
 	if err != nil {
 		return nil, fmt.Errorf("failed to open photo: %w", err)

@@ -537,6 +537,9 @@ export interface PreflightIssue {
   photo_uid?: string;
   dpi?: number;
   count?: number;
+  // Longest-side (px) of the photo's original file, populated for
+  // original_downgrade warnings.
+  longest_px?: number;
 }
 
 export interface PreflightSummary {

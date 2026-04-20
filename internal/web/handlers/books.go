@@ -1542,6 +1542,9 @@ type preflightIssue struct {
 	PhotoUID   string `json:"photo_uid,omitempty"`
 	DPI        int    `json:"dpi,omitempty"`
 	Count      int    `json:"count,omitempty"`
+	// LongestPx is populated for original_downgrade warnings — it is the
+	// longest-side dimension (px) of the photo's original file.
+	LongestPx int `json:"longest_px,omitempty"`
 }
 
 type preflightSummary struct {
@@ -1594,6 +1597,12 @@ func (h *BooksHandler) Preflight(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	quality, err := latex.ValidatePhotoQuality(r.URL.Query().Get("photo_quality"))
+	if err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
 	data, errMsg := loadPreflightData(r, bw, pp, id)
 	if errMsg != "" {
 		respondError(w, http.StatusInternalServerError, errMsg)
@@ -1604,6 +1613,9 @@ func (h *BooksHandler) Preflight(w http.ResponseWriter, r *http.Request) {
 	checkPageSlots(data, result)
 	checkSections(r, bw, data, result)
 	checkMissingCaptions(r, bw, data, result)
+	if quality == latex.QualityOriginal {
+		checkOriginalQualityDowngrade(data, result)
+	}
 
 	warnings := result.warnings
 	info := result.info
@@ -1909,6 +1921,54 @@ func computeEffectiveDPI(photoW, photoH int, slotWmm, slotHmm float64) int {
 	return int(math.Min(dpiW, dpiH))
 }
 
+// mediumThumbnailLongestPx is the longest-side px that PhotoPrism's "medium"
+// thumbnail (fit_3840) produces. When photo_quality=original is requested and
+// the primary file has a longest side below this value, using the original is
+// strictly worse than sticking with medium — warn about the downgrade.
+const mediumThumbnailLongestPx = 3840
+
+// checkOriginalQualityDowngrade warns about photos whose primary file is
+// smaller than the medium thumbnail (fit_3840). In that case choosing
+// photo_quality=original produces a lower-resolution embed than medium. We
+// deduplicate warnings per photo UID (one warning regardless of how many
+// times the photo is placed in the book).
+func checkOriginalQualityDowngrade(data *preflightData, result *preflightResult) {
+	seen := make(map[string]bool)
+	for _, page := range data.pages {
+		for _, slot := range page.Slots {
+			if warning, ok := originalDowngradeWarning(slot, data, seen); ok {
+				result.warnings = append(result.warnings, warning)
+			}
+		}
+	}
+}
+
+// originalDowngradeWarning evaluates a single slot for the original_downgrade
+// condition. It returns (warning, true) when the slot is a photo whose
+// primary file is smaller than the medium thumbnail. The seen map is updated
+// so each photo UID warns at most once.
+func originalDowngradeWarning(
+	slot database.PageSlot, data *preflightData, seen map[string]bool,
+) (preflightIssue, bool) {
+	if slot.PhotoUID == "" || seen[slot.PhotoUID] {
+		return preflightIssue{}, false
+	}
+	dims, ok := data.photoDims[slot.PhotoUID]
+	if !ok || (dims[0] == 0 && dims[1] == 0) {
+		return preflightIssue{}, false
+	}
+	longest := max(dims[0], dims[1])
+	if longest >= mediumThumbnailLongestPx {
+		return preflightIssue{}, false
+	}
+	seen[slot.PhotoUID] = true
+	return preflightIssue{
+		Type:      "original_downgrade",
+		PhotoUID:  slot.PhotoUID,
+		LongestPx: longest,
+	}, true
+}
+
 // --- PDF Export ---
 
 func writePDFResponse(w http.ResponseWriter, pdfData []byte, filename string, report *latex.ExportReport) {
@@ -1960,8 +2020,27 @@ func (h *BooksHandler) ExportPDF(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Debug and normal exports both use GeneratePDFWithOptions.
-	pdfData, report, err := latex.GeneratePDFWithOptions(r.Context(), pp, bw, id, format == exportFormatDebug)
+	quality, err := latex.ValidatePhotoQuality(r.URL.Query().Get("photo_quality"))
+	if err != nil {
+		respondError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+
+	runBookPDFExport(w, r, pp, bw, id, book.Title, format, quality)
+}
+
+// runBookPDFExport generates the PDF and writes the response in whichever
+// shape the caller asked for (binary PDF, debug PDF, or JSON report).
+// Extracted from ExportPDF to keep that handler under the cyclop limit.
+func runBookPDFExport(
+	w http.ResponseWriter, r *http.Request,
+	pp *photoprism.PhotoPrism, bw database.BookWriter,
+	id, bookTitle, format string, quality latex.PhotoQuality,
+) {
+	pdfData, report, err := latex.GeneratePDFWithCallbacks(r.Context(), pp, bw, id, latex.ExportOptions{
+		Debug:        format == exportFormatDebug,
+		PhotoQuality: quality,
+	})
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Sprintf("PDF generation failed: %v", err))
 		return
@@ -1976,7 +2055,7 @@ func (h *BooksHandler) ExportPDF(w http.ResponseWriter, r *http.Request) {
 	if format == exportFormatDebug {
 		suffix = "-debug"
 	}
-	writePDFResponse(w, pdfData, book.Title+suffix, report)
+	writePDFResponse(w, pdfData, bookTitle+suffix, report)
 }
 
 // resolveChapterColor follows section -> chapter -> color chain to find the chapter color.

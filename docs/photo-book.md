@@ -294,11 +294,47 @@ The book can be exported to a print-ready A4 landscape PDF via the "Export PDF" 
 
 1. Backend collects all pages (ordered by section, then sort_order)
 2. Loads section photo descriptions to build a caption map
-3. Downloads high-resolution thumbnails (`fit_3840`) for all photos in slots
+3. Downloads photos at the requested quality tier (see "Photo Quality Tiers" below)
 4. Computes layout geometry with configurable margins (asymmetric for binding)
 5. Generates a LaTeX document using TikZ for precise photo placement with object-cover cropping
 6. Compiles with `lualatex` (Czech typography via `polyglossia` + configurable Google Fonts)
 7. Returns the PDF and an export report with DPI warnings
+
+### Photo Quality Tiers
+
+Both the sync (`GET /api/v1/books/{id}/export-pdf`) and async
+(`POST /api/v1/books/{id}/export-pdf/job`) endpoints accept an optional
+`photo_quality` query parameter. The same value is also accepted by the
+preflight endpoint (`GET /api/v1/books/{id}/preflight?photo_quality=...`) so
+that warnings specific to a tier are reported up-front.
+
+| Value | PhotoPrism source | Use case | Approx. file size |
+|-------|-------------------|----------|-------------------|
+| `low` | `fit_720` thumbnails | quick preview — small, fast | tens of MB |
+| `medium` (default) | `fit_3840` thumbnails | standard export, prior behaviour | ~100 MB to ~1 GB |
+| `original` | `GetPhotoDownload` primary file | final print | multi-GB possible for large books |
+
+**Longest-side cap for `original`.** When `photo_quality=original`, the
+primary file is decoded and — if its longest side exceeds **8000 px** — it is
+downscaled (CatmullRom resample) to fit within that cap before being embedded
+as JPEG (quality 92). 8000 px is roughly 300 DPI at A3, which is more than
+any realistic book layout needs; the cap keeps PDF size under control.
+
+**HEIC / RAW handling.** The photo-sorter binary is built with
+`CGO_ENABLED=0` and ships no HEIC / RAW decoder. If the primary file cannot
+be decoded in pure Go (e.g. HEIC from iPhone, CR2/NEF/ARW/DNG from cameras),
+the export falls back to PhotoPrism's largest pre-rendered JPEG thumbnail
+(`fit_7680`, ≤ 7680 px on the longest side). A log line with the photo UID
+and the decode error is emitted so the behaviour is traceable.
+
+**`original_downgrade` preflight warning.** When `photo_quality=original` is
+selected, preflight walks every placed photo and warns for any photo whose
+original is smaller on the longest side than the medium thumbnail would have
+been (< 3840 px). In that case `medium` produces a higher-resolution embed
+than `original` — the warning is a heads-up, not an error.
+
+**Single-page preview.** `GET /api/v1/pages/{id}/export-pdf` always uses
+`medium`. No `photo_quality` parameter is accepted there.
 
 ### Requirements
 

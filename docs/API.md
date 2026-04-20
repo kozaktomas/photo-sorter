@@ -2181,6 +2181,12 @@ GET /books/{id}/preflight
 
 Runs validation checks on a book and returns a report of warnings and informational issues without generating a PDF. Use this before export to catch problems early.
 
+**Query Parameters:**
+
+| Parameter | Value | Description |
+|-----------|-------|-------------|
+| `photo_quality` | `low` / `medium` / `original` | Tier to evaluate (defaults to `medium`). Enables tier-specific warnings — e.g. `original_downgrade`. |
+
 **Checks performed:**
 
 | Check | Severity | Description |
@@ -2188,6 +2194,7 @@ Runs validation checks on a book and returns a report of warnings and informatio
 | Empty slots | Warning | Pages with unfilled slot positions |
 | Low DPI | Warning | Photos with effective DPI < 200 at their assigned slot size |
 | Empty sections | Warning | Sections with no pages |
+| Original downgrade | Warning | Only when `photo_quality=original`: photo's primary file is smaller than 3840 px on the longest side, so `medium` would give a sharper embed |
 | Unplaced photos | Info | Section photos not assigned to any page slot |
 | Missing captions | Info | Photo slots without a description in section_photos |
 
@@ -2199,7 +2206,8 @@ Runs validation checks on a book and returns a report of warnings and informatio
   "warnings": [
     { "type": "empty_slot", "page_number": 3, "section": "Summer", "slot_index": 2 },
     { "type": "low_dpi", "page_number": 5, "section": "Summer", "slot_index": 0, "photo_uid": "abc", "dpi": 185 },
-    { "type": "empty_section", "section": "Winter" }
+    { "type": "empty_section", "section": "Winter" },
+    { "type": "original_downgrade", "photo_uid": "ps12345", "longest_px": 2400 }
   ],
   "info": [
     { "type": "unplaced_photos", "section": "Summer", "count": 4 },
@@ -2247,6 +2255,7 @@ Generates and downloads a print-ready A4 landscape PDF of the book. Features inc
 | `format` | `report` | Return JSON export report instead of PDF binary |
 | `format` | `test` | Generate diagnostic test PDF (layout grid, font samples) |
 | `format` | `debug` | Generate real book PDF with debug overlay (grid lines, slot borders) |
+| `photo_quality` | `low` / `medium` / `original` | Photo resolution tier. Defaults to `medium` (fit_3840). `low` uses fit_720 thumbnails; `original` downloads full originals and caps the longest side at 8000 px (HEIC/RAW falls back to the fit_7680 thumbnail). |
 
 **Response (200 — default):** Binary PDF file with headers:
 - `Content-Type: application/pdf`
@@ -2316,14 +2325,17 @@ POST /books/{id}/export-pdf/job
 ```
 
 Query parameters: `format=debug` to enable the debug overlay (same as the
-synchronous endpoint). Returns `202 Accepted`:
+synchronous endpoint); `photo_quality=low|medium|original` to select the
+photo resolution tier (same semantics and defaults as the sync endpoint —
+see the table above). Returns `202 Accepted`:
 
 ```json
 {
   "job_id": "9cac027d-7feb-43f4-8533-739e5556ab24",
   "book_id": "9797de58-a0ec-4330-8173-b7ce5b198f33",
   "book_title": "My Book",
-  "status": "pending"
+  "status": "pending",
+  "photo_quality": "medium"
 }
 ```
 
