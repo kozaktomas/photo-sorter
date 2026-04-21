@@ -1044,6 +1044,7 @@ func (m *MockBookWriter) AssignSlot(ctx context.Context, pageID string, slotInde
 			slots[i].PhotoUID = photoUID
 			slots[i].TextContent = ""
 			slots[i].IsCaptionsSlot = false
+			slots[i].IsContentsSlot = false
 			slots[i].CropX = 0.5
 			slots[i].CropY = 0.5
 			slots[i].CropScale = 1.0
@@ -1068,6 +1069,7 @@ func (m *MockBookWriter) AssignTextSlot(ctx context.Context, pageID string, slot
 			slots[i].PhotoUID = ""
 			slots[i].TextContent = textContent
 			slots[i].IsCaptionsSlot = false
+			slots[i].IsContentsSlot = false
 			m.pageSlots[pageID] = slots
 			return nil
 		}
@@ -1079,6 +1081,8 @@ func (m *MockBookWriter) AssignTextSlot(ctx context.Context, pageID string, slot
 // AssignCaptionsSlot marks a page slot as the captions slot. Returns
 // database.ErrCaptionsSlotExists if another slot on the same page is already
 // marked as the captions slot.
+//
+//nolint:dupl // Intentional mirror of AssignContentsSlot.
 func (m *MockBookWriter) AssignCaptionsSlot(ctx context.Context, pageID string, slotIndex int) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -1093,6 +1097,7 @@ func (m *MockBookWriter) AssignCaptionsSlot(ctx context.Context, pageID string, 
 			slots[i].PhotoUID = ""
 			slots[i].TextContent = ""
 			slots[i].IsCaptionsSlot = true
+			slots[i].IsContentsSlot = false
 			slots[i].CropX = 0.5
 			slots[i].CropY = 0.5
 			slots[i].CropScale = 1.0
@@ -1108,7 +1113,42 @@ func (m *MockBookWriter) AssignCaptionsSlot(ctx context.Context, pageID string, 
 	return nil
 }
 
-// ClearSlot removes the photo, text, or captions assignment from a page slot.
+// AssignContentsSlot marks a page slot as the contents slot. Returns
+// database.ErrContentsSlotExists if another slot on the same page is already
+// marked as the contents slot.
+//
+//nolint:dupl // Intentional mirror of AssignCaptionsSlot — see that function.
+func (m *MockBookWriter) AssignContentsSlot(ctx context.Context, pageID string, slotIndex int) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	slots := m.pageSlots[pageID]
+	for i := range slots {
+		if slots[i].IsContentsSlot && slots[i].SlotIndex != slotIndex {
+			return database.ErrContentsSlotExists
+		}
+	}
+	for i := range slots {
+		if slots[i].SlotIndex == slotIndex {
+			slots[i].PhotoUID = ""
+			slots[i].TextContent = ""
+			slots[i].IsCaptionsSlot = false
+			slots[i].IsContentsSlot = true
+			slots[i].CropX = 0.5
+			slots[i].CropY = 0.5
+			slots[i].CropScale = 1.0
+			m.pageSlots[pageID] = slots
+			return nil
+		}
+	}
+	m.pageSlots[pageID] = append(slots, database.PageSlot{
+		SlotIndex:      slotIndex,
+		IsContentsSlot: true,
+		CropX:          0.5, CropY: 0.5, CropScale: 1.0,
+	})
+	return nil
+}
+
+// ClearSlot removes the photo, text, captions, or contents assignment from a page slot.
 func (m *MockBookWriter) ClearSlot(ctx context.Context, pageID string, slotIndex int) error {
 	if m.ClearSlotError != nil {
 		return m.ClearSlotError
@@ -1121,6 +1161,7 @@ func (m *MockBookWriter) ClearSlot(ctx context.Context, pageID string, slotIndex
 			slots[i].PhotoUID = ""
 			slots[i].TextContent = ""
 			slots[i].IsCaptionsSlot = false
+			slots[i].IsContentsSlot = false
 			m.pageSlots[pageID] = slots
 			return nil
 		}

@@ -103,10 +103,11 @@ type bookDetailResponse struct {
 }
 
 type chapterResponse struct {
-	ID        string `json:"id"`
-	Title     string `json:"title"`
-	Color     string `json:"color"`
-	SortOrder int    `json:"sort_order"`
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	Color       string `json:"color"`
+	HideFromTOC bool   `json:"hide_from_toc"`
+	SortOrder   int    `json:"sort_order"`
 }
 
 type sectionResponse struct {
@@ -143,6 +144,7 @@ type slotResponse struct {
 	PhotoUID       string  `json:"photo_uid"`
 	TextContent    string  `json:"text_content"`
 	IsCaptionsSlot bool    `json:"is_captions_slot"`
+	IsContentsSlot bool    `json:"is_contents_slot"`
 	CropX          float64 `json:"crop_x"`
 	CropY          float64 `json:"crop_y"`
 	CropScale      float64 `json:"crop_scale"`
@@ -308,6 +310,7 @@ func buildPageResponses(pages []database.BookPage) []pageResponse {
 				PhotoUID:       p.Slots[j].PhotoUID,
 				TextContent:    p.Slots[j].TextContent,
 				IsCaptionsSlot: p.Slots[j].IsCaptionsSlot,
+				IsContentsSlot: p.Slots[j].IsContentsSlot,
 				CropX:          p.Slots[j].CropX,
 				CropY:          p.Slots[j].CropY,
 				CropScale:      p.Slots[j].CropScale,
@@ -335,10 +338,11 @@ func buildBookDetailResponse(
 	chapterResps := make([]chapterResponse, len(chapters))
 	for i, c := range chapters {
 		chapterResps[i] = chapterResponse{
-			ID:        c.ID,
-			Title:     c.Title,
-			Color:     c.Color,
-			SortOrder: c.SortOrder,
+			ID:          c.ID,
+			Title:       c.Title,
+			Color:       c.Color,
+			HideFromTOC: c.HideFromTOC,
+			SortOrder:   c.SortOrder,
 		}
 	}
 
@@ -543,15 +547,17 @@ func (h *BooksHandler) CreateChapter(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	respondJSON(w, http.StatusCreated, chapterResponse{
-		ID:        chapter.ID,
-		Title:     chapter.Title,
-		Color:     chapter.Color,
-		SortOrder: chapter.SortOrder,
+		ID:          chapter.ID,
+		Title:       chapter.Title,
+		Color:       chapter.Color,
+		HideFromTOC: chapter.HideFromTOC,
+		SortOrder:   chapter.SortOrder,
 	})
 }
 
-// UpdateChapter handles PUT /api/v1/chapters/:id and updates a chapter's title and/or color.
-// Supports partial updates: only fields present in the request body are modified.
+// UpdateChapter handles PUT /api/v1/chapters/:id and updates a chapter's
+// title, color, and/or TOC visibility. Supports partial updates: only fields
+// present in the request body are modified.
 func (h *BooksHandler) UpdateChapter(w http.ResponseWriter, r *http.Request) {
 	bw := getBookWriter(r, w)
 	if bw == nil {
@@ -559,8 +565,9 @@ func (h *BooksHandler) UpdateChapter(w http.ResponseWriter, r *http.Request) {
 	}
 	id := chi.URLParam(r, "id")
 	var req struct {
-		Title *string `json:"title"`
-		Color *string `json:"color"`
+		Title       *string `json:"title"`
+		Color       *string `json:"color"`
+		HideFromTOC *bool   `json:"hide_from_toc"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
@@ -576,6 +583,9 @@ func (h *BooksHandler) UpdateChapter(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Color != nil {
 		chapter.Color = *req.Color
+	}
+	if req.HideFromTOC != nil {
+		chapter.HideFromTOC = *req.HideFromTOC
 	}
 	if err := bw.UpdateChapter(r.Context(), chapter); err != nil {
 		respondError(w, http.StatusInternalServerError, "failed to update chapter")
@@ -1064,6 +1074,7 @@ type assignSlotRequest struct {
 	PhotoUID    string `json:"photo_uid"`
 	TextContent string `json:"text_content"`
 	Captions    bool   `json:"captions"`
+	Contents    bool   `json:"contents"`
 }
 
 func (r assignSlotRequest) validate() string {
@@ -1077,11 +1088,14 @@ func (r assignSlotRequest) validate() string {
 	if r.Captions {
 		set++
 	}
+	if r.Contents {
+		set++
+	}
 	if set == 0 {
-		return "photo_uid, text_content, or captions is required"
+		return "photo_uid, text_content, captions, or contents is required"
 	}
 	if set > 1 {
-		return "slot must have exactly one of photo_uid, text_content, captions"
+		return "slot must have exactly one of photo_uid, text_content, captions, contents"
 	}
 	return ""
 }
@@ -1123,15 +1137,9 @@ func dispatchSlotAssign(
 ) bool {
 	switch {
 	case req.Captions:
-		err := bw.AssignCaptionsSlot(r.Context(), pageID, slotIndex)
-		if errors.Is(err, database.ErrCaptionsSlotExists) {
-			respondError(w, http.StatusConflict, "this page already has a captions slot")
-			return false
-		}
-		if err != nil {
-			respondError(w, http.StatusInternalServerError, "failed to assign captions slot")
-			return false
-		}
+		return dispatchCaptionsAssign(r.Context(), w, bw, pageID, slotIndex)
+	case req.Contents:
+		return dispatchContentsAssign(r.Context(), w, bw, pageID, slotIndex)
 	case req.TextContent != "":
 		// Save previous text content as a version before overwriting.
 		saveTextVersionForPageSlot(r, bw, pageID, slotIndex, req.TextContent)
@@ -1139,11 +1147,42 @@ func dispatchSlotAssign(
 			respondError(w, http.StatusInternalServerError, "failed to assign text slot")
 			return false
 		}
+		return true
 	default:
 		if err := bw.AssignSlot(r.Context(), pageID, slotIndex, req.PhotoUID); err != nil {
 			respondError(w, http.StatusInternalServerError, "failed to assign slot")
 			return false
 		}
+		return true
+	}
+}
+
+func dispatchCaptionsAssign(
+	ctx context.Context, w http.ResponseWriter, bw database.BookWriter, pageID string, slotIndex int,
+) bool {
+	err := bw.AssignCaptionsSlot(ctx, pageID, slotIndex)
+	if errors.Is(err, database.ErrCaptionsSlotExists) {
+		respondError(w, http.StatusConflict, "this page already has a captions slot")
+		return false
+	}
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to assign captions slot")
+		return false
+	}
+	return true
+}
+
+func dispatchContentsAssign(
+	ctx context.Context, w http.ResponseWriter, bw database.BookWriter, pageID string, slotIndex int,
+) bool {
+	err := bw.AssignContentsSlot(ctx, pageID, slotIndex)
+	if errors.Is(err, database.ErrContentsSlotExists) {
+		respondError(w, http.StatusConflict, "this page already has a contents slot")
+		return false
+	}
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, "failed to assign contents slot")
+		return false
 	}
 	return true
 }
@@ -2148,12 +2187,19 @@ func (h *BooksHandler) ExportPagePDF(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	toc, err := latex.BuildBookTOC(r.Context(), bw, page.BookID)
+	if err != nil {
+		respondError(w, http.StatusInternalServerError, fmt.Sprintf("TOC build failed: %v", err))
+		return
+	}
+
 	pdfData, err := latex.GenerateSinglePagePDF(r.Context(), pp, latex.SinglePageInput{
 		Page:         *page,
 		Book:         book,
 		ChapterColor: resolveChapterColor(r.Context(), bw, page.SectionID),
 		Captions:     buildSectionCaptions(r.Context(), bw, page.SectionID),
 		PageNumber:   computePageNumber(r.Context(), bw, page.BookID, pageID),
+		TOC:          toc,
 	})
 	if err != nil {
 		respondError(w, http.StatusInternalServerError, fmt.Sprintf("PDF generation failed: %v", err))

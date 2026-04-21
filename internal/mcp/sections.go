@@ -9,8 +9,6 @@ import (
 )
 
 // registerSectionTools registers section CRUD and reorder tools.
-//
-//nolint:dupl // intentionally mirrors registerChapterTools — same CRUD pattern, different entity
 func (s *Server) registerSectionTools() {
 	s.mcpServer.AddTool(
 		mcp.NewTool("create_section",

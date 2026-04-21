@@ -10,6 +10,7 @@
 \usepackage[dvipsnames]{xcolor}
 \usepackage{enumitem}
 \usepackage{tabularx}
+\usepackage{multicol}
 \usepackage{microtype}
 
 % Bleed: extend paper by 3mm on each side with printer crop marks.
@@ -127,6 +128,40 @@
       {{- range $ci, $cap := $slot.CaptionsList}}
       {{if $ci}}\par {{end}}\noindent\hangindent={{printf "%.2f" (slotCaptionIndentMM $.CaptionBadgeSize)}}mm\relax {{renderSlotCaption $cap $.CaptionBadgeSize}}
       {{- end}}
+    }};
+  }%
+{{- else if $slot.HasContents}}
+  % Contents slot — auto-generated book table of contents rendered in two
+  % columns. Chapter titles are bold uppercase; sections are italic with a
+  % dotted leader and their printed page range. ContentsEntries are populated
+  % by injectContentsSlots in Go once every section's page range is known.
+  {\microtypesetup{expansion=false}%
+  \node[anchor=north west,inner sep=0]
+    at ({{printf "%.2f" $slot.ClipX}},{{printf "%.2f" (addFloat $slot.ClipY $slot.ClipH)}})
+    {\parbox{{print "{"}}{{printf "%.2f" $slot.ClipW}}mm}{%
+      \parskip=0pt\parindent=0pt
+      {{- if $slot.ContentsHeader}}
+      {\fontsize{ {{- printf "%.0f" $.H1FontSize -}} }{ {{- printf "%.0f" $.H1Leading -}} }\selectfont\bfseries {{ latexEscape $slot.ContentsHeader }}\par}
+      \vspace{2mm}
+      {{- end}}
+      \fontsize{ {{- printf "%.0f" $.BodyFontSize -}} }{ {{- printf "%.0f" $.BodyLineHeight -}} }\selectfont
+      \setlength{\columnsep}{5mm}%
+      \begin{multicols}{2}
+      \raggedright
+      {{- range $ci, $ch := $slot.ContentsEntries}}
+      {{- if $ch.StartsRightColumn}}\columnbreak
+      {{- else if $ci}}\vspace{1mm}{{end}}
+      {{- if $ch.Title}}
+      \noindent{\bfseries\MakeUppercase{ {{- latexEscape $ch.Title -}} }}\par
+      {{- end}}
+      {{- range $si, $sec := $ch.Sections}}
+      {{- /* Hard no-break inside a chapter: the right column always starts */}}
+      {{- /* on a fresh chapter (see balanceTOCColumns in Go for the split). */}}
+      {{- if or $ch.Title $si}}\nobreak {{end}}
+      \noindent\hspace*{3mm}\textit{ {{- latexEscape $sec.Title -}} }\dotfill{{if eq $sec.StartPage $sec.EndPage}}{{$sec.StartPage}}{{else}}{{$sec.StartPage}}\,--\,{{$sec.EndPage}}{{end}}\par
+      {{- end}}
+      {{- end}}
+      \end{multicols}
     }};
   }%
 {{- end}}

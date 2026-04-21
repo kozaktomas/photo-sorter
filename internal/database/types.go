@@ -10,6 +10,11 @@ import (
 // captions slot is allowed per page.
 var ErrCaptionsSlotExists = errors.New("page already has a captions slot")
 
+// ErrContentsSlotExists is returned by AssignContentsSlot when the target page
+// already has a different slot marked as its contents slot. At most one
+// contents slot is allowed per page.
+var ErrContentsSlotExists = errors.New("page already has a contents slot")
+
 // StoredEmbedding represents an embedding stored in the database.
 type StoredEmbedding struct {
 	PhotoUID   string
@@ -101,13 +106,14 @@ type PhotoBookWithCounts struct {
 
 // BookChapter represents a chapter grouping within a book.
 type BookChapter struct {
-	ID        string
-	BookID    string
-	Title     string
-	Color     string
-	SortOrder int
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ID          string
+	BookID      string
+	Title       string
+	Color       string
+	HideFromTOC bool // true = skip this chapter (and its sections) in the auto-generated TOC
+	SortOrder   int
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 // BookSection represents an ordered group within a book.
@@ -148,13 +154,15 @@ type BookPage struct {
 	UpdatedAt      time.Time
 }
 
-// PageSlot represents a photo, text, or captions assignment to a position on
-// a page. A slot holds at most one of PhotoUID, TextContent, or IsCaptionsSlot.
+// PageSlot represents a photo, text, captions, or contents assignment to a
+// position on a page. A slot holds at most one of PhotoUID, TextContent,
+// IsCaptionsSlot, or IsContentsSlot.
 type PageSlot struct {
 	SlotIndex      int
 	PhotoUID       string  // empty = unoccupied (photo)
 	TextContent    string  // non-empty = text slot
 	IsCaptionsSlot bool    // true = render page's photo captions inline
+	IsContentsSlot bool    // true = render auto-generated book table of contents
 	CropX          float64 // 0.0-1.0, default 0.5 (center)
 	CropY          float64 // 0.0-1.0, default 0.5 (center)
 	CropScale      float64 // 0.1-1.0, default 1.0 (no zoom)
@@ -170,9 +178,14 @@ func (s PageSlot) IsCaptions() bool {
 	return s.IsCaptionsSlot
 }
 
-// IsEmpty returns true if the slot has neither a photo, text, nor captions.
+// IsContents returns true if this slot renders the book's table of contents.
+func (s PageSlot) IsContents() bool {
+	return s.IsContentsSlot
+}
+
+// IsEmpty returns true if the slot has no photo, text, captions, or contents.
 func (s PageSlot) IsEmpty() bool {
-	return s.PhotoUID == "" && s.TextContent == "" && !s.IsCaptionsSlot
+	return s.PhotoUID == "" && s.TextContent == "" && !s.IsCaptionsSlot && !s.IsContentsSlot
 }
 
 // TextVersion stores a historical snapshot of a text field.

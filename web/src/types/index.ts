@@ -420,6 +420,7 @@ export interface BookChapter {
   id: string;
   title: string;
   color: string;
+  hide_from_toc: boolean;
   sort_order: number;
 }
 
@@ -459,6 +460,7 @@ export interface PageSlot {
   photo_uid: string;
   text_content: string;
   is_captions_slot: boolean;
+  is_contents_slot: boolean;
   crop_x: number;
   crop_y: number;
   crop_scale: number;

@@ -439,12 +439,22 @@ func (s *Server) handleUpdateChapter(ctx context.Context, req mcp.CallToolReques
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	chapter := &database.BookChapter{ID: chapterID}
+	chapter, err := s.bookWriter.GetChapter(s.ctx(), chapterID)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("get chapter %s: %v", chapterID, err)), nil
+	}
+	if chapter == nil {
+		return mcp.NewToolResultError("chapter not found: " + chapterID), nil
+	}
+
 	if t := optionalStr(args, "title"); t != "" {
 		chapter.Title = t
 	}
 	if c := optionalStr(args, "color"); c != "" {
 		chapter.Color = c
+	}
+	if v, ok := args["hide_from_toc"].(bool); ok {
+		chapter.HideFromTOC = v
 	}
 
 	if err := s.bookWriter.UpdateChapter(s.ctx(), chapter); err != nil {
@@ -452,13 +462,15 @@ func (s *Server) handleUpdateChapter(ctx context.Context, req mcp.CallToolReques
 	}
 
 	result := struct {
-		ID    string `json:"id"`
-		Title string `json:"title,omitempty"`
-		Color string `json:"color,omitempty"`
+		ID          string `json:"id"`
+		Title       string `json:"title,omitempty"`
+		Color       string `json:"color,omitempty"`
+		HideFromTOC bool   `json:"hide_from_toc"`
 	}{
-		ID:    chapter.ID,
-		Title: chapter.Title,
-		Color: chapter.Color,
+		ID:          chapter.ID,
+		Title:       chapter.Title,
+		Color:       chapter.Color,
+		HideFromTOC: chapter.HideFromTOC,
 	}
 	return jsonResult(result)
 }

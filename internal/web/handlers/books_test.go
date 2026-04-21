@@ -1115,7 +1115,7 @@ func TestBooksHandler_AssignSlot_MissingPhotoUID(t *testing.T) {
 	handler.AssignSlot(recorder, req)
 
 	assertStatusCode(t, recorder, http.StatusBadRequest)
-	assertJSONError(t, recorder, "photo_uid, text_content, or captions is required")
+	assertJSONError(t, recorder, "photo_uid, text_content, captions, or contents is required")
 }
 
 func TestBooksHandler_AssignSlot_InvalidJSON(t *testing.T) {
@@ -1578,7 +1578,7 @@ func TestBooksHandler_AssignSlot_BothPhotoAndText(t *testing.T) {
 	handler.AssignSlot(recorder, req)
 
 	assertStatusCode(t, recorder, http.StatusBadRequest)
-	assertJSONError(t, recorder, "slot must have exactly one of photo_uid, text_content, captions")
+	assertJSONError(t, recorder, "slot must have exactly one of photo_uid, text_content, captions, contents")
 }
 
 func TestBooksHandler_AssignSlot_Captions(t *testing.T) {
@@ -1623,7 +1623,7 @@ func TestBooksHandler_AssignSlot_Captions(t *testing.T) {
 		handler.AssignSlot(recorder, req)
 
 		assertStatusCode(t, recorder, http.StatusBadRequest)
-		assertJSONError(t, recorder, "slot must have exactly one of photo_uid, text_content, captions")
+		assertJSONError(t, recorder, "slot must have exactly one of photo_uid, text_content, captions, contents")
 	})
 
 	t.Run("conflict on second captions slot", func(t *testing.T) {

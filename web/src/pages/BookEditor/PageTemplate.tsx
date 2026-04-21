@@ -26,13 +26,14 @@ interface Props {
   onEditText?: (slotIndex: number) => void;
   onAddText?: (slotIndex: number) => void;
   onAddCaptions?: (slotIndex: number) => void;
+  onAddContents?: (slotIndex: number) => void;
   onEditCrop?: (slotIndex: number) => void;
   onChangeSplitPosition?: (split: number | null) => void;
   onChangeHidePageNumber?: (hide: boolean) => void;
   chapterColor?: string;
 }
 
-export function PageTemplate({ page, onClearSlot, sectionPhotos, onEditDescription, onUpdatePageDescription, onChangeFormat, onChangeStyle, onEditText, onAddText, onAddCaptions, onEditCrop, onChangeSplitPosition, onChangeHidePageNumber, chapterColor }: Props) {
+export function PageTemplate({ page, onClearSlot, sectionPhotos, onEditDescription, onUpdatePageDescription, onChangeFormat, onChangeStyle, onEditText, onAddText, onAddCaptions, onAddContents, onEditCrop, onChangeSplitPosition, onChangeHidePageNumber, chapterColor }: Props) {
   const { t } = useTranslation('pages');
   const slotCount = pageFormatSlotCount(page.format);
   const gridClasses = getGridClasses(page.format);
@@ -165,14 +166,16 @@ export function PageTemplate({ page, onClearSlot, sectionPhotos, onEditDescripti
           const textContent = getSlotTextContent(page, i);
           const slot = page.slots.find(s => s.slot_index === i);
           const isCaptions = !!slot?.is_captions_slot;
+          const isContents = !!slot?.is_contents_slot;
           const { cropX, cropY, cropScale } = getSlotCrop(page, i);
           const sp = uid ? photoLookup.get(uid) : undefined;
           const slotFileName = slot?.file_name || sp?.file_name || '';
           const bleed = getSlotH1Bleed(page.format, i);
-          const isEmpty = !uid && !textContent && !isCaptions;
-          // Only offer "captions slot" when no other slot on this page is
-          // already the captions slot (one per page).
+          const isEmpty = !uid && !textContent && !isCaptions && !isContents;
+          // Only offer "captions slot" / "contents slot" when no other slot on
+          // this page is already marked as such (one of each kind per page).
           const pageHasCaptionsSlot = page.slots.some(s => s.is_captions_slot);
+          const pageHasContentsSlot = page.slots.some(s => s.is_contents_slot);
           return (
             <PageSlotComponent
               key={i}
@@ -181,6 +184,7 @@ export function PageTemplate({ page, onClearSlot, sectionPhotos, onEditDescripti
               photoUid={uid}
               textContent={textContent}
               isCaptionsSlot={isCaptions}
+              isContentsSlot={isContents}
               cropX={cropX}
               cropY={cropY}
               cropScale={cropScale}
@@ -195,6 +199,7 @@ export function PageTemplate({ page, onClearSlot, sectionPhotos, onEditDescripti
               onEditText={textContent && onEditText ? () => onEditText(i) : undefined}
               onAddText={isEmpty && onAddText ? () => onAddText(i) : undefined}
               onAddCaptions={isEmpty && !pageHasCaptionsSlot && onAddCaptions ? () => onAddCaptions(i) : undefined}
+              onAddContents={isEmpty && !pageHasContentsSlot && onAddContents ? () => onAddContents(i) : undefined}
               chapterColor={chapterColor}
               bleedLeft={bleed.left}
               bleedRight={bleed.right}

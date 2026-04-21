@@ -280,9 +280,11 @@ function TypographySettingsSection({ book, onRefresh }: { book: BookDetail; onRe
 function ChapterColorRow({
   chapter,
   onColorChange,
+  onHideFromTOCChange,
 }: {
-  chapter: { id: string; title: string; color: string };
+  chapter: { id: string; title: string; color: string; hide_from_toc: boolean };
   onColorChange: (color: string) => void;
+  onHideFromTOCChange: (hide: boolean) => void;
 }) {
   const { t } = useTranslation('pages');
   const colorRef = useRef<HTMLInputElement>(null);
@@ -305,6 +307,20 @@ function ChapterColorRow({
           className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
         />
       </button>
+
+      {/* Show in TOC toggle — right next to the color picker. */}
+      <label
+        className="flex items-center gap-2 shrink-0 cursor-pointer select-none"
+        title={t('books.editor.typography.showInTocTitle')}
+      >
+        <input
+          type="checkbox"
+          checked={!chapter.hide_from_toc}
+          onChange={(e) => onHideFromTOCChange(!e.target.checked)}
+          className="h-4 w-4 rounded border-slate-600 bg-slate-900 accent-rose-500 focus:outline-none focus-visible:ring-1 focus-visible:ring-rose-500"
+        />
+        <span className="text-xs text-slate-400">{t('books.editor.typography.showInToc')}</span>
+      </label>
 
       {/* Chapter name + hex */}
       <div className="flex-1 min-w-0">
@@ -343,6 +359,15 @@ function ChapterColorsSection({ book, onRefresh }: { book: BookDetail; onRefresh
     }
   };
 
+  const handleHideFromTOCChange = async (chapterId: string, hide: boolean) => {
+    try {
+      await updateChapter(chapterId, { hide_from_toc: hide });
+      onRefresh();
+    } catch {
+      /* silent */
+    }
+  };
+
   if (!book.chapters.length) {
     return (
       <section>
@@ -361,6 +386,7 @@ function ChapterColorsSection({ book, onRefresh }: { book: BookDetail; onRefresh
             key={ch.id}
             chapter={ch}
             onColorChange={(color) => void handleColorChange(ch.id, color)}
+            onHideFromTOCChange={(hide) => void handleHideFromTOCChange(ch.id, hide)}
           />
         ))}
       </div>

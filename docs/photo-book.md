@@ -140,18 +140,24 @@ page_slots
 ├── id (PK, BIGSERIAL)
 ├── page_id (FK → book_pages, CASCADE)
 ├── slot_index
-├── photo_uid (NULL for text/captions slots)
+├── photo_uid (NULL for text/captions/contents slots)
 ├── text_content (TEXT, default '', non-empty for text slots)
 ├── is_captions_slot (BOOLEAN, default FALSE, migration 026)
 │                    Routes the page's photo captions into this slot instead
 │                    of the bottom strip. At most one per page.
+├── is_contents_slot (BOOLEAN, default FALSE, migration 030)
+│                    Auto-renders the book's table of contents (chapters →
+│                    sections with printed page ranges) in this slot, laid
+│                    out in two columns with dotted leaders. At most one
+│                    per page.
 ├── crop_x (REAL, default 0.5, range 0.0-1.0, horizontal crop center)
 ├── crop_y (REAL, default 0.5, range 0.0-1.0, vertical crop center)
 ├── crop_scale (REAL, default 1.0, range 0.1-1.0, zoom level: 1.0 = fill, lower = zoom in)
-├── CHECK: at most one of {photo_uid, text_content, is_captions_slot} is set
+├── CHECK: at most one of {photo_uid, text_content, is_captions_slot, is_contents_slot} is set
 ├── UNIQUE(page_id, slot_index)
 ├── UNIQUE(page_id, photo_uid)
-└── UNIQUE INDEX (page_id) WHERE is_captions_slot
+├── UNIQUE INDEX (page_id) WHERE is_captions_slot
+└── UNIQUE INDEX (page_id) WHERE is_contents_slot
 ```
 
 ### Captions slot
@@ -196,6 +202,39 @@ this when a single caption is long enough to overflow the bottom strip.
 - Replacing the slot with a photo or text also resets the flag.
 - At most one captions slot per page is allowed; a second assignment returns
   HTTP 409.
+
+### Contents slot
+
+A slot can also be flipped into "contents mode" to render the book's table
+of contents automatically. When assigned, the slot shows the book's chapters
+(bold uppercase) and, indented under each chapter, its sections (italic) with
+a dotted leader and the printed page range. Ranges collapse to a single page
+number for sections that occupy one page. The layout always uses two
+columns inside the slot.
+
+**Rendering details:**
+
+- Header: a hard-coded `Obsah` title at the top of the slot, styled with the
+  book's `h1_font_size` / `heading_font`.
+- Chapter and section titles inherit the book's typography (`body_font`,
+  `body_font_size`, `body_line_height`).
+- Page ranges are pre-computed in Go while pages are assembled (not via
+  LaTeX `\pageref`) so compilation stays single-pass and deterministic.
+- Sections without a chapter are grouped under a chapter block with an
+  empty title. The `Úvod` chapter is rendered the same way as other
+  chapters.
+- Sections with no printed pages (none assigned yet) are skipped.
+
+**API:**
+
+- Assign via `PUT /api/v1/pages/:id/slots/:index` with `{ "contents": true }`.
+- Clearing the slot (`DELETE /api/v1/pages/:id/slots/:index`) removes the
+  table of contents from that slot.
+- Replacing the slot with a photo, text, or captions flag also resets the
+  flag.
+- At most one contents slot per page is allowed; a second assignment returns
+  HTTP 409.
+- MCP exposes the same action via the `assign_contents_slot` tool.
 
 Deleting a book cascades to all chapters, sections, pages, and slots.
 

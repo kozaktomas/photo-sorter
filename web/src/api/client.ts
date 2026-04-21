@@ -604,7 +604,10 @@ export async function createChapter(bookId: string, title: string): Promise<Book
   });
 }
 
-export async function updateChapter(chapterId: string, data: { title?: string; color?: string }): Promise<void> {
+export async function updateChapter(
+  chapterId: string,
+  data: { title?: string; color?: string; hide_from_toc?: boolean },
+): Promise<void> {
   await request(`/chapters/${chapterId}`, {
     method: 'PUT',
     body: JSON.stringify(data),
@@ -715,6 +718,13 @@ export async function assignCaptionsSlot(pageId: string, slotIndex: number): Pro
   await request(`/pages/${pageId}/slots/${slotIndex}`, {
     method: 'PUT',
     body: JSON.stringify({ captions: true }),
+  });
+}
+
+export async function assignContentsSlot(pageId: string, slotIndex: number): Promise<void> {
+  await request(`/pages/${pageId}/slots/${slotIndex}`, {
+    method: 'PUT',
+    body: JSON.stringify({ contents: true }),
   });
 }
 

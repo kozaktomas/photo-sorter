@@ -1,16 +1,17 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
-import { assignSlot, assignTextSlot, assignCaptionsSlot, clearSlot, swapSlots } from '../../../api/client';
+import { assignSlot, assignTextSlot, assignCaptionsSlot, assignContentsSlot, clearSlot, swapSlots } from '../../../api/client';
 
 export interface SlotContent {
   photoUid: string;
   textContent: string;
   isCaptions?: boolean;
+  isContents?: boolean;
 }
 
 const EMPTY_CONTENT: SlotContent = { photoUid: '', textContent: '' };
 
 function isEmptyContent(c: SlotContent): boolean {
-  return !c.photoUid && !c.textContent && !c.isCaptions;
+  return !c.photoUid && !c.textContent && !c.isCaptions && !c.isContents;
 }
 
 export type SlotAction =
@@ -32,6 +33,8 @@ async function executeAction(action: SlotAction): Promise<void> {
         await assignTextSlot(action.pageId, action.slotIndex, action.next.textContent);
       } else if (action.next.isCaptions) {
         await assignCaptionsSlot(action.pageId, action.slotIndex);
+      } else if (action.next.isContents) {
+        await assignContentsSlot(action.pageId, action.slotIndex);
       } else {
         await clearSlot(action.pageId, action.slotIndex);
       }

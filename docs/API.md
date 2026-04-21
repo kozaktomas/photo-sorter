@@ -1825,7 +1825,8 @@ PUT /chapters/{id}
 ```json
 {
   "title": "Updated Chapter Title",
-  "color": "#2E5090"
+  "color": "#2E5090",
+  "hide_from_toc": false
 }
 ```
 
@@ -1833,6 +1834,7 @@ PUT /chapters/{id}
 |-------|------|----------|-------------|
 | `title` | string | No | New chapter title |
 | `color` | string | No | New hex color for chapter theme |
+| `hide_from_toc` | bool | No | When `true`, the chapter (and its sections) is omitted from the auto-generated book table of contents rendered by `is_contents_slot`. Pages still print normally. Default `false`. |
 
 **Response (200):** Updated chapter object.
 
@@ -2065,12 +2067,38 @@ PUT /pages/{id}/slots/{index}
 
 Flips a slot into "captions mode": at render time it displays the page's photo captions stacked vertically with numbered badges and a hanging indent (the badge sits flush left, wrapped text aligns under the first text character). The bottom captions strip is suppressed for that page — useful when a single caption is too long to fit in the strip. The captions content is computed at render time from `section_photos.description` (no content is stored on the slot itself).
 
-The three modes (`photo_uid`, `text_content`, `captions`) are mutually exclusive — exactly one must be set per request, otherwise the API returns `400`. At most one captions slot per page is allowed; a second attempt on a different slot returns `409 Conflict`. Replacing a captions slot with a photo or text automatically clears the flag and restores the bottom strip on the next render.
+The four modes (`photo_uid`, `text_content`, `captions`, `contents`) are mutually exclusive — exactly one must be set per request, otherwise the API returns `400`. At most one captions slot per page is allowed; a second attempt on a different slot returns `409 Conflict`. Replacing a captions slot with a photo, text, or contents automatically clears the flag and restores the bottom strip on the next render.
 
 **Response (409 Conflict — when another captions slot already exists on the page):**
 ```json
 {
   "error": "this page already has a captions slot"
+}
+```
+
+##### Assign Contents Slot (auto-generated table of contents)
+
+```
+PUT /pages/{id}/slots/{index}
+```
+
+**Request:**
+```json
+{
+  "contents": true
+}
+```
+
+Flips a slot into "contents mode": at render time the slot renders the book's table of contents as a two-column list — chapter titles (bold uppercase), sections underneath (italic with dotted leaders + page range). Page ranges are pre-computed in Go from the canonical section + page sort order, so the TOC is always deterministic and matches the printed book. The heading `"Obsah"` is rendered above the two columns.
+
+Chapters flagged `hide_from_toc = true` (see `PUT /chapters/{id}`) are skipped entirely — their pages still print normally but they do not appear in the TOC listing. The right column always starts on a new chapter (the Go side picks the balance point that most evenly divides chapter row counts and emits a `\columnbreak` before it).
+
+At most one contents slot per page is allowed; a second attempt on a different slot returns `409 Conflict`. Replacing a contents slot with a photo, text, or captions automatically clears the flag.
+
+**Response (409 Conflict — when another contents slot already exists on the page):**
+```json
+{
+  "error": "this page already has a contents slot"
 }
 ```
 
@@ -2758,7 +2786,7 @@ The MCP (Model Context Protocol) server is integrated into the `serve` command. 
 | Tool | Description | Parameters |
 |------|-------------|------------|
 | `create_chapter` | Create a chapter in a book | `book_id` (string, required), `title` (string, required), `color` (string, optional — hex like `#8B0000`) |
-| `update_chapter` | Update chapter title/color | `chapter_id` (string, required), `title` (string, optional), `color` (string, optional) |
+| `update_chapter` | Update chapter title, color, and/or TOC visibility | `chapter_id` (string, required), `title` (string, optional), `color` (string, optional), `hide_from_toc` (bool, optional — `true` omits the chapter from the auto-generated contents slot) |
 | `delete_chapter` | Delete a chapter | `chapter_id` (string, required) |
 | `reorder_chapters` | Reorder chapters in a book | `book_id` (string, required), `chapter_ids` (array of strings, required) |
 
@@ -2786,6 +2814,7 @@ The MCP (Model Context Protocol) server is integrated into the `serve` command. 
 | `assign_photo_to_slot` | Assign a photo to a page slot | `page_id` (string, required), `slot_index` (number, required), `photo_uid` (string, required) |
 | `assign_text_to_slot` | Assign markdown text to a slot | `page_id` (string, required), `slot_index` (number, required), `text_content` (string, required) |
 | `assign_captions_slot` | Mark a slot as the captions slot (routes photo captions into it, suppresses bottom strip; at most one per page) | `page_id` (string, required), `slot_index` (number, required) |
+| `assign_contents_slot` | Mark a slot as the contents slot (auto-rendered two-column table of contents; at most one per page) | `page_id` (string, required), `slot_index` (number, required) |
 | `clear_slot` | Clear a page slot | `page_id` (string, required), `slot_index` (number, required) |
 | `swap_slots` | Swap two slots on a page | `page_id` (string, required), `slot_a` (number, required), `slot_b` (number, required) |
 | `update_slot_crop` | Update crop position and zoom | `page_id` (string, required), `slot_index` (number, required), `crop_x` (number, required — 0.0-1.0), `crop_y` (number, required — 0.0-1.0), `crop_scale` (number, optional — 0.1-1.0) |

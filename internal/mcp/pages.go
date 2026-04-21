@@ -173,6 +173,24 @@ func (s *Server) registerSlotAssignTools() {
 		s.handleAssignTextToSlot,
 	)
 
+	s.registerSpecialSlotTools()
+
+	s.mcpServer.AddTool(
+		mcp.NewTool("clear_slot",
+			mcp.WithDescription("Clear a page slot (remove photo or text)"),
+			mcp.WithString("page_id", mcp.Required(),
+				mcp.Description("Page ID (UUID)")),
+			mcp.WithNumber("slot_index", mcp.Required(),
+				mcp.Description("0-based slot index to clear")),
+		),
+		s.handleClearSlot,
+	)
+}
+
+// registerSpecialSlotTools registers the captions and contents slot tools.
+// Split out of registerSlotAssignTools to keep each function under the
+// funlen limit.
+func (s *Server) registerSpecialSlotTools() {
 	s.mcpServer.AddTool(
 		mcp.NewTool("assign_captions_slot",
 			mcp.WithDescription(
@@ -189,14 +207,18 @@ func (s *Server) registerSlotAssignTools() {
 	)
 
 	s.mcpServer.AddTool(
-		mcp.NewTool("clear_slot",
-			mcp.WithDescription("Clear a page slot (remove photo or text)"),
+		mcp.NewTool("assign_contents_slot",
+			mcp.WithDescription(
+				"Mark a page slot as the contents slot — "+
+					"the book's table of contents (chapters → sections "+
+					"with page ranges) renders inside this slot in two "+
+					"columns. At most one contents slot per page."),
 			mcp.WithString("page_id", mcp.Required(),
 				mcp.Description("Page ID (UUID)")),
 			mcp.WithNumber("slot_index", mcp.Required(),
-				mcp.Description("0-based slot index to clear")),
+				mcp.Description("0-based slot index")),
 		),
-		s.handleClearSlot,
+		s.handleAssignContentsSlot,
 	)
 }
 
@@ -510,6 +532,34 @@ func (s *Server) handleAssignCaptionsSlot(
 		"page_id":          pageID,
 		"slot_index":       slotIndex,
 		"is_captions_slot": true,
+		"assigned":         true,
+	})
+}
+
+func (s *Server) handleAssignContentsSlot(
+	ctx context.Context, req mcp.CallToolRequest,
+) (*mcp.CallToolResult, error) {
+	args := req.GetArguments()
+	pageID, slotIndex, err := s.parsePageIDAndSlot(args)
+	if err != nil {
+		return mcp.NewToolResultError(err.Error()), nil
+	}
+
+	if err := s.bookWriter.AssignContentsSlot(
+		s.ctx(), pageID, slotIndex,
+	); err != nil {
+		if errors.Is(err, database.ErrContentsSlotExists) {
+			return mcp.NewToolResultError(
+				"page already has a contents slot — clear it first"), nil
+		}
+		return mcp.NewToolResultError(
+			fmt.Sprintf("failed to assign contents slot: %v", err)), nil
+	}
+
+	return jsonResult(map[string]any{
+		"page_id":          pageID,
+		"slot_index":       slotIndex,
+		"is_contents_slot": true,
 		"assigned":         true,
 	})
 }

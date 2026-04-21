@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useDroppable, useDraggable } from '@dnd-kit/core';
 import { useTranslation } from 'react-i18next';
-import { X, Pencil, Type, Crop, MessageSquareText } from 'lucide-react';
+import { X, Pencil, Type, Crop, MessageSquareText, ListTree } from 'lucide-react';
 import { getThumbnailUrl, getPhoto } from '../../api/client';
 import { PhotoActionOverlay } from './PhotoActionOverlay';
 import { PhotoInfoOverlay } from './PhotoInfoOverlay';
@@ -15,6 +15,7 @@ interface Props {
   photoUid: string;
   textContent?: string;
   isCaptionsSlot?: boolean;
+  isContentsSlot?: boolean;
   cropX?: number;
   cropY?: number;
   cropScale?: number;
@@ -29,6 +30,7 @@ interface Props {
   onEditText?: () => void;
   onAddText?: () => void;
   onAddCaptions?: () => void;
+  onAddContents?: () => void;
   chapterColor?: string;
   bleedLeft?: boolean;
   bleedRight?: boolean;
@@ -36,7 +38,7 @@ interface Props {
   className?: string;
 }
 
-export function PageSlotComponent({ pageId, slotIndex, photoUid, textContent, isCaptionsSlot, cropX, cropY, cropScale, format, splitPosition, onClear, onEditCrop, description, note, fileName, onEditDescription, onEditText, onAddText, onAddCaptions, chapterColor, bleedLeft, bleedRight, textPaddingClass, className }: Props) {
+export function PageSlotComponent({ pageId, slotIndex, photoUid, textContent, isCaptionsSlot, isContentsSlot, cropX, cropY, cropScale, format, splitPosition, onClear, onEditCrop, description, note, fileName, onEditDescription, onEditText, onAddText, onAddCaptions, onAddContents, chapterColor, bleedLeft, bleedRight, textPaddingClass, className }: Props) {
   const { t } = useTranslation('pages');
   const [orientation, setOrientation] = useState<'L' | 'P' | null>(null);
   const [dpi, setDpi] = useState<number | null>(null);
@@ -46,12 +48,12 @@ export function PageSlotComponent({ pageId, slotIndex, photoUid, textContent, is
     data: { pageId, slotIndex, photoUid, textContent },
   });
 
-  const hasContent = !!photoUid || !!textContent || !!isCaptionsSlot;
+  const hasContent = !!photoUid || !!textContent || !!isCaptionsSlot || !!isContentsSlot;
   const draggableId = `slot-drag-${pageId}-${slotIndex}`;
   const { attributes, listeners, setNodeRef: setDragRef, isDragging } = useDraggable({
     id: draggableId,
     data: { photoUid, textContent, sourcePageId: pageId, sourceSlotIndex: slotIndex },
-    disabled: !hasContent || !!isCaptionsSlot,
+    disabled: !hasContent || !!isCaptionsSlot || !!isContentsSlot,
   });
 
   const combinedRef = useCallback((node: HTMLElement | null) => {
@@ -180,6 +182,19 @@ export function PageSlotComponent({ pageId, slotIndex, photoUid, textContent, is
             <X className="h-3.5 w-3.5" />
           </button>
         </div>
+      ) : isContentsSlot ? (
+        <div className="relative w-full h-full border-2 border-dashed border-indigo-500/60 bg-indigo-900/10 rounded flex flex-col items-center justify-center text-indigo-200 text-xs gap-2 p-3 text-center">
+          <ListTree className="h-5 w-5 text-indigo-400" />
+          <span className="font-semibold">{t('books.editor.contentsSlotLabel')}</span>
+          <span className="text-indigo-300/80 text-[10px]">{t('books.editor.contentsSlotHint')}</span>
+          <button
+            onClick={onClear}
+            onPointerDown={(e) => e.stopPropagation()}
+            className="absolute top-1 right-1 bg-black/60 hover:bg-red-600 text-white rounded p-0.5 transition-colors"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
       ) : (
         <div className="w-full h-full border-2 border-dashed border-slate-600 rounded flex flex-col items-center justify-center text-slate-500 text-xs gap-2">
           <span>{t('books.editor.dropHere')}</span>
@@ -203,6 +218,17 @@ export function PageSlotComponent({ pageId, slotIndex, photoUid, textContent, is
               >
                 <MessageSquareText className="h-3 w-3" />
                 {t('books.editor.useForCaptions')}
+              </button>
+            )}
+            {onAddContents && (
+              <button
+                onClick={onAddContents}
+                onPointerDown={(e) => e.stopPropagation()}
+                className="flex items-center gap-1 px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs transition-colors"
+                title={t('books.editor.useForContentsTitle')}
+              >
+                <ListTree className="h-3 w-3" />
+                {t('books.editor.useForContents')}
               </button>
             )}
           </div>

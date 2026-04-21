@@ -179,8 +179,6 @@ func (s *Server) registerUpdateBookTool() {
 }
 
 // registerChapterTools registers chapter CRUD + reorder tools.
-//
-//nolint:dupl // intentionally mirrors registerSectionTools — same CRUD pattern, different entity
 func (s *Server) registerChapterTools() {
 	s.mcpServer.AddTool(
 		mcp.NewTool("create_chapter",
@@ -194,10 +192,12 @@ func (s *Server) registerChapterTools() {
 
 	s.mcpServer.AddTool(
 		mcp.NewTool("update_chapter",
-			mcp.WithDescription("Update chapter title/color"),
+			mcp.WithDescription("Update chapter title, color, and/or TOC visibility"),
 			mcp.WithString("chapter_id", mcp.Required(), mcp.Description("Chapter ID (UUID)")),
 			mcp.WithString("title", mcp.Description("New title")),
 			mcp.WithString("color", mcp.Description("New hex color")),
+			mcp.WithBoolean("hide_from_toc",
+				mcp.Description("true = omit this chapter from the auto-generated book TOC")),
 		),
 		s.handleUpdateChapter,
 	)

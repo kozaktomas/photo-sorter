@@ -161,12 +161,38 @@ type FooterCaption struct {
 	ChapterColor string
 }
 
-// TemplateSlot holds pre-computed TikZ coordinates for one photo, text, or
-// captions slot.
+// TOCSection is one row in the book's table of contents: a section title
+// with the printed page range it occupies (StartPage..EndPage, inclusive,
+// 1-based). StartPage == EndPage for a single-page section.
+type TOCSection struct {
+	Title     string
+	StartPage int
+	EndPage   int
+}
+
+// TOCChapter is one chapter block in the book's table of contents, with its
+// ordered list of section entries. Chapters appear in book order; sections
+// inside a chapter appear in the order they are first encountered in the
+// book. A chapter with an empty Title represents sections that have no
+// chapter assignment (they are still rendered under a blank chapter line).
+//
+// StartsRightColumn is set to true by balanceTOCColumns on the chapter that
+// should open the right column of the two-column TOC slot, so the LaTeX
+// template can emit a \columnbreak before that chapter and no chapter is
+// ever split across columns.
+type TOCChapter struct {
+	Title             string
+	Sections          []TOCSection
+	StartsRightColumn bool
+}
+
+// TemplateSlot holds pre-computed TikZ coordinates for one photo, text,
+// captions, or contents slot.
 type TemplateSlot struct {
 	HasPhoto        bool
 	HasText         bool
 	HasCaptionsList bool
+	HasContents     bool
 	// Clip rectangle (mm from page bottom-left — TikZ convention).
 	ClipX, ClipY float64
 	ClipW, ClipH float64
@@ -191,6 +217,15 @@ type TemplateSlot struct {
 	// when the slot is the page's captions slot. The LaTeX template renders
 	// them stacked vertically; the page's bottom captions strip is suppressed.
 	CaptionsList []FooterCaption
+	// ContentsHeader is the headline rendered at the top of a contents slot
+	// (e.g. "Obsah"). Empty = no headline.
+	ContentsHeader string
+	// ContentsEntries holds the book's table of contents (chapters with
+	// sections and page ranges) when this slot is the contents slot. The
+	// template renders them as a two-column list with dotted leaders. Set by
+	// injectContentsSlots after all pages are built so section page ranges
+	// are known.
+	ContentsEntries []TOCChapter
 	// Text padding (mm) for text slots adjacent to photos in mixed layouts.
 	TextPadLeft  float64
 	TextPadRight float64
@@ -287,10 +322,13 @@ type photoImage struct {
 
 // sectionGroup groups pages belonging to the same section.
 type sectionGroup struct {
-	sectionID    string
-	title        string
-	chapterColor string // hex color without # (e.g. "8B0000"), empty = no color
-	pages        []database.BookPage
+	sectionID          string
+	title              string
+	chapterID          string // empty = section has no chapter
+	chapterTitle       string
+	chapterColor       string // hex color without # (e.g. "8B0000"), empty = no color
+	chapterHideFromTOC bool   // true = skip this section's chapter when rendering the TOC
+	pages              []database.BookPage
 }
 
 // CaptionMap is a nested map: sectionID -> photoUID -> caption text.
@@ -309,6 +347,11 @@ type pageBuilder struct {
 	headingColorBleed float64
 	captionBadgeSize  float64
 	bodyTextPadMM     float64
+	// sectionPageRanges maps sectionID -> [startPage, endPage] (1-based,
+	// inclusive) for the printed page range of each section, populated as
+	// buildSection runs. Used by buildTOCData to compute table-of-contents
+	// entries for the contents slot.
+	sectionPageRanges map[string][2]int
 }
 
 const (
@@ -500,22 +543,30 @@ func groupPagesBySection(
 		sectionChapters[s.ID] = s.ChapterID
 	}
 
+	chapterTitles := make(map[string]string, len(chapters))
 	chapterColors := make(map[string]string, len(chapters))
+	chapterHideFromTOC := make(map[string]bool, len(chapters))
 	for _, c := range chapters {
+		chapterTitles[c.ID] = c.Title
 		if c.Color != "" {
 			chapterColors[c.ID] = strings.TrimPrefix(c.Color, "#")
 		}
+		chapterHideFromTOC[c.ID] = c.HideFromTOC
 	}
 
 	var groups []sectionGroup
 	lastSectionID := ""
 	for _, p := range pages {
 		if p.SectionID != lastSectionID {
+			chapterID := sectionChapters[p.SectionID]
 			groups = append(groups, sectionGroup{
-				sectionID:    p.SectionID,
-				title:        sectionTitles[p.SectionID],
-				chapterColor: chapterColors[sectionChapters[p.SectionID]],
-				pages:        []database.BookPage{p},
+				sectionID:          p.SectionID,
+				title:              sectionTitles[p.SectionID],
+				chapterID:          chapterID,
+				chapterTitle:       chapterTitles[chapterID],
+				chapterColor:       chapterColors[chapterID],
+				chapterHideFromTOC: chapterHideFromTOC[chapterID],
+				pages:              []database.BookPage{p},
 			})
 			lastSectionID = p.SectionID
 		} else {
@@ -541,6 +592,7 @@ func buildTemplateData(
 		headingColorBleed: typo.headingColorBleed,
 		captionBadgeSize:  typo.captionBadgeSize,
 		bodyTextPadMM:     typo.bodyTextPadMM,
+		sectionPageRanges: make(map[string][2]int),
 	}
 	for _, g := range groups {
 		pb.totalContentPages += len(g.pages)
@@ -550,6 +602,10 @@ func buildTemplateData(
 	for _, g := range groups {
 		tmplSections = append(tmplSections, pb.buildSection(g))
 	}
+
+	// Second pass: now that every section knows its page range, fill in the
+	// book's table of contents for any slot flagged as a contents slot.
+	injectContentsSlots(tmplSections, buildTOCData(groups, pb.sectionPageRanges))
 
 	bookTitle := ""
 	if book != nil {
@@ -673,12 +729,20 @@ func applyBookSizes(rt *resolvedTypography, book *database.PhotoBook) {
 // page from the section group is rendered, including pages with no photos
 // and no text — they are preserved as blank pages so they keep a folio
 // number and shift the pagination of pages that follow them.
+//
+// As pages are emitted, sectionPageRanges[sectionID] is updated with the
+// first and last printed page number for this section so the table of
+// contents can report accurate page ranges.
 func (pb *pageBuilder) buildSection(g sectionGroup) TemplateSection {
 	tmplPages := make([]TemplatePage, 0, len(g.pages))
+	startPage := pb.pageNumber + 1
 	for _, p := range g.pages {
 		pb.contentPageIdx++
 		pb.pageNumber++
 		tmplPages = append(tmplPages, pb.buildContentPage(p, g.chapterColor))
+	}
+	if len(g.pages) > 0 && g.sectionID != "" {
+		pb.sectionPageRanges[g.sectionID] = [2]int{startPage, pb.pageNumber}
 	}
 
 	return TemplateSection{
@@ -1041,6 +1105,28 @@ func mergeFooterCaptions(caps []FooterCaption) []FooterCaption {
 	return groups
 }
 
+// buildNonPhotoSlot routes a PageSlot that is not a photo slot (text,
+// contents) to its TemplateSlot builder and sets ChapterColor. Returns
+// (nil, true) for a recognized-but-empty placeholder like an unflagged empty
+// slot reached via this helper. Returns (_, false) when the caller must fall
+// through to photo handling.
+func buildNonPhotoSlot(
+	slot SlotRect, ps database.PageSlot,
+	contentLeftX, canvasTopY float64, chapterColor string,
+) (*TemplateSlot, bool) {
+	switch {
+	case ps.IsTextSlot():
+		ts := buildTextSlotNew(slot, ps, contentLeftX, canvasTopY)
+		ts.ChapterColor = chapterColor
+		return &ts, true
+	case ps.IsContents():
+		ts := buildContentsSlotStub(slot, contentLeftX, canvasTopY)
+		ts.ChapterColor = chapterColor
+		return &ts, true
+	}
+	return nil, false
+}
+
 // buildSlots builds template slots, report photos, and footer captions for a page.
 func (pb *pageBuilder) buildSlots(
 	p database.BookPage, slots []SlotRect,
@@ -1056,10 +1142,10 @@ func (pb *pageBuilder) buildSlots(
 	for i, slot := range slots {
 		ps := getPageSlot(p, i)
 
-		if ps.IsTextSlot() {
-			ts := buildTextSlotNew(slot, ps, contentLeftX, canvasTopY)
-			ts.ChapterColor = chapterColor
-			tmplSlots[i] = ts
+		if ts, handled := buildNonPhotoSlot(slot, ps, contentLeftX, canvasTopY, chapterColor); handled {
+			if ts != nil {
+				tmplSlots[i] = *ts
+			}
 			continue
 		}
 
@@ -1813,6 +1899,169 @@ func buildCaptionsSlotTemplate(
 	}
 }
 
+// ContentsHeaderText is the headline rendered at the top of a contents slot.
+// It is intentionally hard-coded in Czech until per-book localisation lands.
+const ContentsHeaderText = "Obsah"
+
+// BuildBookTOC computes the table of contents for a book directly from the
+// repository, without triggering photo downloads or LaTeX rendering. It is
+// used by the single-page preview path (and other cheap readers) to produce
+// the same TOC the full book export would emit for a contents slot.
+//
+// Page numbers are computed as the 1-based position of each page in the
+// canonical (section_sort_order, page_sort_order) ordering used by the full
+// export — the same rule that drives pageBuilder.pageNumber.
+func BuildBookTOC(ctx context.Context, br database.BookReader, bookID string) ([]TOCChapter, error) {
+	sections, err := br.GetSections(ctx, bookID)
+	if err != nil {
+		return nil, fmt.Errorf("toc: get sections: %w", err)
+	}
+	chapters, err := br.GetChapters(ctx, bookID)
+	if err != nil {
+		return nil, fmt.Errorf("toc: get chapters: %w", err)
+	}
+	pages, err := br.GetPages(ctx, bookID)
+	if err != nil {
+		return nil, fmt.Errorf("toc: get pages: %w", err)
+	}
+	SortPagesBySectionOrder(pages, sections)
+	groups := groupPagesBySection(pages, sections, chapters)
+
+	ranges := make(map[string][2]int, len(groups))
+	pageNumber := 0
+	for _, g := range groups {
+		startPage := pageNumber + 1
+		for range g.pages {
+			pageNumber++
+		}
+		if len(g.pages) > 0 && g.sectionID != "" {
+			ranges[g.sectionID] = [2]int{startPage, pageNumber}
+		}
+	}
+	return buildTOCData(groups, ranges), nil
+}
+
+// buildContentsSlotStub creates a TemplateSlot marker for a contents (table
+// of contents) slot. ContentsEntries is left empty and is populated in a
+// second pass by injectContentsSlots once all page numbers are known.
+func buildContentsSlotStub(
+	slot SlotRect, contentLeftX, canvasTopY float64,
+) TemplateSlot {
+	return TemplateSlot{
+		HasContents:    true,
+		ClipX:          contentLeftX + slot.X,
+		ClipY:          canvasTopY - slot.Y - slot.H,
+		ClipW:          slot.W,
+		ClipH:          slot.H,
+		ContentsHeader: ContentsHeaderText,
+	}
+}
+
+// buildTOCData builds the book's table of contents from the section page
+// ranges collected during pageBuilder.buildSection. Chapters appear in the
+// order their first section is encountered in the book (which mirrors the
+// user-configured chapter + section sort order). Sections without a chapter
+// are grouped under a single chapter entry with an empty title.
+//
+// Empty-page sections (no printed pages) are skipped; a section without an
+// entry in sectionPageRanges contributes nothing to the TOC. Chapters
+// flagged as HideFromTOC are omitted entirely — their pages still render
+// normally, they just do not appear in the TOC listing.
+//
+// The returned slice is annotated via balanceTOCColumns so the LaTeX
+// template can place a \columnbreak before the chapter that should open
+// the right column.
+func buildTOCData(groups []sectionGroup, sectionPageRanges map[string][2]int) []TOCChapter {
+	chapterIndex := make(map[string]int)
+	var toc []TOCChapter
+	for _, g := range groups {
+		if g.chapterHideFromTOC {
+			continue
+		}
+		rng, ok := sectionPageRanges[g.sectionID]
+		if !ok {
+			continue
+		}
+		idx, seen := chapterIndex[g.chapterID]
+		if !seen {
+			idx = len(toc)
+			chapterIndex[g.chapterID] = idx
+			toc = append(toc, TOCChapter{Title: g.chapterTitle})
+		}
+		toc[idx].Sections = append(toc[idx].Sections, TOCSection{
+			Title:     g.title,
+			StartPage: rng[0],
+			EndPage:   rng[1],
+		})
+	}
+	balanceTOCColumns(toc)
+	return toc
+}
+
+// balanceTOCColumns picks the chapter boundary that best balances a two-column
+// TOC layout and flags that chapter's StartsRightColumn = true so the template
+// can emit a \columnbreak before it. "Best" means the split that minimises
+// the absolute difference between column row counts (chapter title row +
+// one row per section). With fewer than two chapters the TOC trivially fits
+// in the first column and no break is needed.
+func balanceTOCColumns(toc []TOCChapter) {
+	if len(toc) < 2 {
+		return
+	}
+	rows := make([]int, len(toc))
+	total := 0
+	for i, ch := range toc {
+		r := len(ch.Sections)
+		if ch.Title != "" {
+			r++
+		}
+		rows[i] = r
+		total += r
+	}
+	bestIdx := -1
+	bestDiff := total + 1 // any real diff beats this
+	left := 0
+	// i iterates over possible break points: the right column starts at
+	// chapter (i+1). We do NOT consider breaking before the first chapter
+	// or after the last — both leave an empty column.
+	for i := range len(toc) - 1 {
+		left += rows[i]
+		right := total - left
+		diff := left - right
+		if diff < 0 {
+			diff = -diff
+		}
+		if diff < bestDiff {
+			bestDiff = diff
+			bestIdx = i + 1
+		}
+	}
+	if bestIdx > 0 {
+		toc[bestIdx].StartsRightColumn = true
+	}
+}
+
+// injectContentsSlots walks every page's slots and fills in the TOC entries
+// for any slot flagged HasContents. Called once all sections have been built
+// so page ranges are final.
+func injectContentsSlots(sections []TemplateSection, toc []TOCChapter) {
+	for si := range sections {
+		pages := sections[si].Pages
+		for pi := range pages {
+			slots := pages[pi].Slots
+			for i := range slots {
+				if !slots[i].HasContents {
+					continue
+				}
+				slots[i].ContentsEntries = toc
+				if slots[i].ContentsHeader == "" {
+					slots[i].ContentsHeader = ContentsHeaderText
+				}
+			}
+		}
+	}
+}
+
 // buildPhotoSlotNew creates a TemplateSlot for a photo with object-cover behavior.
 // cropX/cropY (0.0-1.0) control the focal point; 0.5 = centered.
 // cropScale (0.1-1.0) controls zoom: 1.0 = fill slot, <1.0 = zoom in.
@@ -1924,6 +2173,11 @@ type SinglePageInput struct {
 	ChapterColor string              // hex without # (e.g. "8B0000"), empty = no color
 	Captions     CaptionMap
 	PageNumber   int // actual 1-based page number in the full book; values < 1 are clamped to 1
+	// TOC is the book's full table of contents used when the rendered page
+	// contains a contents slot. The caller is responsible for computing it
+	// (see BuildBookTOC) when the preview should match the book export. May
+	// be nil when the page has no contents slot.
+	TOC []TOCChapter
 }
 
 // GenerateSinglePagePDF renders a single book page to PDF using the exact same
@@ -1943,13 +2197,31 @@ func GenerateSinglePagePDF(
 	defer os.RemoveAll(tmpDir)
 
 	photos := downloadPhotos(ctx, pp, uidSet, tmpDir)
-	config := DefaultLayoutConfig()
 	typo := resolveBookTypography(input.Book)
 
-	pageNum := max(input.PageNumber, 1)
+	tmplPage := buildSinglePage(input, photos, typo)
+	sections := []TemplateSection{{Pages: []TemplatePage{tmplPage}}}
+	// If the page contains a contents slot, fill it with the pre-computed
+	// book TOC so the preview matches what full book export would render.
+	injectContentsSlots(sections, input.TOC)
 
+	data := singlePageTemplateData(sections, typo)
+
+	pdfData, err := compileLatex(ctx, data, tmpDir)
+	if err != nil {
+		return nil, err
+	}
+	return pdfData, nil
+}
+
+// buildSinglePage drives a pageBuilder to produce exactly one TemplatePage
+// at the page number indicated by input.PageNumber.
+func buildSinglePage(
+	input SinglePageInput, photos map[string]photoImage, typo resolvedTypography,
+) TemplatePage {
+	pageNum := max(input.PageNumber, 1)
 	pb := &pageBuilder{
-		config:            config,
+		config:            DefaultLayoutConfig(),
 		photos:            photos,
 		captions:          input.Captions,
 		totalContentPages: pageNum,
@@ -1960,16 +2232,16 @@ func GenerateSinglePagePDF(
 		captionBadgeSize:  typo.captionBadgeSize,
 		bodyTextPadMM:     typo.bodyTextPadMM,
 	}
-
 	pb.contentPageIdx++
 	pb.pageNumber++
-	tmplPage := pb.buildContentPage(input.Page, input.ChapterColor)
+	return pb.buildContentPage(input.Page, input.ChapterColor)
+}
 
-	data := TemplateData{
-		Sections: []TemplateSection{{
-			Title: "",
-			Pages: []TemplatePage{tmplPage},
-		}},
+// singlePageTemplateData assembles TemplateData for a single-page render,
+// applying the already-resolved book typography.
+func singlePageTemplateData(sections []TemplateSection, typo resolvedTypography) TemplateData {
+	return TemplateData{
+		Sections:               sections,
 		PageW:                  PageW,
 		PageH:                  PageH,
 		BodyFontDeclaration:    typo.bodyFontDeclaration,
@@ -1985,10 +2257,4 @@ func GenerateSinglePagePDF(
 		CaptionLeading:         typo.captionLeading,
 		CaptionBadgeSize:       typo.captionBadgeSize,
 	}
-
-	pdfData, err := compileLatex(ctx, data, tmpDir)
-	if err != nil {
-		return nil, err
-	}
-	return pdfData, nil
 }
