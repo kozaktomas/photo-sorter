@@ -758,6 +758,241 @@ func (r *BookRepository) ReorderPages(ctx context.Context, bookID string, pageID
 	return nil
 }
 
+// MovePageToSection atomically moves a page to a different section in the
+// same book. The page is appended at the end of the target section's page
+// order. Photos referenced by the moved page's slots are added to the
+// target section's photo pool (carrying over description/note from the
+// source when the target has no existing row). Photos are removed from the
+// source section's pool only when no other page in the source section still
+// references them. All changes run in a single transaction so the operation
+// is atomic.
+func (r *BookRepository) MovePageToSection(
+	ctx context.Context, pageID, targetSectionID string,
+) error {
+	tx, err := r.pool.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin move tx: %w", err)
+	}
+	defer tx.Rollback()
+	if err := performPageMove(ctx, tx, pageID, targetSectionID); err != nil {
+		return err
+	}
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit move page: %w", err)
+	}
+	return nil
+}
+
+// performPageMove runs the page move logic inside an open transaction,
+// returning the first error encountered. The caller is responsible for
+// beginning and committing the transaction.
+func performPageMove(
+	ctx context.Context, tx *sql.Tx, pageID, targetSectionID string,
+) error {
+	pageBookID, sourceSectionID, err := lockPageForMove(ctx, tx, pageID)
+	if err != nil {
+		return err
+	}
+	if err := verifyTargetSection(ctx, tx, targetSectionID, pageBookID); err != nil {
+		return err
+	}
+	if sourceSectionID == targetSectionID {
+		return nil
+	}
+	newSortOrder, err := nextSortOrderInSection(ctx, tx, targetSectionID)
+	if err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE book_pages SET section_id = $1, sort_order = $2, updated_at = NOW()
+		 WHERE id = $3`,
+		targetSectionID, newSortOrder, pageID); err != nil {
+		return fmt.Errorf("move page: %w", err)
+	}
+	photoUIDs, err := pagePhotoUIDs(ctx, tx, pageID)
+	if err != nil {
+		return err
+	}
+	return reconcileSectionPhotos(
+		ctx, tx, photoUIDs, sourceSectionID, targetSectionID,
+	)
+}
+
+// lockPageForMove selects the page row FOR UPDATE and returns its book ID
+// and current section ID (empty if none). Returns ErrPageNotFound when the
+// page does not exist.
+func lockPageForMove(
+	ctx context.Context, tx *sql.Tx, pageID string,
+) (string, string, error) {
+	var bookID string
+	var sectionID sql.NullString
+	err := tx.QueryRowContext(ctx,
+		`SELECT book_id, section_id FROM book_pages WHERE id = $1 FOR UPDATE`,
+		pageID).Scan(&bookID, &sectionID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", "", database.ErrPageNotFound
+	}
+	if err != nil {
+		return "", "", fmt.Errorf("fetch page: %w", err)
+	}
+	return bookID, sectionID.String, nil
+}
+
+// verifyTargetSection ensures the target section exists and belongs to the
+// same book as the page being moved.
+func verifyTargetSection(
+	ctx context.Context, tx *sql.Tx, targetSectionID, pageBookID string,
+) error {
+	var targetBookID string
+	err := tx.QueryRowContext(ctx,
+		`SELECT book_id FROM book_sections WHERE id = $1`,
+		targetSectionID).Scan(&targetBookID)
+	if errors.Is(err, sql.ErrNoRows) {
+		return database.ErrSectionNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("fetch target section: %w", err)
+	}
+	if targetBookID != pageBookID {
+		return database.ErrSectionBookMismatch
+	}
+	return nil
+}
+
+// nextSortOrderInSection returns MAX(sort_order)+1 for pages in the target
+// section, or 0 if the section is currently empty.
+func nextSortOrderInSection(
+	ctx context.Context, tx *sql.Tx, sectionID string,
+) (int, error) {
+	var maxOrder sql.NullInt64
+	err := tx.QueryRowContext(ctx,
+		`SELECT MAX(sort_order) FROM book_pages WHERE section_id = $1`,
+		sectionID).Scan(&maxOrder)
+	if err != nil {
+		return 0, fmt.Errorf("compute sort order: %w", err)
+	}
+	if maxOrder.Valid {
+		return int(maxOrder.Int64) + 1, nil
+	}
+	return 0, nil
+}
+
+// pagePhotoUIDs returns distinct non-empty photo UIDs referenced by the
+// page's slots.
+func pagePhotoUIDs(
+	ctx context.Context, tx *sql.Tx, pageID string,
+) ([]string, error) {
+	rows, err := tx.QueryContext(ctx,
+		`SELECT DISTINCT photo_uid FROM page_slots
+		 WHERE page_id = $1 AND photo_uid IS NOT NULL AND photo_uid <> ''`,
+		pageID)
+	if err != nil {
+		return nil, fmt.Errorf("fetch page photos: %w", err)
+	}
+	defer rows.Close()
+	var uids []string
+	for rows.Next() {
+		var uid string
+		if err := rows.Scan(&uid); err != nil {
+			return nil, fmt.Errorf("scan photo uid: %w", err)
+		}
+		uids = append(uids, uid)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate photo uids: %w", err)
+	}
+	return uids, nil
+}
+
+// reconcileSectionPhotos adds the moved page's photos to the target section
+// (carrying over description/note from the source row when the target does
+// not yet have one) and removes them from the source section when no other
+// page in that section still uses them.
+func reconcileSectionPhotos(
+	ctx context.Context, tx *sql.Tx, photoUIDs []string,
+	sourceSectionID, targetSectionID string,
+) error {
+	for _, uid := range photoUIDs {
+		if err := addPhotoToTargetSection(
+			ctx, tx, sourceSectionID, targetSectionID, uid,
+		); err != nil {
+			return err
+		}
+	}
+	if sourceSectionID == "" {
+		return nil
+	}
+	for _, uid := range photoUIDs {
+		if err := pruneSourceSectionPhoto(
+			ctx, tx, sourceSectionID, uid,
+		); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// addPhotoToTargetSection inserts the photo into the target section when
+// it is not already there, carrying over description/note from the source
+// section's row if one exists. No-ops when the target already has the row.
+func addPhotoToTargetSection(
+	ctx context.Context, tx *sql.Tx,
+	sourceSectionID, targetSectionID, photoUID string,
+) error {
+	var exists bool
+	if err := tx.QueryRowContext(ctx,
+		`SELECT EXISTS(SELECT 1 FROM section_photos
+		 WHERE section_id = $1 AND photo_uid = $2)`,
+		targetSectionID, photoUID).Scan(&exists); err != nil {
+		return fmt.Errorf("check target photo %s: %w", photoUID, err)
+	}
+	if exists {
+		return nil
+	}
+	desc, note := "", ""
+	if sourceSectionID != "" {
+		err := tx.QueryRowContext(ctx,
+			`SELECT description, note FROM section_photos
+			 WHERE section_id = $1 AND photo_uid = $2`,
+			sourceSectionID, photoUID).Scan(&desc, &note)
+		if err != nil && !errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("fetch source desc for %s: %w", photoUID, err)
+		}
+	}
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO section_photos (section_id, photo_uid, description, note)
+		 VALUES ($1, $2, $3, $4)
+		 ON CONFLICT (section_id, photo_uid) DO NOTHING`,
+		targetSectionID, photoUID, desc, note); err != nil {
+		return fmt.Errorf("add photo %s to target section: %w", photoUID, err)
+	}
+	return nil
+}
+
+// pruneSourceSectionPhoto removes the photo from the source section when
+// no other page in the source section still uses it.
+func pruneSourceSectionPhoto(
+	ctx context.Context, tx *sql.Tx, sourceSectionID, photoUID string,
+) error {
+	var refs int
+	if err := tx.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM page_slots ps
+		 JOIN book_pages bp ON bp.id = ps.page_id
+		 WHERE bp.section_id = $1 AND ps.photo_uid = $2`,
+		sourceSectionID, photoUID).Scan(&refs); err != nil {
+		return fmt.Errorf("count remaining refs for %s: %w", photoUID, err)
+	}
+	if refs > 0 {
+		return nil
+	}
+	if _, err := tx.ExecContext(ctx,
+		`DELETE FROM section_photos WHERE section_id = $1 AND photo_uid = $2`,
+		sourceSectionID, photoUID); err != nil {
+		return fmt.Errorf("remove photo %s from source: %w", photoUID, err)
+	}
+	return nil
+}
+
 // --- Slots ---
 
 // GetPageSlots retrieves all slots for a page, ordered by slot index.

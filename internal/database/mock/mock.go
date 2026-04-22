@@ -592,6 +592,7 @@ type MockBookWriter struct { //nolint:revive // Mock prefix is conventional for 
 	UpdatePageError              error
 	DeletePageError              error
 	ReorderPagesError            error
+	MovePageToSectionError       error
 	GetPageSlotsError            error
 	AssignSlotError              error
 	ClearSlotError               error
@@ -1019,6 +1020,155 @@ func (m *MockBookWriter) ReorderPages(ctx context.Context, bookID string, pageID
 		}
 	}
 	return nil
+}
+
+// MovePageToSection is a simplified mock: it validates the page and target
+// section exist and belong to the same book, updates the page's section ID,
+// sets its sort order to one past the current max in the target section,
+// adds referenced photos to the target pool, and removes them from the
+// source pool when no other page in the source still uses them.
+func (m *MockBookWriter) MovePageToSection(
+	ctx context.Context, pageID, targetSectionID string,
+) error {
+	if m.MovePageToSectionError != nil {
+		return m.MovePageToSectionError
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	page, ok := m.pages[pageID]
+	if !ok {
+		return database.ErrPageNotFound
+	}
+	target, ok := m.sections[targetSectionID]
+	if !ok {
+		return database.ErrSectionNotFound
+	}
+	if target.BookID != page.BookID {
+		return database.ErrSectionBookMismatch
+	}
+	sourceSectionID := page.SectionID
+	if sourceSectionID == targetSectionID {
+		return nil
+	}
+	page.SectionID = targetSectionID
+	page.SortOrder = m.nextSortOrderInSection(targetSectionID)
+
+	photoUIDs := m.pagePhotoUIDs(pageID)
+	m.addPhotosToTargetPool(targetSectionID, sourceSectionID, photoUIDs)
+	if sourceSectionID != "" {
+		m.pruneSourcePool(pageID, sourceSectionID, photoUIDs)
+	}
+	return nil
+}
+
+// nextSortOrderInSection returns the next sort order for a page appended
+// to the given section. Caller must hold m.mu.
+func (m *MockBookWriter) nextSortOrderInSection(sectionID string) int {
+	next := 0
+	for _, p := range m.pages {
+		if p.SectionID == sectionID && p.SortOrder >= next {
+			next = p.SortOrder + 1
+		}
+	}
+	return next
+}
+
+// pagePhotoUIDs returns the distinct non-empty photo UIDs referenced by
+// the slots of a page. Caller must hold m.mu.
+func (m *MockBookWriter) pagePhotoUIDs(pageID string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, s := range m.pageSlots[pageID] {
+		if s.PhotoUID == "" || seen[s.PhotoUID] {
+			continue
+		}
+		seen[s.PhotoUID] = true
+		out = append(out, s.PhotoUID)
+	}
+	return out
+}
+
+// addPhotosToTargetPool adds photos to the target section, carrying over
+// description/note from the source section row when the target has no
+// existing row. Caller must hold m.mu.
+func (m *MockBookWriter) addPhotosToTargetPool(
+	targetSectionID, sourceSectionID string, photoUIDs []string,
+) {
+	for _, uid := range photoUIDs {
+		if hasSectionPhoto(m.sectionPhotos[targetSectionID], uid) {
+			continue
+		}
+		desc, note := "", ""
+		if sourceSectionID != "" {
+			desc, note = findSectionPhotoDesc(m.sectionPhotos[sourceSectionID], uid)
+		}
+		m.sectionPhotos[targetSectionID] = append(
+			m.sectionPhotos[targetSectionID],
+			database.SectionPhoto{
+				SectionID: targetSectionID, PhotoUID: uid,
+				Description: desc, Note: note,
+			},
+		)
+	}
+}
+
+// pruneSourcePool removes a photo from the source section's pool when no
+// other page in that section still references it. Caller must hold m.mu.
+func (m *MockBookWriter) pruneSourcePool(
+	movedPageID, sourceSectionID string, photoUIDs []string,
+) {
+	for _, uid := range photoUIDs {
+		if m.photoStillUsedInSection(movedPageID, sourceSectionID, uid) {
+			continue
+		}
+		filtered := m.sectionPhotos[sourceSectionID][:0]
+		for _, sp := range m.sectionPhotos[sourceSectionID] {
+			if sp.PhotoUID != uid {
+				filtered = append(filtered, sp)
+			}
+		}
+		m.sectionPhotos[sourceSectionID] = filtered
+	}
+}
+
+// photoStillUsedInSection reports whether any page in sectionID other than
+// movedPageID references photoUID via its slots. Caller must hold m.mu.
+func (m *MockBookWriter) photoStillUsedInSection(
+	movedPageID, sectionID, photoUID string,
+) bool {
+	for _, p := range m.pages {
+		if p.ID == movedPageID || p.SectionID != sectionID {
+			continue
+		}
+		for _, s := range m.pageSlots[p.ID] {
+			if s.PhotoUID == photoUID {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// hasSectionPhoto returns true if the list contains a SectionPhoto with
+// the given photo UID.
+func hasSectionPhoto(list []database.SectionPhoto, photoUID string) bool {
+	for _, sp := range list {
+		if sp.PhotoUID == photoUID {
+			return true
+		}
+	}
+	return false
+}
+
+// findSectionPhotoDesc returns the description and note of the section
+// photo with the given UID, or empty strings if not found.
+func findSectionPhotoDesc(list []database.SectionPhoto, photoUID string) (string, string) {
+	for _, sp := range list {
+		if sp.PhotoUID == photoUID {
+			return sp.Description, sp.Note
+		}
+	}
+	return "", ""
 }
 
 // GetPageSlots returns all slots for a page from the mock store.

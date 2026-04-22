@@ -150,6 +150,14 @@ type BookWriter interface {
 	UpdatePage(ctx context.Context, page *BookPage) error
 	DeletePage(ctx context.Context, id string) error
 	ReorderPages(ctx context.Context, bookID string, pageIDs []string) error
+	// MovePageToSection atomically moves a page to a different section in the
+	// same book, appending it at the end of the target section's page order
+	// and reconciling the source/target section photo pools for any photos
+	// used in the page's slots. Returns ErrPageNotFound if the page does not
+	// exist, ErrSectionNotFound if the target section does not exist, and
+	// ErrSectionBookMismatch if the target section belongs to a different
+	// book.
+	MovePageToSection(ctx context.Context, pageID, targetSectionID string) error
 	AssignSlot(ctx context.Context, pageID string, slotIndex int, photoUID string) error
 	AssignTextSlot(ctx context.Context, pageID string, slotIndex int, textContent string) error
 	AssignCaptionsSlot(ctx context.Context, pageID string, slotIndex int) error

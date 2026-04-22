@@ -1080,14 +1080,40 @@ export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRe
     const overData = over.data.current as Record<string, unknown> | undefined;
     if (!activeData || !overData) return;
 
+    // Case 1a: Page dropped on a section container — cross-section move.
+    if (activeData.type === 'page-reorder' && overData.type === 'section-drop') {
+      const activePage = book.pages.find(p => p.id === activeData.pageId);
+      const targetSectionId = overData.sectionId as string | undefined;
+      if (!activePage || !targetSectionId) return;
+      if (activePage.section_id === targetSectionId) return;
+      const fromSectionId = activePage.section_id || '';
+      try {
+        await updatePage(activePage.id, { section_id: targetSectionId });
+        pushUndo([{ type: 'move_page', pageId: activePage.id, fromSectionId, toSectionId: targetSectionId }]);
+        onRefresh();
+      } catch { /* silent */ }
+      return;
+    }
+
     // Case 1: Page reorder (both active and over are page-reorder items)
     if (activeData.type === 'page-reorder' && overData.type === 'page-reorder') {
       if (active.id === over.id) return;
       const activePage = book.pages.find(p => p.id === activeData.pageId);
       const overPage = book.pages.find(p => p.id === overData.pageId);
       if (!activePage || !overPage) return;
-      // Block cross-section drag
-      if (activePage.section_id !== overPage.section_id) return;
+      // Cross-section: move the dragged page to the drop target's section
+      // (appended at the end; per-slot ordering is left to the backend).
+      if (activePage.section_id !== overPage.section_id) {
+        const targetSectionId = overPage.section_id;
+        if (!targetSectionId) return;
+        const fromSectionId = activePage.section_id || '';
+        try {
+          await updatePage(activePage.id, { section_id: targetSectionId });
+          pushUndo([{ type: 'move_page', pageId: activePage.id, fromSectionId, toSectionId: targetSectionId }]);
+          onRefresh();
+        } catch { /* silent */ }
+        return;
+      }
       const oldIndex = book.pages.findIndex(p => p.id === activeData.pageId);
       const newIndex = book.pages.findIndex(p => p.id === overData.pageId);
       const reordered = arrayMove(book.pages, oldIndex, newIndex);

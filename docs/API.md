@@ -2003,6 +2003,8 @@ PUT /pages/{id}
 
 All fields are optional. Setting `hide_page_number: true` suppresses the folio on that page only — pagination continues uninterrupted, so pages after it keep their normal numbers.
 
+**Cross-section move:** Passing a `section_id` that differs from the page's current section moves the page into that section. The move runs in a single DB transaction: the page is appended at the end of the target section's page order, photos referenced by its slots are added to the target section's photo pool (carrying over any description/note the source row had when the target has no existing entry), and those photos are removed from the source pool only when no other page in the source section still uses them. Other slot state — photo UIDs, text content, captions/contents flags, crop — is preserved. Returns `400` when the target section belongs to a different book and `404` when the page or target section does not exist.
+
 #### Reorder Pages
 
 ```

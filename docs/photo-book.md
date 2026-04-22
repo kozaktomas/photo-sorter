@@ -289,7 +289,7 @@ Deleting a book cascades to all chapters, sections, pages, and slots.
 |--------|----------|-------------|
 | POST | `/api/v1/books/:id/pages` | Create page (`{ format, section_id, style? }`) |
 | PUT | `/api/v1/books/:id/pages/reorder` | Reorder pages (`{ ids: [...] }`) |
-| PUT | `/api/v1/pages/:id` | Update page (`{ format, section_id, description, style }`) |
+| PUT | `/api/v1/pages/:id` | Update page (`{ format, section_id, description, style }`). Changing `section_id` to another section in the same book moves the page there atomically: the page is appended at the end of the target section, its slots (photo/text/captions/contents, crop, split, folio suppression) are preserved, photos used by the page are copied to the target section's pool (carrying over description/note where the target row is empty), and removed from the source pool if no other page in that section still uses them. Rejected with `400` when the target section is in a different book. |
 | DELETE | `/api/v1/pages/:id` | Delete page |
 
 ### Slots

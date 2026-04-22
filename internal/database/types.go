@@ -15,6 +15,16 @@ var ErrCaptionsSlotExists = errors.New("page already has a captions slot")
 // contents slot is allowed per page.
 var ErrContentsSlotExists = errors.New("page already has a contents slot")
 
+// ErrSectionNotFound is returned when a referenced section ID does not exist.
+var ErrSectionNotFound = errors.New("section not found")
+
+// ErrPageNotFound is returned when a referenced page ID does not exist.
+var ErrPageNotFound = errors.New("page not found")
+
+// ErrSectionBookMismatch is returned by MovePageToSection when the target
+// section belongs to a different book than the page being moved.
+var ErrSectionBookMismatch = errors.New("target section belongs to a different book")
+
 // StoredEmbedding represents an embedding stored in the database.
 type StoredEmbedding struct {
 	PhotoUID   string

@@ -315,7 +315,9 @@ func applySplitPosition(
 }
 
 // applyPageUpdates applies optional update fields to a page.
-// Returns an error message if validation fails.
+// Returns an error message if validation fails. The caller is responsible
+// for handling section_id changes separately via MovePageToSection so the
+// move stays atomic and reconciles section photo pools.
 func applyPageUpdates(
 	page *database.BookPage, args map[string]any,
 ) string {
@@ -324,9 +326,6 @@ func applyPageUpdates(
 			return fmt.Sprintf(invalidFormatMsg, f)
 		}
 		page.Format = f
-	}
-	if sid := optionalStr(args, "section_id"); sid != "" {
-		page.SectionID = sid
 	}
 	if d, ok := args["description"]; ok {
 		page.Description, _ = d.(string)
@@ -349,22 +348,20 @@ func (s *Server) handleUpdatePage(
 		return mcp.NewToolResultError(err.Error()), nil
 	}
 
-	page, err := s.bookWriter.GetPage(s.ctx(), pageID)
-	if err != nil {
-		return mcp.NewToolResultError(
-			fmt.Sprintf("failed to get page: %v", err)), nil
+	page, errResult := s.loadPageForUpdate(pageID)
+	if errResult != nil {
+		return errResult, nil
 	}
-	if page == nil {
-		return mcp.NewToolResultError(
-			fmt.Sprintf("page %s not found", pageID)), nil
-	}
-
 	oldSlotCount := database.PageFormatSlotCount(page.Format)
+
+	page, errResult = s.maybeMovePage(pageID, page, args)
+	if errResult != nil {
+		return errResult, nil
+	}
 
 	if errMsg := applyPageUpdates(page, args); errMsg != "" {
 		return mcp.NewToolResultError(errMsg), nil
 	}
-
 	if err := s.bookWriter.UpdatePage(s.ctx(), page); err != nil {
 		return mcp.NewToolResultError(
 			fmt.Sprintf("failed to update page: %v", err)), nil
@@ -381,8 +378,68 @@ func (s *Server) handleUpdatePage(
 		return mcp.NewToolResultError(
 			fmt.Sprintf("updated but failed to fetch: %v", err)), nil
 	}
-
 	return jsonResult(convertPages([]database.BookPage{*updated})[0])
+}
+
+// loadPageForUpdate fetches the page by ID and returns an MCP error result
+// on miss or fetch failure, or nil on success.
+func (s *Server) loadPageForUpdate(pageID string) (*database.BookPage, *mcp.CallToolResult) {
+	page, err := s.bookWriter.GetPage(s.ctx(), pageID)
+	if err != nil {
+		return nil, mcp.NewToolResultError(
+			fmt.Sprintf("failed to get page: %v", err))
+	}
+	if page == nil {
+		return nil, mcp.NewToolResultError(
+			fmt.Sprintf("page %s not found", pageID))
+	}
+	return page, nil
+}
+
+// maybeMovePage runs a cross-section move when args carries a section_id
+// that differs from the page's current section, then returns the refetched
+// page. If no move is requested, returns the page as-is.
+func (s *Server) maybeMovePage(
+	pageID string, page *database.BookPage, args map[string]any,
+) (*database.BookPage, *mcp.CallToolResult) {
+	sid := optionalStr(args, "section_id")
+	if sid == "" || sid == page.SectionID {
+		return page, nil
+	}
+	if errResult := s.runMovePageToSection(pageID, sid); errResult != nil {
+		return nil, errResult
+	}
+	moved, err := s.bookWriter.GetPage(s.ctx(), pageID)
+	if err != nil || moved == nil {
+		return nil, mcp.NewToolResultError(
+			fmt.Sprintf("moved but failed to fetch: %v", err))
+	}
+	return moved, nil
+}
+
+// runMovePageToSection invokes MovePageToSection and returns a formatted
+// MCP error result when the move fails, or nil on success.
+func (s *Server) runMovePageToSection(
+	pageID, targetSectionID string,
+) *mcp.CallToolResult {
+	err := s.bookWriter.MovePageToSection(s.ctx(), pageID, targetSectionID)
+	if err == nil {
+		return nil
+	}
+	switch {
+	case errors.Is(err, database.ErrPageNotFound):
+		return mcp.NewToolResultError(
+			fmt.Sprintf("page %s not found", pageID))
+	case errors.Is(err, database.ErrSectionNotFound):
+		return mcp.NewToolResultError(
+			fmt.Sprintf("target section %s not found", targetSectionID))
+	case errors.Is(err, database.ErrSectionBookMismatch):
+		return mcp.NewToolResultError(
+			"target section belongs to a different book")
+	default:
+		return mcp.NewToolResultError(
+			fmt.Sprintf("failed to move page: %v", err))
+	}
 }
 
 func (s *Server) handleDeletePage(

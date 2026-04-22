@@ -989,7 +989,10 @@ func applySplitPosition(page *database.BookPage, raw json.RawMessage) string {
 }
 
 // UpdatePage handles PUT /api/v1/pages/:id and updates a page's format,
-// section, style, description, and split position.
+// section, style, description, and split position. When section_id changes
+// to a different section, the move is delegated to MovePageToSection so the
+// page is appended at the end of the target section and the source/target
+// section photo pools are reconciled atomically.
 func (h *BooksHandler) UpdatePage(w http.ResponseWriter, r *http.Request) {
 	bw := getBookWriter(r, w)
 	if bw == nil {
@@ -1002,14 +1005,17 @@ func (h *BooksHandler) UpdatePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Fetch existing page to preserve fields not being updated.
 	page, err := bw.GetPage(r.Context(), id)
 	if err != nil || page == nil {
 		respondError(w, http.StatusNotFound, "page not found")
 		return
 	}
-
 	oldSlotCount := database.PageFormatSlotCount(page.Format)
+
+	page, ok := maybeCrossSectionMove(w, r, bw, id, page, &req)
+	if !ok {
+		return
+	}
 
 	if errMsg := applyPageUpdates(page, req); errMsg != "" {
 		respondError(w, http.StatusBadRequest, errMsg)
@@ -1020,17 +1026,73 @@ func (h *BooksHandler) UpdatePage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// If format changed to fewer slots, clear excess slots.
-	if req.Format != nil {
-		newSlotCount := database.PageFormatSlotCount(*req.Format)
-		for i := newSlotCount; i < oldSlotCount; i++ {
-			if err := bw.ClearSlot(r.Context(), id, i); err != nil {
-				log.Printf("warning: failed to clear excess slot %d on page %s: %v", i, sanitizeForLog(id), err)
-			}
+	clearExcessSlotsIfShrunk(r, bw, id, req, oldSlotCount)
+	respondJSON(w, http.StatusOK, map[string]string{"id": id})
+}
+
+// maybeCrossSectionMove runs MovePageToSection when the request changes
+// section_id to a different non-empty value, refetches the page, and
+// clears req.SectionID so the remaining update path does not touch it.
+// Returns the (possibly refetched) page and ok=true on success. When the
+// move fails, writes the error response and returns ok=false.
+func maybeCrossSectionMove(
+	w http.ResponseWriter, r *http.Request, bw database.BookWriter,
+	pageID string, page *database.BookPage, req *updatePageRequest,
+) (*database.BookPage, bool) {
+	if req.SectionID == nil || *req.SectionID == "" || *req.SectionID == page.SectionID {
+		return page, true
+	}
+	if !handleCrossSectionMove(w, r, bw, pageID, *req.SectionID) {
+		return nil, false
+	}
+	moved, err := bw.GetPage(r.Context(), pageID)
+	if err != nil || moved == nil {
+		respondError(w, http.StatusInternalServerError, "failed to reload page after move")
+		return nil, false
+	}
+	req.SectionID = nil
+	return moved, true
+}
+
+// clearExcessSlotsIfShrunk clears slots that fall outside the new format's
+// slot count when the update shrinks the format.
+func clearExcessSlotsIfShrunk(
+	r *http.Request, bw database.BookWriter,
+	pageID string, req updatePageRequest, oldSlotCount int,
+) {
+	if req.Format == nil {
+		return
+	}
+	newSlotCount := database.PageFormatSlotCount(*req.Format)
+	for i := newSlotCount; i < oldSlotCount; i++ {
+		if err := bw.ClearSlot(r.Context(), pageID, i); err != nil {
+			log.Printf("warning: failed to clear excess slot %d on page %s: %v", i, sanitizeForLog(pageID), err)
 		}
 	}
+}
 
-	respondJSON(w, http.StatusOK, map[string]string{"id": id})
+// handleCrossSectionMove invokes MovePageToSection and writes the
+// appropriate error response when it fails. Returns true when the caller
+// should continue processing the rest of the update request.
+func handleCrossSectionMove(
+	w http.ResponseWriter, r *http.Request,
+	bw database.BookWriter, pageID, targetSectionID string,
+) bool {
+	err := bw.MovePageToSection(r.Context(), pageID, targetSectionID)
+	if err == nil {
+		return true
+	}
+	switch {
+	case errors.Is(err, database.ErrPageNotFound):
+		respondError(w, http.StatusNotFound, "page not found")
+	case errors.Is(err, database.ErrSectionNotFound):
+		respondError(w, http.StatusNotFound, "target section not found")
+	case errors.Is(err, database.ErrSectionBookMismatch):
+		respondError(w, http.StatusBadRequest, "target section belongs to a different book")
+	default:
+		respondError(w, http.StatusInternalServerError, "failed to move page")
+	}
+	return false
 }
 
 // DeletePage handles DELETE /api/v1/pages/:id and deletes a page.

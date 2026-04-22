@@ -990,6 +990,58 @@ func TestBooksHandler_UpdatePage_FormatUpsizePreservesSlots(t *testing.T) {
 	}
 }
 
+func TestBooksHandler_UpdatePage_CrossSectionMove(t *testing.T) {
+	mockBW, handler := setupBookTest(t)
+	mockBW.AddBook(database.PhotoBook{ID: "b1"})
+	mockBW.AddSection(database.BookSection{ID: "s1", BookID: "b1", Title: "A"})
+	mockBW.AddSection(database.BookSection{ID: "s2", BookID: "b1", Title: "B"})
+	mockBW.AddPage(database.BookPage{ID: "p1", BookID: "b1", SectionID: "s1", Format: "4_landscape"})
+	ctx := context.TODO()
+	_ = mockBW.AssignSlot(ctx, "p1", 0, "photoOnly")
+	_ = mockBW.AddSectionPhotos(ctx, "s1", []string{"photoOnly"})
+
+	body := bytes.NewBufferString(`{"section_id":"s2"}`)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/pages/p1", body)
+	req.Header.Set("Content-Type", "application/json")
+	req = requestWithChiParams(req, map[string]string{"id": "p1"})
+	recorder := httptest.NewRecorder()
+	handler.UpdatePage(recorder, req)
+
+	assertStatusCode(t, recorder, http.StatusOK)
+
+	page, _ := mockBW.GetPage(ctx, "p1")
+	if page.SectionID != "s2" {
+		t.Errorf("expected section_id 's2', got '%s'", page.SectionID)
+	}
+	target, _ := mockBW.GetSectionPhotos(ctx, "s2")
+	if len(target) != 1 || target[0].PhotoUID != "photoOnly" {
+		t.Errorf("target pool missing moved photo: %+v", target)
+	}
+	source, _ := mockBW.GetSectionPhotos(ctx, "s1")
+	if len(source) != 0 {
+		t.Errorf("source pool should be empty after move: %+v", source)
+	}
+}
+
+func TestBooksHandler_UpdatePage_CrossSectionMove_DifferentBookRejected(t *testing.T) {
+	mockBW, handler := setupBookTest(t)
+	mockBW.AddBook(database.PhotoBook{ID: "b1"})
+	mockBW.AddBook(database.PhotoBook{ID: "b2"})
+	mockBW.AddSection(database.BookSection{ID: "s1", BookID: "b1"})
+	mockBW.AddSection(database.BookSection{ID: "s2", BookID: "b2"})
+	mockBW.AddPage(database.BookPage{ID: "p1", BookID: "b1", SectionID: "s1", Format: "4_landscape"})
+
+	body := bytes.NewBufferString(`{"section_id":"s2"}`)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/pages/p1", body)
+	req.Header.Set("Content-Type", "application/json")
+	req = requestWithChiParams(req, map[string]string{"id": "p1"})
+	recorder := httptest.NewRecorder()
+	handler.UpdatePage(recorder, req)
+
+	assertStatusCode(t, recorder, http.StatusBadRequest)
+	assertJSONError(t, recorder, "target section belongs to a different book")
+}
+
 func TestBooksHandler_DeletePage_Success(t *testing.T) {
 	mockBW, handler := setupBookTest(t)
 	mockBW.AddPage(database.BookPage{ID: "p1", BookID: "b1"})

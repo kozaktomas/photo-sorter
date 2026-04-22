@@ -1,5 +1,5 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
-import { assignSlot, assignTextSlot, assignCaptionsSlot, assignContentsSlot, clearSlot, swapSlots } from '../../../api/client';
+import { assignSlot, assignTextSlot, assignCaptionsSlot, assignContentsSlot, clearSlot, swapSlots, updatePage } from '../../../api/client';
 
 export interface SlotContent {
   photoUid: string;
@@ -17,7 +17,8 @@ function isEmptyContent(c: SlotContent): boolean {
 export type SlotAction =
   | { type: 'assign'; pageId: string; slotIndex: number; prev: SlotContent; next: SlotContent }
   | { type: 'clear'; pageId: string; slotIndex: number; prev: SlotContent }
-  | { type: 'swap'; pageId: string; slotIndexA: number; slotIndexB: number };
+  | { type: 'swap'; pageId: string; slotIndexA: number; slotIndexB: number }
+  | { type: 'move_page'; pageId: string; fromSectionId: string; toSectionId: string };
 
 /** A single undo entry: one or more sub-actions executed atomically. */
 export type UndoEntry = SlotAction[];
@@ -45,6 +46,9 @@ async function executeAction(action: SlotAction): Promise<void> {
     case 'swap':
       await swapSlots(action.pageId, action.slotIndexA, action.slotIndexB);
       break;
+    case 'move_page':
+      await updatePage(action.pageId, { section_id: action.toSectionId });
+      break;
   }
 }
 
@@ -59,6 +63,8 @@ function reverseAction(action: SlotAction): SlotAction {
       return { type: 'assign', pageId: action.pageId, slotIndex: action.slotIndex, prev: EMPTY_CONTENT, next: action.prev };
     case 'swap':
       return action; // swap is its own inverse
+    case 'move_page':
+      return { type: 'move_page', pageId: action.pageId, fromSectionId: action.toSectionId, toSectionId: action.fromSectionId };
   }
 }
 

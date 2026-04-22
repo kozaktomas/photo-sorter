@@ -6,7 +6,7 @@ import {
   useSortable,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import { useDndContext } from '@dnd-kit/core';
+import { useDndContext, useDroppable } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { createPage, deletePage, getThumbnailUrl, getPageExportPdfUrl } from '../../api/client';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
@@ -213,6 +213,38 @@ interface SectionGroup {
   globalIndices: number[];
 }
 
+/**
+ * SectionDropZone wraps a section group and registers it as a drop target
+ * for page-reorder drags. When a page from a different section is dragged
+ * over the section, the container is highlighted. Dropping is handled at
+ * the DndContext level in PagesTab.
+ */
+function SectionDropZone({ sectionId, enabled, children }: {
+  sectionId: string;
+  enabled: boolean;
+  children: React.ReactNode;
+}) {
+  const { setNodeRef, isOver } = useDroppable({
+    id: `section-drop-${sectionId}`,
+    data: { type: 'section-drop', sectionId },
+    disabled: !enabled,
+  });
+  const { active } = useDndContext();
+  const activeData = active?.data.current as Record<string, unknown> | undefined;
+  const activeSectionId = activeData?.type === 'page-reorder'
+    ? (activeData.sectionId as string | undefined)
+    : undefined;
+  const highlight = isOver && enabled && activeSectionId !== sectionId;
+  return (
+    <div
+      ref={setNodeRef}
+      className={`rounded-md transition-colors ${highlight ? 'ring-2 ring-rose-400 bg-rose-500/5' : ''}`}
+    >
+      {children}
+    </div>
+  );
+}
+
 export function PageSidebar({ bookId, pages, chapters, sections, selectedId, onSelect, onRefresh, isPhotoDragActive }: Props) {
   const { t } = useTranslation('pages');
   const [newFormat, setNewFormat] = useState<PageFormat>('4_landscape');
@@ -354,7 +386,11 @@ export function PageSidebar({ bookId, pages, chapters, sections, selectedId, onS
           const pageIds = group.pages.map(p => p.id);
 
           return (
-            <div key={sectionId}>
+            <SectionDropZone
+              key={sectionId}
+              sectionId={sectionId}
+              enabled={sectionId !== '__unassigned__'}
+            >
               {/* Section header */}
               <div
                 onClick={() => toggleSection(sectionId)}
@@ -403,7 +439,7 @@ export function PageSidebar({ bookId, pages, chapters, sections, selectedId, onS
                   </div>
                 </SortableContext>
               )}
-            </div>
+            </SectionDropZone>
           );
         })}
       </div>
