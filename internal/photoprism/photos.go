@@ -212,6 +212,52 @@ func (pp *PhotoPrism) GetFileDownload(fileHash string) ([]byte, string, error) {
 	return data, contentType, nil
 }
 
+// GetFileDownloadStream is the streaming variant of GetFileDownload. The caller
+// owns the returned ReadCloser and MUST Close it (which closes the underlying
+// HTTP response body). Useful for piping a large primary file directly to disk
+// via io.Copy without buffering the whole payload in memory.
+func (pp *PhotoPrism) GetFileDownloadStream(fileHash string) (io.ReadCloser, string, error) {
+	dlURL := pp.parsedURL.JoinPath("dl", fileHash)
+	q := dlURL.Query()
+	q.Set("t", pp.downloadToken)
+	dlURL.RawQuery = q.Encode()
+	url := dlURL.String()
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
+	if err != nil {
+		return nil, "", fmt.Errorf("could not create request: %w", err)
+	}
+
+	resp, err := pp.httpClient.Do(req)
+	if err != nil {
+		return nil, "", fmt.Errorf("could not send request: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		body := readErrorBody(resp.Body)
+		_ = resp.Body.Close()
+		return nil, "", fmt.Errorf("request failed with status %d: %s", resp.StatusCode, body)
+	}
+
+	return resp.Body, resp.Header.Get("Content-Type"), nil
+}
+
+// GetPhotoDownloadStream is the streaming variant of GetPhotoDownload. The
+// caller owns the returned ReadCloser and MUST Close it. The same primary-file
+// resolution as GetPhotoDownload is performed.
+func (pp *PhotoPrism) GetPhotoDownloadStream(photoUID string) (io.ReadCloser, string, error) {
+	details, err := pp.GetPhotoDetails(photoUID)
+	if err != nil {
+		return nil, "", fmt.Errorf("could not get photo details: %w", err)
+	}
+
+	fileHash := findPrimaryFileHash(details)
+	if fileHash == "" {
+		return nil, "", errors.New("could not find file hash for photo")
+	}
+
+	return pp.GetFileDownloadStream(fileHash)
+}
+
 // ArchivePhotos archives (soft-deletes) multiple photos by their UIDs.
 func (pp *PhotoPrism) ArchivePhotos(photoUIDs []string) error {
 	if len(photoUIDs) == 0 {

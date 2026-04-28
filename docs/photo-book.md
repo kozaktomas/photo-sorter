@@ -354,10 +354,23 @@ that warnings specific to a tier are reported up-front.
 | `original` | `GetPhotoDownload` primary file | final print | multi-GB possible for large books |
 
 **Longest-side cap for `original`.** When `photo_quality=original`, the
-primary file is decoded and — if its longest side exceeds **8000 px** — it is
-downscaled (CatmullRom resample) to fit within that cap before being embedded
-as JPEG (quality 92). 8000 px is roughly 300 DPI at A3, which is more than
-any realistic book layout needs; the cap keeps PDF size under control.
+primary file is streamed to a temp file on disk (no full-payload buffer in
+RAM), then `image.DecodeConfig` reads the header to learn the format and
+dimensions:
+
+- **JPEG within the cap (≤ 8000 px on the longest side):** the streamed file
+  is renamed to its final name and embedded byte-identical. No decode, no
+  re-encode, no generation loss.
+- **Non-JPEG (PNG / TIFF / WebP) or JPEG larger than the cap:** decoded into
+  memory, downscaled with CatmullRom if needed, and re-encoded as JPEG
+  quality 92. 8000 px is roughly 300 DPI at A3, which is more than any
+  realistic book layout needs; the cap keeps PDF size under control.
+
+**Concurrency.** Thumbnail tiers (`low`, `medium`) download with 5 parallel
+workers. The `original` tier is throttled to **2 workers** because the
+slow-path branch holds a full-resolution `image.Image` and a resize buffer in
+memory per worker; the lower bound keeps the resident-memory peak well below
+1 GB even for ~200-page books on cameras that produce > 8000 px JPEGs.
 
 **HEIC / RAW handling.** The photo-sorter binary is built with
 `CGO_ENABLED=0` and ships no HEIC / RAW decoder. If the primary file cannot

@@ -10,6 +10,7 @@ import (
 	_ "image/gif"
 	"image/jpeg"
 	_ "image/png"
+	"io"
 	"log"
 	"math"
 	"os"
@@ -356,9 +357,14 @@ type pageBuilder struct {
 
 const (
 	downloadConcurrency = 5
-	lowResDPIThreshold  = 200.0
-	sizeDimHeight       = "height"
-	sizeDimWidth        = "width"
+	// originalDownloadConcurrency caps parallel workers when fetching photos at
+	// QualityOriginal. Originals can require a full image.Image decode (and a
+	// second RGBA buffer for the resize step) per worker, so keeping this low
+	// bounds the peak resident memory of the export.
+	originalDownloadConcurrency = 2
+	lowResDPIThreshold          = 200.0
+	sizeDimHeight               = "height"
+	sizeDimWidth                = "width"
 	// clipSafetyMM is the minimum horizontal expansion of the canvas clip
 	// rectangle beyond the content area. It guarantees that justified body
 	// text on a page-edge text slot has room for typographic overflow
@@ -1670,7 +1676,11 @@ func downloadPhotosWithProgress(
 			}
 		}
 	}
-	for range downloadConcurrency {
+	workerCount := downloadConcurrency
+	if normalizeQuality(quality) == QualityOriginal {
+		workerCount = originalDownloadConcurrency
+	}
+	for range workerCount {
 		wg.Go(worker)
 	}
 	wg.Wait()
@@ -1743,34 +1753,77 @@ func downloadThumbnailPhoto(
 // If the primary file cannot be decoded in pure Go (HEIC / RAW formats), the
 // function falls back to PhotoPrism's largest pre-rendered JPEG thumbnail
 // (fit_7680) so the PDF still gets a print-quality image.
+//
+// The implementation streams the response body directly to a temp file
+// (avoiding a full []byte allocation), then sniffs the format and dimensions
+// via image.DecodeConfig. If the source is already a JPEG within the size
+// cap, it is renamed to the final path without ever decoding pixel data —
+// this is the common case for typical photo libraries and is what keeps the
+// resident-memory peak bounded for ~200-page books in QualityOriginal.
 func downloadOriginalPhoto(
 	pp *photoprism.PhotoPrism, uid, hash, tmpDir string,
 ) (*photoImage, error) {
-	data, _, err := pp.GetPhotoDownload(uid)
-	if err != nil {
-		return nil, fmt.Errorf("failed to download original: %w", err)
-	}
+	finalPath := filepath.Join(tmpDir, uid+".jpg")
+	tmpPath := filepath.Join(tmpDir, uid+".orig")
 
-	img, _, decodeErr := image.Decode(bytes.NewReader(data))
-	if decodeErr != nil {
+	if err := streamOriginalToFile(pp, uid, tmpPath); err != nil {
+		return nil, err
+	}
+	// Removed on every exit path (slow path renames-then-removes; fallback
+	// branches return without consuming the temp file).
+	defer func() { _ = os.Remove(tmpPath) }()
+
+	cfg, format, sniffErr := decodeConfigFile(tmpPath)
+	if sniffErr != nil {
 		sanitizedUID := strings.NewReplacer("\n", "", "\r", "").Replace(uid)
 		log.Printf(
 			"PDF export: photo %s original format not decodable (%v); "+
 				"falling back to %s thumbnail",
-			sanitizedUID, decodeErr, thumbnailOriginalFallback,
+			sanitizedUID, sniffErr, thumbnailOriginalFallback,
 		)
 		return downloadThumbnailPhoto(pp, uid, hash, tmpDir, thumbnailOriginalFallback)
 	}
 
-	bounds := img.Bounds()
-	longest := max(bounds.Dx(), bounds.Dy())
+	longest := max(cfg.Width, cfg.Height)
+
+	// Fast path: source is JPEG and within the size cap. Move the streamed
+	// temp file to its final name and skip decode/re-encode entirely.
+	if format == "jpeg" && longest <= OriginalMaxLongestSidePx {
+		if err := os.Rename(tmpPath, finalPath); err != nil {
+			return nil, fmt.Errorf("failed to rename original: %w", err)
+		}
+		sanitizedUID := strings.NewReplacer("\n", "", "\r", "").Replace(uid)
+		log.Printf("PDF export: photo %s dimensions %dx%d (pass-through)",
+			sanitizedUID, cfg.Width, cfg.Height)
+		return &photoImage{path: finalPath, width: cfg.Width, height: cfg.Height}, nil
+	}
+
+	return reencodeOriginalSlowPath(pp, uid, hash, tmpDir, tmpPath, finalPath, longest)
+}
+
+// reencodeOriginalSlowPath handles the non-JPEG / oversized-JPEG branch of
+// downloadOriginalPhoto: full decode, optional resize to OriginalMaxLongestSidePx,
+// JPEG re-encode at originalJPEGQuality. On decode failure it falls back to the
+// pre-rendered fit_7680 thumbnail.
+func reencodeOriginalSlowPath(
+	pp *photoprism.PhotoPrism, uid, hash, tmpDir, tmpPath, finalPath string, longest int,
+) (*photoImage, error) {
+	img, err := decodeImageFile(tmpPath)
+	if err != nil {
+		sanitizedUID := strings.NewReplacer("\n", "", "\r", "").Replace(uid)
+		log.Printf(
+			"PDF export: photo %s decode failed after sniff (%v); "+
+				"falling back to %s thumbnail",
+			sanitizedUID, err, thumbnailOriginalFallback,
+		)
+		return downloadThumbnailPhoto(pp, uid, hash, tmpDir, thumbnailOriginalFallback)
+	}
 
 	if longest > OriginalMaxLongestSidePx {
 		img = resizeToLongestSide(img, OriginalMaxLongestSidePx)
 	}
 
-	path := filepath.Join(tmpDir, uid+".jpg")
-	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600) //nolint:gosec
+	f, err := os.OpenFile(finalPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600) //nolint:gosec
 	if err != nil {
 		return nil, fmt.Errorf("failed to create photo file: %w", err)
 	}
@@ -1782,7 +1835,59 @@ func downloadOriginalPhoto(
 		return nil, fmt.Errorf("failed to close photo file: %w", err)
 	}
 
-	return inspectPhotoFile(path, uid)
+	return inspectPhotoFile(finalPath, uid)
+}
+
+// streamOriginalToFile pipes the photo's primary-file body straight to disk
+// without buffering the whole payload in RAM.
+func streamOriginalToFile(pp *photoprism.PhotoPrism, uid, dst string) error {
+	body, _, err := pp.GetPhotoDownloadStream(uid)
+	if err != nil {
+		return fmt.Errorf("failed to download original: %w", err)
+	}
+	defer body.Close()
+
+	f, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600) //nolint:gosec
+	if err != nil {
+		return fmt.Errorf("failed to create temp original: %w", err)
+	}
+	if _, err := io.Copy(f, body); err != nil {
+		_ = f.Close()
+		return fmt.Errorf("failed to stream original: %w", err)
+	}
+	if err := f.Close(); err != nil {
+		return fmt.Errorf("failed to close temp original: %w", err)
+	}
+	return nil
+}
+
+// decodeConfigFile returns image.DecodeConfig output (header-only metadata)
+// for the file at path. It does not allocate a pixel buffer.
+func decodeConfigFile(path string) (image.Config, string, error) {
+	f, err := os.Open(path) //nolint:gosec
+	if err != nil {
+		return image.Config{}, "", fmt.Errorf("open: %w", err)
+	}
+	defer f.Close()
+	cfg, format, err := image.DecodeConfig(f)
+	if err != nil {
+		return image.Config{}, "", fmt.Errorf("decode config: %w", err)
+	}
+	return cfg, format, nil
+}
+
+// decodeImageFile fully decodes the image at path into an image.Image.
+func decodeImageFile(path string) (image.Image, error) {
+	f, err := os.Open(path) //nolint:gosec
+	if err != nil {
+		return nil, fmt.Errorf("open: %w", err)
+	}
+	defer f.Close()
+	img, _, err := image.Decode(f)
+	if err != nil {
+		return nil, fmt.Errorf("decode: %w", err)
+	}
+	return img, nil
 }
 
 // resizeToLongestSide downscales img so its longest side equals maxPx while
