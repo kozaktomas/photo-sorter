@@ -190,3 +190,26 @@ type TextCheckKey struct {
 	SourceID   string
 	Field      string
 }
+
+// PhotoReader provides read-only access to native photos and their physical
+// files. Single-row lookups return ErrNotFound when the record is missing.
+type PhotoReader interface {
+	GetPhoto(ctx context.Context, uid string) (*Photo, error)
+	GetPhotoByHash(ctx context.Context, hash string) (*Photo, error)
+	ListPhotos(ctx context.Context, filter PhotoFilter) ([]Photo, int, error)
+	ListPhotoFiles(ctx context.Context, photoUID string) ([]PhotoFile, error)
+}
+
+// PhotoWriter provides write access to native photos and their physical
+// files. Archive/Restore toggle the archived_at column; DeletePhoto is a
+// hard delete that cascades to photo_files.
+type PhotoWriter interface {
+	PhotoReader
+	CreatePhoto(ctx context.Context, p *Photo) error
+	UpdatePhoto(ctx context.Context, p *Photo) error
+	DeletePhoto(ctx context.Context, uid string) error
+	ArchivePhoto(ctx context.Context, uid string) error
+	RestorePhoto(ctx context.Context, uid string) error
+	AddPhotoFile(ctx context.Context, f *PhotoFile) error
+	DeletePhotoFile(ctx context.Context, photoUID, filePath string) error
+}

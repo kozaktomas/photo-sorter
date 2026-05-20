@@ -5,6 +5,10 @@ import (
 	"time"
 )
 
+// ErrNotFound is returned by single-row lookup repository methods when the
+// requested record does not exist.
+var ErrNotFound = errors.New("record not found")
+
 // ErrCaptionsSlotExists is returned by AssignCaptionsSlot when the target page
 // already has a different slot marked as its captions slot. At most one
 // captions slot is allowed per page.
@@ -250,6 +254,85 @@ func DefaultSplitPosition(format string) float64 {
 	default:
 		return 0.5
 	}
+}
+
+// Photo represents a single photo managed by the native photo pipeline.
+// It mirrors the columns of the photos table introduced in migration 032.
+type Photo struct {
+	UID             string
+	FileHash        string
+	FilePath        string
+	FileName        string
+	FileSize        int64
+	FileMime        string
+	FileWidth       int
+	FileHeight      int
+	FileOrientation int
+	TakenAt         *time.Time
+	TakenAtSource   string
+	Title           string
+	Description     string
+	Notes           string
+	Lat             *float64
+	Lng             *float64
+	Altitude        *float64
+	CameraMake      string
+	CameraModel     string
+	LensModel       string
+	ISO             *int
+	Aperture        *float64
+	Exposure        string
+	FocalLength     *float64
+	Exif            map[string]any
+	Favorite        bool
+	Private         bool
+	ArchivedAt      *time.Time
+	UploadedBy      string
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
+}
+
+// PhotoFile represents a single physical file belonging to a Photo
+// (a stack — original + sidecar + edited variants).
+type PhotoFile struct {
+	ID        int64
+	PhotoUID  string
+	FilePath  string
+	FileHash  string
+	FileSize  int64
+	FileMime  string
+	IsPrimary bool
+	Role      string
+	CreatedAt time.Time
+}
+
+// BBox is an optional latitude/longitude bounding box used for spatial
+// filtering of photos.
+type BBox struct {
+	MinLat float64
+	MinLng float64
+	MaxLat float64
+	MaxLng float64
+}
+
+// PhotoFilter holds optional filter and pagination criteria for ListPhotos.
+// All fields are optional; the zero value lists non-archived photos sorted
+// by newest first with the default page size.
+type PhotoFilter struct {
+	AlbumUID    string   // empty = any album
+	LabelUIDs   []string // AND semantics: photo must have all labels
+	SubjectUIDs []string // AND semantics: photo must have markers for all subjects
+	Favorite    *bool
+	Private     *bool
+	Archived    *bool // nil = exclude archived; *true = only archived; *false = explicit non-archived
+	TakenFrom   *time.Time
+	TakenTo     *time.Time
+	BBox        *BBox
+	UploadedBy  string
+	Search      string // ILIKE match against title/description/file_name
+	SortBy      string // "newest" (default) / "oldest" / "name"
+	Limit       int    // 0 = default 50, capped at 500
+	Offset      int
 }
 
 // PageFormatSlotCount returns the number of slots for a given page format.

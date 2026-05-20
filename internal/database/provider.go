@@ -28,6 +28,7 @@ var (
 	postgresEmbeddingHNSW      HNSWRebuilder // Singleton for embedding HNSW rebuilding
 	postgresTextVersionStore   func() TextVersionStore
 	postgresTextCheckStore     func() TextCheckStore
+	postgresPhotoWriter        func() PhotoWriter
 	postgresInitialized        bool
 )
 
@@ -43,6 +44,7 @@ func ResetForTesting() {
 	postgresEmbeddingHNSW = nil
 	postgresTextVersionStore = nil
 	postgresTextCheckStore = nil
+	postgresPhotoWriter = nil
 	postgresInitialized = false
 }
 
@@ -220,4 +222,32 @@ func GetTextCheckStore(ctx context.Context) (TextCheckStore, error) {
 		return nil, errors.New("PostgreSQL text check store not registered")
 	}
 	return postgresTextCheckStore(), nil
+}
+
+// RegisterPhotoWriter registers the PhotoWriter constructor. The same value
+// also serves PhotoReader, since the writer embeds the reader interface.
+func RegisterPhotoWriter(writer func() PhotoWriter) {
+	postgresPhotoWriter = writer
+}
+
+// GetPhotoWriter returns a PhotoWriter from the PostgreSQL backend.
+func GetPhotoWriter(ctx context.Context) (PhotoWriter, error) {
+	if !postgresInitialized {
+		return nil, errors.New("PostgreSQL backend not initialized: DATABASE_URL is required")
+	}
+	if postgresPhotoWriter == nil {
+		return nil, errors.New("PostgreSQL photo writer not registered")
+	}
+	return postgresPhotoWriter(), nil
+}
+
+// GetPhotoReader returns a PhotoReader from the PostgreSQL backend.
+func GetPhotoReader(ctx context.Context) (PhotoReader, error) {
+	if !postgresInitialized {
+		return nil, errors.New("PostgreSQL backend not initialized: DATABASE_URL is required")
+	}
+	if postgresPhotoWriter == nil {
+		return nil, errors.New("PostgreSQL photo reader not registered")
+	}
+	return postgresPhotoWriter(), nil
 }
