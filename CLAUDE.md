@@ -248,6 +248,8 @@ Environment variables (loaded from `.env`):
 - `DATABASE_MAX_IDLE_CONNS` (optional, defaults to 5)
 - `HNSW_INDEX_PATH` (optional, path to persist face HNSW index, e.g., `/data/faces.pg.hnsw`)
 - `HNSW_EMBEDDING_INDEX_PATH` (optional, path to persist embedding HNSW index, e.g., `/data/embeddings.pg.hnsw`)
+- `STORAGE_ORIGINALS_PATH` (optional, root for the native originals tree — PhotoPrism-style `YYYY/MM/<filename>`; defaults to `/data/originals` in Docker, `./data/originals` in dev)
+- `STORAGE_CACHE_PATH` (optional, root for the thumbnail cache — thumbnails live under `<CachePath>/thumb/<aa>/<bb>/<cc>/<hash>_<size>.jpg`; defaults to `/data/cache` in Docker, `./data/cache` in dev)
 - `PHOTOPRISM_DATABASE_URL` (optional, MariaDB DSN for direct database access, e.g., `photoprism:photoprism@tcp(mariadb:3306)/photoprism`)
 - `MCP_API_TOKEN` (optional, enables MCP endpoint at `/mcp/sse` on the `serve` command; Bearer token for MCP client authentication)
 

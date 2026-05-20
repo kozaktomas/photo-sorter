@@ -20,6 +20,7 @@ type Config struct {
 	LlamaCpp   LlamaCppConfig
 	Embedding  EmbeddingConfig
 	Database   DatabaseConfig
+	Storage    StorageConfig
 	Prices     PricesConfig
 }
 
@@ -90,6 +91,13 @@ type DatabaseConfig struct {
 	HNSWEmbeddingIndexPath string // Path to persist embedding HNSW index (optional, if empty index is rebuilt on startup)
 }
 
+// StorageConfig holds the on-disk locations for photo originals and the
+// thumbnail cache (mirroring the PhotoPrism layout).
+type StorageConfig struct {
+	OriginalsPath string // Root directory for original photo files (default: /data/originals).
+	CachePath     string // Root directory for the cache (default: /data/cache). Thumbnails live in <CachePath>/thumb/.
+}
+
 // PricesConfig holds model pricing data loaded from prices.yaml.
 type PricesConfig struct {
 	Models map[string]ModelPricing `yaml:"models"`
@@ -116,6 +124,14 @@ func envInt(key string, defaultVal int) int {
 	}
 	if n, err := strconv.Atoi(s); err == nil && n > 0 {
 		return n
+	}
+	return defaultVal
+}
+
+// envString returns the value of key or defaultVal if unset/empty.
+func envString(key, defaultVal string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
 	}
 	return defaultVal
 }
@@ -161,6 +177,10 @@ func Load() *Config {
 			MaxIdleConns:           envInt("DATABASE_MAX_IDLE_CONNS", 5),
 			HNSWIndexPath:          os.Getenv("HNSW_INDEX_PATH"),
 			HNSWEmbeddingIndexPath: os.Getenv("HNSW_EMBEDDING_INDEX_PATH"),
+		},
+		Storage: StorageConfig{
+			OriginalsPath: envString("STORAGE_ORIGINALS_PATH", "/data/originals"),
+			CachePath:     envString("STORAGE_CACHE_PATH", "/data/cache"),
 		},
 		Prices: prices,
 	}
