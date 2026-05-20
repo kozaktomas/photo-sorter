@@ -52,6 +52,24 @@ func (s *Server) resolveAlbumRepo() database.AlbumWriter {
 	return r
 }
 
+// resolveUserRepos best-effort-fetches the native UserReader and
+// UserWriter. Returns nils (and logs) when the registration is missing —
+// the auth handler then surfaces a 500 from login until the user store is
+// wired in.
+func (s *Server) resolveUserRepos() (database.UserReader, database.UserWriter) {
+	reader, err := database.GetUserReader(context.Background())
+	if err != nil {
+		log.Printf("auth: user reader unavailable: %v", err)
+		return nil, nil
+	}
+	writer, err := database.GetUserWriter(context.Background())
+	if err != nil {
+		log.Printf("auth: user writer unavailable: %v", err)
+		return reader, nil
+	}
+	return reader, writer
+}
+
 //nolint:funlen // Route registration is inherently long.
 func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 	// Resolve native photo backends. Both are optional in the transitional
@@ -59,9 +77,10 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 	// endpoints return 503 while PhotoPrism-backed endpoints keep working.
 	photoRepo, photoStore := s.resolveNativePhotoBackends()
 	albumRepo := s.resolveAlbumRepo()
+	userReader, userWriter := s.resolveUserRepos()
 
 	// Create handlers.
-	authHandler := handlers.NewAuthHandler(s.config, sessionManager)
+	authHandler := handlers.NewAuthHandler(s.config, sessionManager, userReader, userWriter)
 	albumsHandler := handlers.NewAlbumsHandler(s.config, sessionManager, albumRepo, photoRepo)
 	labelsHandler := handlers.NewLabelsHandler(s.config, sessionManager)
 	photosHandler := handlers.NewPhotosHandler(s.config, sessionManager, photoRepo, photoStore)

@@ -19,23 +19,26 @@ func NewSessionRepository(pool *Pool) *SessionRepository {
 	return &SessionRepository{pool: pool}
 }
 
-// Save stores a session in the database.
+// Save stores a session in the database. The role column (added in
+// migration 033) lets the request-path middleware look up a session's role
+// without a second SELECT against the users table.
 func (r *SessionRepository) Save(
-	ctx context.Context, id, token, downloadToken, userUID string,
+	ctx context.Context, id, token, downloadToken, userUID, role string,
 	createdAt, expiresAt time.Time,
 ) error {
 	query := `
-		INSERT INTO sessions (id, token, download_token, user_uid, created_at, expires_at)
-		VALUES ($1, $2, $3, $4, $5, $6)
+		INSERT INTO sessions (id, token, download_token, user_uid, role, created_at, expires_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		ON CONFLICT (id) DO UPDATE SET
 			token = EXCLUDED.token,
 			download_token = EXCLUDED.download_token,
 			user_uid = EXCLUDED.user_uid,
+			role = EXCLUDED.role,
 			created_at = EXCLUDED.created_at,
 			expires_at = EXCLUDED.expires_at
 	`
 
-	_, err := r.pool.Exec(ctx, query, id, token, downloadToken, userUID, createdAt, expiresAt)
+	_, err := r.pool.Exec(ctx, query, id, token, downloadToken, userUID, role, createdAt, expiresAt)
 	if err != nil {
 		return fmt.Errorf("save session: %w", err)
 	}
@@ -45,7 +48,7 @@ func (r *SessionRepository) Save(
 // Get retrieves a session by ID, returns nil if not found or expired.
 func (r *SessionRepository) Get(ctx context.Context, sessionID string) (*middleware.StoredSession, error) {
 	query := `
-		SELECT id, token, download_token, user_uid, created_at, expires_at
+		SELECT id, token, download_token, user_uid, role, created_at, expires_at
 		FROM sessions
 		WHERE id = $1 AND expires_at > NOW()
 	`
@@ -56,6 +59,7 @@ func (r *SessionRepository) Get(ctx context.Context, sessionID string) (*middlew
 		&s.Token,
 		&s.DownloadToken,
 		&s.UserUID,
+		&s.Role,
 		&s.CreatedAt,
 		&s.ExpiresAt,
 	)

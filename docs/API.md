@@ -28,11 +28,12 @@ This document describes all REST API endpoints for the PhotoPrism AI Sorter web 
 
 ## Authentication
 
-Authentication can be enabled or disabled via configuration. When enabled, login creates a session stored in cookies.
+Login authenticates against the local `users` table (bcrypt-hashed
+passwords) and mints a 30-day signed cookie session. The session row also
+stores the user's role so role-gated routes can resolve it without a
+second DB hit.
 
 ### Login
-
-Authenticate with PhotoPrism credentials.
 
 ```
 POST /auth/login
@@ -49,23 +50,31 @@ POST /auth/login
 **Response (200):**
 ```json
 {
-  "success": true,
-  "session_id": "abc123xyz",
-  "expires_at": "2024-01-15T10:30:00Z"
+  "user": {
+    "uid": "u3z8h2k9p4q1r5s6",
+    "username": "admin",
+    "display_name": "Admin",
+    "role": "admin"
+  }
 }
 ```
+
+The HttpOnly session cookie is set automatically; clients should include
+it on subsequent requests.
 
 **Response (401):**
 ```json
 {
-  "success": false,
   "error": "invalid credentials"
 }
 ```
 
+Returned for any of: unknown username, disabled account, or wrong
+password. The generic message intentionally hides which factor failed.
+
 ### Logout
 
-End the current session.
+End the current session. The session row is hard-deleted.
 
 ```
 POST /auth/logout
@@ -86,11 +95,23 @@ POST /auth/logout
 GET /auth/status
 ```
 
-**Response (200):**
+**Response (200) — authenticated:**
 ```json
 {
   "authenticated": true,
-  "expires_at": "2024-01-15T10:30:00Z"
+  "user": {
+    "uid": "u3z8h2k9p4q1r5s6",
+    "username": "admin",
+    "display_name": "Admin",
+    "role": "admin"
+  }
+}
+```
+
+**Response (200) — unauthenticated:**
+```json
+{
+  "authenticated": false
 }
 ```
 

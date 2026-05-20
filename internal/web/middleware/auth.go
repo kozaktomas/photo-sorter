@@ -9,7 +9,10 @@ type contextKey string
 
 const sessionContextKey contextKey = "session"
 
-// RequireAuth is middleware that requires a valid session.
+// RequireAuth is middleware that requires a valid session. It exposes the
+// session struct on the context for code paths that still need PhotoPrism
+// tokens (faces / upload), and the slimmer AuthInfo for handlers that only
+// care about the native user identity.
 func RequireAuth(sm *SessionManager) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -19,8 +22,11 @@ func RequireAuth(sm *SessionManager) func(http.Handler) http.Handler {
 				return
 			}
 
-			// Add session to context.
 			ctx := context.WithValue(r.Context(), sessionContextKey, session)
+			ctx = SetAuthInfoInContext(ctx, &AuthInfo{
+				UserUID: session.UserUID,
+				Role:    session.Role,
+			})
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}

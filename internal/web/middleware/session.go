@@ -17,29 +17,37 @@ import (
 
 const (
 	sessionCookieName = "photo_sorter_session"
-	sessionDuration   = 24 * time.Hour
-	cleanupInterval   = 10 * time.Minute
+	// sessionDuration is the lifetime granted to a freshly minted session and
+	// the matching cookie MaxAge. 30 days keeps the user logged in across
+	// browser restarts without forcing a daily re-auth.
+	sessionDuration = 30 * 24 * time.Hour
+	cleanupInterval = 10 * time.Minute
 )
 
 // Session represents a user session.
 //
-// Role drives write-access checks (see handlers.requireWriteRole). It is
-// populated against the future native users table; until that lands the
-// field is empty, which the helper treats as the admin role for
-// backwards compatibility.
+// UserUID identifies the native user who owns this session; Role is one of
+// auth.RoleAdmin / RoleEditor / RoleViewer and is consulted by the
+// RequireRole middleware on the request path. Token / DownloadToken are
+// PhotoPrism credentials retained only for the face/upload paths that still
+// proxy through PhotoPrism — they are empty for sessions created by the
+// native login flow.
 type Session struct {
 	ID            string    `json:"id"`
-	Token         string    `json:"token"`          // PhotoPrism access token
-	DownloadToken string    `json:"download_token"` // PhotoPrism download token
-	UserUID       string    `json:"user_uid"`       // PhotoPrism user UID (for uploads)
-	Role          string    `json:"role,omitempty"` // admin / editor / viewer (empty == admin)
+	Token         string    `json:"token"`          // PhotoPrism access token (empty for native sessions)
+	DownloadToken string    `json:"download_token"` // PhotoPrism download token (empty for native sessions)
+	UserUID       string    `json:"user_uid"`       // Native user UID
+	Role          string    `json:"role,omitempty"` // admin / editor / viewer
 	CreatedAt     time.Time `json:"created_at"`
 	ExpiresAt     time.Time `json:"expires_at"`
 }
 
 // SessionRepository defines the interface for persistent session storage.
 type SessionRepository interface {
-	Save(ctx context.Context, id, token, downloadToken, userUID string, createdAt, expiresAt time.Time) error
+	Save(
+		ctx context.Context, id, token, downloadToken, userUID, role string,
+		createdAt, expiresAt time.Time,
+	) error
 	Get(ctx context.Context, sessionID string) (*StoredSession, error)
 	Delete(ctx context.Context, sessionID string) error
 	DeleteExpired(ctx context.Context) (int64, error)
@@ -51,6 +59,7 @@ type StoredSession struct {
 	Token         string
 	DownloadToken string
 	UserUID       string
+	Role          string
 	CreatedAt     time.Time
 	ExpiresAt     time.Time
 }
@@ -116,8 +125,14 @@ func (sm *SessionManager) Stop() {
 	}
 }
 
-// CreateSession creates a new session for a user.
-func (sm *SessionManager) CreateSession(token, downloadToken, userUID string) (*Session, error) {
+// CreateSession creates a new session for a user. The role is one of
+// auth.RoleAdmin / RoleEditor / RoleViewer and is persisted on the session
+// row so the request-path middleware can read it back without a second DB
+// hit. Token and downloadToken are PhotoPrism credentials retained only for
+// the face/upload code paths and may be empty for native sessions.
+func (sm *SessionManager) CreateSession(
+	token, downloadToken, userUID, role string,
+) (*Session, error) {
 	// Generate session ID.
 	idBytes := make([]byte, 32)
 	if _, err := rand.Read(idBytes); err != nil {
@@ -131,6 +146,7 @@ func (sm *SessionManager) CreateSession(token, downloadToken, userUID string) (*
 		Token:         token,
 		DownloadToken: downloadToken,
 		UserUID:       userUID,
+		Role:          role,
 		CreatedAt:     now,
 		ExpiresAt:     now.Add(sessionDuration),
 	}
@@ -145,7 +161,8 @@ func (sm *SessionManager) CreateSession(token, downloadToken, userUID string) (*
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		if err := sm.repo.Save(
-			ctx, session.ID, session.Token, session.DownloadToken, session.UserUID,
+			ctx, session.ID, session.Token, session.DownloadToken,
+			session.UserUID, session.Role,
 			session.CreatedAt, session.ExpiresAt,
 		); err != nil {
 			log.Printf("Warning: failed to persist session to database: %v", err)
@@ -192,6 +209,7 @@ func (sm *SessionManager) GetSession(sessionID string) *Session {
 			Token:         stored.Token,
 			DownloadToken: stored.DownloadToken,
 			UserUID:       stored.UserUID,
+			Role:          stored.Role,
 			CreatedAt:     stored.CreatedAt,
 			ExpiresAt:     stored.ExpiresAt,
 		}

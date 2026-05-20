@@ -3,295 +3,502 @@ package handlers
 import (
 	"bytes"
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
+	"time"
 
+	"github.com/kozaktomas/photo-sorter/internal/auth"
+	"github.com/kozaktomas/photo-sorter/internal/database"
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
 
-func TestAuthHandler_Login_Success(t *testing.T) {
-	server := setupMockPhotoPrismServer(t, nil) // Default /api/v1/sessions handler returns success
-	defer server.Close()
+// fakeUserRepo is an in-memory database.UserWriter sufficient to drive the
+// auth handler paths. It is keyed by both UID and username for symmetry
+// with the production repository, and tracks TouchLastLogin so the
+// fire-and-forget path can be observed in tests.
+type fakeUserRepo struct {
+	mu         sync.Mutex
+	byUsername map[string]*database.UserWithSecret
+	byUID      map[string]*database.User
+	touched    []string
+	getErr     error
+}
 
-	cfg := testConfig()
-	cfg.PhotoPrism.URL = server.URL
-	sm := middleware.NewSessionManager("test-secret", nil)
-	handler := NewAuthHandler(cfg, sm)
-
-	body := bytes.NewBufferString(`{"username": "testuser", "password": "testpass"}`)
-	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/auth/login", body)
-	req.Header.Set("Content-Type", "application/json")
-	recorder := httptest.NewRecorder()
-
-	handler.Login(recorder, req)
-
-	assertStatusCode(t, recorder, http.StatusOK)
-	assertContentType(t, recorder, "application/json")
-
-	var response LoginResponse
-	parseJSONResponse(t, recorder, &response)
-
-	if !response.Success {
-		t.Error("expected success to be true")
-	}
-
-	if response.SessionID == "" {
-		t.Error("expected session_id to be set")
-	}
-
-	if response.ExpiresAt == "" {
-		t.Error("expected expires_at to be set")
+// newFakeUserRepo builds an empty repo.
+func newFakeUserRepo() *fakeUserRepo {
+	return &fakeUserRepo{
+		byUsername: map[string]*database.UserWithSecret{},
+		byUID:      map[string]*database.User{},
 	}
 }
 
+// add seeds the repo with a user. password is bcrypt-hashed before
+// storage so the handler exercises the real CheckPassword path.
+func (r *fakeUserRepo) add(t *testing.T, u database.User, password string) {
+	t.Helper()
+	hash, err := auth.HashPassword(password)
+	if err != nil {
+		t.Fatalf("hash password: %v", err)
+	}
+	ws := &database.UserWithSecret{User: u, PasswordHash: hash}
+	r.byUsername[u.Username] = ws
+	r.byUID[u.UID] = &ws.User
+}
+
+func (r *fakeUserRepo) GetUser(_ context.Context, uid string) (*database.User, error) {
+	if r.getErr != nil {
+		return nil, r.getErr
+	}
+	u, ok := r.byUID[uid]
+	if !ok {
+		return nil, database.ErrNotFound
+	}
+	cp := *u
+	return &cp, nil
+}
+
+func (r *fakeUserRepo) GetUserByUsername(
+	_ context.Context, username string,
+) (*database.UserWithSecret, error) {
+	if r.getErr != nil {
+		return nil, r.getErr
+	}
+	u, ok := r.byUsername[username]
+	if !ok {
+		return nil, database.ErrNotFound
+	}
+	cp := *u
+	return &cp, nil
+}
+
+func (r *fakeUserRepo) ListUsers(_ context.Context) ([]database.User, error) {
+	out := make([]database.User, 0, len(r.byUID))
+	for _, u := range r.byUID {
+		out = append(out, *u)
+	}
+	return out, nil
+}
+
+func (r *fakeUserRepo) CountUsers(_ context.Context) (int, error) {
+	return len(r.byUID), nil
+}
+
+func (r *fakeUserRepo) CreateUser(_ context.Context, u *database.UserWithSecret) error {
+	if _, ok := r.byUsername[u.Username]; ok {
+		return database.ErrUsernameTaken
+	}
+	cp := *u
+	r.byUsername[cp.Username] = &cp
+	r.byUID[cp.UID] = &cp.User
+	return nil
+}
+
+func (r *fakeUserRepo) UpdateUser(_ context.Context, u *database.User) error {
+	r.byUID[u.UID] = u
+	return nil
+}
+
+func (r *fakeUserRepo) SetPassword(_ context.Context, uid, newHash string) error {
+	for _, u := range r.byUsername {
+		if u.UID == uid {
+			u.PasswordHash = newHash
+			return nil
+		}
+	}
+	return database.ErrNotFound
+}
+
+func (r *fakeUserRepo) SetDisabled(_ context.Context, uid string, disabled bool) error {
+	if u, ok := r.byUID[uid]; ok {
+		u.Disabled = disabled
+	}
+	if u, ok := r.byUsername[uidToUsername(r, uid)]; ok {
+		u.Disabled = disabled
+	}
+	return nil
+}
+
+func (r *fakeUserRepo) TouchLastLogin(_ context.Context, uid string) error {
+	r.mu.Lock()
+	r.touched = append(r.touched, uid)
+	r.mu.Unlock()
+	return nil
+}
+
+func (r *fakeUserRepo) DeleteUser(_ context.Context, uid string) error {
+	if _, ok := r.byUID[uid]; !ok {
+		return database.ErrNotFound
+	}
+	delete(r.byUID, uid)
+	for k, u := range r.byUsername {
+		if u.UID == uid {
+			delete(r.byUsername, k)
+		}
+	}
+	return nil
+}
+
+// uidToUsername resolves a UID to its username for the test repo. Helper
+// for SetDisabled which addresses by UID.
+func uidToUsername(r *fakeUserRepo, uid string) string {
+	for _, u := range r.byUsername {
+		if u.UID == uid {
+			return u.Username
+		}
+	}
+	return ""
+}
+
+// touchedCount returns how many times TouchLastLogin has been invoked.
+// Used by tests to wait for the fire-and-forget goroutine to complete.
+func (r *fakeUserRepo) touchedCount() int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	return len(r.touched)
+}
+
+// waitForTouch blocks until TouchLastLogin has been called at least once
+// or the timeout fires. Avoids racing with the goroutine the handler
+// dispatches without resorting to time.Sleep.
+func (r *fakeUserRepo) waitForTouch(t *testing.T, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if r.touchedCount() > 0 {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("TouchLastLogin not invoked within %s", timeout)
+}
+
+// newTestAuthHandler constructs an AuthHandler wired against the supplied
+// fake repo and a fresh in-memory SessionManager.
+func newTestAuthHandler(repo *fakeUserRepo) (*AuthHandler, *middleware.SessionManager) {
+	sm := middleware.NewSessionManager("test-secret", nil)
+	cfg := testConfig()
+	return NewAuthHandler(cfg, sm, repo, repo), sm
+}
+
+// loginRequestBody returns a JSON login body for the given credentials.
+func loginRequestBody(username, password string) *bytes.Buffer {
+	body := `{"username":"` + username + `","password":"` + password + `"}`
+	return bytes.NewBufferString(body)
+}
+
+// TestAuthHandler_Login_Success exercises the happy path: an existing,
+// enabled user supplies the correct password and gets a session cookie
+// plus a user payload that carries the role.
+func TestAuthHandler_Login_Success(t *testing.T) {
+	repo := newFakeUserRepo()
+	repo.add(t, database.User{
+		UID: "u-admin", Username: "admin", DisplayName: "Admin",
+		Role: auth.RoleAdmin,
+	}, "s3cret")
+	handler, _ := newTestAuthHandler(repo)
+
+	req := httptest.NewRequestWithContext(
+		context.Background(), http.MethodPost, "/api/v1/auth/login",
+		loginRequestBody("admin", "s3cret"),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	handler.Login(w, req)
+
+	assertStatusCode(t, w, http.StatusOK)
+
+	var resp loginResponse
+	parseJSONResponse(t, w, &resp)
+	if resp.User.UID != "u-admin" {
+		t.Errorf("user.uid = %q, want u-admin", resp.User.UID)
+	}
+	if resp.User.Username != "admin" {
+		t.Errorf("user.username = %q, want admin", resp.User.Username)
+	}
+	if resp.User.Role != auth.RoleAdmin {
+		t.Errorf("user.role = %q, want admin", resp.User.Role)
+	}
+	if resp.User.DisplayName != "Admin" {
+		t.Errorf("user.display_name = %q, want Admin", resp.User.DisplayName)
+	}
+
+	if len(w.Result().Cookies()) == 0 {
+		t.Error("expected a session cookie to be set")
+	}
+	repo.waitForTouch(t, time.Second)
+}
+
+// TestAuthHandler_Login_WrongPassword verifies the generic 401 is returned
+// for a valid username with an incorrect password and that the response
+// does not leak which factor was wrong.
+func TestAuthHandler_Login_WrongPassword(t *testing.T) {
+	repo := newFakeUserRepo()
+	repo.add(t, database.User{
+		UID: "u-edit", Username: "editor", Role: auth.RoleEditor,
+	}, "correct-horse")
+	handler, _ := newTestAuthHandler(repo)
+
+	req := httptest.NewRequestWithContext(
+		context.Background(), http.MethodPost, "/api/v1/auth/login",
+		loginRequestBody("editor", "wrong"),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	handler.Login(w, req)
+
+	assertStatusCode(t, w, http.StatusUnauthorized)
+	assertJSONError(t, w, errInvalidCredentials)
+}
+
+// TestAuthHandler_Login_UnknownUser verifies that a missing username
+// yields the same 401 / generic message as a wrong password.
+func TestAuthHandler_Login_UnknownUser(t *testing.T) {
+	repo := newFakeUserRepo()
+	handler, _ := newTestAuthHandler(repo)
+
+	req := httptest.NewRequestWithContext(
+		context.Background(), http.MethodPost, "/api/v1/auth/login",
+		loginRequestBody("nobody", "anything"),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	handler.Login(w, req)
+
+	assertStatusCode(t, w, http.StatusUnauthorized)
+	assertJSONError(t, w, errInvalidCredentials)
+}
+
+// TestAuthHandler_Login_DisabledUser verifies that disabled accounts
+// cannot log in even with the correct password.
+func TestAuthHandler_Login_DisabledUser(t *testing.T) {
+	repo := newFakeUserRepo()
+	repo.add(t, database.User{
+		UID: "u-off", Username: "ghost",
+		Role: auth.RoleViewer, Disabled: true,
+	}, "still-valid")
+	handler, _ := newTestAuthHandler(repo)
+
+	req := httptest.NewRequestWithContext(
+		context.Background(), http.MethodPost, "/api/v1/auth/login",
+		loginRequestBody("ghost", "still-valid"),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	handler.Login(w, req)
+
+	assertStatusCode(t, w, http.StatusUnauthorized)
+	assertJSONError(t, w, errInvalidCredentials)
+}
+
+// TestAuthHandler_Login_MissingCredentials covers the 400 path for
+// blank username, blank password, and both.
 func TestAuthHandler_Login_MissingCredentials(t *testing.T) {
 	tests := []struct {
 		name string
 		body string
 	}{
-		{"missing username", `{"username": "", "password": "testpass"}`},
-		{"missing password", `{"username": "testuser", "password": ""}`},
+		{"missing username", `{"username": "", "password": "p"}`},
+		{"missing password", `{"username": "u", "password": ""}`},
 		{"missing both", `{"username": "", "password": ""}`},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := testConfig()
-			sm := middleware.NewSessionManager("test-secret", nil)
-			handler := NewAuthHandler(cfg, sm)
-
-			body := bytes.NewBufferString(tt.body)
-			req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/auth/login", body)
+			handler, _ := newTestAuthHandler(newFakeUserRepo())
+			req := httptest.NewRequestWithContext(
+				context.Background(), http.MethodPost, "/api/v1/auth/login",
+				bytes.NewBufferString(tt.body),
+			)
 			req.Header.Set("Content-Type", "application/json")
-			recorder := httptest.NewRecorder()
-
-			handler.Login(recorder, req)
-
-			assertStatusCode(t, recorder, http.StatusBadRequest)
-			assertJSONError(t, recorder, "username and password are required")
+			w := httptest.NewRecorder()
+			handler.Login(w, req)
+			assertStatusCode(t, w, http.StatusBadRequest)
+			assertJSONError(t, w, "username and password are required")
 		})
 	}
 }
 
+// TestAuthHandler_Login_InvalidJSON verifies a malformed body returns 400.
 func TestAuthHandler_Login_InvalidJSON(t *testing.T) {
-	cfg := testConfig()
-	sm := middleware.NewSessionManager("test-secret", nil)
-	handler := NewAuthHandler(cfg, sm)
-
-	body := bytes.NewBufferString(`{invalid json}`)
-	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/auth/login", body)
+	handler, _ := newTestAuthHandler(newFakeUserRepo())
+	req := httptest.NewRequestWithContext(
+		context.Background(), http.MethodPost, "/api/v1/auth/login",
+		bytes.NewBufferString("{not-json"),
+	)
 	req.Header.Set("Content-Type", "application/json")
-	recorder := httptest.NewRecorder()
-
-	handler.Login(recorder, req)
-
-	assertStatusCode(t, recorder, http.StatusBadRequest)
-	assertJSONError(t, recorder, "invalid request body")
-}
-
-func TestAuthHandler_Login_AuthFailure(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/api/v1/sessions" {
-			w.WriteHeader(http.StatusUnauthorized)
-			w.Write([]byte(`{"error": "invalid credentials"}`))
-			return
-		}
-	}))
-	defer server.Close()
-
-	cfg := testConfig()
-	cfg.PhotoPrism.URL = server.URL
-	sm := middleware.NewSessionManager("test-secret", nil)
-	handler := NewAuthHandler(cfg, sm)
-
-	body := bytes.NewBufferString(`{"username": "baduser", "password": "badpass"}`)
-	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/auth/login", body)
-	req.Header.Set("Content-Type", "application/json")
-	recorder := httptest.NewRecorder()
-
-	handler.Login(recorder, req)
-
-	assertStatusCode(t, recorder, http.StatusUnauthorized)
-
-	var response LoginResponse
-	parseJSONResponse(t, recorder, &response)
-
-	if response.Success {
-		t.Error("expected success to be false")
-	}
-
-	if response.Error != "invalid credentials" {
-		t.Errorf("expected error 'invalid credentials', got '%s'", response.Error)
-	}
-}
-
-func TestAuthHandler_Logout_Success(t *testing.T) {
-	server := setupMockPhotoPrismServer(t, map[string]http.HandlerFunc{
-		"/api/v1/sessions/test-token": func(w http.ResponseWriter, r *http.Request) {
-			if r.Method == "DELETE" {
-				w.WriteHeader(http.StatusOK)
-				return
-			}
-		},
-	})
-	defer server.Close()
-
-	cfg := testConfig()
-	cfg.PhotoPrism.URL = server.URL
-	sm := middleware.NewSessionManager("test-secret", nil)
-	handler := NewAuthHandler(cfg, sm)
-
-	// Create a session first.
-	session, _ := sm.CreateSession("test-token", "test-download-token", "test-user-uid")
-
-	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/auth/logout", nil)
-	// Add session cookie.
-	cookie := &http.Cookie{
-		Name:  "photo_sorter_session",
-		Value: session.ID + "." + signSessionID(sm, session.ID),
-	}
-	req.AddCookie(cookie)
-	recorder := httptest.NewRecorder()
-
-	handler.Logout(recorder, req)
-
-	assertStatusCode(t, recorder, http.StatusOK)
-
-	var result map[string]bool
-	parseJSONResponse(t, recorder, &result)
-
-	if !result["success"] {
-		t.Error("expected success to be true")
-	}
-
-	// Verify session was deleted.
-	if sm.GetSession(session.ID) != nil {
-		t.Error("expected session to be deleted")
-	}
-}
-
-func TestAuthHandler_Logout_NoSession(t *testing.T) {
-	cfg := testConfig()
-	sm := middleware.NewSessionManager("test-secret", nil)
-	handler := NewAuthHandler(cfg, sm)
-
-	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/auth/logout", nil)
-	recorder := httptest.NewRecorder()
-
-	handler.Logout(recorder, req)
-
-	assertStatusCode(t, recorder, http.StatusOK)
-
-	var result map[string]bool
-	parseJSONResponse(t, recorder, &result)
-
-	if !result["success"] {
-		t.Error("expected success to be true even without session")
-	}
-}
-
-func TestAuthHandler_Status_Authenticated(t *testing.T) {
-	cfg := testConfig()
-	sm := middleware.NewSessionManager("test-secret", nil)
-	handler := NewAuthHandler(cfg, sm)
-
-	// Create a session.
-	session, _ := sm.CreateSession("test-token", "test-download-token", "test-user-uid")
-
-	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/auth/status", nil)
-	// Add session cookie.
-	cookie := &http.Cookie{
-		Name:  "photo_sorter_session",
-		Value: session.ID + "." + signSessionID(sm, session.ID),
-	}
-	req.AddCookie(cookie)
-	recorder := httptest.NewRecorder()
-
-	handler.Status(recorder, req)
-
-	assertStatusCode(t, recorder, http.StatusOK)
-	assertContentType(t, recorder, "application/json")
-
-	var status StatusResponse
-	parseJSONResponse(t, recorder, &status)
-
-	if !status.Authenticated {
-		t.Error("expected authenticated to be true")
-	}
-
-	if status.ExpiresAt == "" {
-		t.Error("expected expires_at to be set")
-	}
-}
-
-func TestAuthHandler_Status_Unauthenticated(t *testing.T) {
-	cfg := testConfig()
-	sm := middleware.NewSessionManager("test-secret", nil)
-	handler := NewAuthHandler(cfg, sm)
-
-	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/auth/status", nil)
-	recorder := httptest.NewRecorder()
-
-	handler.Status(recorder, req)
-
-	assertStatusCode(t, recorder, http.StatusOK)
-
-	var status StatusResponse
-	parseJSONResponse(t, recorder, &status)
-
-	if status.Authenticated {
-		t.Error("expected authenticated to be false")
-	}
-
-	if status.ExpiresAt != "" {
-		t.Error("expected expires_at to be empty")
-	}
-}
-
-func TestAuthHandler_Status_ExpiredSession(t *testing.T) {
-	cfg := testConfig()
-	sm := middleware.NewSessionManager("test-secret", nil)
-	handler := NewAuthHandler(cfg, sm)
-
-	// Create a session but don't add it to the manager.
-	// This simulates an invalid/expired session.
-	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/auth/status", nil)
-	cookie := &http.Cookie{
-		Name:  "photo_sorter_session",
-		Value: "invalid-session-id.invalid-signature",
-	}
-	req.AddCookie(cookie)
-	recorder := httptest.NewRecorder()
-
-	handler.Status(recorder, req)
-
-	assertStatusCode(t, recorder, http.StatusOK)
-
-	var status StatusResponse
-	parseJSONResponse(t, recorder, &status)
-
-	if status.Authenticated {
-		t.Error("expected authenticated to be false for invalid session")
-	}
-}
-
-// Helper to sign session ID (mirrors SessionManager's internal method).
-func signSessionID(sm *middleware.SessionManager, sessionID string) string {
-	// We need to use the session manager's SetSessionCookie to get the proper signature.
-	// For testing, we'll create a response recorder and extract the cookie.
 	w := httptest.NewRecorder()
-	session := &middleware.Session{ID: sessionID}
-	r := httptest.NewRequestWithContext(context.Background(), "GET", "/", nil)
-	sm.SetSessionCookie(w, r, session)
-	cookies := w.Result().Cookies()
-	for _, c := range cookies {
-		if c.Name == "photo_sorter_session" {
-			parts := bytes.SplitN([]byte(c.Value), []byte("."), 2)
-			if len(parts) == 2 {
-				return string(parts[1])
-			}
+	handler.Login(w, req)
+	assertStatusCode(t, w, http.StatusBadRequest)
+	assertJSONError(t, w, errInvalidRequestBody)
+}
+
+// TestAuthHandler_Login_NilUserReader verifies the handler 500s gracefully
+// when constructed without a user store (transient startup state).
+func TestAuthHandler_Login_NilUserReader(t *testing.T) {
+	sm := middleware.NewSessionManager("test-secret", nil)
+	handler := NewAuthHandler(testConfig(), sm, nil, nil)
+	req := httptest.NewRequestWithContext(
+		context.Background(), http.MethodPost, "/api/v1/auth/login",
+		loginRequestBody("a", "b"),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+	handler.Login(w, req)
+	assertStatusCode(t, w, http.StatusInternalServerError)
+}
+
+// TestAuthHandler_Logout_HardDeletesSession verifies the session row is
+// removed (not soft-deleted) and the cookie is cleared.
+func TestAuthHandler_Logout_HardDeletesSession(t *testing.T) {
+	repo := newFakeUserRepo()
+	handler, sm := newTestAuthHandler(repo)
+
+	session, _ := sm.CreateSession("", "", "u-x", auth.RoleAdmin)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/auth/logout", nil)
+	req.Header.Set("Authorization", "Bearer "+session.ID)
+	w := httptest.NewRecorder()
+	handler.Logout(w, req)
+
+	assertStatusCode(t, w, http.StatusOK)
+	if sm.GetSession(session.ID) != nil {
+		t.Error("session still present after logout")
+	}
+
+	// Verify the cookie is cleared (MaxAge < 0).
+	found := false
+	for _, c := range w.Result().Cookies() {
+		if c.Name != "photo_sorter_session" {
+			continue
+		}
+		found = true
+		if c.MaxAge >= 0 {
+			t.Errorf("clear cookie MaxAge = %d, want < 0", c.MaxAge)
 		}
 	}
-	return ""
+	if !found {
+		t.Error("expected session cookie to be cleared")
+	}
+}
+
+// TestAuthHandler_Logout_NoSession verifies the contract that logout
+// without a session is a successful no-op.
+func TestAuthHandler_Logout_NoSession(t *testing.T) {
+	handler, _ := newTestAuthHandler(newFakeUserRepo())
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/auth/logout", nil)
+	w := httptest.NewRecorder()
+	handler.Logout(w, req)
+	assertStatusCode(t, w, http.StatusOK)
+}
+
+// TestAuthHandler_Status_Authenticated verifies that an active session
+// resolves the underlying user and returns the full payload.
+func TestAuthHandler_Status_Authenticated(t *testing.T) {
+	repo := newFakeUserRepo()
+	repo.add(t, database.User{
+		UID: "u-alice", Username: "alice", DisplayName: "Alice A",
+		Role: auth.RoleEditor,
+	}, "x")
+	handler, sm := newTestAuthHandler(repo)
+
+	session, _ := sm.CreateSession("", "", "u-alice", auth.RoleEditor)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/auth/status", nil)
+	req.Header.Set("Authorization", "Bearer "+session.ID)
+	w := httptest.NewRecorder()
+	handler.Status(w, req)
+
+	assertStatusCode(t, w, http.StatusOK)
+	var resp statusResponse
+	parseJSONResponse(t, w, &resp)
+
+	if !resp.Authenticated {
+		t.Error("expected authenticated = true")
+	}
+	if resp.User == nil {
+		t.Fatal("expected user payload in response")
+	}
+	if resp.User.UID != "u-alice" {
+		t.Errorf("user.uid = %q, want u-alice", resp.User.UID)
+	}
+	if resp.User.Username != "alice" {
+		t.Errorf("user.username = %q, want alice", resp.User.Username)
+	}
+	if resp.User.Role != auth.RoleEditor {
+		t.Errorf("user.role = %q, want editor", resp.User.Role)
+	}
+	if resp.User.DisplayName != "Alice A" {
+		t.Errorf("user.display_name = %q, want Alice A", resp.User.DisplayName)
+	}
+}
+
+// TestAuthHandler_Status_Unauthenticated verifies the no-session path
+// returns 200 with authenticated = false.
+func TestAuthHandler_Status_Unauthenticated(t *testing.T) {
+	handler, _ := newTestAuthHandler(newFakeUserRepo())
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/auth/status", nil)
+	w := httptest.NewRecorder()
+	handler.Status(w, req)
+	assertStatusCode(t, w, http.StatusOK)
+
+	var resp statusResponse
+	parseJSONResponse(t, w, &resp)
+	if resp.Authenticated {
+		t.Error("expected authenticated = false")
+	}
+	if resp.User != nil {
+		t.Errorf("expected user to be omitted, got %+v", resp.User)
+	}
+}
+
+// TestAuthHandler_Status_OrphanedSession covers the rare case where a
+// session row points at a UID no longer present in the users table —
+// the handler returns whatever it has from the session.
+func TestAuthHandler_Status_OrphanedSession(t *testing.T) {
+	repo := newFakeUserRepo()
+	handler, sm := newTestAuthHandler(repo)
+	session, _ := sm.CreateSession("", "", "u-gone", auth.RoleViewer)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/auth/status", nil)
+	req.Header.Set("Authorization", "Bearer "+session.ID)
+	w := httptest.NewRecorder()
+	handler.Status(w, req)
+	assertStatusCode(t, w, http.StatusOK)
+
+	var resp statusResponse
+	parseJSONResponse(t, w, &resp)
+	if !resp.Authenticated || resp.User == nil {
+		t.Fatalf("expected authenticated user payload, got %+v", resp)
+	}
+	if resp.User.UID != "u-gone" || resp.User.Role != auth.RoleViewer {
+		t.Errorf("user = %+v, want UID=u-gone Role=viewer", resp.User)
+	}
+}
+
+// TestAuthHandler_Status_RepoError verifies the handler still responds
+// (with what the session knows) when the user store errors out — we do
+// not want a transient DB blip to log the user out.
+func TestAuthHandler_Status_RepoError(t *testing.T) {
+	repo := newFakeUserRepo()
+	repo.add(t, database.User{
+		UID: "u-bob", Username: "bob", Role: auth.RoleEditor,
+	}, "x")
+	repo.getErr = errors.New("db down")
+	handler, sm := newTestAuthHandler(repo)
+	session, _ := sm.CreateSession("", "", "u-bob", auth.RoleEditor)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/api/v1/auth/status", nil)
+	req.Header.Set("Authorization", "Bearer "+session.ID)
+	w := httptest.NewRecorder()
+	handler.Status(w, req)
+	assertStatusCode(t, w, http.StatusOK)
+
+	var resp statusResponse
+	parseJSONResponse(t, w, &resp)
+	if !resp.Authenticated || resp.User == nil {
+		t.Fatalf("expected fallback user payload, got %+v", resp)
+	}
+	if resp.User.UID != "u-bob" || resp.User.Role != auth.RoleEditor {
+		t.Errorf("fallback user = %+v, want UID=u-bob Role=editor", resp.User)
+	}
 }
