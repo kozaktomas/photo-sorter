@@ -2,6 +2,38 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Migration Roadmap: Away from PhotoPrism (in progress)
+
+Photo-sorter is migrating from a PhotoPrism front-end to a fully self-contained
+photo management application. PhotoPrism is still the source of truth for
+photos, albums, labels, faces, and authentication at the time of writing — but
+that is being replaced incrementally.
+
+**End-state goals:**
+- One database only: PostgreSQL + pgvector (no MariaDB).
+- Native storage layer that mirrors the PhotoPrism on-disk layout
+  (`originals/YYYY/MM/`, `cache/thumb/aa/bb/cc/<hash>_<size>.jpg`).
+- Own user management: roles `admin` / `editor` / `viewer`, bcrypt, bootstrap admin
+  via env vars. Public album sharing later.
+- Native upload pipeline: hash → dedup → EXIF (`exiftool` subprocess + go-exif
+  fallback) → thumbs → DB. Supported formats: JPEG/PNG/WebP, HEIC/HEIF (via
+  `heif-convert`), RAW (CR2/NEF/ARW/DNG/... via `dcraw`).
+- Native repos for photos, albums, labels, markers, subjects. Existing
+  `embeddings` / `faces` (pgvector) and HNSW indexes stay.
+- New features: soft-delete trash (30-day grace), duplicate detection on upload
+  (pHash + embedding), EXIF edit endpoint with XMP sidecar write, Czech-aware
+  Postgres full-text search, PWA + mobile capture page, backup CLI (tar
+  originals + `pg_dump`).
+- One-shot migration via `photo-sorter migrate-from-photoprism` (with dry-run
+  and `migrate-verify`), then PhotoPrism + MariaDB containers are dropped from
+  compose.
+
+Granular work is tracked as Botka tasks (project `photo-sorter`); see
+`mcp__botka__list_tasks --project-name photo-sorter`. The PhotoPrism client
+package (`internal/photoprism/`) and `PHOTOPRISM_*` env vars are scheduled for
+removal at the tail end of that work — until that task lands, treat them as
+load-bearing.
+
 ## Browser
 
 Chromium is available for headless browsing (e.g. checking web UI output):

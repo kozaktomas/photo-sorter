@@ -1,8 +1,24 @@
 # Photo Sorter
 
-A CLI tool and web interface for organizing photos in [PhotoPrism](https://photoprism.app/) using AI. Automatically analyzes photos, generates labels and descriptions, estimates dates for undated photos, and enables similarity search using image and face embeddings.
+A CLI tool and web interface for organizing photos using AI — labels, descriptions, date estimates, face recognition, and similarity search via image and face embeddings.
+
+Today the app sits in front of a [PhotoPrism](https://photoprism.app/) instance for storage, browsing, and auth. The codebase is being migrated to a fully self-contained photo manager backed only by PostgreSQL + pgvector; see [Roadmap](#roadmap-away-from-photoprism) below.
 
 > **Note:** This entire project was vibe-coded. Not a single line of code was written by a human - it's 100% AI-generated using [Claude Code](https://claude.ai/code).
+
+## Roadmap: away from PhotoPrism
+
+Work in progress. The end state is a single binary + Postgres + an embeddings service — no PhotoPrism, no MariaDB. Key pieces being added:
+
+- **Native storage** mirroring the PhotoPrism on-disk layout (`originals/YYYY/MM/`, `cache/thumb/aa/bb/cc/<hash>_<size>.jpg`).
+- **Native upload pipeline**: hash → dedup → EXIF (`exiftool` + go-exif fallback) → thumbnails → DB. Supported formats: JPEG/PNG/WebP, HEIC/HEIF (via `heif-convert`), RAW (CR2/NEF/ARW/DNG/... via `dcraw`).
+- **Own user management**: `admin` / `editor` / `viewer` roles, bcrypt, bootstrap admin via env vars. Public album sharing planned later.
+- **Native repos** for photos, albums, labels, markers, subjects. Existing pgvector embeddings + HNSW indexes stay.
+- **New features**: soft-delete trash (30-day grace), duplicate detection on upload (pHash + embedding), EXIF edit endpoint with XMP sidecar write, Czech-aware Postgres full-text search, PWA + mobile capture page.
+- **Backup CLI** that tars the originals dir and `pg_dump`s the pgvector database in one timestamped folder, with retention.
+- **One-shot migration** via `photo-sorter migrate-from-photoprism` (with `--dry-run`) + `migrate-verify` for diff reporting.
+
+After migration the `internal/photoprism/` client and `PHOTOPRISM_*` env vars are removed and the PhotoPrism + MariaDB services drop out of `docker-compose.yml`.
 
 ## Features
 
