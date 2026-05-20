@@ -93,6 +93,30 @@ func (h *PhotosHandler) RefreshReader() {
 	}
 }
 
+// PhotoResponse represents a photo in API responses. The shape mirrors the
+// previous PhotoPrism passthrough so the frontend keeps working.
+type PhotoResponse struct {
+	UID          string  `json:"uid"`
+	Title        string  `json:"title"`
+	Description  string  `json:"description"`
+	TakenAt      string  `json:"taken_at"`
+	Year         int     `json:"year"`
+	Month        int     `json:"month"`
+	Day          int     `json:"day"`
+	Hash         string  `json:"hash"`
+	Width        int     `json:"width"`
+	Height       int     `json:"height"`
+	Lat          float64 `json:"lat"`
+	Lng          float64 `json:"lng"`
+	Country      string  `json:"country"`
+	Favorite     bool    `json:"favorite"`
+	Private      bool    `json:"private"`
+	Type         string  `json:"type"`
+	OriginalName string  `json:"original_name"`
+	FileName     string  `json:"file_name"`
+	CameraModel  string  `json:"camera_model"`
+}
+
 // PhotoListResponse is the envelope returned by List.
 type PhotoListResponse struct {
 	Photos []PhotoResponse `json:"photos"`
@@ -1001,7 +1025,7 @@ func parseCollectionSimilarRequest(r *http.Request) (CollectionSimilarRequest, s
 	if req.SourceID == "" {
 		return req, "source_id is required"
 	}
-	if req.SourceType != "label" && req.SourceType != "album" {
+	if req.SourceType != "label" && req.SourceType != albumTypeFilterDefault {
 		return req, "source_type must be 'label' or 'album'"
 	}
 	if req.Limit <= 0 {

@@ -92,6 +92,13 @@ func registerServeBackends(
 	database.RegisterBookWriter(func() database.BookWriter { return bookRepo })
 	fmt.Printf("Photo book storage enabled (PostgreSQL)\n")
 
+	photoRepo := postgres.NewPhotoRepository(pool)
+	database.RegisterPhotoWriter(func() database.PhotoWriter { return photoRepo })
+
+	albumRepo := postgres.NewAlbumRepository(pool)
+	database.RegisterAlbumWriter(func() database.AlbumWriter { return albumRepo })
+	fmt.Printf("Native photo + album storage enabled (PostgreSQL)\n")
+
 	tvRepo := postgres.NewTextVersionRepository(pool)
 	database.RegisterTextVersionStore(func() database.TextVersionStore { return tvRepo })
 

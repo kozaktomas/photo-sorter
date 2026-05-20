@@ -40,16 +40,29 @@ func (s *Server) resolveNativePhotoBackends() (database.PhotoWriter, *storage.St
 	return repo, store
 }
 
+// resolveAlbumRepo best-effort-fetches the native AlbumWriter. Returns nil
+// (and logs) when the registration is missing — the native album endpoints
+// will then surface a 503 rather than blocking server startup.
+func (s *Server) resolveAlbumRepo() database.AlbumWriter {
+	r, err := database.GetAlbumWriter(context.Background())
+	if err != nil {
+		log.Printf("albums: native repo unavailable: %v", err)
+		return nil
+	}
+	return r
+}
+
 //nolint:funlen // Route registration is inherently long.
 func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 	// Resolve native photo backends. Both are optional in the transitional
 	// state: when PhotoReader/Storage are unavailable, the native GET
 	// endpoints return 503 while PhotoPrism-backed endpoints keep working.
 	photoRepo, photoStore := s.resolveNativePhotoBackends()
+	albumRepo := s.resolveAlbumRepo()
 
 	// Create handlers.
 	authHandler := handlers.NewAuthHandler(s.config, sessionManager)
-	albumsHandler := handlers.NewAlbumsHandler(s.config, sessionManager)
+	albumsHandler := handlers.NewAlbumsHandler(s.config, sessionManager, albumRepo, photoRepo)
 	labelsHandler := handlers.NewLabelsHandler(s.config, sessionManager)
 	photosHandler := handlers.NewPhotosHandler(s.config, sessionManager, photoRepo, photoStore)
 	sortHandler := handlers.NewSortHandler(s.config, sessionManager, s.jobManager)
@@ -89,6 +102,8 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 				r.Get("/albums", albumsHandler.List)
 				r.Post("/albums", albumsHandler.Create)
 				r.Get("/albums/{uid}", albumsHandler.Get)
+				r.Put("/albums/{uid}", albumsHandler.Update)
+				r.Delete("/albums/{uid}", albumsHandler.Delete)
 				r.Get("/albums/{uid}/photos", albumsHandler.GetPhotos)
 				r.Post("/albums/{uid}/photos", albumsHandler.AddPhotos)
 				r.Delete("/albums/{uid}/photos", albumsHandler.ClearPhotos)

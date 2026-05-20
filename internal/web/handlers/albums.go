@@ -2,31 +2,58 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
+	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/kozaktomas/photo-sorter/internal/config"
 	"github.com/kozaktomas/photo-sorter/internal/constants"
-	"github.com/kozaktomas/photo-sorter/internal/photoprism"
+	"github.com/kozaktomas/photo-sorter/internal/database"
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
 
-// AlbumsHandler handles album-related endpoints.
+// albumTypeFilterDefault is the default value of the `type` query
+// parameter for List. The native albums table also accepts folder, moment,
+// state, and month rows; we hide those from the default listing because
+// the UI lists those separately.
+const albumTypeFilterDefault = "album"
+
+// AlbumsHandler handles album-related endpoints. It reads and writes the
+// native albums / album_photos tables via AlbumWriter and delegates
+// album-filtered photo listings to PhotoReader so we do not reimplement
+// the existing filtering and pagination logic.
 type AlbumsHandler struct {
 	config         *config.Config
 	sessionManager *middleware.SessionManager
+
+	// albumRepo backs every native album endpoint. May be nil in tests
+	// that exercise paths which do not touch albums.
+	albumRepo database.AlbumWriter
+	// photoRepo serves the album/{uid}/photos listing endpoint. May be nil
+	// in tests that do not exercise that path.
+	photoRepo database.PhotoReader
 }
 
-// NewAlbumsHandler creates a new albums handler.
-func NewAlbumsHandler(cfg *config.Config, sm *middleware.SessionManager) *AlbumsHandler {
+// NewAlbumsHandler creates a new albums handler. albumRepo and photoRepo
+// back the native endpoints; either may be nil in environments where those
+// paths are unused.
+func NewAlbumsHandler(
+	cfg *config.Config, sm *middleware.SessionManager,
+	albumRepo database.AlbumWriter, photoRepo database.PhotoReader,
+) *AlbumsHandler {
 	return &AlbumsHandler{
 		config:         cfg,
 		sessionManager: sm,
+		albumRepo:      albumRepo,
+		photoRepo:      photoRepo,
 	}
 }
 
-// AlbumResponse represents an album in API responses.
+// AlbumResponse represents an album in API responses. The shape mirrors the
+// previous PhotoPrism passthrough so the frontend keeps working.
 type AlbumResponse struct {
 	UID         string `json:"uid"`
 	Title       string `json:"title"`
@@ -39,47 +66,82 @@ type AlbumResponse struct {
 	UpdatedAt   string `json:"updated_at"`
 }
 
-func albumToResponse(a photoprism.Album) AlbumResponse {
+// albumToResponse maps a native database.Album to the wire shape. The
+// Thumb field is populated with the cover photo UID — the frontend uses it
+// only as a fallback hint and renders icons when no thumbnail is available.
+func albumToResponse(a database.Album) AlbumResponse {
 	return AlbumResponse{
 		UID:         a.UID,
 		Title:       a.Title,
 		Description: a.Description,
 		PhotoCount:  a.PhotoCount,
-		Thumb:       a.Thumb,
+		Thumb:       a.CoverPhotoUID,
 		Type:        a.Type,
 		Favorite:    a.Favorite,
-		CreatedAt:   a.CreatedAt,
-		UpdatedAt:   a.UpdatedAt,
+		CreatedAt:   a.CreatedAt.UTC().Format(time.RFC3339),
+		UpdatedAt:   a.UpdatedAt.UTC().Format(time.RFC3339),
 	}
 }
 
-// List returns all albums.
+// requireAlbumWriter returns the configured AlbumWriter; on missing
+// configuration it writes a 503 error response and returns nil.
+func (h *AlbumsHandler) requireAlbumWriter(w http.ResponseWriter) database.AlbumWriter {
+	if h.albumRepo != nil {
+		return h.albumRepo
+	}
+	respondError(w, http.StatusServiceUnavailable, "album storage not available")
+	return nil
+}
+
+// requirePhotoReader returns the configured PhotoReader; on missing
+// configuration it writes a 503 error response and returns nil.
+func (h *AlbumsHandler) requirePhotoReader(w http.ResponseWriter) database.PhotoReader {
+	if h.photoRepo != nil {
+		return h.photoRepo
+	}
+	respondError(w, http.StatusServiceUnavailable, "photo storage not available")
+	return nil
+}
+
+// List returns the albums matching the supplied filter+pagination params.
+// Supported query params: q (search), type, favorite, sort, count/limit, offset.
+// "count" is preserved for backward compatibility with the previous handler.
 func (h *AlbumsHandler) List(w http.ResponseWriter, r *http.Request) {
-	pp := middleware.MustGetPhotoPrism(r.Context(), w)
-	if pp == nil {
+	repo := h.requireAlbumWriter(w)
+	if repo == nil {
 		return
 	}
 
-	// Parse query parameters.
-	count, _ := strconv.Atoi(r.URL.Query().Get("count"))
-	if count <= 0 {
-		count = constants.DefaultHandlerPageSize
+	q := r.URL.Query()
+	query := database.AlbumQuery{
+		Type:   firstNonEmpty(q.Get("type"), albumTypeFilterDefault),
+		Search: q.Get("q"),
+		SortBy: q.Get("sort"),
 	}
-	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
-	order := r.URL.Query().Get("order")
-	query := r.URL.Query().Get("q")
+	fav, ok := parseBool(q.Get("favorite"))
+	if !ok {
+		respondError(w, http.StatusBadRequest, "invalid favorite")
+		return
+	}
+	query.Favorite = fav
 
-	albums, err := pp.GetAlbums(count, offset, order, query, "album")
+	limit, offset, ok := parseAlbumLimitOffset(w, q)
+	if !ok {
+		return
+	}
+	query.Limit, query.Offset = limit, offset
+
+	albums, err := repo.ListAlbums(r.Context(), query)
 	if err != nil {
+		log.Printf("albums list: %v", err)
 		respondError(w, http.StatusInternalServerError, "failed to get albums")
 		return
 	}
 
-	response := make([]AlbumResponse, len(albums))
+	response := make([]AlbumResponse, 0, len(albums))
 	for i := range albums {
-		response[i] = albumToResponse(albums[i])
+		response = append(response, albumToResponse(albums[i]))
 	}
-
 	respondJSON(w, http.StatusOK, response)
 }
 
@@ -90,131 +152,197 @@ func (h *AlbumsHandler) Get(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "missing album UID")
 		return
 	}
-
-	pp := middleware.MustGetPhotoPrism(r.Context(), w)
-	if pp == nil {
+	repo := h.requireAlbumWriter(w)
+	if repo == nil {
 		return
 	}
-
-	album, err := pp.GetAlbum(uid)
-	if err != nil {
+	album, err := repo.GetAlbum(r.Context(), uid)
+	if errors.Is(err, database.ErrNotFound) {
 		respondError(w, http.StatusNotFound, "album not found")
 		return
 	}
-
+	if err != nil {
+		log.Printf("albums get %s: %v", sanitizeForLog(uid), err)
+		respondError(w, http.StatusInternalServerError, "failed to get album")
+		return
+	}
 	respondJSON(w, http.StatusOK, albumToResponse(*album))
 }
 
-// CreateRequest represents a create album request.
-type CreateRequest struct {
-	Title string `json:"title"`
+// albumWriteRequest is the JSON body shared by Create and Update.
+type albumWriteRequest struct {
+	Title         string  `json:"title"`
+	Description   *string `json:"description,omitempty"`
+	Type          *string `json:"type,omitempty"`
+	Favorite      *bool   `json:"favorite,omitempty"`
+	Private       *bool   `json:"private,omitempty"`
+	OrderBy       *string `json:"order_by,omitempty"`
+	CoverPhotoUID *string `json:"cover_photo_uid,omitempty"`
+}
+
+// applyAlbumWriteFields copies the supplied request fields into the target
+// album. The handler uses pointers in the request struct to distinguish
+// "key omitted" from "explicit zero value"; this helper centralises that
+// switch so Create/Update stay below the cyclomatic-complexity limit.
+func applyAlbumWriteFields(album *database.Album, req albumWriteRequest) {
+	if req.Description != nil {
+		album.Description = *req.Description
+	}
+	if req.Type != nil {
+		album.Type = *req.Type
+	}
+	if req.Favorite != nil {
+		album.Favorite = *req.Favorite
+	}
+	if req.Private != nil {
+		album.Private = *req.Private
+	}
+	if req.OrderBy != nil {
+		album.OrderBy = *req.OrderBy
+	}
+	if req.CoverPhotoUID != nil {
+		album.CoverPhotoUID = *req.CoverPhotoUID
+	}
 }
 
 // Create creates a new album.
 func (h *AlbumsHandler) Create(w http.ResponseWriter, r *http.Request) {
-	var req CreateRequest
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "forbidden")
+		return
+	}
+	var req albumWriteRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return
 	}
-
 	if req.Title == "" {
 		respondError(w, http.StatusBadRequest, "title is required")
 		return
 	}
-
-	pp := middleware.MustGetPhotoPrism(r.Context(), w)
-	if pp == nil {
+	repo := h.requireAlbumWriter(w)
+	if repo == nil {
 		return
 	}
 
-	album, err := pp.CreateAlbum(req.Title)
-	if err != nil {
+	album := &database.Album{Title: req.Title}
+	applyAlbumWriteFields(album, req)
+	if session := middleware.GetSessionFromContext(r.Context()); session != nil {
+		album.CreatedBy = session.UserUID
+	}
+
+	if err := repo.CreateAlbum(r.Context(), album); err != nil {
+		log.Printf("albums create: %v", err)
 		respondError(w, http.StatusInternalServerError, "failed to create album")
 		return
 	}
-
 	respondJSON(w, http.StatusCreated, albumToResponse(*album))
 }
 
-// PhotoResponse represents a photo in API responses.
-type PhotoResponse struct {
-	UID          string  `json:"uid"`
-	Title        string  `json:"title"`
-	Description  string  `json:"description"`
-	TakenAt      string  `json:"taken_at"`
-	Year         int     `json:"year"`
-	Month        int     `json:"month"`
-	Day          int     `json:"day"`
-	Hash         string  `json:"hash"`
-	Width        int     `json:"width"`
-	Height       int     `json:"height"`
-	Lat          float64 `json:"lat"`
-	Lng          float64 `json:"lng"`
-	Country      string  `json:"country"`
-	Favorite     bool    `json:"favorite"`
-	Private      bool    `json:"private"`
-	Type         string  `json:"type"`
-	OriginalName string  `json:"original_name"`
-	FileName     string  `json:"file_name"`
-	CameraModel  string  `json:"camera_model"`
-}
-
-func photoToResponse(p photoprism.Photo) PhotoResponse {
-	return PhotoResponse{
-		UID:          p.UID,
-		Title:        p.Title,
-		Description:  p.Description,
-		TakenAt:      p.TakenAt,
-		Year:         p.Year,
-		Month:        p.Month,
-		Day:          p.Day,
-		Hash:         p.Hash,
-		Width:        p.Width,
-		Height:       p.Height,
-		Lat:          p.Lat,
-		Lng:          p.Lng,
-		Country:      p.Country,
-		Favorite:     p.Favorite,
-		Private:      p.Private,
-		Type:         p.Type,
-		OriginalName: p.OriginalName,
-		FileName:     p.FileName,
-		CameraModel:  p.CameraModel,
+// Update applies a partial update to an album. Omitted JSON keys leave the
+// existing column untouched; explicit zero values (empty strings, false)
+// are honored.
+func (h *AlbumsHandler) Update(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "forbidden")
+		return
 	}
+	uid := chi.URLParam(r, "uid")
+	if uid == "" {
+		respondError(w, http.StatusBadRequest, "missing album UID")
+		return
+	}
+	var req albumWriteRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
+		return
+	}
+	repo := h.requireAlbumWriter(w)
+	if repo == nil {
+		return
+	}
+
+	album, err := repo.GetAlbum(r.Context(), uid)
+	if errors.Is(err, database.ErrNotFound) {
+		respondError(w, http.StatusNotFound, "album not found")
+		return
+	}
+	if err != nil {
+		log.Printf("albums update get %s: %v", sanitizeForLog(uid), err)
+		respondError(w, http.StatusInternalServerError, "failed to get album")
+		return
+	}
+
+	if req.Title != "" {
+		album.Title = req.Title
+		// Clear the slug so the writer regenerates it from the new title.
+		album.Slug = ""
+	}
+	applyAlbumWriteFields(album, req)
+
+	if err := repo.UpdateAlbum(r.Context(), album); err != nil {
+		log.Printf("albums update %s: %v", sanitizeForLog(uid), err)
+		respondError(w, http.StatusInternalServerError, "failed to update album")
+		return
+	}
+	respondJSON(w, http.StatusOK, albumToResponse(*album))
 }
 
-// GetPhotos returns photos in an album.
+// Delete hard-deletes an album.
+func (h *AlbumsHandler) Delete(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "forbidden")
+		return
+	}
+	uid := chi.URLParam(r, "uid")
+	if uid == "" {
+		respondError(w, http.StatusBadRequest, "missing album UID")
+		return
+	}
+	repo := h.requireAlbumWriter(w)
+	if repo == nil {
+		return
+	}
+	if err := repo.DeleteAlbum(r.Context(), uid); err != nil {
+		if errors.Is(err, database.ErrNotFound) {
+			respondError(w, http.StatusNotFound, "album not found")
+			return
+		}
+		log.Printf("albums delete %s: %v", sanitizeForLog(uid), err)
+		respondError(w, http.StatusInternalServerError, "failed to delete album")
+		return
+	}
+	respondJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
+}
+
+// GetPhotos returns the photos belonging to an album, applying the same
+// filter+pagination grammar as GET /api/v1/photos.
 func (h *AlbumsHandler) GetPhotos(w http.ResponseWriter, r *http.Request) {
 	uid := chi.URLParam(r, "uid")
 	if uid == "" {
 		respondError(w, http.StatusBadRequest, "missing album UID")
 		return
 	}
-
-	pp := middleware.MustGetPhotoPrism(r.Context(), w)
-	if pp == nil {
+	reader := h.requirePhotoReader(w)
+	if reader == nil {
 		return
 	}
-
-	// Parse query parameters.
-	count, _ := strconv.Atoi(r.URL.Query().Get("count"))
-	if count <= 0 {
-		count = constants.DefaultHandlerPageSize
+	filter, ok := parsePhotoFilter(w, r)
+	if !ok {
+		return
 	}
-	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
+	filter.AlbumUID = uid
 
-	photos, err := pp.GetAlbumPhotos(uid, count, offset)
+	photos, _, err := reader.ListPhotos(r.Context(), filter)
 	if err != nil {
+		log.Printf("albums get photos %s: %v", sanitizeForLog(uid), err)
 		respondError(w, http.StatusInternalServerError, "failed to get photos")
 		return
 	}
-
-	response := make([]PhotoResponse, len(photos))
-	for i, p := range photos {
-		response[i] = photoToResponse(p)
+	response := make([]PhotoResponse, 0, len(photos))
+	for i := range photos {
+		response = append(response, nativePhotoToResponse(photos[i]))
 	}
-
 	respondJSON(w, http.StatusOK, response)
 }
 
@@ -223,102 +351,164 @@ type albumPhotoRequest struct {
 	PhotoUIDs []string `json:"photo_uids"`
 }
 
-// parseAlbumPhotoRequest parses and validates an album photo modification request.
-// Returns the album UID, photo UIDs, and PhotoPrism client; sends error response on failure.
-func (h *AlbumsHandler) parseAlbumPhotoRequest(
+// parseAlbumPhotoMutation extracts the album UID + photo UID list shared by
+// AddPhotos and RemovePhotos. On any validation failure it writes the
+// response and returns ok=false.
+func (h *AlbumsHandler) parseAlbumPhotoMutation(
 	w http.ResponseWriter, r *http.Request,
-) (string, []string, *photoprism.PhotoPrism) {
+) (string, []string, database.AlbumWriter, bool) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "forbidden")
+		return "", nil, nil, false
+	}
 	uid := chi.URLParam(r, "uid")
 	if uid == "" {
 		respondError(w, http.StatusBadRequest, "missing album UID")
-		return "", nil, nil
+		return "", nil, nil, false
 	}
-
 	var req albumPhotoRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
-		return "", nil, nil
+		return "", nil, nil, false
 	}
-
 	if len(req.PhotoUIDs) == 0 {
 		respondError(w, http.StatusBadRequest, "photo_uids is required")
-		return "", nil, nil
+		return "", nil, nil, false
 	}
-
-	pp := middleware.MustGetPhotoPrism(r.Context(), w)
-	if pp == nil {
-		return "", nil, nil
+	repo := h.requireAlbumWriter(w)
+	if repo == nil {
+		return "", nil, nil, false
 	}
-
-	return uid, req.PhotoUIDs, pp
+	return uid, req.PhotoUIDs, repo, true
 }
 
-// AddPhotos adds photos to an album.
+// AddPhotos adds photos to an album. Re-adding an existing UID is a silent
+// no-op enforced by the writer (idempotent).
 func (h *AlbumsHandler) AddPhotos(w http.ResponseWriter, r *http.Request) {
-	uid, photoUIDs, pp := h.parseAlbumPhotoRequest(w, r)
-	if pp == nil {
+	uid, photoUIDs, repo, ok := h.parseAlbumPhotoMutation(w, r)
+	if !ok {
 		return
 	}
-
-	if err := pp.AddPhotosToAlbum(uid, photoUIDs); err != nil {
+	if err := repo.AddPhotos(r.Context(), uid, photoUIDs); err != nil {
+		log.Printf("albums add photos %s: %v", sanitizeForLog(uid), err)
 		respondError(w, http.StatusInternalServerError, "failed to add photos to album")
 		return
 	}
-
 	respondJSON(w, http.StatusOK, map[string]int{"added": len(photoUIDs)})
 }
 
-// ClearPhotos removes all photos from an album.
+// ClearPhotos removes all photos from an album. An optional body
+// `{ photo_uids: [...] }` narrows the scope, matching the contract the
+// frontend already relies on: an empty body == clear all, an explicit list
+// == remove just those.
 func (h *AlbumsHandler) ClearPhotos(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	uid := chi.URLParam(r, "uid")
 	if uid == "" {
 		respondError(w, http.StatusBadRequest, "missing album UID")
 		return
 	}
-
-	pp := middleware.MustGetPhotoPrism(r.Context(), w)
-	if pp == nil {
+	repo := h.requireAlbumWriter(w)
+	if repo == nil {
 		return
 	}
 
-	// Get all photos in album.
-	photos, err := pp.GetAlbumPhotos(uid, constants.MaxPhotosPerFetch, 0)
-	if err != nil {
-		respondError(w, http.StatusInternalServerError, "failed to get album photos")
-		return
+	// Body is optional; an empty body means "clear all".
+	var req albumPhotoRequest
+	if r.ContentLength > 0 {
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			respondError(w, http.StatusBadRequest, errInvalidRequestBody)
+			return
+		}
 	}
 
-	if len(photos) == 0 {
+	uids := req.PhotoUIDs
+	if len(uids) == 0 {
+		all, err := repo.ListAlbumPhotoUIDs(r.Context(), uid)
+		if err != nil {
+			log.Printf("albums clear list %s: %v", sanitizeForLog(uid), err)
+			respondError(w, http.StatusInternalServerError, "failed to get album photos")
+			return
+		}
+		uids = all
+	}
+	if len(uids) == 0 {
 		respondJSON(w, http.StatusOK, map[string]int{"removed": 0})
 		return
 	}
-
-	// Collect photo UIDs.
-	photoUIDs := make([]string, len(photos))
-	for i, p := range photos {
-		photoUIDs[i] = p.UID
-	}
-
-	// Remove photos from album.
-	if err := pp.RemovePhotosFromAlbum(uid, photoUIDs); err != nil {
+	if err := repo.RemovePhotos(r.Context(), uid, uids); err != nil {
+		log.Printf("albums clear remove %s: %v", sanitizeForLog(uid), err)
 		respondError(w, http.StatusInternalServerError, "failed to remove photos from album")
 		return
 	}
-
-	respondJSON(w, http.StatusOK, map[string]int{"removed": len(photoUIDs)})
+	respondJSON(w, http.StatusOK, map[string]int{"removed": len(uids)})
 }
 
 // RemovePhotos removes specific photos from an album.
 func (h *AlbumsHandler) RemovePhotos(w http.ResponseWriter, r *http.Request) {
-	uid, photoUIDs, pp := h.parseAlbumPhotoRequest(w, r)
-	if pp == nil {
+	uid, photoUIDs, repo, ok := h.parseAlbumPhotoMutation(w, r)
+	if !ok {
 		return
 	}
-
-	if err := pp.RemovePhotosFromAlbum(uid, photoUIDs); err != nil {
+	if err := repo.RemovePhotos(r.Context(), uid, photoUIDs); err != nil {
+		log.Printf("albums remove photos %s: %v", sanitizeForLog(uid), err)
 		respondError(w, http.StatusInternalServerError, "failed to remove photos from album")
 		return
 	}
-
 	respondJSON(w, http.StatusOK, map[string]int{"removed": len(photoUIDs)})
+}
+
+// firstNonEmpty returns the first non-empty string from the supplied
+// values, or "" when all of them are empty.
+func firstNonEmpty(values ...string) string {
+	for _, v := range values {
+		if v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// parseAlbumLimitOffset extracts limit (or its legacy alias "count") and
+// offset from the query string. On invalid input it writes a 400 and
+// returns ok=false.
+func parseAlbumLimitOffset(w http.ResponseWriter, q map[string][]string) (int, int, bool) {
+	limit, ok := parseNonNegativeQueryInt(w, q, "count", 0)
+	if !ok {
+		return 0, 0, false
+	}
+	if limit2, ok := parseNonNegativeQueryInt(w, q, "limit", limit); ok {
+		limit = limit2
+	} else {
+		return 0, 0, false
+	}
+	if limit == 0 {
+		limit = constants.DefaultHandlerPageSize
+	}
+	offset, ok := parseNonNegativeQueryInt(w, q, "offset", 0)
+	if !ok {
+		return 0, 0, false
+	}
+	return limit, offset, true
+}
+
+// parseNonNegativeQueryInt looks up `key` in q, returning `fallback` when
+// the key is absent or empty. Non-integer or negative values write a 400
+// and return ok=false.
+func parseNonNegativeQueryInt(
+	w http.ResponseWriter, q map[string][]string, key string, fallback int,
+) (int, bool) {
+	vals := q[key]
+	if len(vals) == 0 || vals[0] == "" {
+		return fallback, true
+	}
+	v, err := strconv.Atoi(vals[0])
+	if err != nil || v < 0 {
+		respondError(w, http.StatusBadRequest, "invalid "+key)
+		return 0, false
+	}
+	return v, true
 }

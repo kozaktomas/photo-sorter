@@ -191,6 +191,31 @@ type TextCheckKey struct {
 	Field      string
 }
 
+// AlbumReader provides read-only access to native albums and their
+// photo membership rows. Single-row lookups return ErrNotFound when the
+// record is missing.
+type AlbumReader interface {
+	GetAlbum(ctx context.Context, uid string) (*Album, error)
+	GetAlbumBySlug(ctx context.Context, slug string) (*Album, error)
+	ListAlbums(ctx context.Context, q AlbumQuery) ([]Album, error)
+	ListAlbumPhotoUIDs(ctx context.Context, albumUID string) ([]string, error)
+	ListAlbumsForPhoto(ctx context.Context, photoUID string) ([]Album, error)
+}
+
+// AlbumWriter provides write access to native albums. CreateAlbum generates
+// the UID and slug if either is empty; UpdateAlbum overwrites all editable
+// columns of the row identified by Album.UID.
+type AlbumWriter interface {
+	AlbumReader
+
+	CreateAlbum(ctx context.Context, a *Album) error
+	UpdateAlbum(ctx context.Context, a *Album) error
+	DeleteAlbum(ctx context.Context, uid string) error
+	AddPhotos(ctx context.Context, albumUID string, photoUIDs []string) error
+	RemovePhotos(ctx context.Context, albumUID string, photoUIDs []string) error
+	SetCoverPhoto(ctx context.Context, albumUID, photoUID string) error
+}
+
 // PhotoReader provides read-only access to native photos and their physical
 // files. Single-row lookups return ErrNotFound when the record is missing.
 type PhotoReader interface {

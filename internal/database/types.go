@@ -335,6 +335,48 @@ type PhotoFilter struct {
 	Offset      int
 }
 
+// Album is a curated or auto-generated grouping of photos. Mirrors the
+// columns of the albums table introduced in migration 032. PhotoCount is
+// computed at query time (it is not a stored column).
+type Album struct {
+	UID           string
+	Slug          string
+	Title         string
+	Description   string
+	Type          string // album / folder / moment / state / month
+	CoverPhotoUID string
+	Favorite      bool
+	Private       bool
+	OrderBy       string
+	CreatedBy     string
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+	PhotoCount    int
+}
+
+// AlbumPhoto is a single row of the album_photos junction table. SortOrder
+// gives the explicit ordering of photos within the album.
+type AlbumPhoto struct {
+	AlbumUID  string
+	PhotoUID  string
+	SortOrder int
+	AddedAt   time.Time
+}
+
+// AlbumQuery holds optional filter and pagination criteria for AlbumReader.ListAlbums.
+type AlbumQuery struct {
+	Type     string
+	Favorite *bool
+	Search   string
+	SortBy   string // "title" / "newest" / "oldest" / "photos"
+	Limit    int
+	Offset   int
+}
+
+// ErrAlbumPhotoNotInAlbum is returned by AlbumWriter.SetCoverPhoto when the
+// caller tries to set a cover photo that is not a member of the album.
+var ErrAlbumPhotoNotInAlbum = errors.New("photo is not in album")
+
 // PageFormatSlotCount returns the number of slots for a given page format.
 func PageFormatSlotCount(format string) int {
 	switch format {

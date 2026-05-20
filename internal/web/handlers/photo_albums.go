@@ -1,12 +1,10 @@
 package handlers
 
 import (
+	"log"
 	"net/http"
-	"sync"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/kozaktomas/photo-sorter/internal/photoprism"
-	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
 
 // AlbumMembershipResponse represents an album that contains a given photo.
@@ -16,59 +14,34 @@ type AlbumMembershipResponse struct {
 	PhotoCount int    `json:"photo_count"`
 }
 
-// GetPhotoAlbums handles GET /api/v1/photos/:uid/albums.
-// Returns the list of albums that contain the given photo.
+// GetPhotoAlbums handles GET /api/v1/photos/:uid/albums. It returns the
+// list of albums that contain the given photo using a single indexed
+// lookup against the native album_photos table.
 func (h *AlbumsHandler) GetPhotoAlbums(w http.ResponseWriter, r *http.Request) {
 	photoUID := chi.URLParam(r, "uid")
 	if photoUID == "" {
 		respondError(w, http.StatusBadRequest, "missing photo UID")
 		return
 	}
-
-	pp := middleware.MustGetPhotoPrism(r.Context(), w)
-	if pp == nil {
+	repo := h.requireAlbumWriter(w)
+	if repo == nil {
 		return
 	}
 
-	albums, err := pp.GetAlbums(500, 0, "", "", "album")
+	albums, err := repo.ListAlbumsForPhoto(r.Context(), photoUID)
 	if err != nil {
+		log.Printf("photo albums %s: %v", sanitizeForLog(photoUID), err)
 		respondError(w, http.StatusInternalServerError, "failed to get albums")
 		return
 	}
 
-	// Check each album concurrently.
-	type hit struct {
-		album photoprism.Album
-		found bool
+	result := make([]AlbumMembershipResponse, 0, len(albums))
+	for _, a := range albums {
+		result = append(result, AlbumMembershipResponse{
+			UID:        a.UID,
+			Title:      a.Title,
+			PhotoCount: a.PhotoCount,
+		})
 	}
-	hits := make([]hit, len(albums))
-
-	var wg sync.WaitGroup
-	sem := make(chan struct{}, 10) // limit concurrency
-	for i, a := range albums {
-		wg.Add(1)
-		go func(idx int, album photoprism.Album) {
-			defer wg.Done()
-			sem <- struct{}{}
-			defer func() { <-sem }()
-			found, err := pp.IsPhotoInAlbum(photoUID, album.UID)
-			if err == nil && found {
-				hits[idx] = hit{album: album, found: true}
-			}
-		}(i, a)
-	}
-	wg.Wait()
-
-	result := make([]AlbumMembershipResponse, 0)
-	for _, h := range hits {
-		if h.found {
-			result = append(result, AlbumMembershipResponse{
-				UID:        h.album.UID,
-				Title:      h.album.Title,
-				PhotoCount: h.album.PhotoCount,
-			})
-		}
-	}
-
 	respondJSON(w, http.StatusOK, result)
 }
