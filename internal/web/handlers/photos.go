@@ -29,36 +29,37 @@ import (
 
 // PhotosHandler handles photo-related endpoints.
 //
-// The native GET endpoints (List, Get, Thumbnail, Download) read from the
-// local Postgres photos table and the on-disk storage tree; they no longer
-// proxy to PhotoPrism. The remaining endpoints (face/album/label batch ops,
-// similarity, era estimation, etc.) still rely on the PhotoPrism client
-// injected per request via middleware.MustGetPhotoPrism — they will be
-// migrated in follow-up tasks.
+// The native endpoints (List, Get, Thumbnail, Download, Update, BatchEdit,
+// BatchArchive, BatchRestore) read and write the local Postgres photos
+// table plus the on-disk storage tree; they no longer proxy to PhotoPrism.
+// The remaining endpoints (face/album/label batch ops, similarity, era
+// estimation, etc.) still rely on the PhotoPrism client injected per
+// request via middleware.MustGetPhotoPrism — they will be migrated in
+// follow-up tasks.
 type PhotosHandler struct {
 	config          *config.Config
 	sessionManager  *middleware.SessionManager
 	embeddingReader database.EmbeddingReader
 
-	// reader serves the native photos table for GET endpoints. May be nil
-	// in tests that do not exercise the native paths.
-	reader database.PhotoReader
+	// repo serves the native photos table for both GET and write endpoints.
+	// May be nil in tests that do not exercise the native paths.
+	repo database.PhotoWriter
 	// store backs file-streaming endpoints (thumbnails, downloads). May be
 	// nil in tests that do not exercise the file-streaming paths.
 	store *storage.Storage
 }
 
-// NewPhotosHandler creates a new photos handler. reader and store back the
-// native GET endpoints (photos list/get/thumb/download) and may be nil in
+// NewPhotosHandler creates a new photos handler. repo and store back the
+// native endpoints (list/get/thumb/download/update/batch) and may be nil in
 // environments where those paths are unused.
 func NewPhotosHandler(
 	cfg *config.Config, sm *middleware.SessionManager,
-	reader database.PhotoReader, store *storage.Storage,
+	repo database.PhotoWriter, store *storage.Storage,
 ) *PhotosHandler {
 	h := &PhotosHandler{
 		config:         cfg,
 		sessionManager: sm,
-		reader:         reader,
+		repo:           repo,
 		store:          store,
 	}
 
@@ -103,8 +104,18 @@ type PhotoListResponse struct {
 // requirePhotoReader returns the configured PhotoReader; on missing
 // configuration it writes a 503 error response and returns nil.
 func (h *PhotosHandler) requirePhotoReader(w http.ResponseWriter) database.PhotoReader {
-	if h.reader != nil {
-		return h.reader
+	if h.repo != nil {
+		return h.repo
+	}
+	respondError(w, http.StatusServiceUnavailable, "photo storage not available")
+	return nil
+}
+
+// requirePhotoWriter returns the configured PhotoWriter; on missing
+// configuration it writes a 503 error response and returns nil.
+func (h *PhotosHandler) requirePhotoWriter(w http.ResponseWriter) database.PhotoWriter {
+	if h.repo != nil {
+		return h.repo
 	}
 	respondError(w, http.StatusServiceUnavailable, "photo storage not available")
 	return nil
@@ -380,18 +391,180 @@ func (h *PhotosHandler) Get(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, nativePhotoToResponse(*photo))
 }
 
-// UpdateRequest represents a photo update request.
-type UpdateRequest struct {
-	Title       *string  `json:"title,omitempty"`
-	Description *string  `json:"description,omitempty"`
-	TakenAt     *string  `json:"taken_at,omitempty"`
-	Lat         *float64 `json:"lat,omitempty"`
-	Lng         *float64 `json:"lng,omitempty"`
-	Favorite    *bool    `json:"favorite,omitempty"`
-	Private     *bool    `json:"private,omitempty"`
+// photoUpdateFields holds the parsed + validated update payload. Only the
+// fields whose corresponding JSON key was present in the request are
+// non-nil. Zero-value pointers (e.g. *string == "") are intentional empty
+// strings, not "unset".
+type photoUpdateFields struct {
+	title       *string
+	description *string
+	notes       *string
+	takenAt     *time.Time
+	lat         *float64
+	lng         *float64
+	favorite    *bool
+	private     *bool
 }
 
-// Update updates a photo.
+// titleMaxLen caps the title field. Mirrors the PhotoPrism title column.
+const titleMaxLen = 255
+
+// minTakenYear / maxTakenYear bound taken_at to a plausible photographic
+// range; values outside the window almost always indicate a parsing bug
+// rather than a legitimate vintage photograph.
+const (
+	minTakenYear = 1900
+	maxTakenYear = 2100
+)
+
+// parsePhotoUpdate decodes the JSON body into a map first so we can tell
+// "key omitted" from "key set to a zero value". A bare numeric zero in
+// lat/lng or empty string title is preserved as an intentional update.
+func parsePhotoUpdate(r *http.Request) (photoUpdateFields, string) {
+	var raw map[string]json.RawMessage
+	if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
+		return photoUpdateFields{}, errInvalidRequestBody
+	}
+	out, msg := decodePhotoUpdateFields(raw)
+	if msg != "" {
+		return out, msg
+	}
+	if out.title != nil && len(*out.title) > titleMaxLen {
+		return out, "title too long"
+	}
+	return out, ""
+}
+
+// decodePhotoUpdateFields fans out per-field decoding so parsePhotoUpdate
+// stays under the cyclomatic-complexity limit.
+func decodePhotoUpdateFields(raw map[string]json.RawMessage) (photoUpdateFields, string) {
+	var out photoUpdateFields
+	steps := []func() string{
+		func() string { return decodeStringField(raw, "title", &out.title) },
+		func() string { return decodeStringField(raw, "description", &out.description) },
+		func() string { return decodeStringField(raw, "notes", &out.notes) },
+		func() string { return decodeTakenAt(raw, &out.takenAt) },
+		func() string { return decodeLatLng(raw, &out.lat, &out.lng) },
+		func() string { return decodeBoolField(raw, "favorite", &out.favorite) },
+		func() string { return decodeBoolField(raw, "private", &out.private) },
+	}
+	for _, step := range steps {
+		if msg := step(); msg != "" {
+			return out, msg
+		}
+	}
+	return out, ""
+}
+
+// decodeStringField copies raw[key] into *dest when present.
+func decodeStringField(raw map[string]json.RawMessage, key string, dest **string) string {
+	v, ok := raw[key]
+	if !ok {
+		return ""
+	}
+	var s string
+	if err := json.Unmarshal(v, &s); err != nil {
+		return "invalid " + key
+	}
+	*dest = &s
+	return ""
+}
+
+// decodeBoolField copies raw[key] into *dest when present.
+func decodeBoolField(raw map[string]json.RawMessage, key string, dest **bool) string {
+	v, ok := raw[key]
+	if !ok {
+		return ""
+	}
+	var b bool
+	if err := json.Unmarshal(v, &b); err != nil {
+		return "invalid " + key
+	}
+	*dest = &b
+	return ""
+}
+
+// decodeTakenAt parses an RFC3339 timestamp and enforces the [minTakenYear,
+// maxTakenYear] window.
+func decodeTakenAt(raw map[string]json.RawMessage, dest **time.Time) string {
+	v, ok := raw["taken_at"]
+	if !ok {
+		return ""
+	}
+	var s string
+	if err := json.Unmarshal(v, &s); err != nil {
+		return "invalid taken_at"
+	}
+	t, err := time.Parse(time.RFC3339, s)
+	if err != nil {
+		return "invalid taken_at"
+	}
+	if t.Year() < minTakenYear || t.Year() > maxTakenYear {
+		return "taken_at out of range"
+	}
+	*dest = &t
+	return ""
+}
+
+// decodeLatLng requires lat and lng to be supplied together and enforces
+// the geodetic ranges.
+func decodeLatLng(raw map[string]json.RawMessage, latDest, lngDest **float64) string {
+	latRaw, latOK := raw["lat"]
+	lngRaw, lngOK := raw["lng"]
+	if !latOK && !lngOK {
+		return ""
+	}
+	if latOK != lngOK {
+		return "lat and lng must be provided together"
+	}
+	var lat, lng float64
+	if err := json.Unmarshal(latRaw, &lat); err != nil {
+		return "invalid lat"
+	}
+	if err := json.Unmarshal(lngRaw, &lng); err != nil {
+		return "invalid lng"
+	}
+	if lat < -90 || lat > 90 {
+		return "lat out of range"
+	}
+	if lng < -180 || lng > 180 {
+		return "lng out of range"
+	}
+	*latDest = &lat
+	*lngDest = &lng
+	return ""
+}
+
+// applyPhotoUpdate mutates the given photo with the supplied fields.
+func applyPhotoUpdate(p *database.Photo, f photoUpdateFields) {
+	if f.title != nil {
+		p.Title = *f.title
+	}
+	if f.description != nil {
+		p.Description = *f.description
+	}
+	if f.notes != nil {
+		p.Notes = *f.notes
+	}
+	if f.takenAt != nil {
+		t := *f.takenAt
+		p.TakenAt = &t
+	}
+	if f.lat != nil && f.lng != nil {
+		lat, lng := *f.lat, *f.lng
+		p.Lat, p.Lng = &lat, &lng
+	}
+	if f.favorite != nil {
+		p.Favorite = *f.favorite
+	}
+	if f.private != nil {
+		p.Private = *f.private
+	}
+}
+
+// Update mutates a photo row in the native photos table. Only keys present
+// in the JSON body are written; zero-valued keys (e.g. "title": "") are
+// honored, but omitted keys leave the existing value alone.
 func (h *PhotosHandler) Update(w http.ResponseWriter, r *http.Request) {
 	uid := chi.URLParam(r, "uid")
 	if uid == "" {
@@ -399,34 +572,50 @@ func (h *PhotosHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var req UpdateRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "write access required")
 		return
 	}
 
-	pp := middleware.MustGetPhotoPrism(r.Context(), w)
-	if pp == nil {
+	fields, errMsg := parsePhotoUpdate(r)
+	if errMsg != "" {
+		respondError(w, http.StatusBadRequest, errMsg)
 		return
 	}
 
-	update := photoprism.PhotoUpdate{
-		Title:       req.Title,
-		Description: req.Description,
-		TakenAt:     req.TakenAt,
-		Lat:         req.Lat,
-		Lng:         req.Lng,
-		Favorite:    req.Favorite,
-		Private:     req.Private,
+	writer := h.requirePhotoWriter(w)
+	if writer == nil {
+		return
 	}
 
-	photo, err := pp.EditPhoto(uid, update)
+	photo, err := writer.GetPhoto(r.Context(), uid)
+	if errors.Is(err, database.ErrNotFound) {
+		respondError(w, http.StatusNotFound, "photo not found")
+		return
+	}
 	if err != nil {
+		log.Printf("photos update get %s: %v", sanitizeForLog(uid), err)
+		respondError(w, http.StatusInternalServerError, "failed to get photo")
+		return
+	}
+	if photo.ArchivedAt != nil {
+		respondError(w, http.StatusNotFound, "photo not found")
+		return
+	}
+
+	applyPhotoUpdate(photo, fields)
+
+	if updateErr := writer.UpdatePhoto(r.Context(), photo); updateErr != nil {
+		if errors.Is(updateErr, database.ErrNotFound) {
+			respondError(w, http.StatusNotFound, "photo not found")
+			return
+		}
+		log.Printf("photos update %s: %v", sanitizeForLog(uid), updateErr)
 		respondError(w, http.StatusInternalServerError, "failed to update photo")
 		return
 	}
 
-	respondJSON(w, http.StatusOK, photoToResponse(*photo))
+	respondJSON(w, http.StatusOK, nativePhotoToResponse(*photo))
 }
 
 // Thumbnail streams a cached thumbnail from the on-disk thumb tree. A
@@ -681,30 +870,73 @@ type BatchArchiveRequest struct {
 	PhotoUIDs []string `json:"photo_uids"`
 }
 
-// BatchArchive archives (soft-deletes) multiple photos.
+// BatchPhotoError captures a per-photo failure inside a batch response.
+type BatchPhotoError struct {
+	PhotoUID string `json:"photo_uid"`
+	Error    string `json:"error"`
+}
+
+// BatchResponse is the envelope shared by archive / restore / edit batch
+// operations. Per-photo failures are surfaced via Errors while still
+// allowing the operation to make progress for the rest of the batch.
+type BatchResponse struct {
+	Updated int               `json:"updated"`
+	Errors  []BatchPhotoError `json:"errors,omitempty"`
+}
+
+// BatchArchive archives (soft-deletes) multiple photos via the native
+// PhotoWriter. Per-photo errors are reported but do not abort the batch.
 func (h *PhotosHandler) BatchArchive(w http.ResponseWriter, r *http.Request) {
+	h.runBatchUIDOp(w, r, "archive", func(ctx context.Context, writer database.PhotoWriter, uid string) error {
+		return writer.ArchivePhoto(ctx, uid)
+	})
+}
+
+// BatchRestore clears archived_at for multiple photos. Mirror of
+// BatchArchive with identical response shape.
+func (h *PhotosHandler) BatchRestore(w http.ResponseWriter, r *http.Request) {
+	h.runBatchUIDOp(w, r, "restore", func(ctx context.Context, writer database.PhotoWriter, uid string) error {
+		return writer.RestorePhoto(ctx, uid)
+	})
+}
+
+// runBatchUIDOp decodes the standard {photo_uids:[...]} payload, enforces
+// auth + non-empty list, and dispatches op once per UID. Per-photo errors
+// (including database.ErrNotFound) are collected into the response rather
+// than aborting the batch.
+func (h *PhotosHandler) runBatchUIDOp(
+	w http.ResponseWriter, r *http.Request, label string,
+	op func(ctx context.Context, writer database.PhotoWriter, uid string) error,
+) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "write access required")
+		return
+	}
 	var req BatchArchiveRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return
 	}
-
 	if len(req.PhotoUIDs) == 0 {
 		respondError(w, http.StatusBadRequest, "photo_uids is required")
 		return
 	}
-
-	pp := middleware.MustGetPhotoPrism(r.Context(), w)
-	if pp == nil {
+	writer := h.requirePhotoWriter(w)
+	if writer == nil {
 		return
 	}
 
-	if err := pp.ArchivePhotos(req.PhotoUIDs); err != nil {
-		respondError(w, http.StatusInternalServerError, "failed to archive photos")
-		return
+	var batchErrors []BatchPhotoError
+	updated := 0
+	for _, uid := range req.PhotoUIDs {
+		if err := op(r.Context(), writer, uid); err != nil {
+			batchErrors = append(batchErrors, BatchPhotoError{PhotoUID: uid, Error: err.Error()})
+			log.Printf("photos batch %s %s: %v", label, sanitizeForLog(uid), err)
+			continue
+		}
+		updated++
 	}
-
-	respondJSON(w, http.StatusOK, map[string]int{"archived": len(req.PhotoUIDs)})
+	respondJSON(w, http.StatusOK, BatchResponse{Updated: updated, Errors: batchErrors})
 }
 
 // SimilarRequest represents a similar photos search request.
@@ -1212,55 +1444,63 @@ type BatchEditRequest struct {
 	Private   *bool    `json:"private,omitempty"`
 }
 
-// BatchEditResponse represents the response from batch editing photos.
-type BatchEditResponse struct {
-	Updated int      `json:"updated"`
-	Errors  []string `json:"errors,omitempty"`
-}
-
-// BatchEdit edits multiple photos at once (favorite, private).
+// BatchEdit toggles favorite / private on multiple photos via the native
+// PhotoWriter. Per-photo errors are reported but do not abort the batch.
 func (h *PhotosHandler) BatchEdit(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "write access required")
+		return
+	}
 	var req BatchEditRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return
 	}
-
 	if len(req.PhotoUIDs) == 0 {
 		respondError(w, http.StatusBadRequest, "photo_uids is required")
 		return
 	}
-
 	if req.Favorite == nil && req.Private == nil {
 		respondError(w, http.StatusBadRequest, "at least one field (favorite, private) is required")
 		return
 	}
-
-	pp := middleware.MustGetPhotoPrism(r.Context(), w)
-	if pp == nil {
+	writer := h.requirePhotoWriter(w)
+	if writer == nil {
 		return
 	}
 
-	var errors []string
+	var batchErrors []BatchPhotoError
 	updated := 0
-
-	for _, photoUID := range req.PhotoUIDs {
-		update := photoprism.PhotoUpdate{
-			Favorite: req.Favorite,
-			Private:  req.Private,
+	for _, uid := range req.PhotoUIDs {
+		if err := h.applyBatchEdit(r.Context(), writer, uid, req.Favorite, req.Private); err != nil {
+			batchErrors = append(batchErrors, BatchPhotoError{PhotoUID: uid, Error: err.Error()})
+			log.Printf("photos batch edit %s: %v", sanitizeForLog(uid), err)
+			continue
 		}
-		_, err := pp.EditPhoto(photoUID, update)
-		if err != nil {
-			errors = append(errors, photoUID+": "+err.Error())
-		} else {
-			updated++
-		}
+		updated++
 	}
+	respondJSON(w, http.StatusOK, BatchResponse{Updated: updated, Errors: batchErrors})
+}
 
-	respondJSON(w, http.StatusOK, BatchEditResponse{
-		Updated: updated,
-		Errors:  errors,
-	})
+// applyBatchEdit applies favorite/private flips for one photo and writes
+// it back. Loads the row first so the writer never clears unrelated fields.
+func (h *PhotosHandler) applyBatchEdit(
+	ctx context.Context, writer database.PhotoWriter, uid string, favorite, private *bool,
+) error {
+	photo, err := writer.GetPhoto(ctx, uid)
+	if err != nil {
+		return fmt.Errorf("get photo: %w", err)
+	}
+	if favorite != nil {
+		photo.Favorite = *favorite
+	}
+	if private != nil {
+		photo.Private = *private
+	}
+	if err := writer.UpdatePhoto(ctx, photo); err != nil {
+		return fmt.Errorf("update photo: %w", err)
+	}
+	return nil
 }
 
 // DuplicatesRequest represents a request to find duplicate photos.

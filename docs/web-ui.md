@@ -704,6 +704,7 @@ The Web UI communicates with these backend endpoints:
 | POST | `/api/v1/photos/batch/edit` | Batch edit photos (favorite, private) |
 | POST | `/api/v1/photos/duplicates` | Find near-duplicate photos |
 | POST | `/api/v1/photos/batch/archive` | Archive (soft-delete) photos |
+| POST | `/api/v1/photos/batch/restore` | Restore (un-archive) photos |
 | POST | `/api/v1/photos/suggest-albums` | Album completion — find missing photos for existing albums |
 | DELETE | `/api/v1/albums/:uid/photos/batch` | Remove specific photos from album |
 | GET | `/api/v1/books` | List all photo books |
@@ -751,6 +752,7 @@ The Web UI communicates with these backend endpoints:
 | POST | `/api/v1/process/sync-cache` | Sync face cache from PhotoPrism |
 | POST | `/api/v1/photos/batch/edit` | Batch edit photos (favorite, private) |
 | POST | `/api/v1/photos/batch/archive` | Batch archive photos |
+| POST | `/api/v1/photos/batch/restore` | Batch restore (un-archive) photos |
 | DELETE | `/api/v1/albums/:uid/photos/batch` | Remove specific photos from album |
 
 ## Frontend Architecture

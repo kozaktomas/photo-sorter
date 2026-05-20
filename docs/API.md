@@ -359,11 +359,18 @@ GET /photos/{uid}
 PUT /photos/{uid}
 ```
 
+Mutates the photo row in the native `photos` table. Only keys present in
+the JSON body are written; omitted keys leave their current values
+untouched. Zero values are honored (`"title": ""` clears the title).
+Sessions with `role = "viewer"` get `403 Forbidden`. Archived photos
+return `404 Not Found`.
+
 **Request:** All fields optional
 ```json
 {
   "title": "Updated Title",
   "description": "Updated description",
+  "notes": "Annotation",
   "taken_at": "2024-07-15T19:30:00Z",
   "lat": 43.7696,
   "lng": 11.2558,
@@ -372,7 +379,12 @@ PUT /photos/{uid}
 }
 ```
 
-**Response (200):** Updated photo object
+**Validation:**
+- `title` — at most 255 characters.
+- `taken_at` — RFC3339 timestamp with year between 1900 and 2100.
+- `lat` / `lng` — must be provided together; lat ∈ [-90, 90], lng ∈ [-180, 180].
+
+**Response (200):** Updated photo object.
 
 ### Get Photo Thumbnail
 
@@ -445,7 +457,9 @@ POST /photos/batch/labels
 
 ### Batch Edit Photos
 
-Batch update photo metadata (favorite, private flags).
+Batch update photo metadata (favorite, private flags) via the native
+photos table. Per-photo failures are reported in `errors[]` but do not
+abort the batch.
 
 ```
 POST /photos/batch/edit
@@ -466,19 +480,23 @@ POST /photos/batch/edit
 | `favorite` | boolean | No | Set favorite flag |
 | `private` | boolean | No | Set private flag |
 
-At least one of `favorite` or `private` must be provided.
+At least one of `favorite` or `private` must be provided. Sessions with
+`role = "viewer"` get `403 Forbidden`.
 
 **Response (200):**
 ```json
 {
-  "updated": 2,
-  "errors": []
+  "updated": 1,
+  "errors": [
+    { "photo_uid": "missing", "error": "not found" }
+  ]
 }
 ```
 
 ### Batch Archive Photos
 
-Archive (soft-delete) multiple photos.
+Archive (soft-delete) multiple photos via the native photo writer. Per-
+photo failures are reported in `errors[]`.
 
 ```
 POST /photos/batch/archive
@@ -494,7 +512,31 @@ POST /photos/batch/archive
 **Response (200):**
 ```json
 {
-  "archived": 2
+  "updated": 2,
+  "errors": []
+}
+```
+
+### Batch Restore Photos
+
+Restore (un-archive) multiple photos. Mirrors batch archive.
+
+```
+POST /photos/batch/restore
+```
+
+**Request:**
+```json
+{
+  "photo_uids": ["pq8abc123", "pq8def456"]
+}
+```
+
+**Response (200):**
+```json
+{
+  "updated": 2,
+  "errors": []
 }
 ```
 

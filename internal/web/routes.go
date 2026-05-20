@@ -17,17 +17,17 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/web/static"
 )
 
-// resolveNativePhotoBackends best-effort-fetches the native PhotoReader and
+// resolveNativePhotoBackends best-effort-fetches the native PhotoWriter and
 // constructs an on-disk Storage. Both are optional during the PhotoPrism
-// migration: when either is unavailable, the native GET endpoints return
-// 503 while the PhotoPrism-backed endpoints (faces, similarity, etc.) keep
+// migration: when either is unavailable, the native endpoints return 503
+// while the PhotoPrism-backed endpoints (faces, similarity, etc.) keep
 // working. Failures are logged but never block server startup.
-func (s *Server) resolveNativePhotoBackends() (database.PhotoReader, *storage.Storage) {
-	var reader database.PhotoReader
-	if r, err := database.GetPhotoReader(context.Background()); err == nil {
-		reader = r
+func (s *Server) resolveNativePhotoBackends() (database.PhotoWriter, *storage.Storage) {
+	var repo database.PhotoWriter
+	if r, err := database.GetPhotoWriter(context.Background()); err == nil {
+		repo = r
 	} else {
-		log.Printf("photos: native reader unavailable: %v", err)
+		log.Printf("photos: native repo unavailable: %v", err)
 	}
 
 	var store *storage.Storage
@@ -37,7 +37,7 @@ func (s *Server) resolveNativePhotoBackends() (database.PhotoReader, *storage.St
 	} else {
 		store = st
 	}
-	return reader, store
+	return repo, store
 }
 
 //nolint:funlen // Route registration is inherently long.
@@ -45,13 +45,13 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 	// Resolve native photo backends. Both are optional in the transitional
 	// state: when PhotoReader/Storage are unavailable, the native GET
 	// endpoints return 503 while PhotoPrism-backed endpoints keep working.
-	photoReader, photoStore := s.resolveNativePhotoBackends()
+	photoRepo, photoStore := s.resolveNativePhotoBackends()
 
 	// Create handlers.
 	authHandler := handlers.NewAuthHandler(s.config, sessionManager)
 	albumsHandler := handlers.NewAlbumsHandler(s.config, sessionManager)
 	labelsHandler := handlers.NewLabelsHandler(s.config, sessionManager)
-	photosHandler := handlers.NewPhotosHandler(s.config, sessionManager, photoReader, photoStore)
+	photosHandler := handlers.NewPhotosHandler(s.config, sessionManager, photoRepo, photoStore)
 	sortHandler := handlers.NewSortHandler(s.config, sessionManager, s.jobManager)
 	configHandler := handlers.NewConfigHandler(s.config)
 	facesHandler := handlers.NewFacesHandler(s.config, sessionManager)
@@ -116,6 +116,7 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 				r.Post("/photos/batch/labels", photosHandler.BatchAddLabels)
 				r.Post("/photos/batch/edit", photosHandler.BatchEdit)
 				r.Post("/photos/batch/archive", photosHandler.BatchArchive)
+				r.Post("/photos/batch/restore", photosHandler.BatchRestore)
 				r.Post("/photos/duplicates", photosHandler.FindDuplicates)
 				r.Post("/photos/suggest-albums", photosHandler.SuggestAlbums)
 				r.Post("/photos/search-by-text", photosHandler.SearchByText)

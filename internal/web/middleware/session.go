@@ -22,11 +22,17 @@ const (
 )
 
 // Session represents a user session.
+//
+// Role drives write-access checks (see handlers.requireWriteRole). It is
+// populated against the future native users table; until that lands the
+// field is empty, which the helper treats as the admin role for
+// backwards compatibility.
 type Session struct {
 	ID            string    `json:"id"`
 	Token         string    `json:"token"`          // PhotoPrism access token
 	DownloadToken string    `json:"download_token"` // PhotoPrism download token
 	UserUID       string    `json:"user_uid"`       // PhotoPrism user UID (for uploads)
+	Role          string    `json:"role,omitempty"` // admin / editor / viewer (empty == admin)
 	CreatedAt     time.Time `json:"created_at"`
 	ExpiresAt     time.Time `json:"expires_at"`
 }

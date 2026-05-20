@@ -3,7 +3,6 @@ package handlers
 import (
 	"bytes"
 	"context"
-	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -113,6 +112,107 @@ func (f *fakePhotoReader) ListPhotoFiles(
 	return out, nil
 }
 
+// CreatePhoto inserts a photo. Stub for PhotoWriter interface compliance.
+func (f *fakePhotoReader) CreatePhoto(_ context.Context, p *database.Photo) error {
+	if f.err != nil {
+		return f.err
+	}
+	cp := *p
+	now := time.Now()
+	cp.CreatedAt = now
+	cp.UpdatedAt = now
+	f.photos[p.UID] = &cp
+	p.CreatedAt = now
+	p.UpdatedAt = now
+	return nil
+}
+
+// UpdatePhoto overwrites the stored photo. Returns database.ErrNotFound
+// when no photo with the supplied UID exists.
+func (f *fakePhotoReader) UpdatePhoto(_ context.Context, p *database.Photo) error {
+	if f.err != nil {
+		return f.err
+	}
+	if _, ok := f.photos[p.UID]; !ok {
+		return database.ErrNotFound
+	}
+	cp := *p
+	cp.UpdatedAt = time.Now()
+	f.photos[p.UID] = &cp
+	p.UpdatedAt = cp.UpdatedAt
+	return nil
+}
+
+// DeletePhoto removes the photo row. Returns database.ErrNotFound when no
+// photo with the supplied UID exists.
+func (f *fakePhotoReader) DeletePhoto(_ context.Context, uid string) error {
+	if f.err != nil {
+		return f.err
+	}
+	if _, ok := f.photos[uid]; !ok {
+		return database.ErrNotFound
+	}
+	delete(f.photos, uid)
+	delete(f.files, uid)
+	return nil
+}
+
+// ArchivePhoto sets archived_at on the stored photo. Returns
+// database.ErrNotFound when no photo with the supplied UID exists.
+func (f *fakePhotoReader) ArchivePhoto(_ context.Context, uid string) error {
+	if f.err != nil {
+		return f.err
+	}
+	p, ok := f.photos[uid]
+	if !ok {
+		return database.ErrNotFound
+	}
+	now := time.Now()
+	p.ArchivedAt = &now
+	p.UpdatedAt = now
+	return nil
+}
+
+// RestorePhoto clears archived_at. Returns database.ErrNotFound when no
+// photo with the supplied UID exists.
+func (f *fakePhotoReader) RestorePhoto(_ context.Context, uid string) error {
+	if f.err != nil {
+		return f.err
+	}
+	p, ok := f.photos[uid]
+	if !ok {
+		return database.ErrNotFound
+	}
+	p.ArchivedAt = nil
+	p.UpdatedAt = time.Now()
+	return nil
+}
+
+// AddPhotoFile appends a file row. Stub for PhotoWriter interface compliance.
+func (f *fakePhotoReader) AddPhotoFile(_ context.Context, file *database.PhotoFile) error {
+	if f.err != nil {
+		return f.err
+	}
+	file.CreatedAt = time.Now()
+	f.files[file.PhotoUID] = append(f.files[file.PhotoUID], *file)
+	return nil
+}
+
+// DeletePhotoFile drops a file row by (photo_uid, file_path).
+func (f *fakePhotoReader) DeletePhotoFile(_ context.Context, photoUID, filePath string) error {
+	if f.err != nil {
+		return f.err
+	}
+	list := f.files[photoUID]
+	for i, file := range list {
+		if file.FilePath == filePath {
+			f.files[photoUID] = append(list[:i], list[i+1:]...)
+			return nil
+		}
+	}
+	return database.ErrNotFound
+}
+
 func fakePhotoMatches(p *database.Photo, filter database.PhotoFilter) bool {
 	// archived: nil/false -> exclude archived; true -> only archived.
 	if filter.Archived == nil || !*filter.Archived {
@@ -192,13 +292,13 @@ func createPhotosHandlerWithEmbeddings(cfg *config.Config, reader database.Embed
 }
 
 // createPhotosHandlerNative wires a PhotosHandler with the given native
-// reader and storage so the GET endpoints can be exercised end-to-end.
+// repo and storage so the native endpoints can be exercised end-to-end.
 func createPhotosHandlerNative(
-	cfg *config.Config, reader database.PhotoReader, store *storage.Storage,
+	cfg *config.Config, repo database.PhotoWriter, store *storage.Storage,
 ) *PhotosHandler {
 	return &PhotosHandler{
 		config: cfg,
-		reader: reader,
+		repo:   repo,
 		store:  store,
 	}
 }
@@ -454,79 +554,207 @@ func TestPhotosHandler_Get_ArchivedWithFlag(t *testing.T) {
 	}
 }
 
-func TestPhotosHandler_Update_Success(t *testing.T) {
-	server := setupMockPhotoPrismServer(t, map[string]http.HandlerFunc{
-		"/api/v1/photos/photo123": func(w http.ResponseWriter, r *http.Request) {
-			if r.Method != "PUT" {
-				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-				return
-			}
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]any{
-				"UID":         "photo123",
-				"Title":       "Updated Title",
-				"Description": "New description",
-				"Type":        "image",
-			})
-		},
-	})
-	defer server.Close()
-
-	pp := createPhotoPrismClient(t, server)
-	handler := createPhotosHandlerForTest(testConfig())
-
-	body := bytes.NewBufferString(`{"title": "Updated Title", "description": "New description"}`)
-	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/photos/photo123", body)
+// newUpdateRequest builds an authenticated PUT request for the Update
+// handler. The session is intentionally empty-role so requireWriteRole
+// admits the call.
+func newUpdateRequest(t *testing.T, uid, body string) *http.Request {
+	t.Helper()
+	req := httptest.NewRequestWithContext(
+		context.Background(), "PUT", "/api/v1/photos/"+uid, bytes.NewBufferString(body),
+	)
 	req.Header.Set("Content-Type", "application/json")
-	ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
-	req = req.WithContext(ctx)
-	req = requestWithChiParams(req, map[string]string{"uid": "photo123"})
+	return requestWithChiParams(req, map[string]string{"uid": uid})
+}
 
-	recorder := httptest.NewRecorder()
+func TestPhotosHandler_Update_PartialUpdate(t *testing.T) {
+	reader := newFakePhotoReader()
+	original := samplePhoto("photo123", "abc123456789", "Old Title", time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC))
+	original.Description = "Old description"
+	original.Notes = "Old notes"
+	fav := true
+	original.Favorite = fav
+	reader.add(original)
+	h := createPhotosHandlerNative(testConfig(), reader, newTestStorage(t))
 
-	handler.Update(recorder, req)
+	req := newUpdateRequest(t, "photo123", `{"title": "New Title", "favorite": false}`)
+	rec := httptest.NewRecorder()
+	h.Update(rec, req)
 
-	assertStatusCode(t, recorder, http.StatusOK)
-	assertContentType(t, recorder, "application/json")
+	assertStatusCode(t, rec, http.StatusOK)
+	assertContentType(t, rec, "application/json")
+	var p PhotoResponse
+	parseJSONResponse(t, rec, &p)
+	if p.Title != "New Title" {
+		t.Errorf("Title = %q, want %q", p.Title, "New Title")
+	}
+	if p.Description != "Old description" {
+		t.Errorf("Description = %q, want unchanged", p.Description)
+	}
+	if p.Favorite {
+		t.Errorf("Favorite = true, want false")
+	}
+	stored, _ := reader.GetPhoto(context.Background(), "photo123")
+	if stored.Notes != "Old notes" {
+		t.Errorf("Notes = %q, want unchanged 'Old notes'", stored.Notes)
+	}
+}
 
-	var photo PhotoResponse
-	parseJSONResponse(t, recorder, &photo)
+func TestPhotosHandler_Update_TakenAtAndLatLng(t *testing.T) {
+	reader := newFakePhotoReader()
+	reader.add(samplePhoto("photo123", "abc123456789", "p", time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC)))
+	h := createPhotosHandlerNative(testConfig(), reader, newTestStorage(t))
 
-	if photo.Title != "Updated Title" {
-		t.Errorf("expected title 'Updated Title', got '%s'", photo.Title)
+	body := `{"taken_at": "1995-08-12T10:00:00Z", "lat": 50.08, "lng": 14.43}`
+	req := newUpdateRequest(t, "photo123", body)
+	rec := httptest.NewRecorder()
+	h.Update(rec, req)
+
+	assertStatusCode(t, rec, http.StatusOK)
+	stored, _ := reader.GetPhoto(context.Background(), "photo123")
+	if stored.TakenAt == nil || stored.TakenAt.Year() != 1995 {
+		t.Errorf("TakenAt = %v, want 1995", stored.TakenAt)
+	}
+	if stored.Lat == nil || *stored.Lat != 50.08 {
+		t.Errorf("Lat = %v, want 50.08", stored.Lat)
+	}
+	if stored.Lng == nil || *stored.Lng != 14.43 {
+		t.Errorf("Lng = %v, want 14.43", stored.Lng)
 	}
 }
 
 func TestPhotosHandler_Update_MissingUID(t *testing.T) {
-	handler := createPhotosHandlerForTest(testConfig())
+	h := createPhotosHandlerNative(testConfig(), newFakePhotoReader(), newTestStorage(t))
 
 	body := bytes.NewBufferString(`{"title": "Updated"}`)
 	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/photos/", body)
 	req.Header.Set("Content-Type", "application/json")
 	req = requestWithChiParams(req, map[string]string{})
 
-	recorder := httptest.NewRecorder()
-
-	handler.Update(recorder, req)
-
-	assertStatusCode(t, recorder, http.StatusBadRequest)
-	assertJSONError(t, recorder, "missing photo UID")
+	rec := httptest.NewRecorder()
+	h.Update(rec, req)
+	assertStatusCode(t, rec, http.StatusBadRequest)
+	assertJSONError(t, rec, "missing photo UID")
 }
 
 func TestPhotosHandler_Update_InvalidJSON(t *testing.T) {
-	handler := createPhotosHandlerForTest(testConfig())
+	h := createPhotosHandlerNative(testConfig(), newFakePhotoReader(), newTestStorage(t))
 
-	body := bytes.NewBufferString(`{invalid json}`)
-	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/photos/photo123", body)
-	req.Header.Set("Content-Type", "application/json")
+	req := newUpdateRequest(t, "photo123", `{invalid json}`)
+	rec := httptest.NewRecorder()
+	h.Update(rec, req)
+	assertStatusCode(t, rec, http.StatusBadRequest)
+	assertJSONError(t, rec, "invalid request body")
+}
+
+func TestPhotosHandler_Update_BadTakenAt(t *testing.T) {
+	reader := newFakePhotoReader()
+	reader.add(samplePhoto("photo123", "abc123456789", "p", time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC)))
+	h := createPhotosHandlerNative(testConfig(), reader, newTestStorage(t))
+
+	tests := []struct {
+		name    string
+		body    string
+		wantMsg string
+	}{
+		{"unparseable", `{"taken_at": "not-a-date"}`, "invalid taken_at"},
+		{"too old", `{"taken_at": "1750-01-01T00:00:00Z"}`, "taken_at out of range"},
+		{"too new", `{"taken_at": "2200-01-01T00:00:00Z"}`, "taken_at out of range"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req := newUpdateRequest(t, "photo123", tc.body)
+			rec := httptest.NewRecorder()
+			h.Update(rec, req)
+			assertStatusCode(t, rec, http.StatusBadRequest)
+			assertJSONError(t, rec, tc.wantMsg)
+		})
+	}
+}
+
+func TestPhotosHandler_Update_BadLatLng(t *testing.T) {
+	reader := newFakePhotoReader()
+	reader.add(samplePhoto("photo123", "abc123456789", "p", time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC)))
+	h := createPhotosHandlerNative(testConfig(), reader, newTestStorage(t))
+
+	tests := []struct {
+		name    string
+		body    string
+		wantMsg string
+	}{
+		{"lat without lng", `{"lat": 50.0}`, "lat and lng must be provided together"},
+		{"lng without lat", `{"lng": 14.0}`, "lat and lng must be provided together"},
+		{"lat too high", `{"lat": 95.0, "lng": 14.0}`, "lat out of range"},
+		{"lng too low", `{"lat": 50.0, "lng": -200.0}`, "lng out of range"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			req := newUpdateRequest(t, "photo123", tc.body)
+			rec := httptest.NewRecorder()
+			h.Update(rec, req)
+			assertStatusCode(t, rec, http.StatusBadRequest)
+			assertJSONError(t, rec, tc.wantMsg)
+		})
+	}
+}
+
+func TestPhotosHandler_Update_TitleTooLong(t *testing.T) {
+	reader := newFakePhotoReader()
+	reader.add(samplePhoto("photo123", "abc123456789", "p", time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC)))
+	h := createPhotosHandlerNative(testConfig(), reader, newTestStorage(t))
+
+	longTitle := strings.Repeat("x", titleMaxLen+1)
+	body := `{"title": "` + longTitle + `"}`
+	req := newUpdateRequest(t, "photo123", body)
+	rec := httptest.NewRecorder()
+	h.Update(rec, req)
+	assertStatusCode(t, rec, http.StatusBadRequest)
+	assertJSONError(t, rec, "title too long")
+}
+
+func TestPhotosHandler_Update_NotFound(t *testing.T) {
+	h := createPhotosHandlerNative(testConfig(), newFakePhotoReader(), newTestStorage(t))
+	req := newUpdateRequest(t, "missing", `{"title": "x"}`)
+	rec := httptest.NewRecorder()
+	h.Update(rec, req)
+	assertStatusCode(t, rec, http.StatusNotFound)
+	assertJSONError(t, rec, "photo not found")
+}
+
+func TestPhotosHandler_Update_ArchivedNotFound(t *testing.T) {
+	reader := newFakePhotoReader()
+	p := samplePhoto("arch", "abc123456789", "p", time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC))
+	now := time.Now()
+	p.ArchivedAt = &now
+	reader.add(p)
+	h := createPhotosHandlerNative(testConfig(), reader, newTestStorage(t))
+
+	req := newUpdateRequest(t, "arch", `{"title": "x"}`)
+	rec := httptest.NewRecorder()
+	h.Update(rec, req)
+	assertStatusCode(t, rec, http.StatusNotFound)
+}
+
+func TestPhotosHandler_Update_NoRepo(t *testing.T) {
+	h := createPhotosHandlerForTest(testConfig())
+	req := newUpdateRequest(t, "photo123", `{"title": "x"}`)
+	rec := httptest.NewRecorder()
+	h.Update(rec, req)
+	assertStatusCode(t, rec, http.StatusServiceUnavailable)
+}
+
+func TestPhotosHandler_Update_ViewerForbidden(t *testing.T) {
+	reader := newFakePhotoReader()
+	reader.add(samplePhoto("photo123", "abc123456789", "p", time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC)))
+	h := createPhotosHandlerNative(testConfig(), reader, newTestStorage(t))
+
+	req := newUpdateRequest(t, "photo123", `{"title": "x"}`)
+	ctx := middleware.SetSessionInContext(req.Context(), &middleware.Session{Role: "viewer"})
+	req = req.WithContext(ctx)
 	req = requestWithChiParams(req, map[string]string{"uid": "photo123"})
 
-	recorder := httptest.NewRecorder()
-
-	handler.Update(recorder, req)
-
-	assertStatusCode(t, recorder, http.StatusBadRequest)
-	assertJSONError(t, recorder, "invalid request body")
+	rec := httptest.NewRecorder()
+	h.Update(rec, req)
+	assertStatusCode(t, rec, http.StatusForbidden)
 }
 
 func TestPhotosHandler_Thumbnail_Success(t *testing.T) {
@@ -989,4 +1217,153 @@ func TestPhotosHandler_FindSimilarToCollection_InvalidSourceType(t *testing.T) {
 
 	assertStatusCode(t, recorder, http.StatusBadRequest)
 	assertJSONError(t, recorder, "source_type must be 'label' or 'album'")
+}
+
+// newBatchRequest builds an authenticated POST request for the batch
+// handlers. The session is intentionally empty-role so requireWriteRole
+// admits the call.
+func newBatchRequest(t *testing.T, path, body string) *http.Request {
+	t.Helper()
+	req := httptest.NewRequestWithContext(
+		context.Background(), "POST", path, bytes.NewBufferString(body),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	return req
+}
+
+func TestPhotosHandler_BatchEdit_Success(t *testing.T) {
+	reader := newFakePhotoReader()
+	reader.add(samplePhoto("p1", "h1ffffffff00", "p1", time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)))
+	reader.add(samplePhoto("p2", "h2ffffffff00", "p2", time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)))
+	h := createPhotosHandlerNative(testConfig(), reader, newTestStorage(t))
+
+	req := newBatchRequest(t, "/api/v1/photos/batch/edit",
+		`{"photo_uids": ["p1", "p2", "missing"], "favorite": true}`)
+	rec := httptest.NewRecorder()
+	h.BatchEdit(rec, req)
+
+	assertStatusCode(t, rec, http.StatusOK)
+	var resp BatchResponse
+	parseJSONResponse(t, rec, &resp)
+	if resp.Updated != 2 {
+		t.Errorf("Updated = %d, want 2", resp.Updated)
+	}
+	if len(resp.Errors) != 1 || resp.Errors[0].PhotoUID != "missing" {
+		t.Errorf("Errors = %+v, want one entry for 'missing'", resp.Errors)
+	}
+	stored, _ := reader.GetPhoto(context.Background(), "p1")
+	if !stored.Favorite {
+		t.Errorf("p1 not flipped to favorite")
+	}
+}
+
+func TestPhotosHandler_BatchEdit_RequiresField(t *testing.T) {
+	h := createPhotosHandlerNative(testConfig(), newFakePhotoReader(), newTestStorage(t))
+	req := newBatchRequest(t, "/api/v1/photos/batch/edit", `{"photo_uids": ["p1"]}`)
+	rec := httptest.NewRecorder()
+	h.BatchEdit(rec, req)
+	assertStatusCode(t, rec, http.StatusBadRequest)
+	assertJSONError(t, rec, "at least one field (favorite, private) is required")
+}
+
+func TestPhotosHandler_BatchEdit_MissingUIDs(t *testing.T) {
+	h := createPhotosHandlerNative(testConfig(), newFakePhotoReader(), newTestStorage(t))
+	req := newBatchRequest(t, "/api/v1/photos/batch/edit", `{"favorite": true}`)
+	rec := httptest.NewRecorder()
+	h.BatchEdit(rec, req)
+	assertStatusCode(t, rec, http.StatusBadRequest)
+	assertJSONError(t, rec, "photo_uids is required")
+}
+
+func TestPhotosHandler_BatchEdit_ViewerForbidden(t *testing.T) {
+	h := createPhotosHandlerNative(testConfig(), newFakePhotoReader(), newTestStorage(t))
+	req := newBatchRequest(t, "/api/v1/photos/batch/edit",
+		`{"photo_uids": ["p1"], "favorite": true}`)
+	ctx := middleware.SetSessionInContext(req.Context(), &middleware.Session{Role: "viewer"})
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+	h.BatchEdit(rec, req)
+	assertStatusCode(t, rec, http.StatusForbidden)
+}
+
+func TestPhotosHandler_BatchArchiveRestore_Roundtrip(t *testing.T) {
+	reader := newFakePhotoReader()
+	reader.add(samplePhoto("p1", "h1ffffffff00", "p1", time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)))
+	reader.add(samplePhoto("p2", "h2ffffffff00", "p2", time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)))
+	h := createPhotosHandlerNative(testConfig(), reader, newTestStorage(t))
+
+	// Archive both.
+	req := newBatchRequest(t, "/api/v1/photos/batch/archive",
+		`{"photo_uids": ["p1", "p2"]}`)
+	rec := httptest.NewRecorder()
+	h.BatchArchive(rec, req)
+	assertStatusCode(t, rec, http.StatusOK)
+	var archResp BatchResponse
+	parseJSONResponse(t, rec, &archResp)
+	if archResp.Updated != 2 {
+		t.Fatalf("archive Updated = %d, want 2", archResp.Updated)
+	}
+	for _, uid := range []string{"p1", "p2"} {
+		stored, _ := reader.GetPhoto(context.Background(), uid)
+		if stored.ArchivedAt == nil {
+			t.Errorf("%s should be archived", uid)
+		}
+	}
+
+	// Restore them.
+	req = newBatchRequest(t, "/api/v1/photos/batch/restore",
+		`{"photo_uids": ["p1", "p2"]}`)
+	rec = httptest.NewRecorder()
+	h.BatchRestore(rec, req)
+	assertStatusCode(t, rec, http.StatusOK)
+	var restResp BatchResponse
+	parseJSONResponse(t, rec, &restResp)
+	if restResp.Updated != 2 {
+		t.Fatalf("restore Updated = %d, want 2", restResp.Updated)
+	}
+	for _, uid := range []string{"p1", "p2"} {
+		stored, _ := reader.GetPhoto(context.Background(), uid)
+		if stored.ArchivedAt != nil {
+			t.Errorf("%s should be restored", uid)
+		}
+	}
+}
+
+func TestPhotosHandler_BatchArchive_ContinuesOnError(t *testing.T) {
+	reader := newFakePhotoReader()
+	reader.add(samplePhoto("p1", "h1ffffffff00", "p1", time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)))
+	h := createPhotosHandlerNative(testConfig(), reader, newTestStorage(t))
+
+	req := newBatchRequest(t, "/api/v1/photos/batch/archive",
+		`{"photo_uids": ["p1", "missing", "alsoMissing"]}`)
+	rec := httptest.NewRecorder()
+	h.BatchArchive(rec, req)
+	assertStatusCode(t, rec, http.StatusOK)
+	var resp BatchResponse
+	parseJSONResponse(t, rec, &resp)
+	if resp.Updated != 1 {
+		t.Errorf("Updated = %d, want 1", resp.Updated)
+	}
+	if len(resp.Errors) != 2 {
+		t.Errorf("Errors length = %d, want 2", len(resp.Errors))
+	}
+}
+
+func TestPhotosHandler_BatchArchive_MissingUIDs(t *testing.T) {
+	h := createPhotosHandlerNative(testConfig(), newFakePhotoReader(), newTestStorage(t))
+	req := newBatchRequest(t, "/api/v1/photos/batch/archive", `{}`)
+	rec := httptest.NewRecorder()
+	h.BatchArchive(rec, req)
+	assertStatusCode(t, rec, http.StatusBadRequest)
+	assertJSONError(t, rec, "photo_uids is required")
+}
+
+func TestPhotosHandler_BatchRestore_ViewerForbidden(t *testing.T) {
+	h := createPhotosHandlerNative(testConfig(), newFakePhotoReader(), newTestStorage(t))
+	req := newBatchRequest(t, "/api/v1/photos/batch/restore", `{"photo_uids": ["p1"]}`)
+	ctx := middleware.SetSessionInContext(req.Context(), &middleware.Session{Role: "viewer"})
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+	h.BatchRestore(rec, req)
+	assertStatusCode(t, rec, http.StatusForbidden)
 }

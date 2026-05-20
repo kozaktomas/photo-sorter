@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -13,6 +14,30 @@ import (
 
 // errInvalidRequestBody is a shared error message for invalid JSON request bodies.
 const errInvalidRequestBody = "invalid request body"
+
+// roleViewer identifies the read-only role. Anything else (admin, editor, or
+// the empty string left over from the PhotoPrism-era session) is allowed to
+// mutate data.
+const roleViewer = "viewer"
+
+// errForbidden is returned by requireWriteRole when the current session's
+// role is "viewer" and therefore lacks write permission.
+var errForbidden = errors.New("forbidden")
+
+// requireWriteRole returns errForbidden when the current session's role is
+// "viewer". The check intentionally treats a missing session or empty role
+// as admin so callers without an authenticated session (tests, MCP, CLI
+// scripts) keep working until the native users table is wired in.
+func requireWriteRole(r *http.Request) error {
+	session := middleware.GetSessionFromContext(r.Context())
+	if session == nil {
+		return nil
+	}
+	if session.Role == roleViewer {
+		return errForbidden
+	}
+	return nil
+}
 
 // sanitizeForLog removes newlines and carriage returns to prevent log injection.
 func sanitizeForLog(s string) string {

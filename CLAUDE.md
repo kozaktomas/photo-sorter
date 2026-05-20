@@ -489,6 +489,7 @@ Session cookies use `HttpOnly`, `SameSite=Strict`, and auto-detect `Secure` flag
 - `POST /api/v1/photos/batch/labels` - Batch add labels to photos
 - `POST /api/v1/photos/batch/edit` - Batch edit photos (favorite, private)
 - `POST /api/v1/photos/batch/archive` - Archive (soft-delete) photos
+- `POST /api/v1/photos/batch/restore` - Restore (un-archive) photos
 - `POST /api/v1/photos/duplicates` - Find near-duplicate photos via embedding similarity
 - `POST /api/v1/photos/suggest-albums` - Album completion via HNSW centroid search
 - `POST /api/v1/sort` - Start AI sort job
