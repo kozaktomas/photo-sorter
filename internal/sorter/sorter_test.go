@@ -315,8 +315,9 @@ func TestPhotoToMetadata_LongFilename(t *testing.T) {
 
 func TestNew(t *testing.T) {
 	// New() should not panic with nil arguments.
-	// (actual usage would require real PhotoPrism client and AI provider)
-	sorter := New(nil, nil)
+	// (actual usage would require real PhotoPrism client, AI provider, and
+	// label writer)
+	sorter := New(nil, nil, nil)
 
 	if sorter == nil {
 		t.Error("expected non-nil sorter")

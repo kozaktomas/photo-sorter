@@ -30,6 +30,7 @@ var (
 	postgresTextCheckStore     func() TextCheckStore
 	postgresPhotoWriter        func() PhotoWriter
 	postgresAlbumWriter        func() AlbumWriter
+	postgresLabelWriter        func() LabelWriter
 	postgresUserWriter         func() UserWriter
 	postgresInitialized        bool
 )
@@ -48,6 +49,7 @@ func ResetForTesting() {
 	postgresTextCheckStore = nil
 	postgresPhotoWriter = nil
 	postgresAlbumWriter = nil
+	postgresLabelWriter = nil
 	postgresUserWriter = nil
 	postgresInitialized = false
 }
@@ -282,6 +284,34 @@ func GetAlbumReader(ctx context.Context) (AlbumReader, error) {
 		return nil, errors.New("PostgreSQL album reader not registered")
 	}
 	return postgresAlbumWriter(), nil
+}
+
+// RegisterLabelWriter registers the LabelWriter constructor. The same value
+// also serves LabelReader, since the writer embeds the reader interface.
+func RegisterLabelWriter(writer func() LabelWriter) {
+	postgresLabelWriter = writer
+}
+
+// GetLabelWriter returns a LabelWriter from the PostgreSQL backend.
+func GetLabelWriter(ctx context.Context) (LabelWriter, error) {
+	if !postgresInitialized {
+		return nil, errors.New("PostgreSQL backend not initialized: DATABASE_URL is required")
+	}
+	if postgresLabelWriter == nil {
+		return nil, errors.New("PostgreSQL label writer not registered")
+	}
+	return postgresLabelWriter(), nil
+}
+
+// GetLabelReader returns a LabelReader from the PostgreSQL backend.
+func GetLabelReader(ctx context.Context) (LabelReader, error) {
+	if !postgresInitialized {
+		return nil, errors.New("PostgreSQL backend not initialized: DATABASE_URL is required")
+	}
+	if postgresLabelWriter == nil {
+		return nil, errors.New("PostgreSQL label reader not registered")
+	}
+	return postgresLabelWriter(), nil
 }
 
 // RegisterUserWriter registers the UserWriter constructor. The same value

@@ -917,34 +917,13 @@ func TestPhotosHandler_Download_MissingUID(t *testing.T) {
 }
 
 func TestPhotosHandler_BatchAddLabels_Success(t *testing.T) {
-	server := setupMockPhotoPrismServer(t, map[string]http.HandlerFunc{
-		"/api/v1/photos/photo1/label": func(w http.ResponseWriter, r *http.Request) {
-			if r.Method != "POST" {
-				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-				return
-			}
-			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`{"UID": "photo1"}`))
-		},
-		"/api/v1/photos/photo2/label": func(w http.ResponseWriter, r *http.Request) {
-			if r.Method != "POST" {
-				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-				return
-			}
-			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`{"UID": "photo2"}`))
-		},
-	})
-	defer server.Close()
-
-	pp := createPhotoPrismClient(t, server)
+	labelRepo := newFakeLabelRepo()
 	handler := createPhotosHandlerForTest(testConfig())
+	handler.labels = labelRepo
 
 	body := bytes.NewBufferString(`{"photo_uids": ["photo1", "photo2"], "label": "vacation"}`)
 	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/photos/batch/labels", body)
 	req.Header.Set("Content-Type", "application/json")
-	ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
-	req = req.WithContext(ctx)
 
 	recorder := httptest.NewRecorder()
 
@@ -958,6 +937,29 @@ func TestPhotosHandler_BatchAddLabels_Success(t *testing.T) {
 	if response.Updated != 2 {
 		t.Errorf("expected updated=2, got %d", response.Updated)
 	}
+	// EnsureLabel should have created one label row and AddPhotoLabel
+	// should have attached both photos to it.
+	if len(labelRepo.labels) != 1 {
+		t.Errorf("expected exactly 1 label created, got %d", len(labelRepo.labels))
+	}
+	for _, members := range labelRepo.members {
+		if len(members) != 2 {
+			t.Errorf("expected 2 members, got %d", len(members))
+		}
+	}
+}
+
+func TestPhotosHandler_BatchAddLabels_NoRepo(t *testing.T) {
+	handler := createPhotosHandlerForTest(testConfig())
+
+	body := bytes.NewBufferString(`{"photo_uids": ["photo1"], "label": "vacation"}`)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/photos/batch/labels", body)
+	req.Header.Set("Content-Type", "application/json")
+
+	recorder := httptest.NewRecorder()
+	handler.BatchAddLabels(recorder, req)
+
+	assertStatusCode(t, recorder, http.StatusServiceUnavailable)
 }
 
 func TestPhotosHandler_BatchAddLabels_MissingPhotoUIDs(t *testing.T) {

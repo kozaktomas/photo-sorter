@@ -47,20 +47,26 @@ type PhotosHandler struct {
 	// store backs file-streaming endpoints (thumbnails, downloads). May be
 	// nil in tests that do not exercise the file-streaming paths.
 	store *storage.Storage
+	// labels backs the bulk-label endpoint (POST /photos/batch/labels). May
+	// be nil in tests that do not exercise the label paths.
+	labels database.LabelWriter
 }
 
-// NewPhotosHandler creates a new photos handler. repo and store back the
-// native endpoints (list/get/thumb/download/update/batch) and may be nil in
-// environments where those paths are unused.
+// NewPhotosHandler creates a new photos handler. repo, store, and labels
+// back the native endpoints (list/get/thumb/download/update/batch and bulk
+// label assignment) and may be nil in environments where those paths are
+// unused.
 func NewPhotosHandler(
 	cfg *config.Config, sm *middleware.SessionManager,
 	repo database.PhotoWriter, store *storage.Storage,
+	labels database.LabelWriter,
 ) *PhotosHandler {
 	h := &PhotosHandler{
 		config:         cfg,
 		sessionManager: sm,
 		repo:           repo,
 		store:          store,
+		labels:         labels,
 	}
 
 	// Try to get an embedding reader from PostgreSQL.
@@ -843,8 +849,17 @@ type BatchAddLabelsResponse struct {
 	Errors  []string `json:"errors,omitempty"`
 }
 
-// BatchAddLabels adds a label to multiple photos.
+// BatchAddLabels adds a label to multiple photos via the native
+// LabelWriter. The single label name is upserted with EnsureLabel once; for
+// each photo the resulting label_uid is attached via AddPhotoLabel
+// (idempotent — re-adding the same pair is a silent no-op). Per-photo
+// errors are reported but do not abort the batch, matching the bulk action
+// bar's "do as much as possible" expectation.
 func (h *PhotosHandler) BatchAddLabels(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	var req BatchAddLabelsRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
@@ -861,26 +876,27 @@ func (h *PhotosHandler) BatchAddLabels(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pp := middleware.MustGetPhotoPrism(r.Context(), w)
-	if pp == nil {
+	if h.labels == nil {
+		respondError(w, http.StatusServiceUnavailable, "label storage not available")
 		return
 	}
 
-	label := photoprism.PhotoLabel{
-		Name:     req.Label,
-		LabelSrc: "manual",
+	ensured, err := h.labels.EnsureLabel(r.Context(), req.Label)
+	if err != nil {
+		log.Printf("photos batch labels ensure %q: %v", sanitizeForLog(req.Label), err)
+		respondError(w, http.StatusInternalServerError, "failed to ensure label")
+		return
 	}
 
 	var errors []string
 	updated := 0
-
 	for _, photoUID := range req.PhotoUIDs {
-		_, err := pp.AddPhotoLabel(photoUID, label)
-		if err != nil {
+		if err := h.labels.AddPhotoLabel(r.Context(), photoUID, ensured.UID, "manual", 0); err != nil {
 			errors = append(errors, photoUID+": "+err.Error())
-		} else {
-			updated++
+			log.Printf("photos batch labels %s: %v", sanitizeForLog(photoUID), err)
+			continue
 		}
+		updated++
 	}
 
 	respondJSON(w, http.StatusOK, BatchAddLabelsResponse{

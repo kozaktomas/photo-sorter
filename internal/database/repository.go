@@ -239,6 +239,32 @@ type PhotoWriter interface {
 	DeletePhotoFile(ctx context.Context, photoUID, filePath string) error
 }
 
+// LabelReader provides read-only access to native labels and the
+// photo_labels junction. Single-row lookups return ErrNotFound when the
+// requested record is missing.
+type LabelReader interface {
+	GetLabel(ctx context.Context, uid string) (*Label, error)
+	GetLabelBySlug(ctx context.Context, slug string) (*Label, error)
+	ListLabels(ctx context.Context, q LabelQuery) ([]Label, error)
+	ListLabelsForPhoto(ctx context.Context, photoUID string) ([]Label, error)
+}
+
+// LabelWriter provides write access to native labels and the photo_labels
+// junction. EnsureLabel upserts a label by slug so concurrent callers in the
+// AI sort pipeline cannot race-create duplicate rows; AddPhotoLabel is
+// idempotent via the (photo_uid, label_uid) primary key. DeleteLabels
+// returns the number of rows that were actually deleted, so a request
+// containing mixed valid and invalid UIDs surfaces the real count.
+type LabelWriter interface {
+	LabelReader
+
+	EnsureLabel(ctx context.Context, name string) (*Label, error)
+	UpdateLabel(ctx context.Context, l *Label) error
+	DeleteLabels(ctx context.Context, uids []string) (int, error)
+	AddPhotoLabel(ctx context.Context, photoUID, labelUID, source string, uncertainty int) error
+	RemovePhotoLabel(ctx context.Context, photoUID, labelUID string) error
+}
+
 // UserReader provides read-only access to the native user store.
 // GetUser/GetUserByUsername return ErrNotFound when the row is missing.
 // GetUserByUsername returns the bcrypt password hash so the login flow can

@@ -701,9 +701,11 @@ GET /labels
 **Query Parameters:**
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `count` | int | 1000 | Number of labels to return |
+| `q` | string | — | Substring match against label name and slug (ILIKE) |
+| `min_photos` | int | 0 | Only include labels attached to at least N photos |
+| `sort` | string | `name` | `name` / `-name` / `count` / `-count` |
+| `limit` | int | 1000 | Page size (alias: `count`, max 5000) |
 | `offset` | int | 0 | Pagination offset |
-| `all` | boolean | false | Include all labels (including system labels) |
 
 **Response (200):**
 ```json
@@ -712,7 +714,7 @@ GET /labels
     "uid": "lq8abc123",
     "name": "Nature",
     "slug": "nature",
-    "description": "Nature and landscape photos",
+    "description": "",
     "notes": "",
     "photo_count": 250,
     "favorite": true,
@@ -721,6 +723,10 @@ GET /labels
   }
 ]
 ```
+
+`description` and `notes` are kept on the wire for backwards compatibility
+with the previous PhotoPrism passthrough but are always empty on the
+native labels table.
 
 ### Get Label
 
@@ -743,12 +749,10 @@ GET /labels/{uid}
 PUT /labels/{uid}
 ```
 
-**Request:** All fields optional
+**Request:** All fields optional. A non-empty `name` re-slugs the row.
 ```json
 {
   "name": "Landscapes",
-  "description": "Updated description",
-  "notes": "Some notes",
   "priority": 10,
   "favorite": true
 }
@@ -775,6 +779,10 @@ DELETE /labels
   "deleted": 2
 }
 ```
+
+`deleted` is the number of labels that actually existed; unknown UIDs in
+the request are silently skipped (a stale client request still makes
+progress for the labels that are still around).
 
 ---
 

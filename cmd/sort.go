@@ -11,6 +11,7 @@ import (
 
 	"github.com/kozaktomas/photo-sorter/internal/ai"
 	"github.com/kozaktomas/photo-sorter/internal/config"
+	"github.com/kozaktomas/photo-sorter/internal/database/postgres"
 	"github.com/kozaktomas/photo-sorter/internal/photoprism"
 	"github.com/kozaktomas/photo-sorter/internal/sorter"
 	"github.com/spf13/cobra"
@@ -211,7 +212,15 @@ func runSort(cmd *cobra.Command, args []string) error {
 
 	printSortHeader(album, aiProvider, flags)
 
-	s := sorter.New(pp, aiProvider)
+	if cfg.Database.URL == "" {
+		return errors.New("DATABASE_URL environment variable is required for the native label writer")
+	}
+	if err := postgres.Initialize(&cfg.Database); err != nil {
+		return fmt.Errorf("failed to initialize PostgreSQL: %w", err)
+	}
+	labelRepo := postgres.NewLabelRepository(postgres.GetGlobalPool())
+
+	s := sorter.New(pp, aiProvider, labelRepo)
 	result, err := s.Sort(ctx, albumUID, album.Title, album.Description, sorter.SortOptions{
 		DryRun:          flags.dryRun,
 		Limit:           flags.limit,

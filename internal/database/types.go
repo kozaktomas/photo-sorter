@@ -407,6 +407,30 @@ type AlbumQuery struct {
 // caller tries to set a cover photo that is not a member of the album.
 var ErrAlbumPhotoNotInAlbum = errors.New("photo is not in album")
 
+// Label is a tag/category that can be applied to photos. Mirrors the columns
+// of the labels table introduced in migration 032. PhotoCount is computed at
+// query time (it is not a stored column).
+type Label struct {
+	UID        string
+	Slug       string
+	Name       string
+	Priority   int
+	Favorite   bool
+	PhotoCount int
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+}
+
+// LabelQuery holds optional filter and pagination criteria for
+// LabelReader.ListLabels.
+type LabelQuery struct {
+	MinPhotos int
+	Search    string
+	SortBy    string // "name" / "-name" / "count" / "-count"
+	Limit     int
+	Offset    int
+}
+
 // PageFormatSlotCount returns the number of slots for a given page format.
 func PageFormatSlotCount(format string) int {
 	switch format {

@@ -52,6 +52,18 @@ func (s *Server) resolveAlbumRepo() database.AlbumWriter {
 	return r
 }
 
+// resolveLabelRepo best-effort-fetches the native LabelWriter. Returns nil
+// (and logs) when the registration is missing — the native label endpoints
+// will then surface a 503 rather than blocking server startup.
+func (s *Server) resolveLabelRepo() database.LabelWriter {
+	r, err := database.GetLabelWriter(context.Background())
+	if err != nil {
+		log.Printf("labels: native repo unavailable: %v", err)
+		return nil
+	}
+	return r
+}
+
 // resolveUserRepos best-effort-fetches the native UserReader and
 // UserWriter. Returns nils (and logs) when the registration is missing —
 // the auth handler then surfaces a 500 from login until the user store is
@@ -77,14 +89,15 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 	// endpoints return 503 while PhotoPrism-backed endpoints keep working.
 	photoRepo, photoStore := s.resolveNativePhotoBackends()
 	albumRepo := s.resolveAlbumRepo()
+	labelRepo := s.resolveLabelRepo()
 	userReader, userWriter := s.resolveUserRepos()
 
 	// Create handlers.
 	authHandler := handlers.NewAuthHandler(s.config, sessionManager, userReader, userWriter)
 	albumsHandler := handlers.NewAlbumsHandler(s.config, sessionManager, albumRepo, photoRepo)
-	labelsHandler := handlers.NewLabelsHandler(s.config, sessionManager)
-	photosHandler := handlers.NewPhotosHandler(s.config, sessionManager, photoRepo, photoStore)
-	sortHandler := handlers.NewSortHandler(s.config, sessionManager, s.jobManager)
+	labelsHandler := handlers.NewLabelsHandler(s.config, sessionManager, labelRepo)
+	photosHandler := handlers.NewPhotosHandler(s.config, sessionManager, photoRepo, photoStore, labelRepo)
+	sortHandler := handlers.NewSortHandler(s.config, sessionManager, s.jobManager, labelRepo)
 	configHandler := handlers.NewConfigHandler(s.config)
 	facesHandler := handlers.NewFacesHandler(s.config, sessionManager)
 	statsHandler := handlers.NewStatsHandler(s.config, sessionManager)

@@ -13,7 +13,7 @@ import (
 
 func createSortHandlerForTest(cfg *config.Config) *SortHandler {
 	jm := NewJobManager()
-	return NewSortHandler(cfg, nil, jm)
+	return NewSortHandler(cfg, nil, jm, nil)
 }
 
 func TestSortHandler_Start_Success(t *testing.T) {

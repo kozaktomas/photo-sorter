@@ -15,6 +15,7 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/ai"
 	"github.com/kozaktomas/photo-sorter/internal/config"
 	"github.com/kozaktomas/photo-sorter/internal/constants"
+	"github.com/kozaktomas/photo-sorter/internal/database"
 	"github.com/kozaktomas/photo-sorter/internal/photoprism"
 	"github.com/kozaktomas/photo-sorter/internal/sorter"
 
@@ -26,14 +27,21 @@ type SortHandler struct {
 	config         *config.Config
 	sessionManager *middleware.SessionManager
 	jobManager     *JobManager
+	labels         database.LabelWriter
 }
 
-// NewSortHandler creates a new sort handler.
-func NewSortHandler(cfg *config.Config, sm *middleware.SessionManager, jm *JobManager) *SortHandler {
+// NewSortHandler creates a new sort handler. labels backs the AI label
+// upsert path; passing nil is allowed for tests but the sort job will fail
+// if it tries to apply labels without it.
+func NewSortHandler(
+	cfg *config.Config, sm *middleware.SessionManager,
+	jm *JobManager, labels database.LabelWriter,
+) *SortHandler {
 	return &SortHandler{
 		config:         cfg,
 		sessionManager: sm,
 		jobManager:     jm,
+		labels:         labels,
 	}
 }
 
@@ -242,7 +250,7 @@ func (h *SortHandler) runSortJob(job *SortJob, session *middleware.Session) {
 	job.mu.Unlock()
 	job.SendEvent(JobEvent{Type: "photos_counted", Data: map[string]int{"total": len(photos)}})
 
-	s := sorter.New(pp, aiProvider)
+	s := sorter.New(pp, aiProvider, h.labels)
 	result, err := s.Sort(ctx, job.AlbumUID, job.AlbumTitle, "", job.buildSortOptions())
 
 	if err != nil {

@@ -469,10 +469,10 @@ Session cookies use `HttpOnly`, `SameSite=Strict`, and auto-detect `Secure` flag
 - `POST /api/v1/albums/{uid}/photos` - Add photos to album
 - `DELETE /api/v1/albums/{uid}/photos` - Remove photos from album
 - `DELETE /api/v1/albums/{uid}/photos/batch` - Remove specific photos from album (batch)
-- `GET /api/v1/labels` - List labels
+- `GET /api/v1/labels` - List labels (native; query: `q`, `min_photos`, `sort` = `name`/`-name`/`count`/`-count`, `limit`/`count` alias, `offset`; envelope is the bare array, `description`/`notes` kept on the wire as empty strings for backwards compatibility)
 - `GET /api/v1/labels/{uid}` - Get single label
-- `PUT /api/v1/labels/{uid}` - Update label (rename, etc.)
-- `DELETE /api/v1/labels` - Batch delete labels
+- `PUT /api/v1/labels/{uid}` - Update label (`{ name?, priority?, favorite? }`; non-empty name re-slugs with collision suffix)
+- `DELETE /api/v1/labels` - Batch delete labels (returns count of UIDs that actually existed; unknown UIDs are silently skipped)
 - `GET /api/v1/photos` - List photos (native; archived excluded by default, filters: `album_uid`/`label_uid`/`subject_uid`/`favorite`/`private`/`archived`/`taken_from`/`taken_to`/`min_lat`+`min_lng`+`max_lat`+`max_lng`/`q`/`sort`/`limit`/`offset`; envelope `{photos, total, limit, offset}`)
 - `GET /api/v1/photos/{uid}` - Get single photo (native; 404 for archived unless `?include_archived=true`)
 - `PUT /api/v1/photos/{uid}` - Update photo

@@ -98,7 +98,10 @@ func registerServeBackends(
 
 	albumRepo := postgres.NewAlbumRepository(pool)
 	database.RegisterAlbumWriter(func() database.AlbumWriter { return albumRepo })
-	fmt.Printf("Native photo + album storage enabled (PostgreSQL)\n")
+
+	labelRepo := postgres.NewLabelRepository(pool)
+	database.RegisterLabelWriter(func() database.LabelWriter { return labelRepo })
+	fmt.Printf("Native photo + album + label storage enabled (PostgreSQL)\n")
 
 	userRepo := postgres.NewUserRepository(pool)
 	database.RegisterUserWriter(func() database.UserWriter { return userRepo })

@@ -9,14 +9,20 @@ import (
 	"time"
 
 	"github.com/kozaktomas/photo-sorter/internal/ai"
+	"github.com/kozaktomas/photo-sorter/internal/database"
 	"github.com/kozaktomas/photo-sorter/internal/photoprism"
 	"github.com/schollz/progressbar/v3"
 )
 
 // Sorter orchestrates photo fetching, AI analysis, and label application.
+// The labels writer is used for the native photo_labels table; the
+// PhotoPrism client is still used for downloading photos, fetching album
+// metadata, and rewriting per-photo descriptions and dates while the
+// PhotoPrism removal migration is in flight.
 type Sorter struct {
 	photoprism *photoprism.PhotoPrism
 	aiProvider ai.Provider
+	labels     database.LabelWriter
 }
 
 // ProgressInfo contains progress information for callbacks.
@@ -49,11 +55,16 @@ type SortResult struct {
 	Suggestions    []ai.SortSuggestion
 }
 
-// New creates a new Sorter with the given PhotoPrism client, AI provider, and config.
-func New(pp *photoprism.PhotoPrism, aiProvider ai.Provider) *Sorter {
+// New creates a new Sorter with the given PhotoPrism client, AI provider,
+// and native label writer. The label writer is used to ensure and attach
+// labels for each photo in the AI pipeline; passing nil is allowed for
+// tests that exercise non-label code paths (the label-applying step will
+// then be skipped with a clear error).
+func New(pp *photoprism.PhotoPrism, aiProvider ai.Provider, labels database.LabelWriter) *Sorter {
 	return &Sorter{
 		photoprism: pp,
 		aiProvider: aiProvider,
+		labels:     labels,
 	}
 }
 
@@ -264,14 +275,16 @@ func (s *Sorter) estimateAndApplyAlbumDate(
 }
 
 // applySuggestions applies sorting suggestions to photos if not dry run.
-func (s *Sorter) applySuggestions(result *SortResult, photoMap map[string]photoprism.Photo, forceDate bool) {
+func (s *Sorter) applySuggestions(
+	ctx context.Context, result *SortResult, photoMap map[string]photoprism.Photo, forceDate bool,
+) {
 	for _, suggestion := range result.Suggestions {
 		photo, ok := photoMap[suggestion.PhotoUID]
 		if !ok {
 			result.Errors = append(result.Errors, fmt.Errorf("photo not found: %s", suggestion.PhotoUID))
 			continue
 		}
-		if err := s.applySorting(photo, suggestion, forceDate); err != nil {
+		if err := s.applySorting(ctx, photo, suggestion, forceDate); err != nil {
 			result.Errors = append(result.Errors, fmt.Errorf("failed to apply sorting for %s: %w", photo.UID, err))
 			continue
 		}
@@ -302,7 +315,7 @@ func (s *Sorter) sortImmediate(
 		for i := range photos {
 			photoMap[photos[i].UID] = photos[i]
 		}
-		s.applySuggestions(result, photoMap, opts.ForceDate)
+		s.applySuggestions(ctx, result, photoMap, opts.ForceDate)
 	} else {
 		result.SortedCount = len(result.Suggestions)
 	}
@@ -435,7 +448,8 @@ func collectBatchResults(batchResults []ai.BatchPhotoResult, result *SortResult)
 
 // applySuggestionsWithProgress applies suggestions with a progress bar.
 func (s *Sorter) applySuggestionsWithProgress(
-	result *SortResult, photoMap map[string]photoprism.Photo, forceDate bool,
+	ctx context.Context, result *SortResult,
+	photoMap map[string]photoprism.Photo, forceDate bool,
 ) {
 	fmt.Println("Applying changes to PhotoPrism...")
 	applyBar := progressbar.NewOptions(len(result.Suggestions),
@@ -457,7 +471,7 @@ func (s *Sorter) applySuggestionsWithProgress(
 			applyBar.Add(1)
 			continue
 		}
-		if err := s.applySorting(photo, suggestion, forceDate); err != nil {
+		if err := s.applySorting(ctx, photo, suggestion, forceDate); err != nil {
 			result.Errors = append(result.Errors, fmt.Errorf("failed to apply sorting for %s: %w", photo.UID, err))
 			applyBar.Add(1)
 			continue
@@ -512,7 +526,7 @@ func (s *Sorter) sortBatch(
 	}
 
 	if !opts.DryRun {
-		s.applySuggestionsWithProgress(result, photoMap, opts.ForceDate)
+		s.applySuggestionsWithProgress(ctx, result, photoMap, opts.ForceDate)
 	} else {
 		result.SortedCount = len(result.Suggestions)
 	}
@@ -521,21 +535,29 @@ func (s *Sorter) sortBatch(
 }
 
 // applyLabels replaces photo labels with AI-suggested ones (confidence > 80%).
-func (s *Sorter) applyLabels(photoUID string, labels []ai.LabelWithConfidence) error {
+// Existing PhotoPrism labels are cleared via the legacy client; the new
+// labels are ensured + attached on the native labels/photo_labels tables
+// via the injected LabelWriter so the AI sort pipeline does not have to
+// round-trip through PhotoPrism for tag writes.
+func (s *Sorter) applyLabels(
+	ctx context.Context, photoUID string, labels []ai.LabelWithConfidence,
+) error {
 	if err := s.photoprism.RemoveAllPhotoLabels(photoUID); err != nil {
 		return fmt.Errorf("failed to remove existing labels: %w", err)
+	}
+	if s.labels == nil {
+		return errors.New("label writer not configured")
 	}
 	for _, label := range labels {
 		if label.Confidence < 0.8 {
 			continue
 		}
-		uncertainty := int((1 - label.Confidence) * 100)
-		_, err := s.photoprism.AddPhotoLabel(photoUID, photoprism.PhotoLabel{
-			Name:        label.Name,
-			LabelSrc:    "manual",
-			Uncertainty: uncertainty,
-		})
+		ensured, err := s.labels.EnsureLabel(ctx, label.Name)
 		if err != nil {
+			return fmt.Errorf("failed to ensure label %s: %w", label.Name, err)
+		}
+		uncertainty := int((1 - label.Confidence) * 100)
+		if err := s.labels.AddPhotoLabel(ctx, photoUID, ensured.UID, "ai", uncertainty); err != nil {
 			return fmt.Errorf("failed to add label %s: %w", label.Name, err)
 		}
 	}
@@ -578,8 +600,10 @@ func buildDateUpdate(
 	return nil
 }
 
-func (s *Sorter) applySorting(photo photoprism.Photo, suggestion ai.SortSuggestion, forceDate bool) error {
-	if err := s.applyLabels(photo.UID, suggestion.Labels); err != nil {
+func (s *Sorter) applySorting(
+	ctx context.Context, photo photoprism.Photo, suggestion ai.SortSuggestion, forceDate bool,
+) error {
+	if err := s.applyLabels(ctx, photo.UID, suggestion.Labels); err != nil {
 		return err
 	}
 
