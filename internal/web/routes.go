@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
+	"github.com/kozaktomas/photo-sorter/internal/auth"
 	"github.com/kozaktomas/photo-sorter/internal/database"
 	"github.com/kozaktomas/photo-sorter/internal/storage"
 	"github.com/kozaktomas/photo-sorter/internal/web/handlers"
@@ -107,6 +108,7 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 	s.booksHandler = booksHandler
 	textHandler := handlers.NewTextHandler(s.config)
 	textVersionsHandler := handlers.NewTextVersionsHandler()
+	usersHandler := handlers.NewUsersHandler(s.config, userWriter)
 
 	// Health check (no auth required).
 	s.router.Get("/api/v1/health", handlers.HealthCheck)
@@ -241,6 +243,22 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 				// Text version history.
 				r.Get("/text-versions", textVersionsHandler.List)
 				r.Post("/text-versions/{id}/restore", textVersionsHandler.Restore)
+
+				// Self-service user endpoints (any logged-in role).
+				r.Get("/me", usersHandler.Me)
+				r.Post("/me/password", usersHandler.ChangeMyPassword)
+
+				// Admin-only user management.
+				r.Group(func(r chi.Router) {
+					r.Use(middleware.RequireRole(auth.RoleAdmin))
+					r.Get("/users", usersHandler.List)
+					r.Post("/users", usersHandler.Create)
+					r.Get("/users/{uid}", usersHandler.Get)
+					r.Put("/users/{uid}", usersHandler.Update)
+					r.Post("/users/{uid}/password", usersHandler.SetPassword)
+					r.Post("/users/{uid}/disable", usersHandler.SetDisabled)
+					r.Delete("/users/{uid}", usersHandler.Delete)
+				})
 			})
 
 			// --- Long-running / streaming endpoints ---

@@ -90,6 +90,12 @@ func (r *fakeUserRepo) CreateUser(_ context.Context, u *database.UserWithSecret)
 	if _, ok := r.byUsername[u.Username]; ok {
 		return database.ErrUsernameTaken
 	}
+	// Mirror the production repo: synthesize a UID when the caller did not
+	// supply one. Handlers rely on this side effect when constructing the
+	// response payload.
+	if u.UID == "" {
+		u.UID = "u-fake-" + u.Username
+	}
 	cp := *u
 	r.byUsername[cp.Username] = &cp
 	r.byUID[cp.UID] = &cp.User
