@@ -473,10 +473,11 @@ Session cookies use `HttpOnly`, `SameSite=Strict`, and auto-detect `Secure` flag
 - `GET /api/v1/labels/{uid}` - Get single label
 - `PUT /api/v1/labels/{uid}` - Update label (rename, etc.)
 - `DELETE /api/v1/labels` - Batch delete labels
-- `GET /api/v1/photos` - List photos
-- `GET /api/v1/photos/{uid}` - Get single photo
+- `GET /api/v1/photos` - List photos (native; archived excluded by default, filters: `album_uid`/`label_uid`/`subject_uid`/`favorite`/`private`/`archived`/`taken_from`/`taken_to`/`min_lat`+`min_lng`+`max_lat`+`max_lng`/`q`/`sort`/`limit`/`offset`; envelope `{photos, total, limit, offset}`)
+- `GET /api/v1/photos/{uid}` - Get single photo (native; 404 for archived unless `?include_archived=true`)
 - `PUT /api/v1/photos/{uid}` - Update photo
-- `GET /api/v1/photos/{uid}/thumb/{size}` - Get photo thumbnail
+- `GET /api/v1/photos/{uid}/thumb/{size}` - Stream cached thumbnail from `<cache>/thumb/<aa>/<bb>/<cc>/<hash>_<size>.jpg` (immutable cache headers + `ETag: "sha:<hash>:<size>"`; 404 when the file is missing)
+- `GET /api/v1/photos/{uid}/download` - Stream the original primary file as an attachment with `Range` support
 - `GET /api/v1/photos/{uid}/faces` - Get faces in a photo with suggestions
 - `POST /api/v1/photos/{uid}/faces/compute` - Compute face embeddings for a photo
 - `GET /api/v1/photos/{uid}/estimate-era` - Estimate photo era from CLIP embeddings vs era centroids

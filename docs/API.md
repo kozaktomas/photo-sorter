@@ -288,41 +288,49 @@ DELETE /albums/{uid}/photos/batch
 GET /photos
 ```
 
+Reads from the native Postgres `photos` table. Archived rows are excluded by default; pass `archived=true` to see them.
+
 **Query Parameters:**
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `count` | int | 100 | Number of photos to return |
+| `album_uid` | string | - | Filter by album UID (single) |
+| `label_uid` | string (repeatable) | - | AND filter — photo must carry every label |
+| `subject_uid` | string (repeatable) | - | AND filter — photo must have a marker for every subject |
+| `favorite` | bool | - | `true`/`false` to filter |
+| `private` | bool | - | `true`/`false` to filter |
+| `archived` | bool | `false` | `true` returns only archived photos |
+| `taken_from` | RFC3339 datetime | - | Lower bound on `taken_at` (inclusive) |
+| `taken_to` | RFC3339 datetime | - | Upper bound on `taken_at` (inclusive) |
+| `min_lat`, `min_lng`, `max_lat`, `max_lng` | float | - | All four required to enable bbox filtering |
+| `q` | string | - | Substring match against title/description/file_name |
+| `sort` | enum | `newest` | `newest` \| `oldest` \| `name` |
+| `limit` | int | 50 | Page size, capped at 500 |
 | `offset` | int | 0 | Pagination offset |
-| `order` | string | - | Sort order |
-| `q` | string | - | General search query |
-| `year` | string | - | Filter by year |
-| `label` | string | - | Filter by label name |
-| `album` | string | - | Filter by album UID |
 
 **Response (200):**
 ```json
-[
-  {
-    "uid": "pq8abc123def456",
-    "title": "Beach Sunset",
-    "description": "Beautiful sunset at the beach",
-    "taken_at": "2024-07-15T19:30:00Z",
-    "year": 2024,
-    "month": 7,
-    "day": 15,
-    "hash": "abc123filehash",
-    "width": 4000,
-    "height": 3000,
-    "lat": 43.7696,
-    "lng": 11.2558,
-    "country": "it",
-    "favorite": true,
-    "private": false,
-    "type": "image",
-    "original_name": "IMG_1234.jpg",
-    "file_name": "20240715_193000_ABC123.jpg"
-  }
-]
+{
+  "photos": [
+    {
+      "uid": "pq8abc123def456",
+      "title": "Beach Sunset",
+      "description": "Beautiful sunset at the beach",
+      "taken_at": "2024-07-15T19:30:00Z",
+      "year": 2024, "month": 7, "day": 15,
+      "hash": "abc123filehash",
+      "width": 4000, "height": 3000,
+      "lat": 43.7696, "lng": 11.2558,
+      "favorite": true, "private": false,
+      "type": "image",
+      "original_name": "IMG_1234.jpg",
+      "file_name": "IMG_1234.jpg",
+      "camera_model": "Canon EOS R5"
+    }
+  ],
+  "total": 1,
+  "limit": 50,
+  "offset": 0
+}
 ```
 
 ### Get Photo
@@ -331,7 +339,12 @@ GET /photos
 GET /photos/{uid}
 ```
 
-**Response (200):** Same structure as list item
+**Query Parameters:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `include_archived` | bool | `false` | Return archived photos instead of 404 |
+
+**Response (200):** Single photo object (same shape as a list entry)
 
 **Response (404):**
 ```json
@@ -367,12 +380,31 @@ PUT /photos/{uid}
 GET /photos/{uid}/thumb/{size}
 ```
 
-**Size Values:**
-- `tile_50`, `tile_100`, `tile_224`, `tile_500`, `tile_1080`
-- `left_224`, `right_224`
-- `fit_720`, `fit_1280`, `fit_1600`, `fit_1920`, `fit_2048`, `fit_2560`, `fit_3840`, `fit_4096`, `fit_7680`
+Streams the cached thumbnail from the on-disk cache tree
+(`<cache>/thumb/<aa>/<bb>/<cc>/<hash>_<size>.jpg`). If the file does not
+exist, the endpoint returns 404 — regeneration is handled by the `process`
+job, not this read path.
 
-**Response:** Binary image data with `Content-Type: image/*`
+**Size Values:**
+- `tile_50`, `tile_100`, `tile_224`, `tile_500`
+- `fit_720`, `fit_1280`, `fit_1920`, `fit_2560`, `fit_3840`, `fit_7680`
+
+**Response:** `Content-Type: image/jpeg`, long-cache headers
+(`Cache-Control: public, max-age=31536000, immutable`), strong `ETag` of
+the form `"sha:<hash>:<size>"`.
+
+### Download Photo Original
+
+```
+GET /photos/{uid}/download
+```
+
+Streams the original primary file for the photo as an attachment. Supports
+HTTP Range requests (responds with `206 Partial Content` when a `Range`
+header is provided).
+
+**Response:** Binary file with `Content-Type` from the photo's `file_mime`,
+`Content-Disposition: attachment; filename="<file_name>"`.
 
 ### Get Photo Album Memberships
 

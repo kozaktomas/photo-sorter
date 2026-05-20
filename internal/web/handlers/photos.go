@@ -1,18 +1,20 @@
 package handlers
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
-	"io"
 	"log"
 	"math"
 	"net/http"
+	"net/url"
+	"os"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/kozaktomas/photo-sorter/internal/ai"
@@ -21,26 +23,48 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/database"
 	"github.com/kozaktomas/photo-sorter/internal/fingerprint"
 	"github.com/kozaktomas/photo-sorter/internal/photoprism"
+	"github.com/kozaktomas/photo-sorter/internal/storage"
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
 
 // PhotosHandler handles photo-related endpoints.
+//
+// The native GET endpoints (List, Get, Thumbnail, Download) read from the
+// local Postgres photos table and the on-disk storage tree; they no longer
+// proxy to PhotoPrism. The remaining endpoints (face/album/label batch ops,
+// similarity, era estimation, etc.) still rely on the PhotoPrism client
+// injected per request via middleware.MustGetPhotoPrism — they will be
+// migrated in follow-up tasks.
 type PhotosHandler struct {
 	config          *config.Config
 	sessionManager  *middleware.SessionManager
 	embeddingReader database.EmbeddingReader
+
+	// reader serves the native photos table for GET endpoints. May be nil
+	// in tests that do not exercise the native paths.
+	reader database.PhotoReader
+	// store backs file-streaming endpoints (thumbnails, downloads). May be
+	// nil in tests that do not exercise the file-streaming paths.
+	store *storage.Storage
 }
 
-// NewPhotosHandler creates a new photos handler.
-func NewPhotosHandler(cfg *config.Config, sm *middleware.SessionManager) *PhotosHandler {
+// NewPhotosHandler creates a new photos handler. reader and store back the
+// native GET endpoints (photos list/get/thumb/download) and may be nil in
+// environments where those paths are unused.
+func NewPhotosHandler(
+	cfg *config.Config, sm *middleware.SessionManager,
+	reader database.PhotoReader, store *storage.Storage,
+) *PhotosHandler {
 	h := &PhotosHandler{
 		config:         cfg,
 		sessionManager: sm,
+		reader:         reader,
+		store:          store,
 	}
 
 	// Try to get an embedding reader from PostgreSQL.
-	if reader, err := database.GetEmbeddingReader(context.Background()); err == nil {
-		h.embeddingReader = reader
+	if r, err := database.GetEmbeddingReader(context.Background()); err == nil {
+		h.embeddingReader = r
 	}
 
 	return h
@@ -68,77 +92,292 @@ func (h *PhotosHandler) RefreshReader() {
 	}
 }
 
-// buildPhotoQuery constructs a search query from URL query parameters.
-func buildPhotoQuery(r *http.Request) string {
-	var queryParts []string
-	if query := r.URL.Query().Get("q"); query != "" {
-		queryParts = append(queryParts, query)
-	}
-	if year := r.URL.Query().Get("year"); year != "" {
-		queryParts = append(queryParts, "year:"+year)
-	}
-	if label := r.URL.Query().Get("label"); label != "" {
-		queryParts = append(queryParts, "label:"+label)
-	}
-	if album := r.URL.Query().Get("album"); album != "" {
-		queryParts = append(queryParts, "album:"+album)
-	}
-	return strings.Join(queryParts, " ")
+// PhotoListResponse is the envelope returned by List.
+type PhotoListResponse struct {
+	Photos []PhotoResponse `json:"photos"`
+	Total  int             `json:"total"`
+	Limit  int             `json:"limit"`
+	Offset int             `json:"offset"`
 }
 
-// List returns all photos with optional filtering and sorting.
+// requirePhotoReader returns the configured PhotoReader; on missing
+// configuration it writes a 503 error response and returns nil.
+func (h *PhotosHandler) requirePhotoReader(w http.ResponseWriter) database.PhotoReader {
+	if h.reader != nil {
+		return h.reader
+	}
+	respondError(w, http.StatusServiceUnavailable, "photo storage not available")
+	return nil
+}
+
+// requireStorage returns the configured Storage; on missing configuration
+// it writes a 503 error response and returns nil.
+func (h *PhotosHandler) requireStorage(w http.ResponseWriter) *storage.Storage {
+	if h.store != nil {
+		return h.store
+	}
+	respondError(w, http.StatusServiceUnavailable, "photo storage not available")
+	return nil
+}
+
+// parseBool parses an optional boolean query parameter. The empty string
+// returns (nil, true); "1"/"true"/"0"/"false" (case-insensitive) return a
+// pointer. Any other value returns (nil, false) so the caller can 400.
+func parseBool(s string) (*bool, bool) {
+	if s == "" {
+		return nil, true
+	}
+	b, err := strconv.ParseBool(s)
+	if err != nil {
+		return nil, false
+	}
+	return &b, true
+}
+
+// parsePhotoFilter translates URL query params into a database.PhotoFilter.
+// On invalid input it writes an error response and returns (filter, false).
+func parsePhotoFilter(w http.ResponseWriter, r *http.Request) (database.PhotoFilter, bool) {
+	q := r.URL.Query()
+	var filter database.PhotoFilter
+	filter.AlbumUID = q.Get("album_uid")
+	filter.LabelUIDs = q["label_uid"]
+	filter.SubjectUIDs = q["subject_uid"]
+	filter.Search = q.Get("q")
+	filter.SortBy = q.Get("sort")
+
+	for key, set := range map[string]func(*bool){
+		"favorite": func(v *bool) { filter.Favorite = v },
+		"private":  func(v *bool) { filter.Private = v },
+	} {
+		v, ok := parseBool(q.Get(key))
+		if !ok {
+			respondError(w, http.StatusBadRequest, "invalid "+key)
+			return filter, false
+		}
+		set(v)
+	}
+
+	// Archived has a default of false (exclude archived). An explicit "true"
+	// flips to only archived; any other explicit value passes through.
+	if raw := q.Get("archived"); raw != "" {
+		v, ok := parseBool(raw)
+		if !ok {
+			respondError(w, http.StatusBadRequest, "invalid archived")
+			return filter, false
+		}
+		filter.Archived = v
+	}
+
+	from, to, ok := parseTakenRange(w, q.Get("taken_from"), q.Get("taken_to"))
+	if !ok {
+		return filter, false
+	}
+	filter.TakenFrom, filter.TakenTo = from, to
+
+	box, ok := parseBBox(w, q)
+	if !ok {
+		return filter, false
+	}
+	filter.BBox = box
+
+	limit, offset, ok := parseLimitOffset(w, q.Get("limit"), q.Get("offset"))
+	if !ok {
+		return filter, false
+	}
+	filter.Limit, filter.Offset = limit, offset
+
+	return filter, true
+}
+
+func parseTakenRange(w http.ResponseWriter, fromStr, toStr string) (*time.Time, *time.Time, bool) {
+	var from, to *time.Time
+	if fromStr != "" {
+		t, err := time.Parse(time.RFC3339, fromStr)
+		if err != nil {
+			respondError(w, http.StatusBadRequest, "invalid taken_from")
+			return nil, nil, false
+		}
+		from = &t
+	}
+	if toStr != "" {
+		t, err := time.Parse(time.RFC3339, toStr)
+		if err != nil {
+			respondError(w, http.StatusBadRequest, "invalid taken_to")
+			return nil, nil, false
+		}
+		to = &t
+	}
+	return from, to, true
+}
+
+// parseBBox returns the bbox filter when all four corner params are set, no
+// bbox when none are set, and an error when only some are present.
+func parseBBox(w http.ResponseWriter, q url.Values) (*database.BBox, bool) {
+	keys := []string{"min_lat", "min_lng", "max_lat", "max_lng"}
+	values := make([]string, len(keys))
+	present := 0
+	for i, k := range keys {
+		values[i] = q.Get(k)
+		if values[i] != "" {
+			present++
+		}
+	}
+	if present == 0 {
+		return nil, true
+	}
+	if present != len(keys) {
+		respondError(w, http.StatusBadRequest, "bbox filter requires all of min_lat, min_lng, max_lat, max_lng")
+		return nil, false
+	}
+	nums := make([]float64, len(keys))
+	for i, v := range values {
+		f, err := strconv.ParseFloat(v, 64)
+		if err != nil {
+			respondError(w, http.StatusBadRequest, "invalid "+keys[i])
+			return nil, false
+		}
+		nums[i] = f
+	}
+	return &database.BBox{MinLat: nums[0], MinLng: nums[1], MaxLat: nums[2], MaxLng: nums[3]}, true
+}
+
+func parseLimitOffset(w http.ResponseWriter, limitStr, offsetStr string) (int, int, bool) {
+	limit := 0
+	if limitStr != "" {
+		v, err := strconv.Atoi(limitStr)
+		if err != nil || v < 0 {
+			respondError(w, http.StatusBadRequest, "invalid limit")
+			return 0, 0, false
+		}
+		limit = v
+	}
+	offset := 0
+	if offsetStr != "" {
+		v, err := strconv.Atoi(offsetStr)
+		if err != nil || v < 0 {
+			respondError(w, http.StatusBadRequest, "invalid offset")
+			return 0, 0, false
+		}
+		offset = v
+	}
+	return limit, offset, true
+}
+
+// nativePhotoToResponse maps a native database.Photo to the wire shape used
+// by the existing PhotoResponse struct so the frontend contract stays stable.
+func nativePhotoToResponse(p database.Photo) PhotoResponse {
+	var (
+		takenAtStr       string
+		year, month, day int
+	)
+	if p.TakenAt != nil {
+		takenAtStr = p.TakenAt.UTC().Format(time.RFC3339)
+		year, month, day = p.TakenAt.Year(), int(p.TakenAt.Month()), p.TakenAt.Day()
+	}
+	lat, lng := 0.0, 0.0
+	if p.Lat != nil {
+		lat = *p.Lat
+	}
+	if p.Lng != nil {
+		lng = *p.Lng
+	}
+	return PhotoResponse{
+		UID:          p.UID,
+		Title:        p.Title,
+		Description:  p.Description,
+		TakenAt:      takenAtStr,
+		Year:         year,
+		Month:        month,
+		Day:          day,
+		Hash:         p.FileHash,
+		Width:        p.FileWidth,
+		Height:       p.FileHeight,
+		Lat:          lat,
+		Lng:          lng,
+		Favorite:     p.Favorite,
+		Private:      p.Private,
+		Type:         photoTypeFromMime(p.FileMime),
+		OriginalName: p.FileName,
+		FileName:     p.FileName,
+		CameraModel:  p.CameraModel,
+	}
+}
+
+// photoTypeFromMime returns a coarse media type ("image" / "video") that
+// mirrors the PhotoPrism Type field consumed by the frontend.
+func photoTypeFromMime(mime string) string {
+	switch {
+	case strings.HasPrefix(mime, "video/"):
+		return "video"
+	default:
+		return "image"
+	}
+}
+
+// List returns photos filtered + paginated from the native photos table.
 func (h *PhotosHandler) List(w http.ResponseWriter, r *http.Request) {
-	pp := middleware.MustGetPhotoPrism(r.Context(), w)
-	if pp == nil {
+	reader := h.requirePhotoReader(w)
+	if reader == nil {
+		return
+	}
+	filter, ok := parsePhotoFilter(w, r)
+	if !ok {
 		return
 	}
 
-	count, _ := strconv.Atoi(r.URL.Query().Get("count"))
-	if count <= 0 {
-		count = constants.DefaultHandlerPageSize
-	}
-	offset, _ := strconv.Atoi(r.URL.Query().Get("offset"))
-	order := r.URL.Query().Get("order")
-	finalQuery := buildPhotoQuery(r)
-
-	photos, err := pp.GetPhotosWithQueryAndOrder(count, offset, finalQuery, order)
+	photos, total, err := reader.ListPhotos(r.Context(), filter)
 	if err != nil {
+		log.Printf("photos list: %v", err)
 		respondError(w, http.StatusInternalServerError, "failed to get photos")
 		return
 	}
 
-	response := make([]PhotoResponse, 0, len(photos))
-	for _, p := range photos {
-		if p.DeletedAt != "" {
-			continue
-		}
-		response = append(response, photoToResponse(p))
+	response := PhotoListResponse{
+		Photos: make([]PhotoResponse, 0, len(photos)),
+		Total:  total,
+		Limit:  filter.Limit,
+		Offset: filter.Offset,
 	}
-
+	if response.Limit == 0 {
+		response.Limit = constants.DefaultHandlerPageSize
+	}
+	for i := range photos {
+		response.Photos = append(response.Photos, nativePhotoToResponse(photos[i]))
+	}
 	respondJSON(w, http.StatusOK, response)
 }
 
-// Get returns a single photo.
+// Get returns a single photo. Archived photos return 404 unless the caller
+// passes ?include_archived=true.
 func (h *PhotosHandler) Get(w http.ResponseWriter, r *http.Request) {
 	uid := chi.URLParam(r, "uid")
 	if uid == "" {
 		respondError(w, http.StatusBadRequest, "missing photo UID")
 		return
 	}
-
-	pp := middleware.MustGetPhotoPrism(r.Context(), w)
-	if pp == nil {
+	reader := h.requirePhotoReader(w)
+	if reader == nil {
 		return
 	}
 
-	// Use query to get photo as a typed struct.
-	photos, err := pp.GetPhotosWithQuery(1, 0, "uid:"+uid)
-	if err != nil || len(photos) == 0 {
+	photo, err := reader.GetPhoto(r.Context(), uid)
+	if errors.Is(err, database.ErrNotFound) {
+		respondError(w, http.StatusNotFound, "photo not found")
+		return
+	}
+	if err != nil {
+		log.Printf("photos get %s: %v", sanitizeForLog(uid), err)
+		respondError(w, http.StatusInternalServerError, "failed to get photo")
+		return
+	}
+
+	includeArchived, _ := parseBool(r.URL.Query().Get("include_archived"))
+	if photo.ArchivedAt != nil && (includeArchived == nil || !*includeArchived) {
 		respondError(w, http.StatusNotFound, "photo not found")
 		return
 	}
 
-	respondJSON(w, http.StatusOK, photoToResponse(photos[0]))
+	respondJSON(w, http.StatusOK, nativePhotoToResponse(*photo))
 }
 
 // UpdateRequest represents a photo update request.
@@ -190,62 +429,193 @@ func (h *PhotosHandler) Update(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, photoToResponse(*photo))
 }
 
-// Thumbnail proxies a photo thumbnail.
+// Thumbnail streams a cached thumbnail from the on-disk thumb tree. A
+// missing on-disk file returns 404 — regeneration is the responsibility of
+// the process job.
 func (h *PhotosHandler) Thumbnail(w http.ResponseWriter, r *http.Request) {
 	uid := chi.URLParam(r, "uid")
 	size := chi.URLParam(r, "size")
-
 	if uid == "" || size == "" {
 		respondError(w, http.StatusBadRequest, "missing photo UID or size")
 		return
 	}
-
-	// Validate size.
-	validSizes := map[string]bool{
-		"tile_50": true, "tile_100": true, "left_224": true, "right_224": true,
-		"tile_224": true, "tile_500": true, "fit_720": true, "tile_1080": true,
-		"fit_1280": true, "fit_1600": true, "fit_1920": true, "fit_2048": true,
-		"fit_2560": true, "fit_3840": true, "fit_4096": true, "fit_7680": true,
-	}
-	if !validSizes[size] {
+	if _, ok := storage.ValidThumbSizes[size]; !ok {
 		respondError(w, http.StatusBadRequest, "invalid size")
 		return
 	}
-
-	pp := middleware.MustGetPhotoPrism(r.Context(), w)
-	if pp == nil {
+	reader := h.requirePhotoReader(w)
+	if reader == nil {
 		return
 	}
-
-	// Get photo to retrieve the hash.
-	photos, err := pp.GetPhotosWithQuery(1, 0, "uid:"+uid)
-	if err != nil || len(photos) == 0 {
-		respondError(w, http.StatusNotFound, "photo not found")
+	store := h.requireStorage(w)
+	if store == nil {
 		return
 	}
-
-	hash := photos[0].Hash
-	if hash == "" {
+	photo, ok := loadPhoto(w, r, reader, uid, "thumbnail")
+	if !ok {
+		return
+	}
+	if photo.FileHash == "" {
 		respondError(w, http.StatusNotFound, "photo has no thumbnail")
 		return
 	}
-
-	// Get thumbnail.
-	data, contentType, err := pp.GetPhotoThumbnail(hash, size)
+	rel, err := storage.ThumbRelPath(photo.FileHash, size)
 	if err != nil {
-		respondError(w, http.StatusInternalServerError, "failed to get thumbnail")
+		respondError(w, http.StatusBadRequest, "invalid thumb path: "+err.Error())
+		return
+	}
+	serveThumb(w, r, store, photo.FileHash, size, rel)
+}
+
+// loadPhoto fetches a photo and writes the appropriate error response on
+// failure. The boolean second return is false when the response has been
+// written and the caller must return.
+func loadPhoto(
+	w http.ResponseWriter, r *http.Request, reader database.PhotoReader, uid, op string,
+) (*database.Photo, bool) {
+	photo, err := reader.GetPhoto(r.Context(), uid)
+	if errors.Is(err, database.ErrNotFound) {
+		respondError(w, http.StatusNotFound, "photo not found")
+		return nil, false
+	}
+	if err != nil {
+		log.Printf("photos %s %s: %v", op, sanitizeForLog(uid), err)
+		respondError(w, http.StatusInternalServerError, "failed to get photo")
+		return nil, false
+	}
+	return photo, true
+}
+
+// serveThumb opens the relative thumb path from the storage tree and streams
+// it back to the client with the long-cache headers and ETag the spec asks
+// for. It writes the appropriate error response on failure.
+func serveThumb(
+	w http.ResponseWriter, r *http.Request, store *storage.Storage, hash, size, rel string,
+) {
+	f, err := store.OpenThumb(rel)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			respondError(w, http.StatusNotFound, "thumbnail not found")
+			return
+		}
+		log.Printf("open thumb %q: %v", sanitizeForLog(rel), err)
+		respondError(w, http.StatusInternalServerError, "failed to open thumbnail")
+		return
+	}
+	defer f.Close()
+
+	stat, err := f.Stat()
+	if err != nil {
+		log.Printf("stat thumb %q: %v", sanitizeForLog(rel), err)
+		respondError(w, http.StatusInternalServerError, "failed to stat thumbnail")
 		return
 	}
 
-	if !strings.HasPrefix(contentType, "image/") {
-		contentType = "application/octet-stream"
-	}
-	w.Header().Set("Content-Type", contentType)
+	w.Header().Set("Content-Type", "image/jpeg")
 	w.Header().Set("X-Content-Type-Options", "nosniff")
-	w.Header().Set("Cache-Control", "public, max-age=86400")
-	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
-	w.WriteHeader(http.StatusOK)
-	io.Copy(w, bytes.NewReader(data))
+	w.Header().Set("Cache-Control", "public, max-age=31536000, immutable")
+	w.Header().Set("ETag", fmt.Sprintf(`"sha:%s:%s"`, hash, size))
+	http.ServeContent(w, r, "", stat.ModTime(), f)
+}
+
+// Download streams the original primary file for a photo with Range support.
+func (h *PhotosHandler) Download(w http.ResponseWriter, r *http.Request) {
+	uid := chi.URLParam(r, "uid")
+	if uid == "" {
+		respondError(w, http.StatusBadRequest, "missing photo UID")
+		return
+	}
+	reader := h.requirePhotoReader(w)
+	if reader == nil {
+		return
+	}
+	store := h.requireStorage(w)
+	if store == nil {
+		return
+	}
+	photo, ok := loadPhoto(w, r, reader, uid, "download")
+	if !ok {
+		return
+	}
+	rel, fileName, mime, err := resolvePrimaryFile(r.Context(), reader, photo)
+	if err != nil {
+		log.Printf("photos download %s: %v", sanitizeForLog(uid), err)
+		respondError(w, http.StatusInternalServerError, "failed to resolve photo file")
+		return
+	}
+	if rel == "" {
+		respondError(w, http.StatusNotFound, "primary file not found")
+		return
+	}
+	serveOriginal(w, r, store, rel, fileName, mime)
+}
+
+// serveOriginal opens the relative original path and streams it back with
+// the Content-Disposition: attachment header. Range requests are handled by
+// http.ServeContent.
+func serveOriginal(
+	w http.ResponseWriter, r *http.Request, store *storage.Storage,
+	rel, fileName, mime string,
+) {
+	f, err := store.OpenOriginal(rel)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			respondError(w, http.StatusNotFound, "original not found")
+			return
+		}
+		log.Printf("open original %q: %v", sanitizeForLog(rel), err)
+		respondError(w, http.StatusInternalServerError, "failed to open original")
+		return
+	}
+	defer f.Close()
+
+	stat, err := f.Stat()
+	if err != nil {
+		log.Printf("stat original %q: %v", sanitizeForLog(rel), err)
+		respondError(w, http.StatusInternalServerError, "failed to stat original")
+		return
+	}
+
+	if mime == "" {
+		mime = "application/octet-stream"
+	}
+	w.Header().Set("Content-Type", mime)
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename=%q`, fileName))
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	http.ServeContent(w, r, fileName, stat.ModTime(), f)
+}
+
+// resolvePrimaryFile returns the relative path, filename, and MIME type of
+// the primary file for a photo. It prefers the photo_files row marked
+// is_primary; if none exists, it falls back to the photo row's own
+// file_path/file_name/file_mime.
+func resolvePrimaryFile(
+	ctx context.Context, reader database.PhotoReader, photo *database.Photo,
+) (string, string, string, error) {
+	files, err := reader.ListPhotoFiles(ctx, photo.UID)
+	if err != nil {
+		return "", "", "", fmt.Errorf("list photo files: %w", err)
+	}
+	for i := range files {
+		if files[i].IsPrimary {
+			return files[i].FilePath, baseName(files[i].FilePath, photo.FileName), files[i].FileMime, nil
+		}
+	}
+	if photo.FilePath != "" {
+		return photo.FilePath, baseName(photo.FilePath, photo.FileName), photo.FileMime, nil
+	}
+	return "", "", "", nil
+}
+
+// baseName returns name when set; otherwise the last segment of path.
+func baseName(path, name string) string {
+	if name != "" {
+		return name
+	}
+	if i := strings.LastIndex(path, "/"); i >= 0 {
+		return path[i+1:]
+	}
+	return path
 }
 
 // BatchAddLabelsRequest represents a request to add labels to multiple photos.

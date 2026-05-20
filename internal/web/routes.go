@@ -1,25 +1,57 @@
 package web
 
 import (
+	"context"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
+	"github.com/kozaktomas/photo-sorter/internal/database"
+	"github.com/kozaktomas/photo-sorter/internal/storage"
 	"github.com/kozaktomas/photo-sorter/internal/web/handlers"
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 	"github.com/kozaktomas/photo-sorter/internal/web/static"
 )
 
+// resolveNativePhotoBackends best-effort-fetches the native PhotoReader and
+// constructs an on-disk Storage. Both are optional during the PhotoPrism
+// migration: when either is unavailable, the native GET endpoints return
+// 503 while the PhotoPrism-backed endpoints (faces, similarity, etc.) keep
+// working. Failures are logged but never block server startup.
+func (s *Server) resolveNativePhotoBackends() (database.PhotoReader, *storage.Storage) {
+	var reader database.PhotoReader
+	if r, err := database.GetPhotoReader(context.Background()); err == nil {
+		reader = r
+	} else {
+		log.Printf("photos: native reader unavailable: %v", err)
+	}
+
+	var store *storage.Storage
+	st, err := storage.New(s.config.Storage.OriginalsPath, s.config.Storage.CachePath)
+	if err != nil {
+		log.Printf("photos: native storage unavailable: %v", err)
+	} else {
+		store = st
+	}
+	return reader, store
+}
+
 //nolint:funlen // Route registration is inherently long.
 func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
+	// Resolve native photo backends. Both are optional in the transitional
+	// state: when PhotoReader/Storage are unavailable, the native GET
+	// endpoints return 503 while PhotoPrism-backed endpoints keep working.
+	photoReader, photoStore := s.resolveNativePhotoBackends()
+
 	// Create handlers.
 	authHandler := handlers.NewAuthHandler(s.config, sessionManager)
 	albumsHandler := handlers.NewAlbumsHandler(s.config, sessionManager)
 	labelsHandler := handlers.NewLabelsHandler(s.config, sessionManager)
-	photosHandler := handlers.NewPhotosHandler(s.config, sessionManager)
+	photosHandler := handlers.NewPhotosHandler(s.config, sessionManager, photoReader, photoStore)
 	sortHandler := handlers.NewSortHandler(s.config, sessionManager, s.jobManager)
 	configHandler := handlers.NewConfigHandler(s.config)
 	facesHandler := handlers.NewFacesHandler(s.config, sessionManager)
@@ -73,6 +105,7 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 				r.Get("/photos/{uid}", photosHandler.Get)
 				r.Put("/photos/{uid}", photosHandler.Update)
 				r.Get("/photos/{uid}/thumb/{size}", photosHandler.Thumbnail)
+				r.Get("/photos/{uid}/download", photosHandler.Download)
 				r.Get("/photos/{uid}/faces", facesHandler.GetPhotoFaces)
 				r.Post("/photos/{uid}/faces/compute", facesHandler.ComputeFaces)
 				r.Get("/photos/{uid}/estimate-era", photosHandler.EstimateEra)

@@ -6,15 +6,174 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/kozaktomas/photo-sorter/internal/config"
 	"github.com/kozaktomas/photo-sorter/internal/database"
 	"github.com/kozaktomas/photo-sorter/internal/database/mock"
+	"github.com/kozaktomas/photo-sorter/internal/storage"
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
 
-// createPhotosHandlerForTest creates a PhotosHandler for testing.
+// fakePhotoReader is an in-memory database.PhotoReader for handler tests.
+// Filtering supports the subset of PhotoFilter exercised by the spec:
+// search (ILIKE-ish), taken range, bbox, archived flag, and limit/offset.
+// Sort respects the "newest" / "oldest" / "name" keys.
+type fakePhotoReader struct {
+	photos map[string]*database.Photo
+	files  map[string][]database.PhotoFile
+	err    error
+}
+
+func newFakePhotoReader() *fakePhotoReader {
+	return &fakePhotoReader{
+		photos: map[string]*database.Photo{},
+		files:  map[string][]database.PhotoFile{},
+	}
+}
+
+func (f *fakePhotoReader) add(p *database.Photo) {
+	cp := *p
+	f.photos[p.UID] = &cp
+}
+
+func (f *fakePhotoReader) addFile(file database.PhotoFile) {
+	f.files[file.PhotoUID] = append(f.files[file.PhotoUID], file)
+}
+
+func (f *fakePhotoReader) GetPhoto(_ context.Context, uid string) (*database.Photo, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	p, ok := f.photos[uid]
+	if !ok {
+		return nil, database.ErrNotFound
+	}
+	cp := *p
+	return &cp, nil
+}
+
+func (f *fakePhotoReader) GetPhotoByHash(_ context.Context, hash string) (*database.Photo, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	for _, p := range f.photos {
+		if p.FileHash == hash {
+			cp := *p
+			return &cp, nil
+		}
+	}
+	return nil, database.ErrNotFound
+}
+
+func (f *fakePhotoReader) ListPhotos(
+	_ context.Context, filter database.PhotoFilter,
+) ([]database.Photo, int, error) {
+	if f.err != nil {
+		return nil, 0, f.err
+	}
+	var out []database.Photo
+	for _, p := range f.photos {
+		if !fakePhotoMatches(p, filter) {
+			continue
+		}
+		out = append(out, *p)
+	}
+	sortFakePhotos(out, filter.SortBy)
+	total := len(out)
+	limit := filter.Limit
+	if limit == 0 {
+		limit = 50
+	}
+	start := min(filter.Offset, total)
+	end := min(start+limit, total)
+	return out[start:end], total, nil
+}
+
+func (f *fakePhotoReader) ListPhotoFiles(
+	_ context.Context, photoUID string,
+) ([]database.PhotoFile, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	files := f.files[photoUID]
+	out := make([]database.PhotoFile, len(files))
+	copy(out, files)
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].IsPrimary != out[j].IsPrimary {
+			return out[i].IsPrimary
+		}
+		return out[i].ID < out[j].ID
+	})
+	return out, nil
+}
+
+func fakePhotoMatches(p *database.Photo, filter database.PhotoFilter) bool {
+	// archived: nil/false -> exclude archived; true -> only archived.
+	if filter.Archived == nil || !*filter.Archived {
+		if p.ArchivedAt != nil {
+			return false
+		}
+	} else if p.ArchivedAt == nil {
+		return false
+	}
+	if filter.Favorite != nil && p.Favorite != *filter.Favorite {
+		return false
+	}
+	if filter.Private != nil && p.Private != *filter.Private {
+		return false
+	}
+	if filter.TakenFrom != nil && (p.TakenAt == nil || p.TakenAt.Before(*filter.TakenFrom)) {
+		return false
+	}
+	if filter.TakenTo != nil && (p.TakenAt == nil || p.TakenAt.After(*filter.TakenTo)) {
+		return false
+	}
+	if filter.BBox != nil {
+		if p.Lat == nil || p.Lng == nil {
+			return false
+		}
+		if *p.Lat < filter.BBox.MinLat || *p.Lat > filter.BBox.MaxLat {
+			return false
+		}
+		if *p.Lng < filter.BBox.MinLng || *p.Lng > filter.BBox.MaxLng {
+			return false
+		}
+	}
+	if s := strings.ToLower(filter.Search); s != "" {
+		hay := strings.ToLower(p.Title + " " + p.Description + " " + p.FileName)
+		if !strings.Contains(hay, s) {
+			return false
+		}
+	}
+	return true
+}
+
+func sortFakePhotos(photos []database.Photo, sortBy string) {
+	keyOf := func(p database.Photo) time.Time {
+		if p.TakenAt == nil {
+			return time.Time{}
+		}
+		return *p.TakenAt
+	}
+	switch sortBy {
+	case "oldest":
+		sort.SliceStable(photos, func(i, j int) bool { return keyOf(photos[i]).Before(keyOf(photos[j])) })
+	case "name":
+		sort.SliceStable(photos, func(i, j int) bool { return photos[i].FileName < photos[j].FileName })
+	default:
+		sort.SliceStable(photos, func(i, j int) bool { return keyOf(photos[i]).After(keyOf(photos[j])) })
+	}
+}
+
+// createPhotosHandlerForTest creates a PhotosHandler for testing without
+// any native backends. Use it for endpoints that don't touch the native
+// reader/store (Update, BatchAddLabels, FindSimilar, etc.).
 func createPhotosHandlerForTest(cfg *config.Config) *PhotosHandler {
 	return &PhotosHandler{
 		config:          cfg,
@@ -32,201 +191,267 @@ func createPhotosHandlerWithEmbeddings(cfg *config.Config, reader database.Embed
 	}
 }
 
+// createPhotosHandlerNative wires a PhotosHandler with the given native
+// reader and storage so the GET endpoints can be exercised end-to-end.
+func createPhotosHandlerNative(
+	cfg *config.Config, reader database.PhotoReader, store *storage.Storage,
+) *PhotosHandler {
+	return &PhotosHandler{
+		config: cfg,
+		reader: reader,
+		store:  store,
+	}
+}
+
+// newTestStorage builds a Storage rooted under t.TempDir().
+func newTestStorage(t *testing.T) *storage.Storage {
+	t.Helper()
+	root := t.TempDir()
+	s, err := storage.New(filepath.Join(root, "originals"), filepath.Join(root, "cache"))
+	if err != nil {
+		t.Fatalf("storage.New: %v", err)
+	}
+	return s
+}
+
+// writeThumbFile writes data to <cacheRoot>/thumb/<rel> where rel is derived
+// from storage.ThumbRelPath(hash, size). Returns the absolute path.
+func writeThumbFile(t *testing.T, s *storage.Storage, hash, size string, data []byte) string {
+	t.Helper()
+	rel, err := storage.ThumbRelPath(hash, size)
+	if err != nil {
+		t.Fatalf("ThumbRelPath: %v", err)
+	}
+	abs, err := s.AbsThumb(rel)
+	if err != nil {
+		t.Fatalf("AbsThumb: %v", err)
+	}
+	if mkErr := os.MkdirAll(filepath.Dir(abs), 0o755); mkErr != nil {
+		t.Fatalf("MkdirAll: %v", mkErr)
+	}
+	if writeErr := os.WriteFile(abs, data, 0o644); writeErr != nil {
+		t.Fatalf("WriteFile: %v", writeErr)
+	}
+	return abs
+}
+
+// writeOriginalFile writes data to <originalsRoot>/<rel>. Returns the abs path.
+func writeOriginalFile(t *testing.T, s *storage.Storage, rel string, data []byte) string {
+	t.Helper()
+	abs, err := s.AbsOriginal(rel)
+	if err != nil {
+		t.Fatalf("AbsOriginal: %v", err)
+	}
+	if mkErr := os.MkdirAll(filepath.Dir(abs), 0o755); mkErr != nil {
+		t.Fatalf("MkdirAll: %v", mkErr)
+	}
+	if writeErr := os.WriteFile(abs, data, 0o644); writeErr != nil {
+		t.Fatalf("WriteFile: %v", writeErr)
+	}
+	return abs
+}
+
+// samplePhoto builds a minimal database.Photo for tests. Callers tweak the
+// fields they care about before adding it to the reader.
+func samplePhoto(uid, hash, title string, taken time.Time) *database.Photo {
+	t := taken
+	return &database.Photo{
+		UID:        uid,
+		FileHash:   hash,
+		FilePath:   "2024/06/" + uid + ".jpg",
+		FileName:   uid + ".jpg",
+		FileSize:   1024,
+		FileMime:   "image/jpeg",
+		FileWidth:  1920,
+		FileHeight: 1080,
+		TakenAt:    &t,
+		Title:      title,
+	}
+}
+
 func TestPhotosHandler_List_Success(t *testing.T) {
-	photosData := `[
-		{"UID": "photo1", "Title": "Photo One", "Type": "image", "Width": 1920, "Height": 1080},
-		{"UID": "photo2", "Title": "Photo Two", "Type": "image", "Width": 3840, "Height": 2160}
-	]`
-
-	server := setupMockPhotoPrismServer(t, map[string]http.HandlerFunc{
-		"/api/v1/photos": func(w http.ResponseWriter, r *http.Request) {
-			if r.Method != "GET" {
-				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-				return
-			}
-			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(photosData))
-		},
-	})
-	defer server.Close()
-
-	pp := createPhotoPrismClient(t, server)
-	handler := createPhotosHandlerForTest(testConfig())
-
-	req := requestWithPhotoPrism(t, "GET", "/api/v1/photos", pp)
-	recorder := httptest.NewRecorder()
-
-	handler.List(recorder, req)
-
-	assertStatusCode(t, recorder, http.StatusOK)
-	assertContentType(t, recorder, "application/json")
-
-	var photos []PhotoResponse
-	parseJSONResponse(t, recorder, &photos)
-
-	if len(photos) != 2 {
-		t.Errorf("expected 2 photos, got %d", len(photos))
-	}
-
-	if photos[0].UID != "photo1" {
-		t.Errorf("expected first photo UID 'photo1', got '%s'", photos[0].UID)
-	}
-}
-
-func TestPhotosHandler_List_WithFilters(t *testing.T) {
-	var receivedQuery string
-	server := setupMockPhotoPrismServer(t, map[string]http.HandlerFunc{
-		"/api/v1/photos": func(w http.ResponseWriter, r *http.Request) {
-			receivedQuery = r.URL.Query().Get("q")
-			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`[]`))
-		},
-	})
-	defer server.Close()
-
-	pp := createPhotoPrismClient(t, server)
-	handler := createPhotosHandlerForTest(testConfig())
-
-	req := requestWithPhotoPrism(t, "GET", "/api/v1/photos?year=2024&label=vacation", pp)
-	recorder := httptest.NewRecorder()
-
-	handler.List(recorder, req)
-
-	assertStatusCode(t, recorder, http.StatusOK)
-
-	// Check that filters were properly combined.
-	if receivedQuery == "" {
-		t.Error("expected q parameter with filters")
-	}
-}
-
-func TestPhotosHandler_List_WithPagination(t *testing.T) {
-	server := setupMockPhotoPrismServer(t, map[string]http.HandlerFunc{
-		"/api/v1/photos": func(w http.ResponseWriter, r *http.Request) {
-			query := r.URL.Query()
-			if query.Get("count") != "50" {
-				t.Errorf("expected count=50, got %s", query.Get("count"))
-			}
-			if query.Get("offset") != "100" {
-				t.Errorf("expected offset=100, got %s", query.Get("offset"))
-			}
-			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`[]`))
-		},
-	})
-	defer server.Close()
-
-	pp := createPhotoPrismClient(t, server)
-	handler := createPhotosHandlerForTest(testConfig())
-
-	req := requestWithPhotoPrism(t, "GET", "/api/v1/photos?count=50&offset=100", pp)
-	recorder := httptest.NewRecorder()
-
-	handler.List(recorder, req)
-
-	assertStatusCode(t, recorder, http.StatusOK)
-}
-
-func TestPhotosHandler_List_NoClient(t *testing.T) {
-	handler := createPhotosHandlerForTest(testConfig())
+	reader := newFakePhotoReader()
+	reader.add(samplePhoto("photo1", "hash1ffffff", "alpha", time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC)))
+	reader.add(samplePhoto("photo2", "hash2ffffff", "bravo", time.Date(2024, 7, 1, 0, 0, 0, 0, time.UTC)))
+	h := createPhotosHandlerNative(testConfig(), reader, newTestStorage(t))
 
 	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/photos", nil)
-	recorder := httptest.NewRecorder()
+	rec := httptest.NewRecorder()
+	h.List(rec, req)
 
-	handler.List(recorder, req)
+	assertStatusCode(t, rec, http.StatusOK)
+	assertContentType(t, rec, "application/json")
 
-	assertStatusCode(t, recorder, http.StatusInternalServerError)
+	var resp PhotoListResponse
+	parseJSONResponse(t, rec, &resp)
+	if resp.Total != 2 {
+		t.Errorf("Total = %d, want 2", resp.Total)
+	}
+	if len(resp.Photos) != 2 {
+		t.Fatalf("Photos length = %d, want 2", len(resp.Photos))
+	}
+	// Default sort is newest first.
+	if resp.Photos[0].UID != "photo2" {
+		t.Errorf("expected photo2 first, got %s", resp.Photos[0].UID)
+	}
 }
 
-func TestPhotosHandler_List_PhotoPrismError(t *testing.T) {
-	server := setupMockPhotoPrismServer(t, map[string]http.HandlerFunc{
-		"/api/v1/photos": func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(`{"error": "internal error"}`))
-		},
-	})
-	defer server.Close()
+func TestPhotosHandler_List_FilterByDateRange(t *testing.T) {
+	reader := newFakePhotoReader()
+	reader.add(samplePhoto("older", "aaaaaa1234", "older", time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)))
+	reader.add(samplePhoto("middle", "bbbbbb1234", "middle", time.Date(2022, 6, 1, 0, 0, 0, 0, time.UTC)))
+	reader.add(samplePhoto("newer", "cccccc1234", "newer", time.Date(2024, 12, 1, 0, 0, 0, 0, time.UTC)))
+	h := createPhotosHandlerNative(testConfig(), reader, newTestStorage(t))
 
-	pp := createPhotoPrismClient(t, server)
-	handler := createPhotosHandlerForTest(testConfig())
+	url := "/api/v1/photos?taken_from=2021-01-01T00:00:00Z&taken_to=2023-01-01T00:00:00Z"
+	req := httptest.NewRequestWithContext(context.Background(), "GET", url, nil)
+	rec := httptest.NewRecorder()
+	h.List(rec, req)
 
-	req := requestWithPhotoPrism(t, "GET", "/api/v1/photos", pp)
-	recorder := httptest.NewRecorder()
+	assertStatusCode(t, rec, http.StatusOK)
+	var resp PhotoListResponse
+	parseJSONResponse(t, rec, &resp)
+	if resp.Total != 1 {
+		t.Fatalf("Total = %d, want 1", resp.Total)
+	}
+	if resp.Photos[0].UID != "middle" {
+		t.Errorf("expected middle, got %s", resp.Photos[0].UID)
+	}
+}
 
-	handler.List(recorder, req)
+func TestPhotosHandler_List_FilterBySearch(t *testing.T) {
+	reader := newFakePhotoReader()
+	reader.add(samplePhoto("p1", "111111aaaa", "alpine sunrise", time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)))
+	p2 := samplePhoto("p2", "222222aaaa", "beach day", time.Date(2024, 2, 1, 0, 0, 0, 0, time.UTC))
+	reader.add(p2)
+	h := createPhotosHandlerNative(testConfig(), reader, newTestStorage(t))
 
-	assertStatusCode(t, recorder, http.StatusInternalServerError)
-	assertJSONError(t, recorder, "failed to get photos")
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/photos?q=alpine", nil)
+	rec := httptest.NewRecorder()
+	h.List(rec, req)
+
+	assertStatusCode(t, rec, http.StatusOK)
+	var resp PhotoListResponse
+	parseJSONResponse(t, rec, &resp)
+	if resp.Total != 1 || resp.Photos[0].UID != "p1" {
+		t.Errorf("search filter wrong: total=%d photos=%+v", resp.Total, resp.Photos)
+	}
+}
+
+func TestPhotosHandler_List_FilterByBBox(t *testing.T) {
+	reader := newFakePhotoReader()
+	lat1, lng1 := 50.0, 14.0 // Prague-ish
+	lat2, lng2 := 48.0, 17.0 // Bratislava-ish
+	in := samplePhoto("in", "iiiiii1111", "in", time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC))
+	in.Lat, in.Lng = &lat1, &lng1
+	out := samplePhoto("out", "ooooooo111", "out", time.Date(2024, 1, 2, 0, 0, 0, 0, time.UTC))
+	out.Lat, out.Lng = &lat2, &lng2
+	reader.add(in)
+	reader.add(out)
+	h := createPhotosHandlerNative(testConfig(), reader, newTestStorage(t))
+
+	url := "/api/v1/photos?min_lat=49&min_lng=13&max_lat=51&max_lng=15"
+	req := httptest.NewRequestWithContext(context.Background(), "GET", url, nil)
+	rec := httptest.NewRecorder()
+	h.List(rec, req)
+
+	assertStatusCode(t, rec, http.StatusOK)
+	var resp PhotoListResponse
+	parseJSONResponse(t, rec, &resp)
+	if resp.Total != 1 || resp.Photos[0].UID != "in" {
+		t.Errorf("bbox filter wrong: total=%d photos=%+v", resp.Total, resp.Photos)
+	}
+}
+
+func TestPhotosHandler_List_BBoxRequiresAllCorners(t *testing.T) {
+	reader := newFakePhotoReader()
+	h := createPhotosHandlerNative(testConfig(), reader, newTestStorage(t))
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/photos?min_lat=49&max_lat=51", nil)
+	rec := httptest.NewRecorder()
+	h.List(rec, req)
+
+	assertStatusCode(t, rec, http.StatusBadRequest)
+}
+
+func TestPhotosHandler_List_NoReader(t *testing.T) {
+	h := createPhotosHandlerForTest(testConfig())
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/photos", nil)
+	rec := httptest.NewRecorder()
+	h.List(rec, req)
+	assertStatusCode(t, rec, http.StatusServiceUnavailable)
 }
 
 func TestPhotosHandler_Get_Success(t *testing.T) {
-	photosData := `[{"UID": "photo123", "Title": "Test Photo", "Type": "image", "Width": 1920, "Height": 1080}]`
+	reader := newFakePhotoReader()
+	reader.add(samplePhoto("photo123", "abcdef1234", "Hello", time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC)))
+	h := createPhotosHandlerNative(testConfig(), reader, newTestStorage(t))
 
-	server := setupMockPhotoPrismServer(t, map[string]http.HandlerFunc{
-		"/api/v1/photos": func(w http.ResponseWriter, r *http.Request) {
-			q := r.URL.Query().Get("q")
-			if q != "uid:photo123" {
-				t.Errorf("expected q=uid:photo123, got %s", q)
-			}
-			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(photosData))
-		},
-	})
-	defer server.Close()
-
-	pp := createPhotoPrismClient(t, server)
-	handler := createPhotosHandlerForTest(testConfig())
-
-	req := requestWithPhotoPrism(t, "GET", "/api/v1/photos/photo123", pp)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/photos/photo123", nil)
 	req = requestWithChiParams(req, map[string]string{"uid": "photo123"})
-	recorder := httptest.NewRecorder()
+	rec := httptest.NewRecorder()
+	h.Get(rec, req)
 
-	handler.Get(recorder, req)
-
-	assertStatusCode(t, recorder, http.StatusOK)
-	assertContentType(t, recorder, "application/json")
-
-	var photo PhotoResponse
-	parseJSONResponse(t, recorder, &photo)
-
-	if photo.UID != "photo123" {
-		t.Errorf("expected photo UID 'photo123', got '%s'", photo.UID)
+	assertStatusCode(t, rec, http.StatusOK)
+	var p PhotoResponse
+	parseJSONResponse(t, rec, &p)
+	if p.UID != "photo123" || p.Hash != "abcdef1234" {
+		t.Errorf("photo mismatch: %+v", p)
 	}
 }
 
 func TestPhotosHandler_Get_MissingUID(t *testing.T) {
-	handler := createPhotosHandlerForTest(testConfig())
-
+	h := createPhotosHandlerNative(testConfig(), newFakePhotoReader(), newTestStorage(t))
 	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/photos/", nil)
 	req = requestWithChiParams(req, map[string]string{})
-	recorder := httptest.NewRecorder()
-
-	handler.Get(recorder, req)
-
-	assertStatusCode(t, recorder, http.StatusBadRequest)
-	assertJSONError(t, recorder, "missing photo UID")
+	rec := httptest.NewRecorder()
+	h.Get(rec, req)
+	assertStatusCode(t, rec, http.StatusBadRequest)
+	assertJSONError(t, rec, "missing photo UID")
 }
 
 func TestPhotosHandler_Get_NotFound(t *testing.T) {
-	server := setupMockPhotoPrismServer(t, map[string]http.HandlerFunc{
-		"/api/v1/photos": func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`[]`)) // Empty array = not found
-		},
-	})
-	defer server.Close()
+	h := createPhotosHandlerNative(testConfig(), newFakePhotoReader(), newTestStorage(t))
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/photos/missing", nil)
+	req = requestWithChiParams(req, map[string]string{"uid": "missing"})
+	rec := httptest.NewRecorder()
+	h.Get(rec, req)
+	assertStatusCode(t, rec, http.StatusNotFound)
+	assertJSONError(t, rec, "photo not found")
+}
 
-	pp := createPhotoPrismClient(t, server)
-	handler := createPhotosHandlerForTest(testConfig())
+func TestPhotosHandler_Get_ArchivedHiddenByDefault(t *testing.T) {
+	reader := newFakePhotoReader()
+	p := samplePhoto("arch", "abcabc1234", "arch", time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC))
+	now := time.Now()
+	p.ArchivedAt = &now
+	reader.add(p)
+	h := createPhotosHandlerNative(testConfig(), reader, newTestStorage(t))
 
-	req := requestWithPhotoPrism(t, "GET", "/api/v1/photos/nonexistent", pp)
-	req = requestWithChiParams(req, map[string]string{"uid": "nonexistent"})
-	recorder := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/photos/arch", nil)
+	req = requestWithChiParams(req, map[string]string{"uid": "arch"})
+	rec := httptest.NewRecorder()
+	h.Get(rec, req)
+	assertStatusCode(t, rec, http.StatusNotFound)
+}
 
-	handler.Get(recorder, req)
+func TestPhotosHandler_Get_ArchivedWithFlag(t *testing.T) {
+	reader := newFakePhotoReader()
+	p := samplePhoto("arch", "abcabc1234", "arch", time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC))
+	now := time.Now()
+	p.ArchivedAt = &now
+	reader.add(p)
+	h := createPhotosHandlerNative(testConfig(), reader, newTestStorage(t))
 
-	assertStatusCode(t, recorder, http.StatusNotFound)
-	assertJSONError(t, recorder, "photo not found")
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/photos/arch?include_archived=true", nil)
+	req = requestWithChiParams(req, map[string]string{"uid": "arch"})
+	rec := httptest.NewRecorder()
+	h.Get(rec, req)
+	assertStatusCode(t, rec, http.StatusOK)
+	var p2 PhotoResponse
+	parseJSONResponse(t, rec, &p2)
+	if p2.UID != "arch" {
+		t.Errorf("expected arch, got %s", p2.UID)
+	}
 }
 
 func TestPhotosHandler_Update_Success(t *testing.T) {
@@ -305,86 +530,162 @@ func TestPhotosHandler_Update_InvalidJSON(t *testing.T) {
 }
 
 func TestPhotosHandler_Thumbnail_Success(t *testing.T) {
-	imageData := []byte{0x89, 0x50, 0x4E, 0x47} // PNG magic bytes
+	hash := "abcdef1234"
+	store := newTestStorage(t)
+	writeThumbFile(t, store, hash, "fit_1280", []byte("jpegbytes"))
 
-	server := setupMockPhotoPrismServer(t, map[string]http.HandlerFunc{
-		"/api/v1/photos": func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`[{"UID": "photo123", "Hash": "testhash123", "Type": "image"}]`))
-		},
-		"/api/v1/t/testhash123/test-download-token/fit_1280": func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "image/png")
-			w.Write(imageData)
-		},
-	})
-	defer server.Close()
+	reader := newFakePhotoReader()
+	reader.add(samplePhoto("photo123", hash, "p", time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)))
+	h := createPhotosHandlerNative(testConfig(), reader, store)
 
-	pp := createPhotoPrismClient(t, server)
-	handler := createPhotosHandlerForTest(testConfig())
-
-	req := requestWithPhotoPrism(t, "GET", "/api/v1/photos/photo123/thumb/fit_1280", pp)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/photos/photo123/thumb/fit_1280", nil)
 	req = requestWithChiParams(req, map[string]string{"uid": "photo123", "size": "fit_1280"})
-	recorder := httptest.NewRecorder()
+	rec := httptest.NewRecorder()
+	h.Thumbnail(rec, req)
 
-	handler.Thumbnail(recorder, req)
-
-	assertStatusCode(t, recorder, http.StatusOK)
-
-	if recorder.Header().Get("Content-Type") != "image/png" {
-		t.Errorf("expected Content-Type 'image/png', got '%s'", recorder.Header().Get("Content-Type"))
+	assertStatusCode(t, rec, http.StatusOK)
+	if rec.Header().Get("Content-Type") != "image/jpeg" {
+		t.Errorf("Content-Type = %q", rec.Header().Get("Content-Type"))
 	}
-
-	if recorder.Body.Len() != 4 {
-		t.Errorf("expected 4 bytes of data, got %d", recorder.Body.Len())
+	if cc := rec.Header().Get("Cache-Control"); !strings.Contains(cc, "immutable") {
+		t.Errorf("Cache-Control = %q, want immutable", cc)
+	}
+	if etag := rec.Header().Get("ETag"); etag != `"sha:`+hash+`:fit_1280"` {
+		t.Errorf("ETag = %q", etag)
+	}
+	if rec.Body.String() != "jpegbytes" {
+		t.Errorf("body = %q", rec.Body.String())
 	}
 }
 
 func TestPhotosHandler_Thumbnail_InvalidSize(t *testing.T) {
-	handler := createPhotosHandlerForTest(testConfig())
-
+	h := createPhotosHandlerNative(testConfig(), newFakePhotoReader(), newTestStorage(t))
 	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/photos/photo123/thumb/invalid_size", nil)
 	req = requestWithChiParams(req, map[string]string{"uid": "photo123", "size": "invalid_size"})
-	recorder := httptest.NewRecorder()
-
-	handler.Thumbnail(recorder, req)
-
-	assertStatusCode(t, recorder, http.StatusBadRequest)
-	assertJSONError(t, recorder, "invalid size")
+	rec := httptest.NewRecorder()
+	h.Thumbnail(rec, req)
+	assertStatusCode(t, rec, http.StatusBadRequest)
+	assertJSONError(t, rec, "invalid size")
 }
 
 func TestPhotosHandler_Thumbnail_MissingParams(t *testing.T) {
-	handler := createPhotosHandlerForTest(testConfig())
-
+	h := createPhotosHandlerNative(testConfig(), newFakePhotoReader(), newTestStorage(t))
 	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/photos//thumb/", nil)
 	req = requestWithChiParams(req, map[string]string{})
-	recorder := httptest.NewRecorder()
-
-	handler.Thumbnail(recorder, req)
-
-	assertStatusCode(t, recorder, http.StatusBadRequest)
-	assertJSONError(t, recorder, "missing photo UID or size")
+	rec := httptest.NewRecorder()
+	h.Thumbnail(rec, req)
+	assertStatusCode(t, rec, http.StatusBadRequest)
+	assertJSONError(t, rec, "missing photo UID or size")
 }
 
 func TestPhotosHandler_Thumbnail_PhotoNotFound(t *testing.T) {
-	server := setupMockPhotoPrismServer(t, map[string]http.HandlerFunc{
-		"/api/v1/photos": func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`[]`))
-		},
+	h := createPhotosHandlerNative(testConfig(), newFakePhotoReader(), newTestStorage(t))
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/photos/missing/thumb/fit_1280", nil)
+	req = requestWithChiParams(req, map[string]string{"uid": "missing", "size": "fit_1280"})
+	rec := httptest.NewRecorder()
+	h.Thumbnail(rec, req)
+	assertStatusCode(t, rec, http.StatusNotFound)
+	assertJSONError(t, rec, "photo not found")
+}
+
+func TestPhotosHandler_Thumbnail_FileMissing(t *testing.T) {
+	reader := newFakePhotoReader()
+	reader.add(samplePhoto("photo123", "ffffff1234", "p", time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)))
+	h := createPhotosHandlerNative(testConfig(), reader, newTestStorage(t))
+
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/photos/photo123/thumb/fit_1280", nil)
+	req = requestWithChiParams(req, map[string]string{"uid": "photo123", "size": "fit_1280"})
+	rec := httptest.NewRecorder()
+	h.Thumbnail(rec, req)
+	assertStatusCode(t, rec, http.StatusNotFound)
+	assertJSONError(t, rec, "thumbnail not found")
+}
+
+func TestPhotosHandler_Download_FullResponse(t *testing.T) {
+	store := newTestStorage(t)
+	body := []byte("hello world this is the file content")
+	relPath := "2024/06/photo.jpg"
+	writeOriginalFile(t, store, relPath, body)
+
+	reader := newFakePhotoReader()
+	p := samplePhoto("photoDL", "downloadhash123", "p", time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC))
+	p.FilePath = relPath
+	p.FileName = "photo.jpg"
+	p.FileMime = "image/jpeg"
+	reader.add(p)
+	reader.addFile(database.PhotoFile{
+		ID: 1, PhotoUID: "photoDL", FilePath: relPath, FileMime: "image/jpeg", IsPrimary: true,
 	})
-	defer server.Close()
+	h := createPhotosHandlerNative(testConfig(), reader, store)
 
-	pp := createPhotoPrismClient(t, server)
-	handler := createPhotosHandlerForTest(testConfig())
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/photos/photoDL/download", nil)
+	req = requestWithChiParams(req, map[string]string{"uid": "photoDL"})
+	rec := httptest.NewRecorder()
+	h.Download(rec, req)
 
-	req := requestWithPhotoPrism(t, "GET", "/api/v1/photos/nonexistent/thumb/fit_1280", pp)
-	req = requestWithChiParams(req, map[string]string{"uid": "nonexistent", "size": "fit_1280"})
-	recorder := httptest.NewRecorder()
+	assertStatusCode(t, rec, http.StatusOK)
+	if rec.Header().Get("Content-Type") != "image/jpeg" {
+		t.Errorf("Content-Type = %q", rec.Header().Get("Content-Type"))
+	}
+	if cd := rec.Header().Get("Content-Disposition"); !strings.Contains(cd, `filename="photo.jpg"`) {
+		t.Errorf("Content-Disposition = %q", cd)
+	}
+	if !bytes.Equal(rec.Body.Bytes(), body) {
+		t.Errorf("body = %q want %q", rec.Body.String(), body)
+	}
+}
 
-	handler.Thumbnail(recorder, req)
+func TestPhotosHandler_Download_RangeResponse(t *testing.T) {
+	store := newTestStorage(t)
+	body := []byte("abcdefghijklmnopqrstuvwxyz0123456789")
+	relPath := "2024/07/range.jpg"
+	writeOriginalFile(t, store, relPath, body)
 
-	assertStatusCode(t, recorder, http.StatusNotFound)
-	assertJSONError(t, recorder, "photo not found")
+	reader := newFakePhotoReader()
+	p := samplePhoto("rangeP", "rangehash456789", "p", time.Date(2024, 7, 1, 0, 0, 0, 0, time.UTC))
+	p.FilePath = relPath
+	p.FileName = "range.jpg"
+	p.FileMime = "image/jpeg"
+	reader.add(p)
+	reader.addFile(database.PhotoFile{
+		ID: 1, PhotoUID: "rangeP", FilePath: relPath, FileMime: "image/jpeg", IsPrimary: true,
+	})
+	h := createPhotosHandlerNative(testConfig(), reader, store)
+
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/photos/rangeP/download", nil)
+	req.Header.Set("Range", "bytes=0-9")
+	req = requestWithChiParams(req, map[string]string{"uid": "rangeP"})
+	rec := httptest.NewRecorder()
+	h.Download(rec, req)
+
+	if rec.Code != http.StatusPartialContent {
+		t.Fatalf("status = %d, want 206", rec.Code)
+	}
+	if got, want := rec.Body.String(), string(body[:10]); got != want {
+		t.Errorf("body = %q, want %q", got, want)
+	}
+	if cr := rec.Header().Get("Content-Range"); !strings.HasPrefix(cr, "bytes 0-9/") {
+		t.Errorf("Content-Range = %q", cr)
+	}
+}
+
+func TestPhotosHandler_Download_NotFound(t *testing.T) {
+	h := createPhotosHandlerNative(testConfig(), newFakePhotoReader(), newTestStorage(t))
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/photos/missing/download", nil)
+	req = requestWithChiParams(req, map[string]string{"uid": "missing"})
+	rec := httptest.NewRecorder()
+	h.Download(rec, req)
+	assertStatusCode(t, rec, http.StatusNotFound)
+}
+
+func TestPhotosHandler_Download_MissingUID(t *testing.T) {
+	h := createPhotosHandlerNative(testConfig(), newFakePhotoReader(), newTestStorage(t))
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/photos//download", nil)
+	req = requestWithChiParams(req, map[string]string{})
+	rec := httptest.NewRecorder()
+	h.Download(rec, req)
+	assertStatusCode(t, rec, http.StatusBadRequest)
+	assertJSONError(t, rec, "missing photo UID")
 }
 
 func TestPhotosHandler_BatchAddLabels_Success(t *testing.T) {
