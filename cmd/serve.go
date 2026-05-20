@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/kozaktomas/photo-sorter/internal/auth"
 	"github.com/kozaktomas/photo-sorter/internal/config"
 	"github.com/kozaktomas/photo-sorter/internal/database"
 	"github.com/kozaktomas/photo-sorter/internal/database/postgres"
@@ -99,6 +100,10 @@ func registerServeBackends(
 	database.RegisterAlbumWriter(func() database.AlbumWriter { return albumRepo })
 	fmt.Printf("Native photo + album storage enabled (PostgreSQL)\n")
 
+	userRepo := postgres.NewUserRepository(pool)
+	database.RegisterUserWriter(func() database.UserWriter { return userRepo })
+	fmt.Printf("Native user storage enabled (PostgreSQL)\n")
+
 	tvRepo := postgres.NewTextVersionRepository(pool)
 	database.RegisterTextVersionStore(func() database.TextVersionStore { return tvRepo })
 
@@ -146,6 +151,43 @@ func saveHNSWIndexes() {
 	}
 }
 
+// initMCPHandler initialises the MCP HTTP handler when MCP_API_TOKEN is set
+// and returns nil otherwise. The returned handler is plumbed into the web
+// server, where a nil value disables the /mcp/* routes.
+func initMCPHandler(ctx context.Context, cfg *config.Config) (http.Handler, error) {
+	apiToken := os.Getenv("MCP_API_TOKEN")
+	if apiToken == "" {
+		fmt.Println("MCP_API_TOKEN not set, MCP endpoint disabled")
+		return nil, nil //nolint:nilnil // nil handler signals "MCP disabled" to caller
+	}
+	h, err := buildMCPHandler(ctx, cfg, apiToken)
+	if err != nil {
+		return nil, err
+	}
+	fmt.Println("MCP endpoint enabled at /mcp/sse")
+	return h, nil
+}
+
+// bootstrapAdminUser auto-creates the initial admin user when the users
+// table is empty and the BOOTSTRAP_ADMIN_* env vars are set. It is a no-op
+// otherwise (subsequent restarts; or no env vars on a fresh install — a
+// WARN is logged in that case). Must be called AFTER migrations run and
+// AFTER the user repository is registered.
+func bootstrapAdminUser(ctx context.Context, cfg *config.Config) error {
+	userReader, err := database.GetUserReader(ctx)
+	if err != nil {
+		return fmt.Errorf("user reader: %w", err)
+	}
+	userWriter, err := database.GetUserWriter(ctx)
+	if err != nil {
+		return fmt.Errorf("user writer: %w", err)
+	}
+	if err := auth.BootstrapAdmin(ctx, userReader, userWriter, *cfg); err != nil {
+		return fmt.Errorf("bootstrap admin: %w", err)
+	}
+	return nil
+}
+
 // gracefulShutdown waits for a signal, then shuts down the HTTP server, saves HNSW indexes, and closes the DB pool.
 func gracefulShutdown(sigChan <-chan os.Signal, server *web.Server, pool *postgres.Pool) {
 	<-sigChan
@@ -188,6 +230,11 @@ func runServe(cmd *cobra.Command, args []string) error {
 	initEmbeddingHNSW(ctx, embeddingRepo, cfg.Database.HNSWEmbeddingIndexPath)
 
 	sessionRepo := registerServeBackends(pool, embeddingRepo, faceRepo)
+
+	if err := bootstrapAdminUser(ctx, cfg); err != nil {
+		return err
+	}
+
 	port, host, sessionSecret := resolveServeHostPort(cmd)
 
 	if cfg.PhotoPrism.URL == "" {
@@ -196,17 +243,9 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	handlers.SetVersionInfo(Version, CommitSHA)
 
-	// Initialize MCP if API token is configured.
-	var mcpHandler http.Handler
-	if apiToken := os.Getenv("MCP_API_TOKEN"); apiToken != "" {
-		h, err := buildMCPHandler(ctx, cfg, apiToken)
-		if err != nil {
-			return err
-		}
-		mcpHandler = h
-		fmt.Println("MCP endpoint enabled at /mcp/sse")
-	} else {
-		fmt.Println("MCP_API_TOKEN not set, MCP endpoint disabled")
+	mcpHandler, err := initMCPHandler(ctx, cfg)
+	if err != nil {
+		return err
 	}
 
 	server := web.NewServer(cfg, port, host, sessionSecret, sessionRepo, mcpHandler)

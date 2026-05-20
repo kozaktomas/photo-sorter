@@ -238,3 +238,30 @@ type PhotoWriter interface {
 	AddPhotoFile(ctx context.Context, f *PhotoFile) error
 	DeletePhotoFile(ctx context.Context, photoUID, filePath string) error
 }
+
+// UserReader provides read-only access to the native user store.
+// GetUser/GetUserByUsername return ErrNotFound when the row is missing.
+// GetUserByUsername returns the bcrypt password hash so the login flow can
+// verify a credential attempt; callers must not propagate the returned
+// struct beyond the verification step.
+type UserReader interface {
+	GetUser(ctx context.Context, uid string) (*User, error)
+	GetUserByUsername(ctx context.Context, username string) (*UserWithSecret, error)
+	ListUsers(ctx context.Context) ([]User, error)
+	CountUsers(ctx context.Context) (int, error)
+}
+
+// UserWriter provides write access to the native user store. CreateUser
+// generates u.UID when empty. Username uniqueness is enforced by the
+// underlying UNIQUE index and surfaced as ErrUsernameTaken; all other
+// single-row writes return ErrNotFound when the target user does not exist.
+type UserWriter interface {
+	UserReader
+
+	CreateUser(ctx context.Context, u *UserWithSecret) error
+	UpdateUser(ctx context.Context, u *User) error
+	SetPassword(ctx context.Context, uid, newHash string) error
+	SetDisabled(ctx context.Context, uid string, disabled bool) error
+	TouchLastLogin(ctx context.Context, uid string) error
+	DeleteUser(ctx context.Context, uid string) error
+}

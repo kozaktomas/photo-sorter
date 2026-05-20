@@ -29,6 +29,36 @@ var ErrPageNotFound = errors.New("page not found")
 // section belongs to a different book than the page being moved.
 var ErrSectionBookMismatch = errors.New("target section belongs to a different book")
 
+// ErrUsernameTaken is returned by UserWriter.CreateUser when a user with the
+// same username already exists. It maps the underlying PostgreSQL
+// unique_violation (SQLSTATE 23505) on the users.username column into a
+// typed error that callers can match with errors.Is.
+var ErrUsernameTaken = errors.New("username already taken")
+
+// User represents an account in the native user store. UID format is
+// `"u" + 16 random base32 lowercase chars`. PasswordHash is intentionally
+// not part of this struct — see UserWithSecret for the variant that carries
+// the hash for the login flow.
+type User struct {
+	UID         string
+	Username    string
+	DisplayName string
+	Email       string
+	Role        string
+	Disabled    bool
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
+	LastLoginAt *time.Time
+}
+
+// UserWithSecret is User extended with the bcrypt password hash. Only the
+// login flow and the user creation path should touch this struct; never
+// serialise it to any API response or log line.
+type UserWithSecret struct {
+	User
+	PasswordHash string
+}
+
 // StoredEmbedding represents an embedding stored in the database.
 type StoredEmbedding struct {
 	PhotoUID   string
