@@ -222,6 +222,14 @@ export function Layout({ children }: LayoutProps) {
             </nav>
 
             <div className="flex items-center space-x-2">
+              <Link
+                to="/capture"
+                className="md:hidden flex items-center gap-1.5 px-3 py-2 rounded-md text-sm font-medium text-emerald-300 hover:bg-slate-700 hover:text-white transition-colors"
+                title={t('nav.capture')}
+              >
+                <Camera className="h-4 w-4" />
+                <span>{t('nav.capture')}</span>
+              </Link>
               <a
                 href="https://github.com/kozaktomas/photo-sorter"
                 target="_blank"

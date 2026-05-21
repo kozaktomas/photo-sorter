@@ -23,6 +23,7 @@ import { SubjectDetailPage } from './pages/SubjectDetail';
 import { BooksPage } from './pages/Books/index';
 import { BookEditorPage } from './pages/BookEditor/index';
 import { UploadPage } from './pages/Upload/index';
+import { CapturePage } from './pages/Capture/Capture';
 import { LoginPage } from './pages/Login';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 
@@ -265,6 +266,16 @@ function AppRoutes() {
           <ProtectedRoute>
             <Layout>
               <UploadPage />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/capture"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <CapturePage />
             </Layout>
           </ProtectedRoute>
         }

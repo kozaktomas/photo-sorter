@@ -744,6 +744,14 @@
     "uploadedPhotos": "Nahrané fotky",
     "supportedFormats": "JPG, PNG, GIF, HEIC, WebP, TIFF, RAW"
   },
+  "capture": {
+    "title": "Vyfotit",
+    "select_album": "Album",
+    "shoot": "Vyfotit",
+    "uploaded": "Nahráno",
+    "upload_failed": "Nahrání selhalo",
+    "recent": "Nedávno"
+  },
   "subjectDetail": {
     "backToSubjects": "Zpět na osoby",
     "slug": "Slug",

@@ -518,6 +518,30 @@ Upload photos to PhotoPrism with optional labels, multi-album assignment, book s
 - New photos detected via before/after album UID diffing
 - Only one upload job runs at a time
 
+### Capture (`/capture`)
+
+Mobile-first quick-shoot page that uses the device's native camera (via
+`<input type="file" capture="environment">`) to push one photo at a time into
+a chosen album.
+
+- Album dropdown at the top, persisted to `localStorage.capture_default_album`
+- Big circular emerald "shoot" button — single tap opens the camera, the
+  captured image is uploaded via `POST /api/v1/upload` (one file at a time,
+  no SSE)
+- Success / failure toast auto-dismisses after ~2.5 s; the button re-arms
+  for another shot
+- "Recent" strip below shows the album's latest three thumbnails (best-effort
+  refresh after each upload — links to the photo detail page)
+- Layout is narrow-column on desktop / full-width on phones; the page is
+  also surfaced as a small emerald "Capture" link in the header that is only
+  shown below the `md` breakpoint so desktops stay clean
+
+The site is also installable as a PWA via `web/public/manifest.webmanifest`
+(name `Photo Sorter`, short name `Sorter`, `display=standalone`, emerald
+icons in `web/public/icons/`). Opening the installed app lands on the
+dashboard; users navigate to `/capture` via the mobile-only header link or by
+bookmarking it as the home-screen target.
+
 ### Photo Book (`/books`)
 
 Plan and organize photos into a printed landscape photo book with PDF export.

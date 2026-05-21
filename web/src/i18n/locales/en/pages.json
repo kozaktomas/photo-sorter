@@ -755,5 +755,13 @@
     "bookAdded": "Added to book",
     "uploadedPhotos": "Uploaded Photos",
     "supportedFormats": "JPG, PNG, GIF, HEIC, WebP, TIFF, RAW"
+  },
+  "capture": {
+    "title": "Capture",
+    "select_album": "Album",
+    "shoot": "Take a photo",
+    "uploaded": "Uploaded",
+    "upload_failed": "Upload failed",
+    "recent": "Recent"
   }
 }
