@@ -277,6 +277,51 @@ type UserReader interface {
 	CountUsers(ctx context.Context) (int, error)
 }
 
+// MarkerReader provides read-only access to face/label markers.
+// Single-row lookups return ErrNotFound when the row does not exist.
+type MarkerReader interface {
+	GetMarker(ctx context.Context, uid string) (*Marker, error)
+	ListMarkersForPhoto(ctx context.Context, photoUID string) ([]Marker, error)
+	ListMarkersForSubject(ctx context.Context, subjectUID string, limit, offset int) ([]Marker, error)
+}
+
+// MarkerWriter provides write access to face/label markers. CreateMarker
+// generates m.UID when empty. AssignSubject/UnassignSubject toggle the
+// subject_uid column; SetInvalid toggles the invalid flag (which excludes
+// the marker from subject photo/face counts).
+type MarkerWriter interface {
+	MarkerReader
+
+	CreateMarker(ctx context.Context, m *Marker) error
+	UpdateMarker(ctx context.Context, m *Marker) error
+	DeleteMarker(ctx context.Context, uid string) error
+	AssignSubject(ctx context.Context, markerUID, subjectUID string) error
+	UnassignSubject(ctx context.Context, markerUID string) error
+	SetInvalid(ctx context.Context, markerUID string, invalid bool) error
+}
+
+// SubjectReader provides read-only access to subjects (people / pets /
+// other recurring targets). Single-row lookups return ErrNotFound when
+// the row does not exist. GetSubjectByName uses the unaccent extension
+// and a lowercase comparison, so accent/case variants map to the same row.
+type SubjectReader interface {
+	GetSubject(ctx context.Context, uid string) (*Subject, error)
+	GetSubjectByName(ctx context.Context, name string) (*Subject, error)
+	ListSubjects(ctx context.Context, q SubjectQuery) ([]Subject, error)
+	ListSubjectsForPhoto(ctx context.Context, photoUID string) ([]Subject, error)
+}
+
+// SubjectWriter provides write access to subjects. EnsureSubject upserts
+// by accent-insensitive lowercased name so concurrent callers cannot
+// race-create duplicate rows; the slug is generated from the name.
+type SubjectWriter interface {
+	SubjectReader
+
+	EnsureSubject(ctx context.Context, name, subjectType string) (*Subject, error)
+	UpdateSubject(ctx context.Context, s *Subject) error
+	DeleteSubject(ctx context.Context, uid string) error
+}
+
 // UserWriter provides write access to the native user store. CreateUser
 // generates u.UID when empty. Username uniqueness is enforced by the
 // underlying UNIQUE index and surfaced as ErrUsernameTaken; all other

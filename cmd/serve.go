@@ -101,7 +101,13 @@ func registerServeBackends(
 
 	labelRepo := postgres.NewLabelRepository(pool)
 	database.RegisterLabelWriter(func() database.LabelWriter { return labelRepo })
-	fmt.Printf("Native photo + album + label storage enabled (PostgreSQL)\n")
+
+	subjectRepo := postgres.NewSubjectRepository(pool)
+	database.RegisterSubjectWriter(func() database.SubjectWriter { return subjectRepo })
+
+	markerRepo := postgres.NewMarkerRepository(pool)
+	database.RegisterMarkerWriter(func() database.MarkerWriter { return markerRepo })
+	fmt.Printf("Native photo + album + label + subject + marker storage enabled (PostgreSQL)\n")
 
 	userRepo := postgres.NewUserRepository(pool)
 	database.RegisterUserWriter(func() database.UserWriter { return userRepo })

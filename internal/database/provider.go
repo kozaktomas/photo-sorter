@@ -32,6 +32,8 @@ var (
 	postgresAlbumWriter        func() AlbumWriter
 	postgresLabelWriter        func() LabelWriter
 	postgresUserWriter         func() UserWriter
+	postgresMarkerWriter       func() MarkerWriter
+	postgresSubjectWriter      func() SubjectWriter
 	postgresInitialized        bool
 )
 
@@ -51,6 +53,8 @@ func ResetForTesting() {
 	postgresAlbumWriter = nil
 	postgresLabelWriter = nil
 	postgresUserWriter = nil
+	postgresMarkerWriter = nil
+	postgresSubjectWriter = nil
 	postgresInitialized = false
 }
 
@@ -340,4 +344,62 @@ func GetUserReader(ctx context.Context) (UserReader, error) {
 		return nil, errors.New("PostgreSQL user reader not registered")
 	}
 	return postgresUserWriter(), nil
+}
+
+// RegisterMarkerWriter registers the MarkerWriter constructor. The same
+// value also serves MarkerReader, since the writer embeds the reader
+// interface.
+func RegisterMarkerWriter(writer func() MarkerWriter) {
+	postgresMarkerWriter = writer
+}
+
+// GetMarkerWriter returns a MarkerWriter from the PostgreSQL backend.
+func GetMarkerWriter(ctx context.Context) (MarkerWriter, error) {
+	if !postgresInitialized {
+		return nil, errors.New("PostgreSQL backend not initialized: DATABASE_URL is required")
+	}
+	if postgresMarkerWriter == nil {
+		return nil, errors.New("PostgreSQL marker writer not registered")
+	}
+	return postgresMarkerWriter(), nil
+}
+
+// GetMarkerReader returns a MarkerReader from the PostgreSQL backend.
+func GetMarkerReader(ctx context.Context) (MarkerReader, error) {
+	if !postgresInitialized {
+		return nil, errors.New("PostgreSQL backend not initialized: DATABASE_URL is required")
+	}
+	if postgresMarkerWriter == nil {
+		return nil, errors.New("PostgreSQL marker reader not registered")
+	}
+	return postgresMarkerWriter(), nil
+}
+
+// RegisterSubjectWriter registers the SubjectWriter constructor. The same
+// value also serves SubjectReader, since the writer embeds the reader
+// interface.
+func RegisterSubjectWriter(writer func() SubjectWriter) {
+	postgresSubjectWriter = writer
+}
+
+// GetSubjectWriter returns a SubjectWriter from the PostgreSQL backend.
+func GetSubjectWriter(ctx context.Context) (SubjectWriter, error) {
+	if !postgresInitialized {
+		return nil, errors.New("PostgreSQL backend not initialized: DATABASE_URL is required")
+	}
+	if postgresSubjectWriter == nil {
+		return nil, errors.New("PostgreSQL subject writer not registered")
+	}
+	return postgresSubjectWriter(), nil
+}
+
+// GetSubjectReader returns a SubjectReader from the PostgreSQL backend.
+func GetSubjectReader(ctx context.Context) (SubjectReader, error) {
+	if !postgresInitialized {
+		return nil, errors.New("PostgreSQL backend not initialized: DATABASE_URL is required")
+	}
+	if postgresSubjectWriter == nil {
+		return nil, errors.New("PostgreSQL subject reader not registered")
+	}
+	return postgresSubjectWriter(), nil
 }

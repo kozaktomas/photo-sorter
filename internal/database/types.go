@@ -431,6 +431,55 @@ type LabelQuery struct {
 	Offset    int
 }
 
+// Marker is a face or label region on a photo. Coordinates are relative
+// (0..1) in display space. SubjectUID is empty when the marker is not yet
+// assigned to a subject; the FK on the underlying column is ON DELETE SET
+// NULL, so deleting a subject leaves its markers in place but unassigned.
+type Marker struct {
+	UID        string
+	PhotoUID   string
+	SubjectUID string  // empty when unassigned
+	Type       string  // "face" or "label"
+	X          float64 // top-left x (0..1, display space)
+	Y          float64 // top-left y (0..1, display space)
+	W          float64 // width (0..1, display space)
+	H          float64 // height (0..1, display space)
+	Score      int     // detection score (0..100)
+	Invalid    bool    // operator-marked false positive
+	Reviewed   bool    // operator-reviewed
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+}
+
+// Subject is a recurring face/label target (a person, pet, or other named
+// entity). PhotoCount and FaceCount are computed at query time from the
+// markers table (both exclude markers flagged invalid).
+type Subject struct {
+	UID           string
+	Slug          string
+	Name          string
+	Type          string // "person" / "pet" / "other"
+	Favorite      bool
+	Private       bool
+	Notes         string
+	CoverPhotoUID string
+	PhotoCount    int // computed: COUNT(DISTINCT photo_uid) of valid markers
+	FaceCount     int // computed: COUNT(*) of valid markers
+	CreatedAt     time.Time
+	UpdatedAt     time.Time
+}
+
+// SubjectQuery holds optional filter and pagination criteria for
+// SubjectReader.ListSubjects.
+type SubjectQuery struct {
+	Type     string
+	Favorite *bool
+	Search   string
+	SortBy   string // "name" / "photos" / "newest"
+	Limit    int
+	Offset   int
+}
+
 // PageFormatSlotCount returns the number of slots for a given page format.
 func PageFormatSlotCount(format string) int {
 	switch format {
