@@ -371,16 +371,6 @@ export interface ProcessJobResult {
   total_face_photos: number;
 }
 
-// Rebuild index response
-export interface RebuildIndexResponse {
-  success: boolean;
-  face_count: number;
-  embedding_count: number;
-  face_index_path: string;
-  embedding_index_path: string;
-  duration_ms: number;
-}
-
 // Era estimation types
 export interface EraMatch {
   era_slug: string;

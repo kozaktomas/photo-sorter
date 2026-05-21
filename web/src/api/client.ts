@@ -17,7 +17,6 @@ import type {
   StatsResponse,
   OutlierResponse,
   TextSearchResponse,
-  RebuildIndexResponse,
   SyncCacheResponse,
   EraEstimateResponse,
   DuplicatesResponse,
@@ -478,13 +477,6 @@ export async function cancelProcessJob(
 ): Promise<{ cancelled: boolean }> {
   return request<{ cancelled: boolean }>(`/process/${jobId}`, {
     method: 'DELETE',
-  });
-}
-
-// Rebuild HNSW index
-export async function rebuildIndex(): Promise<RebuildIndexResponse> {
-  return request<RebuildIndexResponse>('/process/rebuild-index', {
-    method: 'POST',
   });
 }
 

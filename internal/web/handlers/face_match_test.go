@@ -13,7 +13,7 @@ import (
 
 // createFacesHandlerWithMocks creates a FacesHandler with the supplied face
 // reader/writer; marker / subject / photo repositories are left nil so the
-// Match path exercises only the HNSW + cached-marker code.
+// Match path exercises only the pgvector similarity + cached-marker code.
 func createFacesHandlerWithMocks(faceReader database.FaceReader, faceWriter database.FaceWriter) *FacesHandler {
 	return &FacesHandler{
 		config:         testConfig(),
@@ -378,7 +378,7 @@ func TestMarkAlreadyAssignedPhotos(t *testing.T) {
 			FaceIndex:  0,
 			BBox:       []float64{10, 10, 50, 50},
 			MatchCount: 1,
-			// Stale HNSW data: no SubjectName/SubjectUID set.
+			// Stale cached subject data: no SubjectName/SubjectUID set.
 		},
 		"new-photo": {
 			PhotoUID:   "new-photo",

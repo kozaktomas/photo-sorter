@@ -3,11 +3,8 @@ package postgres
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"fmt"
 	"math"
-	"sync"
-	"time"
 
 	"github.com/kozaktomas/photo-sorter/internal/database"
 	"github.com/kozaktomas/photo-sorter/internal/facematch"
@@ -26,13 +23,9 @@ func safeIntToInt32(v int) int32 {
 	return int32(v)
 }
 
-// FaceRepository provides PostgreSQL-backed face storage with optional in-memory HNSW index.
+// FaceRepository provides pgvector-backed face storage.
 type FaceRepository struct {
-	pool          *Pool
-	hnswIndex     *database.HNSWIndex
-	hnswEnabled   bool
-	hnswIndexPath string // Path to persist HNSW index (optional)
-	hnswMu        sync.RWMutex
+	pool *Pool
 }
 
 // NewFaceRepository creates a new PostgreSQL face repository.
@@ -210,61 +203,16 @@ func (r *FaceRepository) CountProcessed(ctx context.Context) (int, error) {
 }
 
 // FindSimilar finds faces with similar embeddings using cosine distance.
-// Uses in-memory HNSW index if enabled, otherwise falls back to PostgreSQL.
 func (r *FaceRepository) FindSimilar(
 	ctx context.Context, embedding []float32, limit int,
 ) ([]database.StoredFace, error) {
-	// Use HNSW if enabled.
-	r.hnswMu.RLock()
-	hnswEnabled := r.hnswEnabled && r.hnswIndex != nil
-	r.hnswMu.RUnlock()
-
-	if hnswEnabled {
-		return r.findSimilarHNSW(embedding, limit)
-	}
-
-	// Fallback to PostgreSQL with ef_search optimization.
-	return r.findSimilarPostgres(ctx, embedding, limit)
-}
-
-// findSimilarHNSW uses the in-memory HNSW index for similarity search.
-func (r *FaceRepository) findSimilarHNSW(embedding []float32, limit int) ([]database.StoredFace, error) {
-	r.hnswMu.RLock()
-	defer r.hnswMu.RUnlock()
-
-	if r.hnswIndex == nil {
-		return nil, errors.New("HNSW index not initialized")
-	}
-
-	ids, _, err := r.hnswIndex.Search(embedding, limit)
-	if err != nil {
-		return nil, fmt.Errorf("HNSW search: %w", err)
-	}
-
-	results := make([]database.StoredFace, 0, len(ids))
-	for _, id := range ids {
-		face := r.hnswIndex.GetFace(id)
-		if face != nil {
-			results = append(results, *face)
-		}
-	}
-
-	return results, nil
-}
-
-// findSimilarPostgres uses PostgreSQL for similarity search with ef_search optimization.
-func (r *FaceRepository) findSimilarPostgres(
-	ctx context.Context, embedding []float32, limit int,
-) ([]database.StoredFace, error) {
-	// Use transaction to set ef_search for better recall (matching GOB HNSW config).
 	tx, err := r.pool.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return nil, fmt.Errorf("begin transaction: %w", err)
 	}
 	defer tx.Rollback()
 
-	// Set ef_search to match GOB HNSW configuration.
-	if _, err := tx.ExecContext(ctx, fmt.Sprintf("SET LOCAL hnsw.ef_search = %d", database.HNSWEfSearch)); err != nil {
+	if _, err := tx.ExecContext(ctx, fmt.Sprintf("SET LOCAL hnsw.ef_search = %d", hnswEfSearch)); err != nil {
 		return nil, fmt.Errorf("set ef_search: %w", err)
 	}
 
@@ -286,79 +234,19 @@ func (r *FaceRepository) findSimilarPostgres(
 	return scanFaces(rows)
 }
 
-// FindSimilarWithDistance finds similar faces and returns distances.
-// Uses in-memory HNSW index if enabled, otherwise falls back to PostgreSQL.
+// FindSimilarWithDistance returns the closest faces whose cosine
+// distance to the query vector is strictly less than maxDistance, ordered
+// by distance ascending, capped at limit.
 func (r *FaceRepository) FindSimilarWithDistance(
 	ctx context.Context, embedding []float32, limit int, maxDistance float64,
 ) ([]database.StoredFace, []float64, error) {
-	// Use HNSW if enabled.
-	r.hnswMu.RLock()
-	hnswEnabled := r.hnswEnabled && r.hnswIndex != nil
-	r.hnswMu.RUnlock()
-
-	if hnswEnabled {
-		return r.findSimilarWithDistanceHNSW(embedding, limit, maxDistance)
-	}
-
-	// Fallback to PostgreSQL with ef_search optimization.
-	return r.findSimilarWithDistancePostgres(ctx, embedding, limit, maxDistance)
-}
-
-// findSimilarWithDistanceHNSW uses the in-memory HNSW index for similarity search.
-func (r *FaceRepository) findSimilarWithDistanceHNSW(
-	embedding []float32, limit int, maxDistance float64,
-) ([]database.StoredFace, []float64, error) {
-	r.hnswMu.RLock()
-	defer r.hnswMu.RUnlock()
-
-	if r.hnswIndex == nil {
-		return nil, nil, errors.New("HNSW index not initialized")
-	}
-
-	// Request more candidates to ensure we have enough after distance filtering.
-	searchK := limit * database.HNSWSearchMultiplier
-	searchK = max(searchK, 100) // Minimum search size for better recall
-
-	ids, distances, err := r.hnswIndex.Search(embedding, searchK)
-	if err != nil {
-		return nil, nil, fmt.Errorf("HNSW search: %w", err)
-	}
-
-	// Filter by distance and collect results.
-	results := make([]database.StoredFace, 0, limit)
-	distancesOut := make([]float64, 0, limit)
-
-	for i, id := range ids {
-		if distances[i] >= maxDistance {
-			continue
-		}
-		face := r.hnswIndex.GetFace(id)
-		if face == nil {
-			continue
-		}
-		results = append(results, *face)
-		distancesOut = append(distancesOut, distances[i])
-		if len(results) >= limit {
-			break
-		}
-	}
-
-	return results, distancesOut, nil
-}
-
-// findSimilarWithDistancePostgres uses PostgreSQL for similarity search with ef_search optimization.
-func (r *FaceRepository) findSimilarWithDistancePostgres(
-	ctx context.Context, embedding []float32, limit int, maxDistance float64,
-) ([]database.StoredFace, []float64, error) {
-	// Use transaction to set ef_search for better recall (matching GOB HNSW config).
 	tx, err := r.pool.BeginTx(ctx, &sql.TxOptions{ReadOnly: true})
 	if err != nil {
 		return nil, nil, fmt.Errorf("begin transaction: %w", err)
 	}
 	defer tx.Rollback()
 
-	// Set ef_search to match GOB HNSW configuration.
-	if _, err := tx.ExecContext(ctx, fmt.Sprintf("SET LOCAL hnsw.ef_search = %d", database.HNSWEfSearch)); err != nil {
+	if _, err := tx.ExecContext(ctx, fmt.Sprintf("SET LOCAL hnsw.ef_search = %d", hnswEfSearch)); err != nil {
 		return nil, nil, fmt.Errorf("set ef_search: %w", err)
 	}
 
@@ -436,13 +324,6 @@ func extractNullableFields(face *database.StoredFace) faceNullableFields {
 	return f
 }
 
-// isHNSWEnabled checks whether the HNSW index is active.
-func (r *FaceRepository) isHNSWEnabled() bool {
-	r.hnswMu.RLock()
-	defer r.hnswMu.RUnlock()
-	return r.hnswEnabled && r.hnswIndex != nil
-}
-
 // SaveFaces stores multiple faces for a photo, replacing any existing faces for that photo.
 func (r *FaceRepository) SaveFaces(ctx context.Context, photoUID string, faces []database.StoredFace) error {
 	tx, err := r.pool.BeginTx(ctx, nil)
@@ -450,16 +331,6 @@ func (r *FaceRepository) SaveFaces(ctx context.Context, photoUID string, faces [
 		return fmt.Errorf("begin transaction: %w", err)
 	}
 	defer tx.Rollback()
-
-	hnswEnabled := r.isHNSWEnabled()
-
-	var oldFaceIDs []int64
-	if hnswEnabled {
-		oldFaceIDs, err = scanFaceIDs(tx, ctx, photoUID)
-		if err != nil {
-			return err
-		}
-	}
 
 	if _, err := tx.ExecContext(ctx, "DELETE FROM faces WHERE photo_uid = $1", photoUID); err != nil {
 		return fmt.Errorf("delete existing faces: %w", err)
@@ -469,20 +340,16 @@ func (r *FaceRepository) SaveFaces(ctx context.Context, photoUID string, faces [
 		if err := tx.Commit(); err != nil {
 			return fmt.Errorf("commit transaction: %w", err)
 		}
-		r.updateHNSWFaces(hnswEnabled, oldFaceIDs, nil)
 		return nil
 	}
 
-	insertedFaces, err := insertFacesReturningIDs(ctx, tx, photoUID, faces)
-	if err != nil {
+	if _, err := insertFacesReturningIDs(ctx, tx, photoUID, faces); err != nil {
 		return err
 	}
 
 	if err := tx.Commit(); err != nil {
 		return fmt.Errorf("commit transaction: %w", err)
 	}
-
-	r.updateHNSWFaces(hnswEnabled, oldFaceIDs, insertedFaces)
 	return nil
 }
 
@@ -533,21 +400,6 @@ func insertFacesReturningIDs(
 	return insertedFaces, nil
 }
 
-// updateHNSWFaces removes old face IDs and adds new faces to the HNSW index.
-func (r *FaceRepository) updateHNSWFaces(hnswEnabled bool, oldIDs []int64, newFaces []database.StoredFace) {
-	if !hnswEnabled {
-		return
-	}
-	r.hnswMu.Lock()
-	for _, id := range oldIDs {
-		r.hnswIndex.Delete(id)
-	}
-	for i := range newFaces {
-		r.hnswIndex.Add(&newFaces[i])
-	}
-	r.hnswMu.Unlock()
-}
-
 // MarkFacesProcessed marks a photo as having been processed for face detection.
 func (r *FaceRepository) MarkFacesProcessed(ctx context.Context, photoUID string, faceCount int) error {
 	query := `
@@ -575,7 +427,6 @@ func (r *FaceRepository) UpdateFaceMarker(
 			subject_uid = $2,
 			subject_name = $3
 		WHERE photo_uid = $4 AND face_index = $5
-		RETURNING id
 	`
 
 	var mUID, sUID, sName sql.NullString
@@ -589,22 +440,9 @@ func (r *FaceRepository) UpdateFaceMarker(
 		sName = sql.NullString{String: subjectName, Valid: true}
 	}
 
-	var faceID int64
-	err := r.pool.QueryRow(ctx, query, mUID, sUID, sName, photoUID, faceIndex).Scan(&faceID)
-	if errors.Is(err, sql.ErrNoRows) {
-		return nil // Face not found, no-op.
-	}
-	if err != nil {
+	if _, err := r.pool.Exec(ctx, query, mUID, sUID, sName, photoUID, faceIndex); err != nil {
 		return fmt.Errorf("update face marker: %w", err)
 	}
-
-	// Sync the in-memory HNSW index if enabled.
-	if r.isHNSWEnabled() {
-		r.hnswMu.RLock()
-		r.hnswIndex.UpdateFaceMetadata(faceID, markerUID, subjectUID, subjectName)
-		r.hnswMu.RUnlock()
-	}
-
 	return nil
 }
 
@@ -838,176 +676,11 @@ func (r *FaceRepository) GetAllFaces(ctx context.Context) ([]database.StoredFace
 	return scanFaces(rows)
 }
 
-// tryLoadFaceIndex attempts to load the face HNSW index from disk.
-// Returns true if the index was loaded successfully.
-func (r *FaceRepository) tryLoadFaceIndex(ctx context.Context, indexPath string, dbFaceCount, dbMaxFaceID int64) bool {
-	metadata, metaErr := database.LoadHNSWMetadata(indexPath)
-	if metaErr != nil {
-		fmt.Printf("Face index: metadata file error: %v (will rebuild)\n", metaErr)
-		return false
-	}
-	if metadata.FaceCount != dbFaceCount || metadata.MaxFaceID != dbMaxFaceID {
-		fmt.Printf("Face index: stale (db: count=%d max_id=%d, cached: count=%d max_id=%d) (will rebuild)\n",
-			dbFaceCount, dbMaxFaceID, metadata.FaceCount, metadata.MaxFaceID)
-		return false
-	}
-	return r.tryLoadFreshFaceIndex(ctx, indexPath)
-}
-
-// tryLoadFreshFaceIndex attempts to load a fresh face index, with fallback to legacy format.
-func (r *FaceRepository) tryLoadFreshFaceIndex(ctx context.Context, indexPath string) bool {
-	r.hnswIndex = database.NewHNSWIndex()
-	if err := r.hnswIndex.LoadWithFaceMetadata(indexPath); err != nil {
-		fmt.Printf("Face index: failed to load with metadata: %v (trying fallback)\n", err)
-		return r.tryLoadFallbackFaceIndex(ctx, indexPath)
-	}
-	if r.hnswIndex.IsEmpty() {
-		fmt.Printf("Face index: loaded graph is empty (will rebuild)\n")
-		return false
-	}
-	fmt.Printf("Face index: loaded from disk (fresh)\n")
-	return true
-}
-
-// tryLoadFallbackFaceIndex attempts the legacy load path without face metadata.
-func (r *FaceRepository) tryLoadFallbackFaceIndex(ctx context.Context, indexPath string) bool {
-	r.hnswIndex = database.NewHNSWIndex()
-	if err := r.hnswIndex.Load(indexPath); err != nil {
-		fmt.Printf("Face index: fallback load failed: %v (will rebuild)\n", err)
-		return false
-	}
-	if r.hnswIndex.IsEmpty() {
-		fmt.Printf("Face index: fallback loaded graph is empty (will rebuild)\n")
-		return false
-	}
-	fmt.Println("Loading faces from database " +
-		"(consider running 'Rebuild Index' to create .faces file for faster startup)...")
-	faces, err := r.GetAllFaces(ctx)
-	if err != nil {
-		fmt.Printf("Face index: failed to load faces for fallback: %v (will rebuild)\n", err)
-		return false
-	}
-	r.hnswIndex.RebuildFromFaces(faces)
-	fmt.Printf("Face index: loaded from disk (fallback path)\n")
-	return true
-}
-
-// EnableHNSW loads or builds an in-memory HNSW index for O(log N) similarity search.
-// If indexPath is provided, it will try to load from disk first and save after building.
-// This should be called once at startup.
-func (r *FaceRepository) EnableHNSW(ctx context.Context, indexPath string) error {
-	r.hnswMu.Lock()
-	defer r.hnswMu.Unlock()
-
-	r.hnswIndexPath = indexPath
-
-	var dbFaceCount, dbMaxFaceID int64
-	err := r.pool.QueryRow(ctx, "SELECT COUNT(*), COALESCE(MAX(id), 0) FROM faces").Scan(&dbFaceCount, &dbMaxFaceID)
-	if err != nil {
-		return fmt.Errorf("failed to get face stats: %w", err)
-	}
-
-	if indexPath != "" && r.tryLoadFaceIndex(ctx, indexPath, dbFaceCount, dbMaxFaceID) {
-		r.hnswEnabled = true
-		return nil
-	}
-
-	faces, err := r.GetAllFaces(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to load faces: %w", err)
-	}
-
-	r.hnswIndex = database.NewHNSWIndex()
-	if err := r.hnswIndex.BuildFromFaces(faces); err != nil {
-		return fmt.Errorf("failed to build HNSW index: %w", err)
-	}
-
-	if indexPath != "" && len(faces) > 0 {
-		metadata := database.HNSWIndexMetadata{FaceCount: dbFaceCount, MaxFaceID: dbMaxFaceID}
-		if err := r.hnswIndex.SaveWithFaceMetadata(indexPath, metadata); err != nil {
-			fmt.Printf("Warning: failed to save HNSW index to disk: %v\n", err)
-		}
-	}
-
-	r.hnswEnabled = true
-	return nil
-}
-
-// DisableHNSW disables the in-memory HNSW index, falling back to PostgreSQL queries.
-func (r *FaceRepository) DisableHNSW() {
-	r.hnswMu.Lock()
-	defer r.hnswMu.Unlock()
-	r.hnswEnabled = false
-	r.hnswIndex = nil
-}
-
-// IsHNSWEnabled returns whether the in-memory HNSW index is enabled.
-func (r *FaceRepository) IsHNSWEnabled() bool {
-	r.hnswMu.RLock()
-	defer r.hnswMu.RUnlock()
-	return r.hnswEnabled && r.hnswIndex != nil
-}
-
-// HNSWCount returns the number of faces in the HNSW index.
-func (r *FaceRepository) HNSWCount() int {
-	r.hnswMu.RLock()
-	defer r.hnswMu.RUnlock()
-	if r.hnswIndex == nil {
-		return 0
-	}
-	return r.hnswIndex.Count()
-}
-
-// RebuildHNSW rebuilds the HNSW index from PostgreSQL data.
-func (r *FaceRepository) RebuildHNSW(ctx context.Context) error {
-	r.hnswMu.RLock()
-	indexPath := r.hnswIndexPath
-	r.hnswMu.RUnlock()
-	return r.EnableHNSW(ctx, indexPath)
-}
-
-// SaveHNSWIndex saves the current HNSW index to disk (if path configured).
-func (r *FaceRepository) SaveHNSWIndex() error {
-	r.hnswMu.RLock()
-	defer r.hnswMu.RUnlock()
-
-	if r.hnswIndexPath == "" {
-		fmt.Println("Face index save: no path configured, skipping")
-		return nil // No path configured, nothing to save
-	}
-
-	if r.hnswIndex == nil {
-		fmt.Println("Face index save: no index in memory, skipping")
-		return nil // No index to save
-	}
-
-	fmt.Printf("Face index save: saving to %s\n", r.hnswIndexPath)
-
-	// Get current database stats for metadata.
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	var faceCount int64
-	var maxFaceID int64
-	err := r.pool.QueryRow(ctx, "SELECT COUNT(*), COALESCE(MAX(id), 0) FROM faces").Scan(&faceCount, &maxFaceID)
-	if err != nil {
-		return fmt.Errorf("failed to get face stats: %w", err)
-	}
-
-	metadata := database.HNSWIndexMetadata{
-		FaceCount: faceCount,
-		MaxFaceID: maxFaceID,
-	}
-
-	if err := r.hnswIndex.SaveWithFaceMetadata(r.hnswIndexPath, metadata); err != nil {
-		return fmt.Errorf("saving HNSW face index: %w", err)
-	}
-
-	fmt.Printf("Face index save: saved successfully (count=%d, max_id=%d)\n", faceCount, maxFaceID)
-	return nil
-}
-
-// DeleteFacesByPhoto removes all faces and faces_processed records for a photo.
-// Returns the deleted face IDs for HNSW cleanup.
+// DeleteFacesByPhoto removes all faces and faces_processed records for a
+// photo. pgvector keeps the embedding index in sync automatically.
+// The returned slice is the list of deleted face IDs, retained on the
+// interface signature for callers that want to log or audit the removed
+// rows.
 func (r *FaceRepository) DeleteFacesByPhoto(ctx context.Context, photoUID string) ([]int64, error) {
 	tx, err := r.pool.BeginTx(ctx, nil)
 	if err != nil {
@@ -1015,37 +688,21 @@ func (r *FaceRepository) DeleteFacesByPhoto(ctx context.Context, photoUID string
 	}
 	defer tx.Rollback()
 
-	// Get face IDs before deleting (for HNSW cleanup).
 	faceIDs, err := scanFaceIDs(tx, ctx, photoUID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Delete faces.
 	if _, err := tx.ExecContext(ctx, "DELETE FROM faces WHERE photo_uid = $1", photoUID); err != nil {
 		return nil, fmt.Errorf("delete faces: %w", err)
 	}
 
-	// Delete faces_processed record.
 	if _, err := tx.ExecContext(ctx, "DELETE FROM faces_processed WHERE photo_uid = $1", photoUID); err != nil {
 		return nil, fmt.Errorf("delete faces_processed: %w", err)
 	}
 
 	if err := tx.Commit(); err != nil {
 		return nil, fmt.Errorf("commit transaction: %w", err)
-	}
-
-	// Remove from HNSW index.
-	r.hnswMu.RLock()
-	hnswEnabled := r.hnswEnabled && r.hnswIndex != nil
-	r.hnswMu.RUnlock()
-
-	if hnswEnabled {
-		r.hnswMu.Lock()
-		for _, id := range faceIDs {
-			r.hnswIndex.Delete(id)
-		}
-		r.hnswMu.Unlock()
 	}
 
 	return faceIDs, nil
@@ -1109,6 +766,8 @@ func (r *FaceRepository) GetPhotoUIDsWithSubjectName(
 	return result, nil
 }
 
-// Verify interface compliance.
-var _ database.FaceReader = (*FaceRepository)(nil)
-var _ database.FaceWriter = (*FaceRepository)(nil)
+// Compile-time interface checks.
+var (
+	_ database.FaceReader = (*FaceRepository)(nil)
+	_ database.FaceWriter = (*FaceRepository)(nil)
+)

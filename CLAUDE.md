@@ -202,7 +202,7 @@ TailwindCSS, embedded into the binary at compile time via `go:embed`.
 - **internal/auth/** — Password hashing, role constants, bootstrap admin creation
 - **internal/config/** — Environment-based configuration loader
 - **internal/constants/** — Shared constants (page sizes, thresholds, concurrency, upload limits)
-- **internal/database/** — PostgreSQL storage with pgvector, repository interfaces, HNSW index wrappers
+- **internal/database/** — PostgreSQL storage with pgvector (HNSW indexes via `vector_cosine_ops`), repository interfaces, in-process readers/writers
 - **internal/exif/** — EXIF reader (`exiftool` subprocess + pure-Go fallback) and XMP sidecar writer
 - **internal/facematch/** — Face matching utilities (IoU, bbox conversion, name normalization)
 - **internal/fingerprint/** — Perceptual hash computation (pHash, dHash) + embeddings HTTP client
@@ -249,8 +249,6 @@ Environment variables (loaded from `.env`):
 | `DUPLICATE_EMBEDDING_MAX_DIST` | No | Max cosine distance (0..2) between CLIP embeddings for the near-duplicate scan (default 0.05) |
 | `EMBEDDING_URL` | No | Embeddings service URL (default `http://localhost:8000`) |
 | `EMBEDDING_DIM` | No | Embedding dimensions (default 768) |
-| `HNSW_INDEX_PATH` | No | Path to persist the face HNSW index for fast startup (e.g. `/data/faces.pg.hnsw`) |
-| `HNSW_EMBEDDING_INDEX_PATH` | No | Path to persist the embedding HNSW index for fast startup |
 | `OPENAI_TOKEN` | No** | OpenAI API key (sort, text check/rewrite/consistency, CLIP translate) |
 | `GEMINI_API_KEY` | No** | Google Gemini API key |
 | `OLLAMA_URL` | No | Ollama server URL (default `http://localhost:11434`) |
@@ -373,7 +371,7 @@ internal/mcp/
 
 The `internal/database/` package provides storage for embeddings, faces data, photo books, text versions, and text check results using PostgreSQL with pgvector.
 
-**In-Memory HNSW:** Loads face embeddings (512-dim) and image embeddings (768-dim) into separate in-memory HNSW indexes at startup for O(log N) similarity search. Face index auto-updates when faces are saved and when marker metadata is updated via `UpdateFaceMarker`. Persistence via `HNSW_INDEX_PATH` / `HNSW_EMBEDDING_INDEX_PATH` env vars; saved on graceful shutdown (after HTTP server stops, before DB pool closes) and after "Rebuild Index". Docker deployments should set `stop_grace_period: 60s` to allow time for index persistence on slow hardware.
+**Similarity search:** Every cosine query runs in pgvector. `embeddings.embedding` (768-dim CLIP) and `faces.embedding` (512-dim ResNet100) each have an HNSW index with operator class `vector_cosine_ops` (migration `038_pgvector_hnsw_indexes.sql`). Each query opens a small read-only transaction, runs `SET LOCAL hnsw.ef_search = 100`, and issues `ORDER BY embedding <=> $1::vector`. The constant lives in `internal/database/postgres/embeddings.go`. pgvector keeps the index up to date on INSERT/UPDATE/DELETE; the app holds no in-memory vector data. See [`docs/similarity-search.md`](docs/similarity-search.md).
 
 **Key files:**
 ```
@@ -381,21 +379,19 @@ internal/database/
 ├── types.go            # StoredPhoto, StoredFace, ExportData, PhotoBook, BookChapter, BookSection, etc.
 ├── repository.go       # FaceReader, FaceWriter, EmbeddingReader, BookReader, BookWriter interfaces
 ├── provider.go         # Provider functions for getting readers/writers
-├── hnsw_index.go       # HNSW index for face embeddings (int64 keys)
-├── hnsw_embeddings.go  # HNSW index for image embeddings (string keys)
-├── cosine.go           # Cosine distance computation
-├── constants.go        # Shared constants (face size thresholds, HNSW params)
+├── cosine.go           # Cosine distance helper (used by face outlier ranking)
+├── constants.go        # Shared constants (face size thresholds)
 └── postgres/           # PostgreSQL backend
     ├── postgres.go     # Connection pool management
     ├── migrations.go   # Auto-apply migrations on startup
-    ├── embeddings.go   # EmbeddingReader implementation with pgvector
-    ├── faces.go        # FaceReader/FaceWriter implementation with pgvector
+    ├── embeddings.go   # EmbeddingReader impl (pgvector, ef_search=100 + GetCentroid via AVG())
+    ├── faces.go        # FaceReader/FaceWriter impl (pgvector)
     ├── era_embeddings.go  # EraEmbeddingReader/Writer implementation
     ├── books.go        # BookRepository (BookReader/BookWriter)
     ├── sessions.go     # Session persistence for web auth
     ├── text_versions.go   # TextVersionStore implementation
     ├── text_checks.go     # TextCheckStore implementation
-    └── migrations/     # SQL migrations 001-034 (embedded)
+    └── migrations/     # SQL migrations 001-038 (embedded)
 ```
 
 **Tables:** `users` (admin/editor/viewer with bcrypt hashes), `photos`, `photo_files`, `albums` + `album_photos`, `labels` + `photo_labels`, `subjects`, `markers`, `photo_phashes`, `embeddings` (768-dim CLIP), `faces` (512-dim ResNet100 with cached marker metadata), `era_embeddings` (768-dim CLIP text centroids), `faces_processed` (tracking), `sessions` (with `user_uid` for upload support across restarts), `photo_books` (with typography settings: `body_font`, `heading_font`, `body_font_size`, `body_line_height`, `h1_font_size`, `h2_font_size`, `caption_opacity`, `caption_font_size`, `heading_color_bleed` added in migrations 021-023, plus `body_text_pad_mm` in migration 029), `book_chapters` (migration 016, with `color` column from migration 020), `book_sections` (with optional `chapter_id`), `section_photos`, `book_pages` (with `split_position`, `hide_page_number` from migration 025, `1_fullbleed` format added to the CHECK constraint in migration 027), `page_slots` (with `text_content`, `is_captions_slot` from migration 026, `is_contents_slot` from migration 030, `crop_x`/`crop_y`/`crop_scale`; photo_uid / text_content / is_captions_slot / is_contents_slot are mutually exclusive), `text_versions` (migration 017), `text_check_results` (migration 019, extended by migration 028 with a `suggestions JSONB` column).
@@ -496,7 +492,7 @@ Session cookies use `HttpOnly`, `SameSite=Strict`, and auto-detect `Secure` flag
 - `GET /api/v1/photos/trash` - List archived photos (trash view; same filters/sort/pagination as `GET /photos`, the `archived` query param is ignored). Any authenticated role.
 - `POST /api/v1/photos/batch/purge` - Hard-delete archived photos (admin only). Per UID: skip-with-error if not archived; otherwise drop the photo row (cascades phashes / markers / files / album_photos / photo_labels), the embedding row, cached face rows, on-disk originals, and every cached thumbnail size. A background daemon in `cmd/serve.go` runs the same logic hourly against photos older than `TRASH_RETENTION_DAYS` (default 30).
 - `POST /api/v1/photos/duplicates` - Find near-duplicate photos via embedding similarity
-- `POST /api/v1/photos/suggest-albums` - Album completion via HNSW centroid search
+- `POST /api/v1/photos/suggest-albums` - Album completion via pgvector centroid search
 - `POST /api/v1/sort` - Start AI sort job
 - `GET /api/v1/sort/{jobId}` - Get sort job status
 - `GET /api/v1/sort/{jobId}/events` - SSE stream for job progress
@@ -516,7 +512,6 @@ Session cookies use `HttpOnly`, `SameSite=Strict`, and auto-detect `Secure` flag
 - `POST /api/v1/process` - Start photo processing job (embeddings + face detection)
 - `GET /api/v1/process/{jobId}/events` - SSE stream for process job progress
 - `DELETE /api/v1/process/{jobId}` - Cancel process job
-- `POST /api/v1/process/rebuild-index` - Rebuild HNSW indexes and reload in memory
 - `POST /api/v1/process/sync-cache` - Re-derive cached face marker metadata (photo dimensions, orientation, subject linkage) from the canonical native `markers` table; useful after bulk data fixes outside the UI
 - `POST /api/v1/process/build-thumbs` - Admin-only thumbnail backfill. Body: `{ concurrency?, sizes?, only_missing?, limit?, photo_uid? }`. Returns `{ job_id }`; progress streams via `/process/{jobId}/events` with `progress` (`{done,total,current_photo_uid}`) and final `summary` (`{generated,skipped,failed}`) events. Reuses the existing `ProcessJobManager` — one job at a time. Backed by `cache build-thumbs` CLI / `internal/thumb.GenerateSizes`.
 - `GET /api/v1/books` - List all photo books
@@ -749,7 +744,7 @@ docs/
 ├── architecture.md              # System design, package structure, and data flow
 ├── cli-reference.md             # Complete CLI command reference
 ├── era-estimation.md            # Era estimation: centroids, API, and UI
-├── hnsw-architecture.md         # In-memory HNSW vs pgvector design rationale
+├── similarity-search.md         # pgvector cosine search: indexes, ef_search, maintenance
 ├── markers.md                   # Native markers table and face-to-marker matching
 ├── migration-from-photoprism.md # One-shot PhotoPrism → photo-sorter runbook
 ├── photo-book.md                # Photo book planning tool

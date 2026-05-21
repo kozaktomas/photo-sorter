@@ -309,7 +309,8 @@ func buildMatchResults(
 
 // markAlreadyAssignedPhotos checks the DB for candidate photos where the person is already.
 // assigned, and updates those candidates so determineMatchAction returns AlreadyDone.
-// This guards against stale HNSW cache data where SubjectName/SubjectUID aren't up to date.
+// This guards against stale cached SubjectName/SubjectUID on faces rows whose markers
+// were reassigned by another path.
 func markAlreadyAssignedPhotos(
 	ctx context.Context, faceReader database.FaceReader,
 	matchMap map[string]*matchCandidate, personName string,

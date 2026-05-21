@@ -338,49 +338,34 @@ func TestFaceRepository(t *testing.T) {
 		}
 	})
 
-	// Test UpdateFaceMarker syncs HNSW index.
-	t.Run("UpdateFaceMarker_HNSW", func(t *testing.T) {
-		// Enable HNSW to test in-memory sync.
-		if err := repo.EnableHNSW(ctx, ""); err != nil {
-			t.Fatalf("Failed to enable HNSW: %v", err)
+	// Test that UpdateFaceMarker persists the new marker columns; the
+	// pgvector index inside Postgres is kept current by the UPDATE itself.
+	t.Run("UpdateFaceMarker_PersistsColumns", func(t *testing.T) {
+		if err := repo.UpdateFaceMarker(ctx, "photo456", 0, "newMarker2", "newSubject2", "Person Two"); err != nil {
+			t.Fatalf("Failed to update marker: %v", err)
 		}
-		defer repo.DisableHNSW()
 
-		// Get the face ID for face_index=0 to verify HNSW state.
 		faces, err := repo.GetFaces(ctx, "photo456")
 		if err != nil {
 			t.Fatalf("Failed to get faces: %v", err)
 		}
-		var faceID int64
+		var found bool
 		for _, f := range faces {
 			if f.FaceIndex == 0 {
-				faceID = f.ID
-				break
+				found = true
+				if f.MarkerUID != "newMarker2" {
+					t.Errorf("MarkerUID: got %q, want %q", f.MarkerUID, "newMarker2")
+				}
+				if f.SubjectUID != "newSubject2" {
+					t.Errorf("SubjectUID: got %q, want %q", f.SubjectUID, "newSubject2")
+				}
+				if f.SubjectName != "Person Two" {
+					t.Errorf("SubjectName: got %q, want %q", f.SubjectName, "Person Two")
+				}
 			}
 		}
-		if faceID == 0 {
-			t.Fatal("Face with index 0 not found")
-		}
-
-		// Update marker via UpdateFaceMarker.
-		err = repo.UpdateFaceMarker(ctx, "photo456", 0, "hnswMarker", "hnswSubject", "HNSW Person")
-		if err != nil {
-			t.Fatalf("Failed to update marker: %v", err)
-		}
-
-		// Verify the HNSW index was updated.
-		hnswFace := repo.hnswIndex.GetFace(faceID)
-		if hnswFace == nil {
-			t.Fatal("Face not found in HNSW index")
-		}
-		if hnswFace.MarkerUID != "hnswMarker" {
-			t.Errorf("HNSW MarkerUID: got %q, want %q", hnswFace.MarkerUID, "hnswMarker")
-		}
-		if hnswFace.SubjectUID != "hnswSubject" {
-			t.Errorf("HNSW SubjectUID: got %q, want %q", hnswFace.SubjectUID, "hnswSubject")
-		}
-		if hnswFace.SubjectName != "HNSW Person" {
-			t.Errorf("HNSW SubjectName: got %q, want %q", hnswFace.SubjectName, "HNSW Person")
+		if !found {
+			t.Fatal("Face with index 0 not found after update")
 		}
 	})
 

@@ -742,16 +742,6 @@ func enrichFacesWithMarkerData(
 	)
 }
 
-// RebuildIndexResponse represents the response from rebuilding the HNSW index.
-type RebuildIndexResponse struct {
-	Success            bool   `json:"success"`
-	FaceCount          int    `json:"face_count"`
-	EmbeddingCount     int    `json:"embedding_count"`
-	FaceIndexPath      string `json:"face_index_path"`
-	EmbeddingIndexPath string `json:"embedding_index_path"`
-	DurationMs         int64  `json:"duration_ms"`
-}
-
 // SyncCacheResponse represents the response from syncing the cache.
 type SyncCacheResponse struct {
 	Success       bool   `json:"success"`
@@ -760,68 +750,6 @@ type SyncCacheResponse struct {
 	PhotosDeleted int    `json:"photos_deleted"`
 	DurationMs    int64  `json:"duration_ms"`
 	Error         string `json:"error,omitempty"`
-}
-
-// RebuildIndex rebuilds the HNSW indexes and reloads them in memory.
-func (h *ProcessHandler) RebuildIndex(w http.ResponseWriter, _ *http.Request) {
-	ctx := context.Background()
-	startTime := time.Now()
-
-	// Rebuild face HNSW index.
-	faceRebuilder := database.GetFaceHNSWRebuilder()
-	if faceRebuilder == nil {
-		respondError(w, http.StatusInternalServerError, "Face HNSW rebuilder not registered")
-		return
-	}
-
-	// Rebuild in-memory face HNSW index from PostgreSQL.
-	if err := faceRebuilder.RebuildHNSW(ctx); err != nil {
-		respondError(w, http.StatusInternalServerError, fmt.Sprintf("failed to rebuild face HNSW index: %v", err))
-		return
-	}
-
-	// Save face index to disk if path is configured.
-	if err := faceRebuilder.SaveHNSWIndex(); err != nil {
-		// Log warning but don't fail - index is usable in memory.
-		fmt.Printf("Warning: failed to save face HNSW index to disk: %v\n", err)
-	}
-
-	faceCount := faceRebuilder.HNSWCount()
-
-	// Rebuild embedding HNSW index.
-	embCount := 0
-	embRebuilder := database.GetEmbeddingHNSWRebuilder()
-	if embRebuilder != nil {
-		// Rebuild in-memory embedding HNSW index from PostgreSQL.
-		if err := embRebuilder.RebuildHNSW(ctx); err != nil {
-			fmt.Printf("Warning: failed to rebuild embedding HNSW index: %v\n", err)
-		} else {
-			// Save embedding index to disk if path is configured.
-			if err := embRebuilder.SaveHNSWIndex(); err != nil {
-				fmt.Printf("Warning: failed to save embedding HNSW index to disk: %v\n", err)
-			}
-			embCount = embRebuilder.HNSWCount()
-		}
-	}
-
-	// Fall back to count from reader if HNSW not enabled.
-	if embCount == 0 {
-		embReader, err := database.GetEmbeddingReader(ctx)
-		if err == nil {
-			embCount, _ = embReader.Count(ctx)
-		}
-	}
-
-	durationMs := time.Since(startTime).Milliseconds()
-
-	respondJSON(w, http.StatusOK, RebuildIndexResponse{
-		Success:            true,
-		FaceCount:          faceCount,
-		EmbeddingCount:     embCount,
-		FaceIndexPath:      "(persisted)",
-		EmbeddingIndexPath: "(persisted)",
-		DurationMs:         durationMs,
-	})
 }
 
 // collectSyncPhotoUIDs collects all unique photo UIDs from faces and embeddings tables.

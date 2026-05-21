@@ -223,30 +223,20 @@ photo-sorter serve [flags]
 | `WEB_PORT` | Override `--port` flag |
 | `WEB_HOST` | Override `--host` flag |
 | `WEB_SESSION_SECRET` | Override `--session-secret` flag |
-| `HNSW_INDEX_PATH` | Path to persist face HNSW index for PostgreSQL backend (enables fast startup) |
-| `HNSW_EMBEDDING_INDEX_PATH` | Path to persist embedding HNSW index for PostgreSQL backend (enables fast startup) |
 
 **Example:**
 ```bash
 photo-sorter serve --port 3000
 ```
 
-**PostgreSQL Backend with HNSW Persistence:**
+**Similarity search:**
 
-When using PostgreSQL backend (`DATABASE_URL` set), the server builds an in-memory HNSW index at startup for fast face similarity search. By default, this takes ~4 minutes for 45k faces and must be repeated on every restart.
-
-To enable fast startup, set `HNSW_INDEX_PATH` to persist the index to disk:
-
-```bash
-export HNSW_INDEX_PATH=/data/faces.pg.hnsw
-photo-sorter serve
-```
-
-The index is:
-- Saved on graceful shutdown (Ctrl+C)
-- Saved after "Rebuild Index" operations
-- Loaded from disk on startup if fresh (matching face count and max ID)
-- Rebuilt from database if stale or missing
+The server uses pgvector's native HNSW indexes on `embeddings.embedding`
+and `faces.embedding` (operator class `vector_cosine_ops`). pgvector
+maintains them automatically on INSERT / UPDATE / DELETE — there is no
+in-process index, no on-disk file, and no startup or shutdown overhead
+beyond opening / closing the DB pool. See
+[`docs/similarity-search.md`](similarity-search.md).
 
 ---
 

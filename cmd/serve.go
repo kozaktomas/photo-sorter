@@ -42,40 +42,6 @@ func init() {
 	serveCmd.Flags().String("session-secret", "", "Secret for signing session cookies (defaults to random)")
 }
 
-// initFaceHNSW builds or loads the face HNSW index for fast similarity search.
-func initFaceHNSW(ctx context.Context, faceRepo *postgres.FaceRepository, indexPath string) {
-	if indexPath != "" {
-		fmt.Printf("Loading face HNSW index from %s...\n", indexPath)
-	} else {
-		fmt.Printf("Building in-memory HNSW index for face matching...\n")
-	}
-	if err := faceRepo.EnableHNSW(ctx, indexPath); err != nil {
-		fmt.Printf("Warning: Failed to build face HNSW index: %v\n", err)
-		fmt.Printf("Face matching will use PostgreSQL queries (slower)\n")
-	} else if indexPath != "" {
-		fmt.Printf("Face HNSW index ready with %d faces (persisted to %s)\n", faceRepo.HNSWCount(), indexPath)
-	} else {
-		fmt.Printf("Face HNSW index built with %d faces (in-memory only)\n", faceRepo.HNSWCount())
-	}
-}
-
-// initEmbeddingHNSW builds or loads the embedding HNSW index for fast similarity search.
-func initEmbeddingHNSW(ctx context.Context, embeddingRepo *postgres.EmbeddingRepository, indexPath string) {
-	if indexPath != "" {
-		fmt.Printf("Loading embedding HNSW index from %s...\n", indexPath)
-	} else {
-		fmt.Printf("Building in-memory HNSW index for image embeddings...\n")
-	}
-	if err := embeddingRepo.EnableHNSW(ctx, indexPath); err != nil {
-		fmt.Printf("Warning: Failed to build embedding HNSW index: %v\n", err)
-		fmt.Printf("Expand/Similar will use PostgreSQL queries (slower)\n")
-	} else if indexPath != "" {
-		fmt.Printf("Embedding HNSW index ready with %d embeddings (persisted to %s)\n", embeddingRepo.HNSWCount(), indexPath)
-	} else {
-		fmt.Printf("Embedding HNSW index built with %d embeddings (in-memory only)\n", embeddingRepo.HNSWCount())
-	}
-}
-
 // registerServeBackends registers all database backends and repositories for the serve command.
 func registerServeBackends(
 	pool *postgres.Pool, embeddingRepo *postgres.EmbeddingRepository, faceRepo *postgres.FaceRepository,
@@ -88,8 +54,6 @@ func registerServeBackends(
 	database.RegisterEmbeddingWriter(func() database.EmbeddingWriter { return embeddingRepo })
 	eraRepo := postgres.NewEraEmbeddingRepository(pool)
 	database.RegisterEraEmbeddingWriter(func() database.EraEmbeddingWriter { return eraRepo })
-	database.RegisterFaceHNSWRebuilder(faceRepo)
-	database.RegisterEmbeddingHNSWRebuilder(embeddingRepo)
 	fmt.Printf("Using PostgreSQL backend\n")
 
 	bookRepo := postgres.NewBookRepository(pool)
@@ -146,24 +110,6 @@ func resolveServeHostPort(cmd *cobra.Command) (int, string, string) {
 		host = envHost
 	}
 	return port, host, sessionSecret
-}
-
-// saveHNSWIndexes saves all HNSW indexes to disk during shutdown.
-func saveHNSWIndexes() {
-	if rebuilder := database.GetFaceHNSWRebuilder(); rebuilder != nil {
-		if err := rebuilder.SaveHNSWIndex(); err != nil {
-			fmt.Printf("Warning: failed to save face HNSW index: %v\n", err)
-		} else {
-			fmt.Println("Face HNSW index saved to disk")
-		}
-	}
-	if rebuilder := database.GetEmbeddingHNSWRebuilder(); rebuilder != nil {
-		if err := rebuilder.SaveHNSWIndex(); err != nil {
-			fmt.Printf("Warning: failed to save embedding HNSW index: %v\n", err)
-		} else {
-			fmt.Println("Embedding HNSW index saved to disk")
-		}
-	}
 }
 
 // initMCPHandler initialises the MCP HTTP handler when MCP_API_TOKEN is set
@@ -270,22 +216,19 @@ func startTrashDaemon(cfg *config.Config) context.CancelFunc {
 	return cancel
 }
 
-// gracefulShutdown waits for a signal, then shuts down the HTTP server, saves HNSW indexes, and closes the DB pool.
+// gracefulShutdown waits for a signal, then shuts down the HTTP server and
+// closes the DB pool. pgvector maintains its HNSW indexes inside Postgres,
+// so there is no in-process state to flush on the way out.
 func gracefulShutdown(sigChan <-chan os.Signal, server *web.Server, pool *postgres.Pool) {
 	<-sigChan
 	fmt.Println("\nShutting down...")
 
-	// 1. Stop accepting new requests first.
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer shutdownCancel()
 	if err := server.Shutdown(shutdownCtx); err != nil {
 		fmt.Printf("Error during HTTP shutdown: %v\n", err)
 	}
 
-	// 2. Save HNSW indexes (no concurrent request modifications now).
-	saveHNSWIndexes()
-
-	// 3. Close the database pool last.
 	if err := pool.Close(); err != nil {
 		fmt.Printf("Error closing database pool: %v\n", err)
 	}
@@ -311,9 +254,6 @@ func runServe(cmd *cobra.Command, args []string) error {
 	embeddingRepo := postgres.NewEmbeddingRepository(pool)
 	faceRepo := postgres.NewFaceRepository(pool)
 	ctx := context.Background()
-
-	initFaceHNSW(ctx, faceRepo, cfg.Database.HNSWIndexPath)
-	initEmbeddingHNSW(ctx, embeddingRepo, cfg.Database.HNSWEmbeddingIndexPath)
 
 	sessionRepo := registerServeBackends(pool, embeddingRepo, faceRepo)
 
@@ -355,7 +295,7 @@ func runServe(cmd *cobra.Command, args []string) error {
 		return fmt.Errorf("starting server: %w", err)
 	}
 
-	// Wait for shutdown goroutine to finish saving indexes and closing DB.
+	// Wait for the graceful-shutdown goroutine to finish closing the DB pool.
 	wg.Wait()
 	return nil
 }

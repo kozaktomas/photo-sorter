@@ -266,19 +266,6 @@ func TestProcessHandler_Events_JobNotFound(t *testing.T) {
 	assertJSONError(t, recorder, "job not found")
 }
 
-func TestProcessHandler_RebuildIndex_NoRebuilder(t *testing.T) {
-	cfg := testConfig()
-	sm := middleware.NewSessionManager("test-secret", nil)
-	handler := NewProcessHandler(cfg, sm, nil, nil, nil)
-
-	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/process/rebuild-index", nil)
-	recorder := httptest.NewRecorder()
-
-	handler.RebuildIndex(recorder, req)
-
-	assertStatusCode(t, recorder, http.StatusInternalServerError)
-}
-
 func TestProcessHandler_SyncCache_NoClient(t *testing.T) {
 	cfg := testConfig()
 	sm := middleware.NewSessionManager("test-secret", nil)

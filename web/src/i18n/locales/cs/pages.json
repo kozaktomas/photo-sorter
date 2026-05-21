@@ -122,15 +122,6 @@
     "totalInDb": "Celkem v DB",
     "newFaces": "Nové obličeje",
     "photosWithFaces": "{{faces}} obličejů v {{photos}} fotkách",
-    "rebuildIndex": {
-      "title": "Přestavět HNSW index",
-      "description": "Přestavět indexy pro podobnostní vyhledávání po zpracování nových fotek. Zlepšuje výkon vyhledávání pro párování obličejů a podobných fotek.",
-      "button": "Přestavět index",
-      "success": "Index úspěšně přestavěn",
-      "facesIndexed": "{{count}} obličejů zaindexováno",
-      "embeddingsIndexed": "{{count}} embeddingů zaindexováno",
-      "duration": "Dokončeno za {{ms}}ms"
-    },
     "syncCache": {
       "title": "Synchronizovat cache",
       "description": "Synchronizovat data markerů obličejů z PhotoPrismu do lokální cache. Použijte po přiřazení nebo odebrání obličejů přímo v nativním rozhraní PhotoPrismu.",

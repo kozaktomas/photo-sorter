@@ -21,6 +21,11 @@ type EmbeddingReader interface {
 	FindSimilarWithDistance(
 		ctx context.Context, embedding []float32, limit int, maxDistance float64,
 	) ([]StoredEmbedding, []float64, error)
+	// GetCentroid returns the AVG(embedding) over the given photo UIDs in
+	// one round trip. Returns nil when no rows match. Used by the album
+	// suggestion handler to ranks candidates against the centroid of an
+	// existing album.
+	GetCentroid(ctx context.Context, photoUIDs []string) ([]float32, error)
 	// GetUniquePhotoUIDs returns all unique photo UIDs that have embeddings.
 	GetUniquePhotoUIDs(ctx context.Context) ([]string, error)
 }
@@ -30,8 +35,7 @@ type FaceReader interface {
 	// GetFaces retrieves all faces for a photo.
 	GetFaces(ctx context.Context, photoUID string) ([]StoredFace, error)
 	// GetFacesBySubjectName retrieves all faces for a specific subject/person by name.
-	// This is an optimized query that uses the cached subject_name field, eliminating.
-	// the need to query PhotoPrism for photos and then fetch faces individually.
+	// This is an optimized query that uses the cached subject_name field.
 	// Names are normalized before comparison (lowercase, no diacritics, dashes to spaces).
 	// to handle format differences between slugs and display names (e.g., "jan-novak" matches "Jan Novák").
 	GetFacesBySubjectName(ctx context.Context, subjectName string) ([]StoredFace, error)
@@ -57,9 +61,10 @@ type FaceReader interface {
 	GetUniquePhotoUIDs(ctx context.Context) ([]string, error)
 	// GetFacesWithMarkerUID returns all faces that have a non-empty marker_uid.
 	GetFacesWithMarkerUID(ctx context.Context) ([]StoredFace, error)
-	// GetPhotoUIDsWithSubjectName returns a set of photo UIDs (from the given list) that.
-	// have at least one face assigned to the given subject name. Used to detect photos.
-	// where a person is already assigned, even if the HNSW cache is stale.
+	// GetPhotoUIDsWithSubjectName returns a set of photo UIDs (from the
+	// given list) that have at least one face assigned to the given
+	// subject name. Used to detect photos where a person is already
+	// assigned without re-running the marker IoU heuristic.
 	GetPhotoUIDsWithSubjectName(ctx context.Context, photoUIDs []string, subjectName string) (map[string]bool, error)
 }
 
@@ -81,8 +86,9 @@ type FaceWriter interface {
 	// Used during processing or backfill to populate cached PhotoPrism data.
 	UpdateFacePhotoInfo(ctx context.Context, photoUID string, width, height, orientation int, fileUID string) error
 
-	// DeleteFacesByPhoto removes all faces and faces_processed records for a photo.
-	// Returns the deleted face IDs for HNSW cleanup.
+	// DeleteFacesByPhoto removes all faces and faces_processed records for a
+	// photo. Returns the deleted face IDs purely for logging/auditing —
+	// pgvector keeps the embedding index in sync automatically.
 	DeleteFacesByPhoto(ctx context.Context, photoUID string) ([]int64, error)
 }
 

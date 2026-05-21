@@ -97,8 +97,6 @@ linters:
       exclude-functions:
         # Progress bar updates - always best-effort
         - (*github.com/schollz/progressbar/v3.ProgressBar).Add
-        # HNSW index add - errors logged internally
-        - (*github.com/kozaktomas/photo-sorter/internal/database.HNSWIndex).Add
         # Database cache sync operations - best-effort fire-and-forget
         - (github.com/kozaktomas/photo-sorter/internal/database.FaceWriter).DeleteFacesByPhoto
         - (github.com/kozaktomas/photo-sorter/internal/database.FaceWriter).UpdateFaceMarker

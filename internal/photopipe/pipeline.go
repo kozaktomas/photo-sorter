@@ -43,9 +43,9 @@ const (
 	DefaultEmbeddingMaxDistance = 0.05
 
 	// nearDuplicateEmbeddingFetchLimit is the upper bound on how many
-	// candidate matches the embedding-based check pulls back from the
-	// HNSW index per upload. Eight is plenty — the UI only surfaces the
-	// closest few — and keeps memory + JSON-payload bounded.
+	// candidate matches the embedding-based check pulls back from
+	// pgvector's HNSW index per upload. Eight is plenty — the UI only
+	// surfaces the closest few — and keeps memory + JSON-payload bounded.
 	nearDuplicateEmbeddingFetchLimit = 8
 )
 
@@ -109,7 +109,7 @@ type Options struct {
 	// Embedding is the optional pre-computed CLIP embedding for the photo
 	// being uploaded. When set together with CheckNearDuplicates and a
 	// non-nil EmbeddingReader on the pipeline, it is queried against the
-	// HNSW image-embedding index to find visually-similar photos. The
+	// pgvector image-embedding index to find visually-similar photos. The
 	// pHash check runs regardless of whether the embedding is supplied.
 	Embedding []float32
 }
@@ -449,10 +449,10 @@ func (p *Pipeline) scanPHashMatches(
 	return nil
 }
 
-// scanEmbeddingMatches queries the embedding HNSW index for the candidate
-// embedding and overlays any hits onto matches. The score is reported as
-// 1 - cosine_distance so the UI can present a 0..1 "similarity" value
-// where 1 means identical.
+// scanEmbeddingMatches queries the pgvector embedding HNSW index for the
+// candidate embedding and overlays any hits onto matches. The score is
+// reported as 1 - cosine_distance so the UI can present a 0..1
+// "similarity" value where 1 means identical.
 func (p *Pipeline) scanEmbeddingMatches(
 	ctx context.Context, embedding []float32, matches map[string]DuplicateMatch,
 ) error {

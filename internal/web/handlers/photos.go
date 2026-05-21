@@ -1991,19 +1991,14 @@ func fetchAlbumMemberSet(pp *photoprism.PhotoPrism, albumUID string) (map[string
 	return albumMemberSet, nil
 }
 
-// collectAlbumEmbeddings fetches embeddings for all photos in the member set.
-func collectAlbumEmbeddings(
-	ctx context.Context, embRepo database.EmbeddingReader, memberSet map[string]bool,
-) [][]float32 {
-	var embeddings [][]float32
+// memberUIDsSlice converts the album member set into a UID slice — pgvector's
+// AVG aggregate takes the list in a single SQL round trip.
+func memberUIDsSlice(memberSet map[string]bool) []string {
+	uids := make([]string, 0, len(memberSet))
 	for uid := range memberSet {
-		emb, err := embRepo.Get(ctx, uid)
-		if err != nil || emb == nil {
-			continue
-		}
-		embeddings = append(embeddings, emb.Embedding)
+		uids = append(uids, uid)
 	}
-	return embeddings
+	return uids
 }
 
 // filterSuggestedPhotos filters out album members and returns non-member photos as suggestions.
@@ -2027,6 +2022,9 @@ func filterSuggestedPhotos(
 }
 
 // processAlbumForSuggestions analyzes a single album and returns suggestions for missing photos.
+// Centroid + similarity are computed in two SQL round trips: one AVG()
+// across the album's embeddings, one cosine-distance ORDER BY against the
+// pgvector HNSW index.
 func processAlbumForSuggestions(
 	ctx context.Context, pp *photoprism.PhotoPrism,
 	embRepo database.EmbeddingReader, album photoprism.Album,
@@ -2037,13 +2035,8 @@ func processAlbumForSuggestions(
 		return suggestAlbumResult{}
 	}
 
-	embeddings := collectAlbumEmbeddings(ctx, embRepo, albumMemberSet)
-	if len(embeddings) < constants.MinAlbumPhotosForCentroid {
-		return suggestAlbumResult{skipped: true}
-	}
-
-	centroid := computeCentroid(embeddings)
-	if centroid == nil {
+	centroid, err := embRepo.GetCentroid(ctx, memberUIDsSlice(albumMemberSet))
+	if err != nil || len(centroid) == 0 {
 		return suggestAlbumResult{skipped: true}
 	}
 
@@ -2158,34 +2151,4 @@ func (h *PhotosHandler) SuggestAlbums(w http.ResponseWriter, r *http.Request) {
 		Skipped:        skipped,
 		Suggestions:    suggestions,
 	})
-}
-
-// computeCentroid computes the mean of a set of embeddings and L2-normalizes it.
-func computeCentroid(embeddings [][]float32) []float32 {
-	if len(embeddings) == 0 {
-		return nil
-	}
-	dim := len(embeddings[0])
-	centroid := make([]float32, dim)
-	for _, emb := range embeddings {
-		for i, v := range emb {
-			centroid[i] += v
-		}
-	}
-	n := float32(len(embeddings))
-	for i := range centroid {
-		centroid[i] /= n
-	}
-	// L2 normalize.
-	var norm float64
-	for _, v := range centroid {
-		norm += float64(v) * float64(v)
-	}
-	norm = math.Sqrt(norm)
-	if norm > 0 {
-		for i := range centroid {
-			centroid[i] = float32(float64(centroid[i]) / norm)
-		}
-	}
-	return centroid
 }

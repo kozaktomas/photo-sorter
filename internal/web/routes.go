@@ -224,10 +224,9 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 				r.Post("/faces/apply", facesHandler.Apply)
 				r.Post("/faces/outliers", facesHandler.FindOutliers)
 
-				// Process (start/cancel/rebuild/sync; progress stream is in the long group).
+				// Process (start/cancel/sync; progress stream is in the long group).
 				r.Post("/process", processHandler.Start)
 				r.Delete("/process/{jobId}", processHandler.Cancel)
-				r.Post("/process/rebuild-index", processHandler.RebuildIndex)
 				r.Post("/process/sync-cache", processHandler.SyncCache)
 				// Build-thumbs is the thumbnail backfill — admin only, since
 				// it can rewrite the entire cache and is expensive.

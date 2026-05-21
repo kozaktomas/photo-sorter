@@ -122,15 +122,6 @@
     "totalInDb": "Total in DB",
     "newFaces": "New faces",
     "photosWithFaces": "{{faces}} faces across {{photos}} photos",
-    "rebuildIndex": {
-      "title": "Rebuild HNSW Index",
-      "description": "Rebuild the similarity search indexes after processing new photos. This improves search performance for face matching and similar photo searches.",
-      "button": "Rebuild Index",
-      "success": "Index rebuilt successfully",
-      "facesIndexed": "{{count}} faces indexed",
-      "embeddingsIndexed": "{{count}} embeddings indexed",
-      "duration": "Completed in {{ms}}ms"
-    },
     "syncCache": {
       "title": "Sync Cache",
       "description": "Sync face marker data from PhotoPrism to the local cache. Use this after assigning or unassigning faces directly in PhotoPrism's native UI.",

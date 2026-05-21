@@ -147,6 +147,35 @@ func (m *MockEmbeddingReader) GetUniquePhotoUIDs(ctx context.Context) ([]string,
 	return uids, nil
 }
 
+// GetCentroid returns the component-wise mean of the embeddings whose
+// photo UID is in the given list, or nil when no rows match.
+func (m *MockEmbeddingReader) GetCentroid(ctx context.Context, photoUIDs []string) ([]float32, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	var collected [][]float32
+	for _, uid := range photoUIDs {
+		if emb, ok := m.embeddings[uid]; ok && emb != nil && len(emb.Embedding) > 0 {
+			collected = append(collected, emb.Embedding)
+		}
+	}
+	if len(collected) == 0 {
+		return nil, nil
+	}
+	dim := len(collected[0])
+	centroid := make([]float32, dim)
+	for _, e := range collected {
+		for i, v := range e {
+			centroid[i] += v
+		}
+	}
+	n := float32(len(collected))
+	for i := range centroid {
+		centroid[i] /= n
+	}
+	return centroid, nil
+}
+
 // MockFaceReader is a mock implementation of database.FaceReader.
 type MockFaceReader struct { //nolint:revive // Mock prefix is conventional for test doubles.
 	mu    sync.RWMutex

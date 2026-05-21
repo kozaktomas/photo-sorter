@@ -1502,23 +1502,6 @@ DELETE /process/{jobId}
 }
 ```
 
-### Rebuild HNSW Indexes
-
-Rebuild in-memory HNSW indexes (face and embedding) from PostgreSQL data. Saves to disk if persistence paths are configured.
-
-```
-POST /process/rebuild-index
-```
-
-**Response (200):**
-```json
-{
-  "face_count": 12500,
-  "embedding_count": 5000,
-  "duration_ms": 3200
-}
-```
-
 ### Sync Cache
 
 Re-derive cached face-marker metadata on the `faces` table from the

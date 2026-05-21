@@ -275,23 +275,13 @@ Compute image embeddings and detect faces for unprocessed photos.
 - Embeddings: success/error counts, total in database
 - Faces: photos processed, errors, new faces detected, totals
 
-**Rebuild HNSW Index:**
+**Similarity-search indexes:**
 
-After processing new photos or modifying data directly in the database, you can rebuild the HNSW similarity search indexes directly from the web UI. This section appears below the main processing configuration.
-
-- **Description** - Explains when to rebuild
-- **Rebuild Index** button - Rebuilds HNSW indexes for the active backend
-- **Success message** - Shows faces indexed, embeddings indexed, and duration
-- **Error handling** - Displays any errors that occur during rebuild
-
-The rebuild operation works differently based on the storage backend:
-
-**What it does:**
-1. Reloads all face embeddings from PostgreSQL into memory
-2. Rebuilds the in-memory HNSW index for O(log N) similarity search
-3. Index is immediately available (no file I/O required)
-
-Use this when you've modified face data directly in PostgreSQL outside of Photo Sorter. Note: face assignments via the Photo Sorter UI automatically keep the HNSW index in sync, so a manual rebuild is typically only needed after direct database modifications.
+pgvector maintains the HNSW indexes on `embeddings.embedding` and
+`faces.embedding` automatically on every INSERT / UPDATE / DELETE — there
+is no "Rebuild Index" button and nothing for the operator to flush at
+shutdown. See [`similarity-search.md`](similarity-search.md) for the
+operator-side `REINDEX` escape hatch.
 
 **Sync Cache:**
 
@@ -322,7 +312,6 @@ The sync operation processes all photos with faces in parallel (20 workers) and 
 - `POST /api/v1/process` - Start processing job
 - `GET /api/v1/process/{jobId}/events` - SSE event stream
 - `DELETE /api/v1/process/{jobId}` - Cancel running job
-- `POST /api/v1/process/rebuild-index` - Rebuild HNSW indexes
 - `POST /api/v1/process/sync-cache` - Re-derive cached marker metadata on the `faces` table
 
 Only one process job can run at a time. Changes are immediately available in the database.
@@ -432,7 +421,7 @@ Find near-duplicate photos in your library using CLIP embedding similarity.
 - **Max Groups** - Maximum number of duplicate groups to return (default 100)
 
 **Algorithm:**
-Uses union-find (disjoint set) to build connected components of similar photos. For each photo, finds neighbors within the cosine distance threshold using HNSW index, then groups connected photos together.
+Uses union-find (disjoint set) to build connected components of similar photos. For each photo, finds neighbors within the cosine distance threshold using the pgvector HNSW index, then groups connected photos together.
 
 **Results:**
 - **Stats** - Photos scanned, groups found, total duplicates
@@ -663,7 +652,7 @@ Five-tab editor for organizing a photo book.
 
 ### Album Completion
 
-Find photos that belong in existing albums but aren't there yet by searching the HNSW embedding index.
+Find photos that belong in existing albums but aren't there yet by searching the pgvector embedding HNSW index.
 
 **Configuration:**
 - **Min Similarity** - Slider from 50% to 90% (default 70%). Converted to cosine similarity threshold
@@ -671,7 +660,7 @@ Find photos that belong in existing albums but aren't there yet by searching the
 
 **Algorithm:**
 1. For each album with enough photos, computes centroid (mean + L2-normalize) of its photo embeddings
-2. Searches the HNSW index with the centroid to find similar photos (O(log N))
+2. Searches the pgvector HNSW index with the centroid to find similar photos
 3. Filters out photos already in the album
 4. Returns albums with suggested photos, sorted by suggestion count
 
@@ -754,7 +743,6 @@ The Web UI communicates with these backend endpoints:
 | POST | `/api/v1/process` | Start photo processing job |
 | GET | `/api/v1/process/:jobId/events` | SSE stream for process job |
 | DELETE | `/api/v1/process/:jobId` | Cancel process job |
-| POST | `/api/v1/process/rebuild-index` | Rebuild HNSW indexes |
 | POST | `/api/v1/process/sync-cache` | Re-derive cached face-marker metadata on the `faces` table |
 | POST | `/api/v1/photos/batch/edit` | Batch edit photos (favorite, private) |
 | POST | `/api/v1/photos/duplicates` | Find near-duplicate photos |
@@ -805,7 +793,6 @@ The Web UI communicates with these backend endpoints:
 | GET | `/api/v1/books/:id/text-check-status` | Get text check status for a book |
 | GET | `/api/v1/text-versions` | List text version history |
 | POST | `/api/v1/text-versions/:id/restore` | Restore a text version |
-| POST | `/api/v1/process/rebuild-index` | Rebuild HNSW indexes |
 | POST | `/api/v1/process/sync-cache` | Re-derive cached face-marker metadata on the `faces` table |
 | POST | `/api/v1/process/build-thumbs` | Admin-only thumbnail backfill job |
 | POST | `/api/v1/photos/batch/edit` | Batch edit photos (favorite, private) |
@@ -1118,54 +1105,20 @@ across them at request time:
 - Cache stays synchronized when faces are assigned via the UI; bulk
   out-of-band fixes can be re-derived via `POST /api/v1/process/sync-cache`
 
-### HNSW Indexes
+### Similarity-search indexes
 
-For large photo libraries (10k+ photos), HNSW (Hierarchical Navigable Small World) indexes provide O(log N) similarity search instead of O(N) linear scan.
+pgvector maintains HNSW indexes on `embeddings.embedding` (768-dim CLIP)
+and `faces.embedding` (512-dim ResNet100) with operator class
+`vector_cosine_ops`. They are created by migration
+`038_pgvector_hnsw_indexes.sql` (auto-applied at startup) and stay in
+sync with INSERT / UPDATE / DELETE for free — the server holds no
+in-memory similarity-search state and `pg_dump` is a complete backup.
 
-The PostgreSQL backend automatically builds in-memory HNSW indexes for both faces and image embeddings at server startup. By default, this takes ~4 minutes for 45k faces and must be repeated on every restart.
-
-```
-Connecting to PostgreSQL database...
-Building in-memory HNSW index for face matching...
-Face HNSW index built with 45000 faces (in-memory only)
-Building in-memory HNSW index for image embeddings...
-Embedding HNSW index built with 20000 embeddings (in-memory only)
-Using PostgreSQL backend
-```
-
-**Enabling fast startup with HNSW persistence:**
-
-Set the index paths to persist to disk:
-
-```bash
-export HNSW_INDEX_PATH=/data/faces.pg.hnsw
-export HNSW_EMBEDDING_INDEX_PATH=/data/embeddings.pg.hnsw
-```
-
-With persistence enabled:
-- Indexes are saved on graceful shutdown (Ctrl+C)
-- Indexes are saved after "Rebuild Index" operations
-- Indexes are loaded from disk on startup if fresh (~seconds instead of ~4 min)
-- Indexes are rebuilt if stale (count mismatch)
-
-```
-Connecting to PostgreSQL database...
-Loading face HNSW index from /data/faces.pg.hnsw...
-Face HNSW index ready with 45000 faces (persisted to /data/faces.pg.hnsw)
-Loading embedding HNSW index from /data/embeddings.pg.hnsw...
-Embedding HNSW index ready with 20000 embeddings (persisted to /data/embeddings.pg.hnsw)
-Using PostgreSQL backend
-```
-
-If you modify data directly in PostgreSQL, rebuild the indexes via the Web UI or API.
-
-**Performance comparison:**
-
-| Photo Library Size | Linear Scan | With HNSW |
-|--------------------|-------------|-----------|
-| 1,000 items | ~10ms | ~5ms |
-| 10,000 items | ~100ms | ~10ms |
-| 100,000 items | ~500ms | ~20ms |
+The first server start after an upgrade from a pre-`038` snapshot will
+block while pgvector builds the indexes (expected: minutes on a 50k-row
+table on a Raspberry Pi). Subsequent restarts are instant. See
+[`similarity-search.md`](similarity-search.md) for query shape,
+`hnsw.ef_search` tuning, and the `REINDEX` escape hatch.
 
 ## Configuration
 
@@ -1177,8 +1130,6 @@ Environment variables for the web server:
 | `WEB_HOST` | 0.0.0.0 | Server host |
 | `WEB_SESSION_SECRET` | (insecure default) | Secret for signing session cookies. **Must be set in production** — a warning is logged at startup if unset |
 | `WEB_ALLOWED_ORIGINS` | (none) | Comma-separated list of allowed CORS origins (e.g., `https://photos.example.com`). Localhost origins are always allowed for development |
-| `HNSW_INDEX_PATH` | (none) | Path to persist face HNSW index for PostgreSQL backend (enables fast startup) |
-| `HNSW_EMBEDDING_INDEX_PATH` | (none) | Path to persist embedding HNSW index for PostgreSQL backend (enables fast startup for Expand/Similar) |
 
 ### Security Headers
 

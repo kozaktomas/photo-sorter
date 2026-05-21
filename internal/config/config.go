@@ -85,11 +85,9 @@ type EmbeddingConfig struct {
 
 // DatabaseConfig holds PostgreSQL database connection settings.
 type DatabaseConfig struct {
-	URL                    string // PostgreSQL connection URL
-	MaxOpenConns           int    // Maximum open connections (default 25)
-	MaxIdleConns           int    // Maximum idle connections (default 5)
-	HNSWIndexPath          string // Path to persist face HNSW index (optional, if empty index is rebuilt on startup)
-	HNSWEmbeddingIndexPath string // Path to persist embedding HNSW index (optional, if empty index is rebuilt on startup)
+	URL          string // PostgreSQL connection URL
+	MaxOpenConns int    // Maximum open connections (default 25)
+	MaxIdleConns int    // Maximum idle connections (default 5)
 }
 
 // StorageConfig holds the on-disk locations for photo originals and the
@@ -212,11 +210,9 @@ func Load() *Config {
 			Dim: envInt("EMBEDDING_DIM", 768),
 		},
 		Database: DatabaseConfig{
-			URL:                    os.Getenv("DATABASE_URL"),
-			MaxOpenConns:           envInt("DATABASE_MAX_OPEN_CONNS", 25),
-			MaxIdleConns:           envInt("DATABASE_MAX_IDLE_CONNS", 5),
-			HNSWIndexPath:          os.Getenv("HNSW_INDEX_PATH"),
-			HNSWEmbeddingIndexPath: os.Getenv("HNSW_EMBEDDING_INDEX_PATH"),
+			URL:          os.Getenv("DATABASE_URL"),
+			MaxOpenConns: envInt("DATABASE_MAX_OPEN_CONNS", 25),
+			MaxIdleConns: envInt("DATABASE_MAX_IDLE_CONNS", 5),
 		},
 		Storage: StorageConfig{
 			OriginalsPath: envString("STORAGE_ORIGINALS_PATH", "/data/originals"),

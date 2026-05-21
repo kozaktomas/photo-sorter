@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Cpu, Play, Square, CheckCircle, XCircle, AlertCircle, Database, RefreshCw, RefreshCcw } from 'lucide-react';
+import { Cpu, Play, Square, CheckCircle, XCircle, AlertCircle, RefreshCcw } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '../components/Card';
 import { Button } from '../components/Button';
 import { Alert } from '../components/Alert';
@@ -8,9 +8,9 @@ import { PageHeader } from '../components/PageHeader';
 import { PAGE_CONFIGS } from '../constants/pageConfig';
 import { FormInput } from '../components/FormInput';
 import { FormCheckbox } from '../components/FormCheckbox';
-import { getConfig, startProcess, cancelProcessJob, rebuildIndex, syncCache } from '../api/client';
+import { getConfig, startProcess, cancelProcessJob, syncCache } from '../api/client';
 import { useSSE } from '../hooks/useSSE';
-import type { Config, ProcessJob, ProcessJobResult, RebuildIndexResponse, SyncCacheResponse } from '../types';
+import type { Config, ProcessJob, ProcessJobResult, SyncCacheResponse } from '../types';
 
 export function ProcessPage() {
   const { t } = useTranslation(['pages', 'common']);
@@ -26,11 +26,6 @@ export function ProcessPage() {
   // Job state
   const [currentJob, setCurrentJob] = useState<ProcessJob | null>(null);
   const [isStarting, setIsStarting] = useState(false);
-
-  // Rebuild index state
-  const [isRebuilding, setIsRebuilding] = useState(false);
-  const [rebuildResult, setRebuildResult] = useState<RebuildIndexResponse | null>(null);
-  const [rebuildError, setRebuildError] = useState<string | null>(null);
 
   // Sync cache state
   const [isSyncing, setIsSyncing] = useState(false);
@@ -136,21 +131,6 @@ export function ProcessPage() {
 
   const handleReset = () => {
     setCurrentJob(null);
-  };
-
-  const handleRebuildIndex = async () => {
-    setIsRebuilding(true);
-    setRebuildResult(null);
-    setRebuildError(null);
-    try {
-      const result = await rebuildIndex();
-      setRebuildResult(result);
-    } catch (err) {
-      console.error('Failed to rebuild index:', err);
-      setRebuildError(err instanceof Error ? err.message : 'Failed to rebuild index');
-    } finally {
-      setIsRebuilding(false);
-    }
   };
 
   const handleSyncCache = async () => {
@@ -395,56 +375,6 @@ export function ProcessPage() {
           </CardContent>
         </Card>
       </div>
-
-      {/* Rebuild HNSW Index */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center space-x-2">
-            <Database className="h-5 w-5 text-slate-400" />
-            <h2 className="text-lg font-semibold text-white">{t('pages:process.rebuildIndex.title')}</h2>
-          </div>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <p className="text-sm text-slate-400">
-            {t('pages:process.rebuildIndex.description')}
-          </p>
-
-          <Button
-            onClick={handleRebuildIndex}
-            disabled={!isWritable || isRebuilding || isJobRunning}
-            isLoading={isRebuilding}
-            variant="secondary"
-          >
-            <RefreshCw className={`h-4 w-4 mr-2 ${isRebuilding ? 'animate-spin' : ''}`} />
-            {t('pages:process.rebuildIndex.button')}
-          </Button>
-
-          {/* Success message */}
-          {rebuildResult && (
-            <Alert variant="success" className="space-y-1">
-              <div className="flex items-center">
-                <CheckCircle className="h-4 w-4 mr-2" />
-                {t('pages:process.rebuildIndex.success')}
-              </div>
-              <div className="text-slate-400 pl-6 space-y-0.5">
-                <div>{t('pages:process.rebuildIndex.facesIndexed', { count: rebuildResult.face_count })}</div>
-                <div>{t('pages:process.rebuildIndex.embeddingsIndexed', { count: rebuildResult.embedding_count })}</div>
-                <div>{t('pages:process.rebuildIndex.duration', { ms: rebuildResult.duration_ms })}</div>
-              </div>
-            </Alert>
-          )}
-
-          {/* Error message */}
-          {rebuildError && (
-            <Alert variant="error">
-              <div className="flex items-center">
-                <XCircle className="h-4 w-4 mr-2" />
-                {rebuildError}
-              </div>
-            </Alert>
-          )}
-        </CardContent>
-      </Card>
 
       {/* Sync Cache */}
       <Card>

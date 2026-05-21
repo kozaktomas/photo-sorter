@@ -5,18 +5,6 @@ import (
 	"errors"
 )
 
-// HNSWRebuilder is an interface for repositories that support HNSW index rebuilding.
-type HNSWRebuilder interface {
-	// RebuildHNSW rebuilds the in-memory HNSW index.
-	RebuildHNSW(ctx context.Context) error
-	// HNSWCount returns the number of items in the HNSW index.
-	HNSWCount() int
-	// IsHNSWEnabled returns whether HNSW is enabled.
-	IsHNSWEnabled() bool
-	// SaveHNSWIndex saves the current index to disk (if path configured).
-	SaveHNSWIndex() error
-}
-
 var (
 	postgresEmbeddingReader    func() EmbeddingReader
 	postgresEmbeddingWriter    func() EmbeddingWriter
@@ -24,8 +12,6 @@ var (
 	postgresFaceWriter         func() FaceWriter
 	postgresEraEmbeddingWriter func() EraEmbeddingWriter
 	postgresBookWriter         func() BookWriter
-	postgresFaceHNSW           HNSWRebuilder // Singleton for face HNSW rebuilding
-	postgresEmbeddingHNSW      HNSWRebuilder // Singleton for embedding HNSW rebuilding
 	postgresTextVersionStore   func() TextVersionStore
 	postgresTextCheckStore     func() TextCheckStore
 	postgresPhotoWriter        func() PhotoWriter
@@ -46,8 +32,6 @@ func ResetForTesting() {
 	postgresFaceWriter = nil
 	postgresEraEmbeddingWriter = nil
 	postgresBookWriter = nil
-	postgresFaceHNSW = nil
-	postgresEmbeddingHNSW = nil
 	postgresTextVersionStore = nil
 	postgresTextCheckStore = nil
 	postgresPhotoWriter = nil
@@ -71,28 +55,6 @@ func RegisterPostgresBackend(
 	postgresFaceReader = faceReader
 	postgresFaceWriter = faceWriter
 	postgresInitialized = true
-}
-
-// RegisterFaceHNSWRebuilder registers the HNSW rebuilder for the face repository.
-// This allows rebuilding the in-memory HNSW index without knowing the concrete type.
-func RegisterFaceHNSWRebuilder(rebuilder HNSWRebuilder) {
-	postgresFaceHNSW = rebuilder
-}
-
-// GetFaceHNSWRebuilder returns the registered face HNSW rebuilder, or nil if not registered.
-func GetFaceHNSWRebuilder() HNSWRebuilder {
-	return postgresFaceHNSW
-}
-
-// RegisterEmbeddingHNSWRebuilder registers the HNSW rebuilder for the embedding repository.
-// This allows rebuilding the in-memory HNSW index without knowing the concrete type.
-func RegisterEmbeddingHNSWRebuilder(rebuilder HNSWRebuilder) {
-	postgresEmbeddingHNSW = rebuilder
-}
-
-// GetEmbeddingHNSWRebuilder returns the registered embedding HNSW rebuilder, or nil if not registered.
-func GetEmbeddingHNSWRebuilder() HNSWRebuilder {
-	return postgresEmbeddingHNSW
 }
 
 // IsInitialized returns whether the PostgreSQL backend has been initialized.

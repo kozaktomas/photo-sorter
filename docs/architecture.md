@@ -44,8 +44,7 @@ flowchart TB
     subgraph Storage["Storage"]
         Disk["Originals tree<br/>(YYYY/MM)"]
         Cache["Thumbnail cache<br/>(thumb/aa/bb/cc/hash_size.jpg)"]
-        PG["PostgreSQL + pgvector"]
-        HNSW["In-Memory HNSW<br/>(faces 512d, images 768d)"]
+        PG["PostgreSQL + pgvector<br/>(HNSW cosine indexes<br/>on embeddings + faces)"]
     end
 
     subgraph External["External"]
@@ -70,13 +69,11 @@ flowchart TB
     Handlers --> Fingerprint
     Handlers --> Pipe
     Handlers --> PG
-    Handlers --> HNSW
     Handlers --> Disk
     Handlers --> Cache
     Handlers --> Latex
 
     MCP --> PG
-    MCP --> HNSW
     MCP --> AI
 
     Sorter --> AI
@@ -87,8 +84,6 @@ flowchart TB
     Pipe --> EmbSvc
 
     Fingerprint --> EmbSvc
-
-    PG <--> HNSW
 ```
 
 ## Package Structure
@@ -101,7 +96,7 @@ flowchart TB
 | `internal/auth/` | Bcrypt password hashing, role constants (`admin`/`editor`/`viewer`), bootstrap-admin creation from env vars | `HashPassword`, `CheckPassword`, `BootstrapAdmin`, `RoleAdmin`, ... |
 | `internal/config/` | Environment-based configuration loader and pricing data | `Config`, `StorageConfig`, `DuplicateConfig`, `prices.yaml` (embedded) |
 | `internal/constants/` | Shared constants for page sizes, thresholds, concurrency limits, upload limits | Constants |
-| `internal/database/` | Repository interfaces, HNSW index wrappers, cosine distance, text check/version stores | `FaceReader`, `FaceWriter`, `EmbeddingReader`, `BookReader`/`BookWriter`, `PhotoReader`/`PhotoWriter`, `AlbumReader`/`AlbumWriter`, `LabelReader`/`LabelWriter`, `SubjectReader`/`SubjectWriter`, `MarkerReader`/`MarkerWriter`, `UserReader`/`UserWriter`, `PHashReader`/`PHashWriter`, `HNSWIndex` |
+| `internal/database/` | Repository interfaces, cosine distance helper, text check/version stores. Similarity search runs against pgvector (`vector_cosine_ops` HNSW indexes); see [`similarity-search.md`](similarity-search.md). | `FaceReader`, `FaceWriter`, `EmbeddingReader`, `BookReader`/`BookWriter`, `PhotoReader`/`PhotoWriter`, `AlbumReader`/`AlbumWriter`, `LabelReader`/`LabelWriter`, `SubjectReader`/`SubjectWriter`, `MarkerReader`/`MarkerWriter`, `UserReader`/`UserWriter`, `PHashReader`/`PHashWriter` |
 | `internal/database/postgres/` | PostgreSQL backend with pgvector, migrations, session persistence | `EmbeddingRepository`, `FaceRepository`, `BookRepository`, `PhotoRepository`, `AlbumRepository`, `LabelRepository`, `SubjectRepository`, `MarkerRepository`, `UserRepository`, `SessionStore` |
 | `internal/exif/` | EXIF reader (`exiftool` subprocess + pure-Go fallback) and XMP sidecar writer used by `PUT /photos/{uid}/exif` | `Read`, `WriteSidecar` |
 | `internal/facematch/` | Face matching utilities: IoU computation, bounding box conversion, name normalization | `NormalizePersonName`, IoU functions |
@@ -139,7 +134,7 @@ internal/photopipe.Ingest(...)
     +-- internal/exif.Read (exiftool subprocess + pure-Go fallback)
     +-- Optional near-duplicate scan:
     |     +-- pHash hamming distance via internal/fingerprint
-    |     +-- CLIP embedding cosine distance via HNSW
+    |     +-- CLIP embedding cosine distance via pgvector
     +-- internal/storage.WriteOriginal → originals/YYYY/MM/<basename>
     +-- Insert rows: photos, photo_files, photo_phashes
     +-- internal/thumb.GenerateSizes (decode once, write every registered size)
@@ -182,11 +177,11 @@ Three processing modes are supported: **standard** (N parallel photo calls + 1 a
 Embeddings Service computes InsightFace embeddings (512-dim) for each face
     |
     v
-Embeddings stored in PostgreSQL faces table + loaded into in-memory HNSW index
+Embeddings stored in PostgreSQL faces table with an HNSW index on `embedding`
     |
     v
 On match request (POST /api/v1/faces/match):
-    +-- Query HNSW index for nearest neighbors (O(log N), ~1ms)
+    +-- Query pgvector for nearest neighbors via `ORDER BY embedding <=> $1` (see docs/similarity-search.md)
     +-- Fetch candidate face records from PostgreSQL
     +-- Match InsightFace bboxes to native markers via IoU (threshold >= 0.1)
     +-- Return ranked suggestions with actions (create_marker, assign_person)
@@ -215,7 +210,7 @@ For /api/v1/* routes:
     v
 Handler function
     +-- Reads session + role from context
-    +-- Calls native repositories / HNSW / storage as needed
+    +-- Calls native repositories / pgvector / storage as needed
     +-- Returns JSON response via respondJSON / respondError
     |
     v
@@ -248,7 +243,7 @@ The same logic is exposed admin-only at `POST /api/v1/photos/batch/purge` so an 
 
 | Decision | Rationale | Trade-offs |
 |----------|-----------|------------|
-| **In-memory HNSW indexes on top of pgvector** | Batch-heavy features (duplicate detection, recognition scan) make hundreds of sequential queries. In-memory HNSW gives ~1ms per query vs ~15ms for pgvector, yielding a 15x speedup for interactive workloads. | Higher memory usage (all embeddings loaded at startup). Requires persistence files or rebuild on restart. pgvector fallback always available. |
+| **pgvector HNSW indexes as the only similarity-search layer** | One source of truth for cosine search keeps `pg_dump` a complete metadata backup, drops in-process memory to the pool overhead, and makes shutdown an HTTP-drain + pool-close (no index serialization). Per-query latency is comfortable for the interactive features that previously justified an in-process cache. | Lose the ~15× speedup we had from the in-memory layer on batch features. Bulk ops compensate by issuing N parallel queries against the same pgvector pool. |
 | **Embedded frontend in Go binary** | Single binary deployment with no external file dependencies. `go:embed` bundles the built React app at compile time. | Requires full rebuild (`make build`) for any frontend change. Development mode uses separate Vite dev server for hot reload. |
 | **Native user accounts with cookie sessions** | Photo-sorter owns its own `users` table (bcrypt) and 30-day signed cookie sessions persisted in Postgres. First admin is bootstrapped from `BOOTSTRAP_ADMIN_USERNAME` / `BOOTSTRAP_ADMIN_PASSWORD` on a fresh install; subsequent users are managed via `/api/v1/users/*`. Roles (`admin`/`editor`/`viewer`) gate write paths. | Operators must seed the bootstrap admin (the server warns and starts anyway if either env var is missing). Sessions survive restarts. |
 | **Native upload pipeline** | `internal/photopipe` owns the full ingestion path: hash → format detect → exact-duplicate check (by SHA256) → decode → EXIF → near-duplicate scan → write originals → DB rows → thumbnails. Reusable from HTTP, CLI, and migration code without involving any external service. | RAW/HEIC require external decoders (`dcraw`, `heif-convert`) which the Docker image bundles; self-builders must install them. |
@@ -302,8 +297,6 @@ Environment variables grouped by service:
 |----------|----------|-------------|
 | `EMBEDDING_URL` | No | Embeddings service URL (default: `http://localhost:8000`) |
 | `EMBEDDING_DIM` | No | Embedding dimensions (default: 768) |
-| `HNSW_INDEX_PATH` | No | Path to persist face HNSW index on disk |
-| `HNSW_EMBEDDING_INDEX_PATH` | No | Path to persist image embedding HNSW index on disk |
 
 ### Web Server
 | Variable | Required | Description |

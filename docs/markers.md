@@ -195,7 +195,7 @@ type StoredFace struct {
 
 - Updated during photo processing via `enrichFacesWithMarkerData()`
 - Updated immediately when faces are assigned/unassigned via the web UI
-- `UpdateFaceMarker()` syncs individual face records in both PostgreSQL and the in-memory HNSW index
+- `UpdateFaceMarker()` updates the cached marker columns on the `faces` row; pgvector keeps its index in sync automatically
 - Out-of-band fixes (bulk SQL, restore-from-backup, etc.) can be re-derived via `POST /api/v1/process/sync-cache`
 
 ## Name Normalization
@@ -284,6 +284,5 @@ If faces aren't matching markers despite visible overlap:
 
 If cached marker data drifted (e.g. after bulk SQL):
 
-1. Re-run "Rebuild Index" from the Process page
-2. Or call `POST /api/v1/process/sync-cache` to re-derive every cached column
-3. UI-driven assignments call `UpdateFaceMarker()` automatically, so day-to-day usage stays consistent
+1. Call `POST /api/v1/process/sync-cache` to re-derive every cached column
+2. UI-driven assignments call `UpdateFaceMarker()` automatically, so day-to-day usage stays consistent

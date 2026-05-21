@@ -244,6 +244,10 @@ func (r *fakeEmbeddingReader) GetUniquePhotoUIDs(_ context.Context) ([]string, e
 	panic("not implemented")
 }
 
+func (r *fakeEmbeddingReader) GetCentroid(_ context.Context, _ []string) ([]float32, error) {
+	panic("not implemented")
+}
+
 // gradientJPEG builds a deterministic gradient image and returns its JPEG
 // bytes. seed lets callers create visually-similar but byte-different
 // inputs (a re-save at a different quality bumps a handful of pHash bits

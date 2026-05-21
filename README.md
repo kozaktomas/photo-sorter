@@ -24,7 +24,7 @@ user accounts kept in Postgres.
 - **Trash with auto-purge** — Soft-delete photos to a per-user trash; an hourly daemon hard-deletes anything older than `TRASH_RETENTION_DAYS` (default 30)
 - **EXIF edit** — Fix date, GPS, camera/lens/exposure, and EXIF text fields from the UI; changes also land in an XMP sidecar
 - **Czech-aware full-text search** — Diacritic-folded `q=` filter on photo title/description/notes/file_name
-- **Album Suggestions** — Find photos missing from albums via HNSW centroid search
+- **Album Suggestions** — Find photos missing from albums via a pgvector centroid query
 - **Photo Comparison** — Side-by-side photo comparison with metadata diff
 - **Slideshow** — Full-screen photo slideshow with keyboard navigation
 - **Mobile capture (PWA)** — `/capture` page that opens the device camera and uploads single shots
@@ -126,10 +126,6 @@ GEMINI_API_KEY=...
 OLLAMA_URL=http://localhost:11434
 OLLAMA_MODEL=llama3.2-vision:11b
 LLAMACPP_URL=http://localhost:8080
-
-# Optional: persist HNSW indexes for fast startup
-HNSW_INDEX_PATH=/data/faces.pg.hnsw
-HNSW_EMBEDDING_INDEX_PATH=/data/embeddings.pg.hnsw
 
 # Web server
 WEB_PORT=8080
@@ -382,7 +378,7 @@ photo-sorter/
 - [CLI Reference](docs/cli-reference.md) - Complete reference for all CLI commands
 - [Web UI Guide](docs/web-ui.md) - Guide to the web interface features
 - [API Reference](docs/API.md) - REST API documentation
-- [HNSW Architecture](docs/hnsw-architecture.md) - In-memory HNSW vs pgvector design rationale
+- [Similarity Search](docs/similarity-search.md) - pgvector cosine search: indexes, ef_search, maintenance
 - [Face Markers](docs/markers.md) - Marker system and face-to-marker matching
 - [Era Estimation](docs/era-estimation.md) - Era estimation using CLIP embeddings
 - [Photo Books](docs/photo-book.md) - Photo book planning tool

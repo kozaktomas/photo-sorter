@@ -214,6 +214,10 @@ func (f *fakeEmbeddingWriter) GetUniquePhotoUIDs(_ context.Context) ([]string, e
 	return nil, nil
 }
 
+func (f *fakeEmbeddingWriter) GetCentroid(_ context.Context, _ []string) ([]float32, error) {
+	return nil, nil
+}
+
 func (f *fakeEmbeddingWriter) DeleteEmbedding(_ context.Context, uid string) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
