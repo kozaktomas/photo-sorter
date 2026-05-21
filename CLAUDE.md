@@ -153,7 +153,7 @@ This script:
 2. Runs `npm install` (skipped if `node_modules` is up-to-date with `package-lock.json`)
 3. Builds the frontend via `tsc -b && vite build` (skipped if `dist/` is newer than all source files)
 4. Builds the Go binary (skipped if binary is newer than all `.go` files and frontend wasn't rebuilt)
-5. Starts the server on port 8085 (configurable via `PORT` env variable) using test services (PhotoPrism + pgvector)
+5. Starts the server on port 8085 (configurable via `PORT` env variable) backed by the pgvector test service
 
 Smart caching makes repeated runs fast (~5s when nothing changed vs ~10min for full rebuild on the Pi).
 
@@ -163,9 +163,11 @@ tail -f /app/photo-sorter.log
 ```
 
 The dev environment uses:
-- PhotoPrism: `http://photoprism-test:2342` (admin/photoprism)
-- PostgreSQL: `pgvector:5432` (postgres/photoprism)
-- Embeddings: configured in `.env.dev`
+- PostgreSQL: `pgvector:5432` (postgres/photoprism) — only managed service in `docker-compose.yml`
+- Embeddings (CLIP + faces): external, configured via `EMBEDDING_URL` in `.env.dev`
+- Originals tree: `STORAGE_ORIGINALS_PATH` (defaults to `./data/originals`) — `YYYY/MM/<filename>`
+- Thumbnail cache: `STORAGE_CACHE_PATH` (defaults to `./data/cache`) — `thumb/<aa>/<bb>/<cc>/<hash>_<size>.jpg`
+- External decoders the upload pipeline shells out to: `exiftool`, `heif-convert` (libheif-tools), `dcraw` (LibRaw shim). Install via the OS package manager for dev; production reads them from the Docker image.
 
 **Book typography fonts:** PDF export requires the book fonts to be installed
 on the host (production reads them from the Docker image's `/usr/share/fonts`).
