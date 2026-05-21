@@ -826,6 +826,65 @@ to write NULL `uploaded_by`).
 
 ---
 
+### migrate-verify
+
+Compare an existing PhotoPrism instance against the photo-sorter native
+database after a migration. Runs read-only against both data sources and
+prints (or emits as JSON) a section-by-section diff of any rows or files
+that did not make it across.
+
+```bash
+photo-sorter migrate-verify \
+  --pp-db "<DSN>" \
+  --pp-originals <path> \
+  [--json] [--no-color] [--concurrency <N>]
+```
+
+Flags:
+
+| Flag             | Description                                                                          |
+|------------------|--------------------------------------------------------------------------------------|
+| `--pp-db`        | PhotoPrism MariaDB DSN, e.g. `photoprism:photoprism@tcp(mariadb:3306)/photoprism`.   |
+| `--pp-originals` | Path to the PhotoPrism originals directory (the verifier rehashes primary files).    |
+| `--json`         | Emit a machine-readable JSON report instead of the human-readable text.              |
+| `--no-color`     | Disable ANSI colour escapes in the human-readable report (useful for log files/CI). |
+| `--concurrency`  | Goroutine-pool size for the SHA256 re-hash pass (default 4).                         |
+
+Sections in the report:
+
+1. **photos** — PhotoPrism row count vs sorter `photos` count. Each PP
+   primary file is re-hashed with SHA256 and looked up by `file_hash`;
+   misses go into `missing_in_sorter`. The reverse pass flags sorter
+   rows whose hash has no PhotoPrism counterpart as `orphan_in_sorter`.
+2. **albums** — slug + title parity, per-album symmetric photo diff.
+3. **labels** — slug + name parity and per-label photo-pair counts.
+4. **subjects / markers** — accent-insensitive subject name match,
+   per-subject marker count diffs, and per-marker geometry drift
+   (markers whose x/y/w/h differs by more than 1% on any axis).
+5. **disk** — orphan files: every regular file under the sorter's
+   originals root that has no corresponding `photos.file_path` row.
+
+Examples:
+
+```bash
+# Human-readable report with ANSI colour.
+photo-sorter migrate-verify \
+  --pp-db "photoprism:photoprism@tcp(mariadb:3306)/photoprism" \
+  --pp-originals /photoprism/originals
+
+# Machine-readable JSON, for jq/CI integration.
+photo-sorter migrate-verify \
+  --pp-db "photoprism:photoprism@tcp(mariadb:3306)/photoprism" \
+  --pp-originals /photoprism/originals \
+  --json > verify.json
+```
+
+Exit code is `0` when no differences are found and `1` when at least one
+diff is reported, so the command can be chained into automated
+post-migration checks.
+
+---
+
 ### version
 
 Print the version number.
