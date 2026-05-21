@@ -21,6 +21,7 @@ type Config struct {
 	Embedding  EmbeddingConfig
 	Database   DatabaseConfig
 	Storage    StorageConfig
+	Duplicate  DuplicateConfig
 	Prices     PricesConfig
 }
 
@@ -98,6 +99,18 @@ type StorageConfig struct {
 	CachePath     string // Root directory for the cache (default: /data/cache). Thumbnails live in <CachePath>/thumb/.
 }
 
+// DuplicateConfig holds tuning for the upload-time near-duplicate detector.
+// PHashMaxDiff is the max hamming distance between two 64-bit pHashes
+// (0..64). EmbeddingMaxDistance is the max cosine distance between CLIP
+// image embeddings (0..2; 0 = identical, 2 = opposite). Enabled gates the
+// whole detector — when false, uploads skip the pHash + embedding scan
+// even if the per-request flag is set.
+type DuplicateConfig struct {
+	Enabled              bool
+	PHashMaxDiff         int
+	EmbeddingMaxDistance float64
+}
+
 // PricesConfig holds model pricing data loaded from prices.yaml.
 type PricesConfig struct {
 	Models map[string]ModelPricing `yaml:"models"`
@@ -131,6 +144,33 @@ func envInt(key string, defaultVal int) int {
 // envString returns the value of key or defaultVal if unset/empty.
 func envString(key, defaultVal string) string {
 	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return defaultVal
+}
+
+// envBool returns the boolean value of key or defaultVal if unset/empty/
+// unparseable. Accepts the strconv.ParseBool aliases: 1/0, t/f, T/F, true/
+// false, TRUE/FALSE, True/False.
+func envBool(key string, defaultVal bool) bool {
+	s := os.Getenv(key)
+	if s == "" {
+		return defaultVal
+	}
+	if v, err := strconv.ParseBool(s); err == nil {
+		return v
+	}
+	return defaultVal
+}
+
+// envFloat returns the float value of key or defaultVal if unset/empty/
+// unparseable or non-positive.
+func envFloat(key string, defaultVal float64) float64 {
+	s := os.Getenv(key)
+	if s == "" {
+		return defaultVal
+	}
+	if v, err := strconv.ParseFloat(s, 64); err == nil && v > 0 {
 		return v
 	}
 	return defaultVal
@@ -181,6 +221,11 @@ func Load() *Config {
 		Storage: StorageConfig{
 			OriginalsPath: envString("STORAGE_ORIGINALS_PATH", "/data/originals"),
 			CachePath:     envString("STORAGE_CACHE_PATH", "/data/cache"),
+		},
+		Duplicate: DuplicateConfig{
+			Enabled:              envBool("DUPLICATE_CHECK_ENABLED", true),
+			PHashMaxDiff:         envInt("DUPLICATE_PHASH_MAX_DIFF", 8),
+			EmbeddingMaxDistance: envFloat("DUPLICATE_EMBEDDING_MAX_DIST", 0.05),
 		},
 		Prices: prices,
 	}

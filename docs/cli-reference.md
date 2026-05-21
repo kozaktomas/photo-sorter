@@ -457,6 +457,63 @@ Use `cache sync` when faces have been assigned or unassigned directly in PhotoPr
 
 ---
 
+### cache compute-phashes
+
+Backfill perceptual hashes (pHash + dHash) for photos that lack them in
+the `photo_phashes` table. New uploads write a row automatically; this
+command fills the gap for photos that pre-date the
+`DUPLICATE_PHASH_MAX_DIFF` feature.
+
+```bash
+photo-sorter cache compute-phashes [flags]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--limit` | int | 0 | Maximum number of photos to process (0 = unlimited) |
+| `--concurrency` | int | 4 | Number of parallel decode + hash workers |
+| `--json` | bool | false | Output as JSON instead of a progress bar |
+
+**Examples:**
+```bash
+# Backfill every photo missing a pHash
+photo-sorter cache compute-phashes
+
+# First-run smoke test on the first 1000 photos
+photo-sorter cache compute-phashes --limit 1000
+
+# JSON output for scripting
+photo-sorter cache compute-phashes --json
+```
+
+#### What It Does
+
+1. Selects every `photos.uid` that has no row in `photo_phashes`
+2. For each photo (parallelized):
+   - Resolves the on-disk primary file via the configured storage tree
+   - Runs `imgconvert.EnsureDecodable` so HEIC/RAW originals are funnelled
+     through `heif-convert`/`dcraw` into a JPEG-friendly intermediate
+   - Computes pHash + dHash via `internal/fingerprint`
+   - Upserts the row into `photo_phashes`
+3. Reports counts of (hashed, skipped, errored)
+
+#### Prerequisites
+
+- `DATABASE_URL` environment variable must be set
+- `STORAGE_ORIGINALS_PATH` / `STORAGE_CACHE_PATH` must point at the
+  originals tree the upload pipeline writes to
+
+#### Idempotency
+
+Re-runs are safe — only photos missing a `photo_phashes` row are touched.
+To force a re-hash of every photo, truncate the table first:
+
+```sql
+TRUNCATE photo_phashes;
+```
+
+---
+
 ### cache compute-eras
 
 Compute CLIP text embedding centroids for photo era estimation.

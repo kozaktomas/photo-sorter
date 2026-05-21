@@ -239,6 +239,39 @@ type PhotoWriter interface {
 	DeletePhotoFile(ctx context.Context, photoUID, filePath string) error
 }
 
+// PHashReader provides read-only access to the photo_phashes table. It is
+// used by the upload pipeline's near-duplicate detector to find photos whose
+// pHash differs from a candidate by a small Hamming distance.
+type PHashReader interface {
+	// GetPHash returns the stored pHash + dHash for the given photo. Returns
+	// ErrNotFound when no row exists yet (the photo has not been backfilled).
+	GetPHash(ctx context.Context, photoUID string) (*PhotoPHash, error)
+	// ListAllPHashes returns every row in photo_phashes. The duplicate detector
+	// scans the full set in memory and computes hamming distance to the
+	// candidate — pHash is 8 bytes so a million rows fits in ~8 MB.
+	ListAllPHashes(ctx context.Context) ([]PhotoPHash, error)
+	// CountPHashes returns the number of rows in photo_phashes. Used by the
+	// backfill CLI to size progress bars.
+	CountPHashes(ctx context.Context) (int, error)
+	// ListPhotosWithoutPHash returns photo UIDs that have no row in
+	// photo_phashes yet, up to limit rows (0 = no limit). Drives the
+	// `cache compute-phashes` backfill.
+	ListPhotosWithoutPHash(ctx context.Context, limit int) ([]string, error)
+}
+
+// PHashWriter provides write access to the photo_phashes table. Save is an
+// upsert keyed by photo_uid so the upload pipeline and the backfill CLI can
+// safely race without producing duplicate rows.
+type PHashWriter interface {
+	PHashReader
+
+	// SavePHash upserts the pHash + dHash for a photo.
+	SavePHash(ctx context.Context, photoUID string, phash, dhash uint64) error
+	// DeletePHash removes a photo's pHash row. Mostly used by tests; in
+	// production rows cascade away when the photo is hard-deleted.
+	DeletePHash(ctx context.Context, photoUID string) error
+}
+
 // LabelReader provides read-only access to native labels and the
 // photo_labels junction. Single-row lookups return ErrNotFound when the
 // requested record is missing.

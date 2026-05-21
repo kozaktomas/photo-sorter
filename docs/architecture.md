@@ -86,6 +86,7 @@ flowchart TB
 | `internal/database/postgres/` | PostgreSQL backend with pgvector, migrations, session persistence | `EmbeddingRepository`, `FaceRepository`, `BookRepository`, `SessionStore` |
 | `internal/facematch/` | Face matching utilities: IoU computation, bounding box conversion, name normalization | `NormalizePersonName`, IoU functions |
 | `internal/fingerprint/` | Perceptual hash computation (pHash, dHash) and embeddings HTTP client | `Fingerprint`, embedding client |
+| `internal/photopipe/` | Native upload pipeline: buffer → hash → format detect → exact-duplicate check → decode → EXIF → near-duplicate scan (pHash + embedding) → originals write → DB rows → thumbnails → pHash persist | `Pipeline`, `Options`, `IngestResult`, `DuplicateMatch`, `DuplicateDetectionOptions` |
 | `internal/photoprism/` | PhotoPrism REST API client, split by domain (albums, photos, labels, markers, subjects, faces, upload) | `PhotoPrism`, `Album`, `Photo`, `Label`, `Marker`, `Subject` |
 | `internal/sorter/` | Orchestrates photo fetching, AI analysis, and label application | `Sorter` |
 | `internal/latex/` | PDF export via LaTeX — markdown-to-LaTeX conversion, layout validation, 12-column grid system, font registry (24 free fonts: Google Fonts + CTAN + URW Bookman) | `LayoutConfig`, `FormatSlotsGrid`, `FontEntry`, markdown converter |

@@ -322,6 +322,18 @@ type Photo struct {
 	UpdatedAt       time.Time
 }
 
+// PhotoPHash is the perceptual-hash row for a single photo. PHash/DHash are
+// 64-bit hashes (uint64) computed by internal/fingerprint over the decoded
+// image. They live in their own table (rather than on photos) so the hot
+// photos row stays narrow and the hash backfill can run independently of
+// the upload pipeline.
+type PhotoPHash struct {
+	PhotoUID  string
+	PHash     uint64
+	DHash     uint64
+	CreatedAt time.Time
+}
+
 // PhotoFile represents a single physical file belonging to a Photo
 // (a stack — original + sidecar + edited variants).
 type PhotoFile struct {

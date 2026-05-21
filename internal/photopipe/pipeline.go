@@ -24,9 +24,29 @@ import (
 
 	"github.com/kozaktomas/photo-sorter/internal/database"
 	"github.com/kozaktomas/photo-sorter/internal/exif"
+	"github.com/kozaktomas/photo-sorter/internal/fingerprint"
 	"github.com/kozaktomas/photo-sorter/internal/imgconvert"
 	"github.com/kozaktomas/photo-sorter/internal/storage"
 	"github.com/kozaktomas/photo-sorter/internal/thumb"
+)
+
+// Default thresholds for the near-duplicate detector. These match the
+// values documented in docs/specs and may be overridden via the
+// DuplicateDetection options on a per-pipeline basis.
+const (
+	// DefaultPHashMaxDiff is the maximum hamming distance (0–64) between
+	// two 64-bit pHashes at which they are considered near-duplicates.
+	DefaultPHashMaxDiff = 8
+
+	// DefaultEmbeddingMaxDistance is the maximum cosine distance between
+	// two CLIP embeddings at which they are considered near-duplicates.
+	DefaultEmbeddingMaxDistance = 0.05
+
+	// nearDuplicateEmbeddingFetchLimit is the upper bound on how many
+	// candidate matches the embedding-based check pulls back from the
+	// HNSW index per upload. Eight is plenty — the UI only surfaces the
+	// closest few — and keeps memory + JSON-payload bounded.
+	nearDuplicateEmbeddingFetchLimit = 8
 )
 
 // ErrDuplicate is returned by Ingest when SkipDuplicates is set and a photo
@@ -79,21 +99,113 @@ type Options struct {
 	// writing. Default true in the spec — set false only for tests that
 	// intentionally want a unique_violation from the DB layer.
 	SkipDuplicates bool
+	// CheckNearDuplicates controls whether the perceptual-hash + embedding
+	// near-duplicate detector runs before the photo row is inserted. When
+	// matches are found they are returned on IngestResult.NearDuplicates
+	// for the caller to surface in the UI; ingestion still proceeds (the
+	// user decides whether to keep the new file). Default false — the
+	// HTTP upload handler sets this to true; migration code keeps it off.
+	CheckNearDuplicates bool
+	// Embedding is the optional pre-computed CLIP embedding for the photo
+	// being uploaded. When set together with CheckNearDuplicates and a
+	// non-nil EmbeddingReader on the pipeline, it is queried against the
+	// HNSW image-embedding index to find visually-similar photos. The
+	// pHash check runs regardless of whether the embedding is supplied.
+	Embedding []float32
+}
+
+// DuplicateMatch is one near-duplicate hit reported on IngestResult. The
+// pHash score is the hamming distance between the candidate and the
+// matched photo's pHash (0 = bit-identical, 64 = bit-opposite). The
+// embedding score is 1 - cosine_distance — i.e. 1.0 when the embeddings
+// are bit-identical, 0.0 when orthogonal. Either score may be the zero
+// value to indicate "not evaluated" (e.g. score_embedding == 0 when the
+// embedding check was skipped because no embedding was supplied).
+type DuplicateMatch struct {
+	PhotoUID       string     `json:"photo_uid"`
+	FileName       string     `json:"file_name"`
+	TakenAt        *time.Time `json:"taken_at,omitempty"`
+	ScorePHash     int        `json:"score_phash"`
+	ScoreEmbedding float64    `json:"score_embedding"`
+}
+
+// IngestResult bundles the persisted photo with any near-duplicate matches
+// the pipeline found before writing. The pipeline always returns a non-nil
+// result on success (even when NearDuplicates is empty); a nil result is
+// returned together with an error.
+type IngestResult struct {
+	Photo          *database.Photo
+	NearDuplicates []DuplicateMatch
 }
 
 // Pipeline owns the storage layer, the photo repository (write side), and a
 // read-side handle for the duplicate check. The reader is broken out from
 // the writer so future code paths can hand in a read replica or a cache.
+//
+// phashStore and embeddingReader are optional — when both are nil the
+// near-duplicate detector is disabled even if Options.CheckNearDuplicates
+// is true. duplicateOpts overrides the package-level threshold constants;
+// the zero value falls back to the defaults.
 type Pipeline struct {
-	store  *storage.Storage
-	repo   database.PhotoWriter
-	reader database.PhotoReader
+	store           *storage.Storage
+	repo            database.PhotoWriter
+	reader          database.PhotoReader
+	phashStore      database.PHashWriter
+	embeddingReader database.EmbeddingReader
+	duplicateOpts   DuplicateDetectionOptions
 }
 
-// New constructs a Pipeline. All three dependencies are required; the
-// function panics on nil arguments because misconfiguration here is a
-// programmer error, not a runtime condition the pipeline can recover from.
+// DuplicateDetectionOptions are the runtime-tunable thresholds for the
+// near-duplicate detector. A zero value of either field is treated as
+// "use the package default" (DefaultPHashMaxDiff, DefaultEmbeddingMaxDistance).
+// Enabled gates the entire detector — set false to disable globally even
+// when the per-ingest Options.CheckNearDuplicates is true.
+type DuplicateDetectionOptions struct {
+	Enabled              bool
+	PHashMaxDiff         int
+	EmbeddingMaxDistance float64
+}
+
+// effectivePHashMaxDiff returns the configured threshold or the package
+// default when the configured value is zero.
+func (o DuplicateDetectionOptions) effectivePHashMaxDiff() int {
+	if o.PHashMaxDiff <= 0 {
+		return DefaultPHashMaxDiff
+	}
+	return o.PHashMaxDiff
+}
+
+// effectiveEmbeddingMaxDistance returns the configured threshold or the
+// package default when the configured value is zero.
+func (o DuplicateDetectionOptions) effectiveEmbeddingMaxDistance() float64 {
+	if o.EmbeddingMaxDistance <= 0 {
+		return DefaultEmbeddingMaxDistance
+	}
+	return o.EmbeddingMaxDistance
+}
+
+// New constructs a Pipeline with the duplicate detector disabled. All three
+// dependencies are required; the function panics on nil arguments because
+// misconfiguration here is a programmer error, not a runtime condition the
+// pipeline can recover from. Callers that need the near-duplicate detector
+// should use NewWithDuplicateDetection instead.
 func New(store *storage.Storage, repo database.PhotoWriter, reader database.PhotoReader) *Pipeline {
+	return NewWithDuplicateDetection(store, repo, reader, nil, nil, DuplicateDetectionOptions{})
+}
+
+// NewWithDuplicateDetection constructs a Pipeline with optional near-
+// duplicate detection. phashStore and embeddingReader may be nil — when
+// both are nil the detector is disabled even if Options.CheckNearDuplicates
+// is true on an individual call. duplicateOpts.Enabled = false also
+// disables the detector globally.
+func NewWithDuplicateDetection(
+	store *storage.Storage,
+	repo database.PhotoWriter,
+	reader database.PhotoReader,
+	phashStore database.PHashWriter,
+	embeddingReader database.EmbeddingReader,
+	duplicateOpts DuplicateDetectionOptions,
+) *Pipeline {
 	if store == nil {
 		panic("photopipe: store must not be nil")
 	}
@@ -103,29 +215,44 @@ func New(store *storage.Storage, repo database.PhotoWriter, reader database.Phot
 	if reader == nil {
 		panic("photopipe: reader must not be nil")
 	}
-	return &Pipeline{store: store, repo: repo, reader: reader}
+	return &Pipeline{
+		store:           store,
+		repo:            repo,
+		reader:          reader,
+		phashStore:      phashStore,
+		embeddingReader: embeddingReader,
+		duplicateOpts:   duplicateOpts,
+	}
 }
 
 // ingestPrep bundles the intermediate state produced by the read-only
 // portion of the pipeline (buffering, format detection, duplicate check,
-// decoding, EXIF extraction). Passing it as a struct keeps Ingest's body
-// short enough for gocognit and makes the rollback path easy to reason
-// about — every field is set before any side effect on disk or in the DB.
+// decoding, EXIF extraction, near-duplicate scan). Passing it as a struct
+// keeps Ingest's body short enough for gocognit and makes the rollback
+// path easy to reason about — every field is set before any side effect
+// on disk or in the DB.
 type ingestPrep struct {
-	tmpPath   string
-	decodable string
-	filename  string
-	fileHash  string
-	fileSize  int64
-	format    string
-	meta      *exif.Metadata
-	existing  *database.Photo
+	tmpPath        string
+	decodable      string
+	filename       string
+	fileHash       string
+	fileSize       int64
+	format         string
+	meta           *exif.Metadata
+	existing       *database.Photo
+	phashBits      uint64
+	dhashBits      uint64
+	phashComputed  bool
+	nearDuplicates []DuplicateMatch
 }
 
-// Ingest runs the full upload pipeline on src and returns the resulting
-// *database.Photo. The contract is documented on the package; see the
-// numbered steps in the spec for the order of operations.
-func (p *Pipeline) Ingest(ctx context.Context, src io.Reader, opts Options) (*database.Photo, error) {
+// Ingest runs the full upload pipeline on src. On success the returned
+// *IngestResult.Photo is the persisted photo row and NearDuplicates is the
+// (possibly empty) set of near-duplicate matches found before the write.
+// Callers that hit an exact-hash duplicate get back the existing photo on
+// the *DuplicateError unwrap path; near duplicates are non-fatal and are
+// surfaced alongside the new photo row on the success path.
+func (p *Pipeline) Ingest(ctx context.Context, src io.Reader, opts Options) (*IngestResult, error) {
 	if src == nil {
 		return nil, errors.New("photopipe: src must not be nil")
 	}
@@ -139,7 +266,7 @@ func (p *Pipeline) Ingest(ctx context.Context, src io.Reader, opts Options) (*da
 	}
 	defer cleanup()
 	if prep.existing != nil {
-		return prep.existing, &DuplicateError{Existing: prep.existing}
+		return &IngestResult{Photo: prep.existing}, &DuplicateError{Existing: prep.existing}
 	}
 
 	relPath := p.resolveOriginalPath(prep)
@@ -164,9 +291,10 @@ func (p *Pipeline) Ingest(ctx context.Context, src io.Reader, opts Options) (*da
 	}
 
 	p.generateThumbsBestEffort(prep, photoRecord, opts)
+	p.persistPHashBestEffort(ctx, prep, photoRecord)
 
 	success = true
-	return photoRecord, nil
+	return &IngestResult{Photo: photoRecord, NearDuplicates: prep.nearDuplicates}, nil
 }
 
 // prepareUpload runs steps 1-6 of the spec: buffer to temp, hash, detect
@@ -212,7 +340,7 @@ func (p *Pipeline) prepareUpload(ctx context.Context, src io.Reader, opts Option
 		return nil, noopCleanup, fmt.Errorf("photopipe: exif: %w", err)
 	}
 
-	return &ingestPrep{
+	prep := &ingestPrep{
 		tmpPath:   tmpPath,
 		decodable: decodable,
 		filename:  opts.Filename,
@@ -220,7 +348,193 @@ func (p *Pipeline) prepareUpload(ctx context.Context, src io.Reader, opts Option
 		fileSize:  fileSize,
 		format:    format,
 		meta:      meta,
-	}, combined, nil
+	}
+
+	if p.duplicateCheckEnabled(opts) {
+		if err := p.populateNearDuplicates(ctx, prep, opts); err != nil {
+			// Near-duplicate detection is best-effort: a database hiccup
+			// or a malformed decodable here must not fail the upload. We
+			// log it and continue with prep.nearDuplicates == nil so the
+			// caller still gets the photo row.
+			log.Printf("photopipe: near-duplicate scan for %q: %v", opts.Filename, err)
+		}
+	}
+
+	return prep, combined, nil
+}
+
+// duplicateCheckEnabled returns true when the per-call opt-in is set, the
+// pipeline-level switch is on, and at least one of the underlying stores
+// (phashStore or embeddingReader) is wired up. The check needs at least
+// one signal source to do anything useful — both nil means "no-op".
+func (p *Pipeline) duplicateCheckEnabled(opts Options) bool {
+	if !opts.CheckNearDuplicates {
+		return false
+	}
+	if !p.duplicateOpts.Enabled {
+		return false
+	}
+	return p.phashStore != nil || p.embeddingReader != nil
+}
+
+// populateNearDuplicates computes the candidate pHash and fills
+// prep.nearDuplicates with whatever matches the two index sources produce.
+// Errors from either source are returned to the caller, which logs them
+// (the upload still proceeds). The set of matches is de-duplicated by
+// photo_uid so a photo flagged by both detectors only appears once.
+func (p *Pipeline) populateNearDuplicates(ctx context.Context, prep *ingestPrep, opts Options) error {
+	if prep.decodable == "" {
+		return nil
+	}
+
+	// Compute pHash from the decodable JPEG-friendly intermediate so HEIC
+	// and RAW uploads also feed the detector. Failures here are non-fatal —
+	// we simply skip the pHash branch and let the embedding branch try.
+	if p.phashStore != nil {
+		decoded, err := os.ReadFile(prep.decodable) // #nosec G304 -- decodable comes from imgconvert in this package
+		if err != nil {
+			return fmt.Errorf("read decodable: %w", err)
+		}
+		hashes, err := fingerprint.ComputeHashes(decoded)
+		if err != nil {
+			return fmt.Errorf("compute phashes: %w", err)
+		}
+		prep.phashBits = hashes.PHashBits
+		prep.dhashBits = hashes.DHashBits
+		prep.phashComputed = true
+	}
+
+	matches := make(map[string]DuplicateMatch)
+	if prep.phashComputed {
+		if err := p.scanPHashMatches(ctx, prep.phashBits, matches); err != nil {
+			return fmt.Errorf("phash scan: %w", err)
+		}
+	}
+	if p.embeddingReader != nil && len(opts.Embedding) > 0 {
+		if err := p.scanEmbeddingMatches(ctx, opts.Embedding, matches); err != nil {
+			return fmt.Errorf("embedding scan: %w", err)
+		}
+	}
+
+	prep.nearDuplicates = sortDuplicateMatches(matches)
+	return nil
+}
+
+// scanPHashMatches fetches every row from photo_phashes and inserts any
+// entry within p.duplicateOpts.effectivePHashMaxDiff() bits into matches.
+// The map is keyed by photo_uid so a later embedding hit on the same photo
+// overlays the pHash score instead of duplicating the entry.
+func (p *Pipeline) scanPHashMatches(
+	ctx context.Context, candidate uint64, matches map[string]DuplicateMatch,
+) error {
+	rows, err := p.phashStore.ListAllPHashes(ctx)
+	if err != nil {
+		return fmt.Errorf("list phashes: %w", err)
+	}
+	threshold := p.duplicateOpts.effectivePHashMaxDiff()
+	for _, row := range rows {
+		dist := fingerprint.HammingDistance(candidate, row.PHash)
+		if dist > threshold {
+			continue
+		}
+		match, err := p.buildMatch(ctx, row.PhotoUID)
+		if err != nil {
+			// Missing photo row should not happen (cascade FK) but skip
+			// the match rather than failing the whole scan.
+			continue
+		}
+		match.ScorePHash = dist
+		matches[row.PhotoUID] = match
+	}
+	return nil
+}
+
+// scanEmbeddingMatches queries the embedding HNSW index for the candidate
+// embedding and overlays any hits onto matches. The score is reported as
+// 1 - cosine_distance so the UI can present a 0..1 "similarity" value
+// where 1 means identical.
+func (p *Pipeline) scanEmbeddingMatches(
+	ctx context.Context, embedding []float32, matches map[string]DuplicateMatch,
+) error {
+	maxDist := p.duplicateOpts.effectiveEmbeddingMaxDistance()
+	hits, distances, err := p.embeddingReader.FindSimilarWithDistance(
+		ctx, embedding, nearDuplicateEmbeddingFetchLimit, maxDist,
+	)
+	if err != nil {
+		return fmt.Errorf("find similar embeddings: %w", err)
+	}
+	for i, hit := range hits {
+		match, ok := matches[hit.PhotoUID]
+		if !ok {
+			built, err := p.buildMatch(ctx, hit.PhotoUID)
+			if err != nil {
+				continue
+			}
+			match = built
+		}
+		match.ScoreEmbedding = 1.0 - distances[i]
+		matches[hit.PhotoUID] = match
+	}
+	return nil
+}
+
+// buildMatch fills in the descriptive fields (filename + taken_at) by
+// looking the photo up by UID. Returns an error when the row is missing
+// or the reader fails so the scanner can skip the match.
+func (p *Pipeline) buildMatch(ctx context.Context, photoUID string) (DuplicateMatch, error) {
+	photo, err := p.reader.GetPhoto(ctx, photoUID)
+	if err != nil {
+		return DuplicateMatch{}, fmt.Errorf("get photo %q: %w", photoUID, err)
+	}
+	return DuplicateMatch{
+		PhotoUID: photo.UID,
+		FileName: photo.FileName,
+		TakenAt:  photo.TakenAt,
+	}, nil
+}
+
+// sortDuplicateMatches converts the dedup map into a slice ordered by
+// "most likely a duplicate first": embedding score descending (higher
+// similarity wins), then pHash distance ascending (fewer differing bits
+// wins). The result is deterministic for tests.
+func sortDuplicateMatches(matches map[string]DuplicateMatch) []DuplicateMatch {
+	out := make([]DuplicateMatch, 0, len(matches))
+	for _, m := range matches {
+		out = append(out, m)
+	}
+	// Simple insertion sort — N is small (capped at index fetch limit + pHash matches).
+	for i := 1; i < len(out); i++ {
+		for j := i; j > 0 && lessLikelyDuplicate(out[j-1], out[j]); j-- {
+			out[j-1], out[j] = out[j], out[j-1]
+		}
+	}
+	return out
+}
+
+// lessLikelyDuplicate returns true when a is less likely to be a duplicate
+// than b — i.e. b should sort before a. Used as the comparator for
+// sortDuplicateMatches.
+func lessLikelyDuplicate(a, b DuplicateMatch) bool {
+	if a.ScoreEmbedding != b.ScoreEmbedding {
+		return a.ScoreEmbedding < b.ScoreEmbedding
+	}
+	return a.ScorePHash > b.ScorePHash
+}
+
+// persistPHashBestEffort writes the computed pHash + dHash for the new
+// photo into photo_phashes. Failures are logged and swallowed — the photo
+// row is already persisted; a missed pHash row just means the duplicate
+// detector will skip this photo on future uploads. The backfill CLI can
+// fix it later.
+func (p *Pipeline) persistPHashBestEffort(
+	ctx context.Context, prep *ingestPrep, photoRecord *database.Photo,
+) {
+	if p.phashStore == nil || !prep.phashComputed {
+		return
+	}
+	if err := p.phashStore.SavePHash(ctx, photoRecord.UID, prep.phashBits, prep.dhashBits); err != nil {
+		log.Printf("photopipe: persist phash for %q: %v", photoRecord.UID, err)
+	}
 }
 
 // lookupDuplicate consults the reader by hash when opts.SkipDuplicates is

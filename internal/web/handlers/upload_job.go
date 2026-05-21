@@ -13,9 +13,33 @@ import (
 
 	"github.com/kozaktomas/photo-sorter/internal/constants"
 	"github.com/kozaktomas/photo-sorter/internal/database"
+	"github.com/kozaktomas/photo-sorter/internal/photopipe"
 	"github.com/kozaktomas/photo-sorter/internal/photoprism"
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
+
+// NearDuplicatesEvent is the payload of the "near_duplicates" SSE event
+// emitted by the upload pipeline when the perceptual-hash + embedding
+// detector finds candidate matches for a freshly-uploaded file. The
+// frontend surfaces these alongside the upload progress so the user can
+// confirm whether to keep the new copy or discard it.
+type NearDuplicatesEvent struct {
+	FileName string                     `json:"filename"`
+	PhotoUID string                     `json:"photo_uid,omitempty"`
+	Matches  []photopipe.DuplicateMatch `json:"matches"`
+}
+
+// EmitNearDuplicates broadcasts a "near_duplicates" SSE event on the job's
+// listener channels. A no-op when matches is empty — the frontend only
+// renders the warning bar when there is at least one candidate. Exported
+// so the pipeline integration test (and any future caller that runs
+// near-duplicate scans outside this file) can drive the same event.
+func EmitNearDuplicates(job *UploadJob, ev NearDuplicatesEvent) {
+	if len(ev.Matches) == 0 {
+		return
+	}
+	job.SendEvent(JobEvent{Type: "near_duplicates", Data: ev})
+}
 
 // UploadJob represents an async upload job.
 type UploadJob struct {

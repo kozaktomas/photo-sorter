@@ -34,6 +34,7 @@ var (
 	postgresUserWriter         func() UserWriter
 	postgresMarkerWriter       func() MarkerWriter
 	postgresSubjectWriter      func() SubjectWriter
+	postgresPHashWriter        func() PHashWriter
 	postgresInitialized        bool
 )
 
@@ -55,6 +56,7 @@ func ResetForTesting() {
 	postgresUserWriter = nil
 	postgresMarkerWriter = nil
 	postgresSubjectWriter = nil
+	postgresPHashWriter = nil
 	postgresInitialized = false
 }
 
@@ -402,4 +404,33 @@ func GetSubjectReader(ctx context.Context) (SubjectReader, error) {
 		return nil, errors.New("PostgreSQL subject reader not registered")
 	}
 	return postgresSubjectWriter(), nil
+}
+
+// RegisterPHashWriter registers the PHashWriter constructor. The same
+// value also serves PHashReader, since the writer embeds the reader
+// interface.
+func RegisterPHashWriter(writer func() PHashWriter) {
+	postgresPHashWriter = writer
+}
+
+// GetPHashWriter returns a PHashWriter from the PostgreSQL backend.
+func GetPHashWriter(ctx context.Context) (PHashWriter, error) {
+	if !postgresInitialized {
+		return nil, errors.New("PostgreSQL backend not initialized: DATABASE_URL is required")
+	}
+	if postgresPHashWriter == nil {
+		return nil, errors.New("PostgreSQL phash writer not registered")
+	}
+	return postgresPHashWriter(), nil
+}
+
+// GetPHashReader returns a PHashReader from the PostgreSQL backend.
+func GetPHashReader(ctx context.Context) (PHashReader, error) {
+	if !postgresInitialized {
+		return nil, errors.New("PostgreSQL backend not initialized: DATABASE_URL is required")
+	}
+	if postgresPHashWriter == nil {
+		return nil, errors.New("PostgreSQL phash reader not registered")
+	}
+	return postgresPHashWriter(), nil
 }

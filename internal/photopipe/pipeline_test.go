@@ -155,10 +155,11 @@ func TestIngest_JPEGWithEXIF(t *testing.T) {
 		GenerateThumbs: true,
 		SkipDuplicates: true,
 	}
-	got, err := pipeline.Ingest(ctx, bytes.NewReader(data), opts)
+	res, err := pipeline.Ingest(ctx, bytes.NewReader(data), opts)
 	if err != nil {
 		t.Fatalf("Ingest: %v", err)
 	}
+	got := res.Photo
 	if got.UID == "" {
 		t.Fatal("UID not populated")
 	}
@@ -243,10 +244,11 @@ func TestIngest_DuplicateReturnsExisting(t *testing.T) {
 		GenerateThumbs: false,
 		SkipDuplicates: true,
 	}
-	first, err := pipeline.Ingest(ctx, bytes.NewReader(data), opts)
+	firstRes, err := pipeline.Ingest(ctx, bytes.NewReader(data), opts)
 	if err != nil {
 		t.Fatalf("first ingest: %v", err)
 	}
+	first := firstRes.Photo
 
 	// Snapshot the on-disk file modtime so we can verify the second call
 	// did not overwrite or duplicate the original.
@@ -259,12 +261,12 @@ func TestIngest_DuplicateReturnsExisting(t *testing.T) {
 		t.Fatalf("stat original: %v", err)
 	}
 
-	second, err := pipeline.Ingest(ctx, bytes.NewReader(data), opts)
+	secondRes, err := pipeline.Ingest(ctx, bytes.NewReader(data), opts)
 	if !errors.Is(err, ErrDuplicate) {
 		t.Fatalf("second ingest: err = %v, want ErrDuplicate", err)
 	}
-	if second == nil || second.UID != first.UID {
-		t.Errorf("duplicate should return existing photo; got %+v want UID=%s", second, first.UID)
+	if secondRes == nil || secondRes.Photo == nil || secondRes.Photo.UID != first.UID {
+		t.Errorf("duplicate should return existing photo; got %+v want UID=%s", secondRes, first.UID)
 	}
 	var dupErr *DuplicateError
 	if !errors.As(err, &dupErr) {
@@ -305,10 +307,11 @@ func TestIngest_NoEXIFGoesUnderUnknown(t *testing.T) {
 		GenerateThumbs: false,
 		SkipDuplicates: true,
 	}
-	got, err := pipeline.Ingest(ctx, bytes.NewReader(data), opts)
+	res, err := pipeline.Ingest(ctx, bytes.NewReader(data), opts)
 	if err != nil {
 		t.Fatalf("Ingest: %v", err)
 	}
+	got := res.Photo
 	if got.TakenAt != nil {
 		t.Errorf("TakenAt should be nil for no-EXIF input, got %v", got.TakenAt)
 	}
@@ -343,10 +346,11 @@ func TestIngest_GenerateThumbsFalse(t *testing.T) {
 		GenerateThumbs: false,
 		SkipDuplicates: true,
 	}
-	got, err := pipeline.Ingest(ctx, bytes.NewReader(data), opts)
+	res, err := pipeline.Ingest(ctx, bytes.NewReader(data), opts)
 	if err != nil {
 		t.Fatalf("Ingest: %v", err)
 	}
+	got := res.Photo
 
 	// No thumbnail size — fit_* or tile_* — should have been written.
 	checkSizes := []string{
@@ -388,14 +392,16 @@ func TestIngest_FilenameCollisionSuffix(t *testing.T) {
 		GenerateThumbs: false,
 		SkipDuplicates: true,
 	}
-	first, err := pipeline.Ingest(ctx, bytes.NewReader(dataA), opts)
+	firstRes, err := pipeline.Ingest(ctx, bytes.NewReader(dataA), opts)
 	if err != nil {
 		t.Fatalf("ingest A: %v", err)
 	}
-	second, err := pipeline.Ingest(ctx, bytes.NewReader(dataB), opts)
+	first := firstRes.Photo
+	secondRes, err := pipeline.Ingest(ctx, bytes.NewReader(dataB), opts)
 	if err != nil {
 		t.Fatalf("ingest B: %v", err)
 	}
+	second := secondRes.Photo
 
 	if first.FilePath == second.FilePath {
 		t.Errorf("collision not resolved: both paths = %q", first.FilePath)

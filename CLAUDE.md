@@ -252,6 +252,9 @@ Environment variables (loaded from `.env`):
 - `STORAGE_CACHE_PATH` (optional, root for the thumbnail cache — thumbnails live under `<CachePath>/thumb/<aa>/<bb>/<cc>/<hash>_<size>.jpg`; defaults to `/data/cache` in Docker, `./data/cache` in dev)
 - `PHOTOPRISM_DATABASE_URL` (optional, MariaDB DSN for direct database access, e.g., `photoprism:photoprism@tcp(mariadb:3306)/photoprism`)
 - `MCP_API_TOKEN` (optional, enables MCP endpoint at `/mcp/sse` on the `serve` command; Bearer token for MCP client authentication)
+- `DUPLICATE_CHECK_ENABLED` (optional bool, defaults to `true`) — globally gates the upload-time near-duplicate detector (pHash + embedding scan); set to `false` to skip the scan even when the per-request flag is on
+- `DUPLICATE_PHASH_MAX_DIFF` (optional int, defaults to `8`) — max hamming distance between two 64-bit pHashes at which they are reported as near-duplicates (0..64)
+- `DUPLICATE_EMBEDDING_MAX_DIST` (optional float, defaults to `0.05`) — max cosine distance between two CLIP embeddings at which they are reported as near-duplicates (0..2)
 
 ### AI Provider API Calls
 
@@ -376,7 +379,7 @@ internal/database/
     ├── sessions.go     # Session persistence for web auth
     ├── text_versions.go   # TextVersionStore implementation
     ├── text_checks.go     # TextCheckStore implementation
-    └── migrations/     # SQL migrations 001-030 (embedded)
+    └── migrations/     # SQL migrations 001-034 (embedded)
 ```
 
 **Tables:** `embeddings` (768-dim CLIP), `faces` (512-dim ResNet100 with cached PhotoPrism marker data), `era_embeddings` (768-dim CLIP text centroids), `faces_processed` (tracking), `sessions` (with `user_uid` for upload support across restarts), `photo_books` (with typography settings: `body_font`, `heading_font`, `body_font_size`, `body_line_height`, `h1_font_size`, `h2_font_size`, `caption_opacity`, `caption_font_size`, `heading_color_bleed` added in migrations 021-023, plus `body_text_pad_mm` in migration 029 — inner padding (mm) added to body text on the side of a text slot adjacent to a photo in mixed layouts), `book_chapters` (migration 016, with `color` column added in migration 020 for per-chapter color themes), `book_sections` (with optional `chapter_id`), `section_photos`, `book_pages` (with `split_position` for adjustable column splits in mixed formats, plus `hide_page_number` for per-page folio suppression added in migration 025, and `1_fullbleed` format added to the CHECK constraint in migration 027), `page_slots` (with `text_content` for text-only slots, `is_captions_slot` (BOOLEAN, migration 026) routing photo captions into the slot while suppressing the bottom strip — at most one per page, `is_contents_slot` (BOOLEAN, migration 030) auto-rendering the book's table of contents (chapters → sections with printed page ranges) in two columns inside the slot — at most one per page, both enforced via partial unique indexes, `crop_x`/`crop_y`/`crop_scale` for per-photo crop control; photo_uid / text_content / is_captions_slot / is_contents_slot are mutually exclusive), `text_versions` (migration 017, version history for text fields), `text_check_results` (migration 019, persisted AI text check results with content hash for stale detection, extended by migration 028 with a `suggestions JSONB` column storing advisory readability recommendations).
