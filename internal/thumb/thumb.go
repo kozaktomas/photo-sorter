@@ -74,6 +74,21 @@ var sizeOrder = []string{
 	"tile_50",
 }
 
+// SizeNames returns the list of every thumbnail size name registered in
+// the package, in the canonical sizeOrder. The returned slice is a fresh
+// copy so callers can sort/filter it without mutating the registry.
+func SizeNames() []string {
+	out := make([]string, len(sizeOrder))
+	copy(out, sizeOrder)
+	return out
+}
+
+// IsValidSize reports whether name is a registered thumbnail size.
+func IsValidSize(name string) bool {
+	_, ok := sizes[name]
+	return ok
+}
+
 // Generate decodes the source at src.Path, applies its EXIF orientation,
 // resizes for sizeName, JPEG-encodes the result, and writes it through
 // store. It returns the relative path of the thumbnail (the same value
@@ -113,10 +128,36 @@ func Generate(src Source, sizeName string, store *storage.Storage, fileHash stri
 // returns immediately; thumbnails already written are kept on disk and
 // will be picked up as "already exists" on the next call.
 func GenerateAll(src Source, store *storage.Storage, fileHash string) (map[string]string, error) {
-	result := make(map[string]string, len(sizes))
-	needed := make([]string, 0, len(sizes))
+	return GenerateSizes(src, sizeOrder, store, fileHash)
+}
 
-	for _, name := range sizeOrder {
+// GenerateSizes generates the named subset of thumbnails for src. Sizes
+// that already exist in store are skipped; missing sizes are generated
+// after decoding the source image exactly once.
+//
+// sizeNames are processed in the order supplied by the caller. Each name
+// must be a registered size or ErrUnknownSize wrapping the bad name is
+// returned. The returned map covers every requested size — both
+// pre-existing and freshly generated — keyed by size name, valued by the
+// relative path under the thumb cache root.
+//
+// Pass an empty slice (or thumb.SizeNames()) to generate every size; the
+// thin GenerateAll wrapper does the latter.
+func GenerateSizes(
+	src Source, sizeNames []string,
+	store *storage.Storage, fileHash string,
+) (map[string]string, error) {
+	if len(sizeNames) == 0 {
+		return map[string]string{}, nil
+	}
+
+	result := make(map[string]string, len(sizeNames))
+	needed := make([]string, 0, len(sizeNames))
+
+	for _, name := range sizeNames {
+		if _, ok := sizes[name]; !ok {
+			return nil, fmt.Errorf("thumb: unknown size %q", name)
+		}
 		rel, err := storage.ThumbRelPath(fileHash, name)
 		if err != nil {
 			return nil, fmt.Errorf("thumb: build path for %s: %w", name, err)

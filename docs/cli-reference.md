@@ -514,6 +514,69 @@ TRUNCATE photo_phashes;
 
 ---
 
+### cache build-thumbs
+
+Generate any missing thumbnails for every photo in the database. Used
+after a migration, after a cache wipe, or whenever a new size definition
+is added to the registry.
+
+```bash
+photo-sorter cache build-thumbs [flags]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--concurrency` | int | 4 | Number of parallel decode + resize workers |
+| `--sizes` | strings | (all) | Comma-separated subset of registered sizes (e.g. `fit_720,tile_224`) |
+| `--limit` | int | 0 | Maximum number of photos to process (0 = unlimited) |
+| `--only-missing` | bool | true | Only generate thumbs that are not already cached. Pass `--only-missing=false` to force regeneration |
+| `--photo-uid` | string | "" | Regenerate thumbs for a single photo by UID (overrides `--limit`) |
+| `--json` | bool | false | Output as JSON instead of a progress bar |
+
+**Examples:**
+```bash
+# Backfill every missing thumbnail (default sizes, default concurrency)
+photo-sorter cache build-thumbs
+
+# Force-regenerate one photo's thumbs (handy after restoring an original)
+photo-sorter cache build-thumbs --photo-uid p123abc --only-missing=false
+
+# Only the sizes the web UI actually serves
+photo-sorter cache build-thumbs --sizes fit_720,fit_1920,tile_224
+
+# Smoke-test a fresh migration on the first 50 photos
+photo-sorter cache build-thumbs --limit 50
+```
+
+#### What It Does
+
+1. Lists photos from the `photos` table (paginated; `--photo-uid` short-circuits to one row).
+2. For each photo (parallelised):
+   - Resolves the on-disk primary file via the configured storage tree.
+   - Runs `imgconvert.EnsureDecodable` so HEIC/RAW originals are funnelled
+     through `heif-convert` / `dcraw` into a JPEG-friendly intermediate
+     (with the temp file cleaned up via `defer`).
+   - Calls `thumb.GenerateSizes` for the requested size subset, which
+     decodes the source image once and writes only the missing thumbs.
+3. Reports `(photos_scanned, generated, skipped, failed)` — `generated`
+   counts individual thumbnail files written, not photos.
+
+Decode failures for a single photo are logged to stderr and counted as
+`failed`; the run continues.
+
+#### Prerequisites
+
+- `DATABASE_URL` environment variable must be set.
+- `STORAGE_ORIGINALS_PATH` / `STORAGE_CACHE_PATH` must point at the
+  originals tree the upload pipeline writes to.
+
+#### Idempotency
+
+With `--only-missing` on (the default), re-runs are safe — photos whose
+thumbs are all cached are skipped without rewriting anything.
+
+---
+
 ### cache compute-eras
 
 Compute CLIP text embedding centroids for photo era estimation.

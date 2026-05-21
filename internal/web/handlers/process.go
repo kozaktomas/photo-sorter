@@ -20,31 +20,49 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
 
+// ProcessJobKind identifies which background pipeline a ProcessJob is
+// running. The default kind processes embeddings + faces; the build_thumbs
+// kind re-uses the same job manager + SSE machinery to backfill missing
+// thumbnails.
+type ProcessJobKind string
+
+// ProcessJobKind values.
+const (
+	ProcessJobKindDefault     ProcessJobKind = ""
+	ProcessJobKindBuildThumbs ProcessJobKind = "build_thumbs"
+)
+
 // ProcessJob represents an async photo processing job.
 type ProcessJob struct {
 	EventBroadcaster
 
-	ID              string            `json:"id"`
-	Status          JobStatus         `json:"status"`
-	TotalPhotos     int               `json:"total_photos"`
-	ProcessedPhotos int               `json:"processed_photos"`
-	SkippedPhotos   int               `json:"skipped_photos"`
-	Error           string            `json:"error,omitempty"`
-	StartedAt       time.Time         `json:"started_at"`
-	CompletedAt     *time.Time        `json:"completed_at,omitempty"`
-	Options         ProcessJobOptions `json:"options"`
-	Result          *ProcessJobResult `json:"result,omitempty"`
+	ID              string                `json:"id"`
+	Kind            ProcessJobKind        `json:"kind,omitempty"`
+	Status          JobStatus             `json:"status"`
+	TotalPhotos     int                   `json:"total_photos"`
+	ProcessedPhotos int                   `json:"processed_photos"`
+	SkippedPhotos   int                   `json:"skipped_photos"`
+	Error           string                `json:"error,omitempty"`
+	StartedAt       time.Time             `json:"started_at"`
+	CompletedAt     *time.Time            `json:"completed_at,omitempty"`
+	Options         ProcessJobOptions     `json:"options"`
+	Result          *ProcessJobResult     `json:"result,omitempty"`
+	BuildResult     *BuildThumbsJobResult `json:"build_result,omitempty"`
 }
 
-// ProcessJobOptions represents options for a process job.
+// ProcessJobOptions represents options for a process job. Fields not used
+// by a given kind are zero-valued: NoFaces/NoEmbeddings apply to the
+// default kind, Sizes/OnlyMissing apply to build_thumbs.
 type ProcessJobOptions struct {
-	Concurrency  int  `json:"concurrency"`
-	Limit        int  `json:"limit"`
-	NoFaces      bool `json:"no_faces"`
-	NoEmbeddings bool `json:"no_embeddings"`
+	Concurrency  int      `json:"concurrency"`
+	Limit        int      `json:"limit"`
+	NoFaces      bool     `json:"no_faces"`
+	NoEmbeddings bool     `json:"no_embeddings"`
+	Sizes        []string `json:"sizes,omitempty"`
+	OnlyMissing  bool     `json:"only_missing,omitempty"`
 }
 
-// ProcessJobResult represents the result of a process job.
+// ProcessJobResult represents the result of a default-kind process job.
 type ProcessJobResult struct {
 	EmbedSuccess    int64 `json:"embed_success"`
 	EmbedError      int64 `json:"embed_error"`
@@ -54,6 +72,15 @@ type ProcessJobResult struct {
 	TotalEmbeddings int   `json:"total_embeddings"`
 	TotalFaces      int   `json:"total_faces"`
 	TotalFacePhotos int   `json:"total_face_photos"`
+}
+
+// BuildThumbsJobResult is the summary payload for a finished build_thumbs
+// job. The same numbers are emitted as the final SSE "summary" event so
+// streaming clients see them before the job state transitions.
+type BuildThumbsJobResult struct {
+	Generated int64 `json:"generated"`
+	Skipped   int64 `json:"skipped"`
+	Failed    int64 `json:"failed"`
 }
 
 // GetStatus returns the current job status (implements SSEJob).
@@ -185,7 +212,12 @@ func (h *ProcessHandler) Start(w http.ResponseWriter, r *http.Request) {
 		ID:        jobID,
 		Status:    JobStatusPending,
 		StartedAt: time.Now(),
-		Options:   ProcessJobOptions(req),
+		Options: ProcessJobOptions{
+			Concurrency:  req.Concurrency,
+			Limit:        req.Limit,
+			NoFaces:      req.NoFaces,
+			NoEmbeddings: req.NoEmbeddings,
+		},
 	}
 
 	h.jobManager.SetActiveJob(job)

@@ -520,6 +520,7 @@ Session cookies use `HttpOnly`, `SameSite=Strict`, and auto-detect `Secure` flag
 - `DELETE /api/v1/process/{jobId}` - Cancel process job
 - `POST /api/v1/process/rebuild-index` - Rebuild HNSW indexes and reload in memory
 - `POST /api/v1/process/sync-cache` - Sync face marker data from PhotoPrism to local cache
+- `POST /api/v1/process/build-thumbs` - Admin-only thumbnail backfill. Body: `{ concurrency?, sizes?, only_missing?, limit?, photo_uid? }`. Returns `{ job_id }`; progress streams via `/process/{jobId}/events` with `progress` (`{done,total,current_photo_uid}`) and final `summary` (`{generated,skipped,failed}`) events. Reuses the existing `ProcessJobManager` — one job at a time. Backed by `cache build-thumbs` CLI / `internal/thumb.GenerateSizes`.
 - `GET /api/v1/books` - List all photo books
 - `POST /api/v1/books` - Create a new book
 - `GET /api/v1/books/{id}` - Get book detail with chapters, sections, and pages

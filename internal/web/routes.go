@@ -229,6 +229,10 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 				r.Delete("/process/{jobId}", processHandler.Cancel)
 				r.Post("/process/rebuild-index", processHandler.RebuildIndex)
 				r.Post("/process/sync-cache", processHandler.SyncCache)
+				// Build-thumbs is the thumbnail backfill — admin only, since
+				// it can rewrite the entire cache and is expensive.
+				r.With(middleware.RequireRole(auth.RoleAdmin)).
+					Post("/process/build-thumbs", processHandler.BuildThumbs)
 
 				// Fonts.
 				r.Get("/fonts", booksHandler.ListFonts)

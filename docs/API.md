@@ -1519,6 +1519,67 @@ POST /process/sync-cache
 }
 ```
 
+### Build Thumbnails (admin only)
+
+Start a background job that walks every photo and generates any missing
+thumbnails under the cache root. Reuses the process job manager — only
+one process / build-thumbs job can run at a time — and streams progress
+on `/process/{jobId}/events`. Admin role is required.
+
+```
+POST /process/build-thumbs
+```
+
+**Request Body (all fields optional):**
+```json
+{
+  "concurrency": 4,
+  "sizes": ["fit_720", "fit_1920", "tile_224"],
+  "only_missing": true,
+  "limit": 0,
+  "photo_uid": ""
+}
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `concurrency` | int | 4 (DefaultConcurrency) | Parallel decode + resize workers |
+| `sizes` | string[] | every registered size | Subset of thumbnail sizes to generate. Unknown names yield 400 |
+| `only_missing` | bool | true | When false, force-rewrite existing thumbs |
+| `limit` | int | 0 | Cap on photos processed (0 = unlimited) |
+| `photo_uid` | string | "" | Backfill a single photo by UID (overrides `limit`) |
+
+**Response (202):**
+```json
+{
+  "job_id": "11111111-2222-3333-4444-555555555555",
+  "status": "pending"
+}
+```
+
+**Errors:**
+- `400` — `DATABASE_URL is not configured` / unknown thumbnail size / malformed body
+- `403` — caller is not an admin
+- `409` — a process job is already running
+
+**SSE progress (`GET /process/{jobId}/events`):**
+
+```
+event: progress
+data: {"done": 17, "total": 482, "current_photo_uid": "p123abc"}
+
+event: summary
+data: {"generated": 1820, "skipped": 8, "failed": 1}
+
+event: completed
+data: {"generated": 1820, "skipped": 8, "failed": 1}
+```
+
+`generated` counts individual thumbnail files written across every
+photo; `skipped` counts photos whose thumbs were already cached;
+`failed` counts photos whose original could not be decoded or written.
+Decode failures are logged on the server and do not abort the run.
+
 ---
 
 ## Upload
