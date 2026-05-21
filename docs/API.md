@@ -407,6 +407,45 @@ return `404 Not Found`.
 
 **Response (200):** Updated photo object.
 
+### Edit EXIF Metadata
+
+```
+PUT /photos/{uid}/exif
+```
+
+Corrects EXIF-style metadata on a photo. The change is persisted to two
+places:
+
+1. The Postgres `photos` row (same columns as `PUT /photos/{uid}`,
+   plus camera/lens/exposure/altitude).
+2. An XMP sidecar file next to the original — same directory + same
+   basename + `.xmp` extension (`originals/2024/06/IMG_1234.jpg` →
+   `originals/2024/06/IMG_1234.xmp`). The DB is the source of truth; if
+   writing the sidecar fails (e.g. exiftool not installed) the error is
+   logged and the response still reports success.
+
+Requires write access (admin or editor). Archived photos return 404.
+
+**Request:** All fields optional
+```json
+{
+  "taken_at": "2024-06-15T14:30:00Z",
+  "lat": 50.08, "lng": 14.43, "altitude": 220,
+  "camera_make": "Canon", "camera_model": "EOS R5",
+  "lens_model": "RF 50mm f/1.2", "iso": 100,
+  "aperture": 1.8, "exposure": "1/250", "focal_length": 50,
+  "title": "...", "description": "...", "notes": "..."
+}
+```
+
+**Validation:**
+- `taken_at` — RFC3339 timestamp with year between 1900 and 2100.
+- `lat` / `lng` — must be provided together; lat ∈ [-90, 90], lng ∈ [-180, 180].
+- `iso` — must be > 0.
+- `title` — at most 255 characters.
+
+**Response (200):** Updated photo object.
+
 ### Get Photo Thumbnail
 
 ```

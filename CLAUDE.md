@@ -480,6 +480,7 @@ Session cookies use `HttpOnly`, `SameSite=Strict`, and auto-detect `Secure` flag
 - `GET /api/v1/photos` - List photos (native; archived excluded by default, filters: `album_uid`/`label_uid`/`subject_uid`/`favorite`/`private`/`archived`/`taken_from`/`taken_to`/`min_lat`+`min_lng`+`max_lat`+`max_lng`/`q`/`sort`/`limit`/`offset`; envelope `{photos, total, limit, offset}`)
 - `GET /api/v1/photos/{uid}` - Get single photo (native; 404 for archived unless `?include_archived=true`)
 - `PUT /api/v1/photos/{uid}` - Update photo
+- `PUT /api/v1/photos/{uid}/exif` - Edit EXIF metadata (taken_at, GPS, camera/lens/exposure, title/description/notes). Writes the photo row AND an XMP sidecar next to the original (same dir + basename + `.xmp`) via `exiftool`; sidecar errors are logged but do not fail the request. Validates year ∈ [1900, 2100], lat/lng ranges, ISO > 0. `HasWriteAccess` required.
 - `GET /api/v1/photos/{uid}/thumb/{size}` - Stream cached thumbnail from `<cache>/thumb/<aa>/<bb>/<cc>/<hash>_<size>.jpg` (immutable cache headers + `ETag: "sha:<hash>:<size>"`; 404 when the file is missing)
 - `GET /api/v1/photos/{uid}/download` - Stream the original primary file as an attachment with `Range` support
 - `GET /api/v1/photos/{uid}/faces` - Get faces in a photo with suggestions

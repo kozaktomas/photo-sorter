@@ -183,6 +183,7 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 				r.Get("/photos", photosHandler.List)
 				r.Get("/photos/{uid}", photosHandler.Get)
 				r.Put("/photos/{uid}", photosHandler.Update)
+				r.Put("/photos/{uid}/exif", photosHandler.EditExif)
 				r.Get("/photos/{uid}/thumb/{size}", photosHandler.Thumbnail)
 				r.Get("/photos/{uid}/download", photosHandler.Download)
 				r.Get("/photos/{uid}/faces", facesHandler.GetPhotoFaces)
