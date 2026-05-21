@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { FolderOpen, Tags, Sparkles, Home, Users, Images, Camera, Maximize2, AlertTriangle, Type, ShieldCheck, Cpu, ChevronDown, LogOut, Copy, FolderSearch, BookOpen, Upload, Trash2 } from 'lucide-react';
+import { FolderOpen, Tags, Sparkles, Home, Users, Images, Camera, Maximize2, AlertTriangle, Type, ShieldCheck, Cpu, ChevronDown, LogOut, Copy, FolderSearch, BookOpen, Upload, Trash2, Settings } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { getPageConfigForPath, colorMap } from '../constants/pageConfig';
@@ -244,6 +244,18 @@ export function Layout({ children }: LayoutProps) {
                 )}
               </a>
               <LanguageSwitcher />
+              <Link
+                to="/settings"
+                className={`flex items-center gap-1.5 px-2 py-2 rounded-md text-sm font-medium transition-colors ${
+                  isActive('/settings')
+                    ? 'bg-sky-500/10 text-sky-400'
+                    : 'text-slate-300 hover:bg-slate-700 hover:text-white'
+                }`}
+                title={t('nav.settings')}
+                aria-label={t('nav.settings')}
+              >
+                <Settings className="h-4 w-4" />
+              </Link>
               <button
                 onClick={handleLogout}
                 className="flex items-center space-x-2 px-3 py-2 rounded-md text-sm font-medium text-slate-300 hover:bg-slate-700 hover:text-white transition-colors"

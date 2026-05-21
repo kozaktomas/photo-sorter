@@ -961,6 +961,79 @@ export async function restoreTextVersion(id: number): Promise<{ content: string 
   return request<{ content: string }>(`/text-versions/${id}/restore`, { method: 'POST' });
 }
 
+// User management
+
+export interface UserAccount {
+  uid: string;
+  username: string;
+  display_name: string;
+  email: string;
+  role: string;
+  disabled: boolean;
+  created_at: string;
+  last_login_at: string | null;
+}
+
+export async function listUsers(): Promise<UserAccount[]> {
+  const resp = await request<{ users: UserAccount[] }>('/users');
+  return resp.users ?? [];
+}
+
+export async function createUser(payload: {
+  username: string;
+  password: string;
+  display_name: string;
+  email: string;
+  role: string;
+}): Promise<UserAccount> {
+  return request<UserAccount>('/users', {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function updateUser(
+  uid: string,
+  updates: { display_name?: string; email?: string; role?: string },
+): Promise<UserAccount> {
+  return request<UserAccount>(`/users/${uid}`, {
+    method: 'PUT',
+    body: JSON.stringify(updates),
+  });
+}
+
+export async function setUserPassword(uid: string, password: string): Promise<void> {
+  await request(`/users/${uid}/password`, {
+    method: 'POST',
+    body: JSON.stringify({ password }),
+  });
+}
+
+export async function setUserDisabled(uid: string, disabled: boolean): Promise<void> {
+  await request(`/users/${uid}/disable`, {
+    method: 'POST',
+    body: JSON.stringify({ disabled }),
+  });
+}
+
+export async function deleteUser(uid: string): Promise<void> {
+  await request(`/users/${uid}`, { method: 'DELETE' });
+}
+
+export async function getMe(): Promise<UserAccount> {
+  return request<UserAccount>('/me');
+}
+
+export async function changeOwnPassword(
+  currentPassword: string,
+  newPassword: string,
+): Promise<void> {
+  await request('/me/password', {
+    method: 'POST',
+    body: JSON.stringify({ current_password: currentPassword, new_password: newPassword }),
+  });
+}
+
 // PDF Export
 export async function exportBookPDF(bookId: string): Promise<void> {
   const response = await fetch(`${API_BASE}/books/${bookId}/export-pdf`, {

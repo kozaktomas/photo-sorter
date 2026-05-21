@@ -25,6 +25,7 @@ import { BookEditorPage } from './pages/BookEditor/index';
 import { UploadPage } from './pages/Upload/index';
 import { CapturePage } from './pages/Capture/Capture';
 import { TrashPage } from './pages/Trash/Trash';
+import { SettingsPage } from './pages/Settings/Settings';
 import { LoginPage } from './pages/Login';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 
@@ -287,6 +288,16 @@ function AppRoutes() {
           <ProtectedRoute>
             <Layout>
               <TrashPage />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/settings"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <SettingsPage />
             </Layout>
           </ProtectedRoute>
         }
