@@ -148,6 +148,7 @@ func (v *verifier) matchSorterByHash(
 			continue
 		}
 		v.photoMap[r.ppUID] = native.UID
+		v.nativeHashByPhotoUID[native.UID] = native.FileHash
 	}
 	return ppHashByPhotoUID, missing
 }

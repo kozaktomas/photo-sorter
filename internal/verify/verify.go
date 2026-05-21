@@ -73,6 +73,18 @@ type Options struct {
 	// Writer receives progress lines as sections start/finish. nil
 	// disables the chatter — the JSON path uses it that way.
 	Writer io.Writer
+
+	// FieldsOnly skips the structural diff (existence / counts / disk)
+	// and runs only the field-level diff phase. Useful when iterating
+	// on migrator fixes: the structural diff is expensive (rehashes
+	// every original) while the field diff is just a JOIN.
+	FieldsOnly bool
+
+	// Strict, when true, drops every tolerance band: 1-second drift on
+	// taken_at, 1e-6 drift on lat/lng, 1 m drift on altitude, and 0.01
+	// drift on marker score all become diffs. Default off because real
+	// migrations always pick up a few sub-second / sub-mm shifts.
+	Strict bool
 }
 
 // Validate checks the must-have fields. It does NOT touch the network or
@@ -137,26 +149,31 @@ func (r *Report) HasDiffs() bool {
 
 // PhotoReport is the photos section of the verification report.
 type PhotoReport struct {
-	PPCount         int      `json:"pp_count"`
-	SorterCount     int      `json:"sorter_count"`
-	MissingInSorter []string `json:"missing_in_sorter"`
-	OrphanInSorter  []string `json:"orphan_in_sorter"`
+	PPCount         int             `json:"pp_count"`
+	SorterCount     int             `json:"sorter_count"`
+	MissingInSorter []string        `json:"missing_in_sorter"`
+	OrphanInSorter  []string        `json:"orphan_in_sorter"`
+	FieldDiffs      FieldDiffBucket `json:"field_diffs"`
 }
 
 // hasDiffs reports whether the photos section recorded any difference.
 func (r *PhotoReport) hasDiffs() bool {
-	return len(r.MissingInSorter) > 0 || len(r.OrphanInSorter) > 0
+	return len(r.MissingInSorter) > 0 || len(r.OrphanInSorter) > 0 || r.FieldDiffs.HasDiffs()
 }
 
 // AlbumReport is the albums section of the report. PhotoDiffs is the
-// per-album symmetric difference of photo memberships.
+// per-album symmetric difference of photo memberships. MembershipDiffs
+// is the widened per-pair diff (photo file_hash + album slug) so a
+// missing membership is reported by identity, not just count.
 type AlbumReport struct {
-	PPCount           int          `json:"pp_count"`
-	SorterCount       int          `json:"sorter_count"`
-	SlugTitleMismatch []AlbumDiff  `json:"slug_title_mismatch"`
-	MissingInSorter   []string     `json:"missing_in_sorter"`
-	OrphanInSorter    []string     `json:"orphan_in_sorter"`
-	PhotoDiffs        []AlbumPhoto `json:"photo_diffs"`
+	PPCount           int                  `json:"pp_count"`
+	SorterCount       int                  `json:"sorter_count"`
+	SlugTitleMismatch []AlbumDiff          `json:"slug_title_mismatch"`
+	MissingInSorter   []string             `json:"missing_in_sorter"`
+	OrphanInSorter    []string             `json:"orphan_in_sorter"`
+	PhotoDiffs        []AlbumPhoto         `json:"photo_diffs"`
+	FieldDiffs        FieldDiffBucket      `json:"field_diffs"`
+	MembershipDiffs   []MembershipPairDiff `json:"membership_diffs"`
 }
 
 // hasDiffs reports whether the albums section recorded any difference.
@@ -164,7 +181,19 @@ func (r *AlbumReport) hasDiffs() bool {
 	return len(r.SlugTitleMismatch) > 0 ||
 		len(r.MissingInSorter) > 0 ||
 		len(r.OrphanInSorter) > 0 ||
-		len(r.PhotoDiffs) > 0
+		len(r.PhotoDiffs) > 0 ||
+		r.FieldDiffs.HasDiffs() ||
+		len(r.MembershipDiffs) > 0
+}
+
+// MembershipPairDiff is one (photo, container) pair that exists on one
+// side but not the other. Used by both album and label junction-table
+// diffs. Side is either "pp_only" (in PhotoPrism but not the sorter) or
+// "sorter_only" (in the sorter but not PhotoPrism).
+type MembershipPairDiff struct {
+	ContainerSlug string `json:"container_slug"`
+	PhotoFileHash string `json:"photo_file_hash"`
+	Side          string `json:"side"`
 }
 
 // AlbumDiff records a slug/title mismatch between the two stores.
@@ -187,16 +216,20 @@ type AlbumPhoto struct {
 }
 
 // LabelReport is the labels section of the report. PhotoPairDiffs is the
-// per-label photo-count comparison.
+// per-label photo-count comparison. MembershipDiffs is the per-pair
+// (label slug, photo file_hash) diff that widens "1 fewer pair" into
+// "which pair is missing".
 type LabelReport struct {
-	PPCount          int             `json:"pp_count"`
-	SorterCount      int             `json:"sorter_count"`
-	PPPhotoPairs     int             `json:"pp_photo_pairs"`
-	SorterPhotoPairs int             `json:"sorter_photo_pairs"`
-	SlugNameMismatch []LabelDiff     `json:"slug_name_mismatch"`
-	MissingInSorter  []string        `json:"missing_in_sorter"`
-	OrphanInSorter   []string        `json:"orphan_in_sorter"`
-	PhotoPairDiffs   []LabelPairDiff `json:"photo_pair_diffs"`
+	PPCount          int                  `json:"pp_count"`
+	SorterCount      int                  `json:"sorter_count"`
+	PPPhotoPairs     int                  `json:"pp_photo_pairs"`
+	SorterPhotoPairs int                  `json:"sorter_photo_pairs"`
+	SlugNameMismatch []LabelDiff          `json:"slug_name_mismatch"`
+	MissingInSorter  []string             `json:"missing_in_sorter"`
+	OrphanInSorter   []string             `json:"orphan_in_sorter"`
+	PhotoPairDiffs   []LabelPairDiff      `json:"photo_pair_diffs"`
+	FieldDiffs       FieldDiffBucket      `json:"field_diffs"`
+	MembershipDiffs  []MembershipPairDiff `json:"membership_diffs"`
 }
 
 // hasDiffs reports whether the labels section recorded any difference.
@@ -204,7 +237,9 @@ func (r *LabelReport) hasDiffs() bool {
 	return len(r.SlugNameMismatch) > 0 ||
 		len(r.MissingInSorter) > 0 ||
 		len(r.OrphanInSorter) > 0 ||
-		len(r.PhotoPairDiffs) > 0
+		len(r.PhotoPairDiffs) > 0 ||
+		r.FieldDiffs.HasDiffs() ||
+		len(r.MembershipDiffs) > 0
 }
 
 // LabelDiff records a slug/name mismatch between the two stores.
@@ -225,15 +260,16 @@ type LabelPairDiff struct {
 // SubjectReport is the subjects/markers report. Marker geometry diffs
 // live in their own MarkerReport so the JSON shape matches the spec.
 type SubjectReport struct {
-	PPCount         int      `json:"pp_count"`
-	SorterCount     int      `json:"sorter_count"`
-	MissingInSorter []string `json:"missing_in_sorter"`
-	OrphanInSorter  []string `json:"orphan_in_sorter"`
+	PPCount         int             `json:"pp_count"`
+	SorterCount     int             `json:"sorter_count"`
+	MissingInSorter []string        `json:"missing_in_sorter"`
+	OrphanInSorter  []string        `json:"orphan_in_sorter"`
+	FieldDiffs      FieldDiffBucket `json:"field_diffs"`
 }
 
 // hasDiffs reports whether the subjects section recorded any difference.
 func (r *SubjectReport) hasDiffs() bool {
-	return len(r.MissingInSorter) > 0 || len(r.OrphanInSorter) > 0
+	return len(r.MissingInSorter) > 0 || len(r.OrphanInSorter) > 0 || r.FieldDiffs.HasDiffs()
 }
 
 // MarkerReport collects per-subject marker count diffs and the geometry
@@ -243,11 +279,12 @@ type MarkerReport struct {
 	SorterCount   int                  `json:"sorter_count"`
 	CountDiffs    []MarkerCountDiff    `json:"count_diffs"`
 	GeometryDiffs []MarkerGeometryDiff `json:"geometry_diffs"`
+	FieldDiffs    FieldDiffBucket      `json:"field_diffs"`
 }
 
 // hasDiffs reports whether the markers section recorded any difference.
 func (r *MarkerReport) hasDiffs() bool {
-	return len(r.CountDiffs) > 0 || len(r.GeometryDiffs) > 0
+	return len(r.CountDiffs) > 0 || len(r.GeometryDiffs) > 0 || r.FieldDiffs.HasDiffs()
 }
 
 // MarkerCountDiff records a per-subject marker count mismatch.

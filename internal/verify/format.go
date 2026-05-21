@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"sort"
 	"strings"
 )
 
@@ -93,8 +94,10 @@ func (p *textPrinter) list(header string, items []string) {
 func (p *textPrinter) photos(r *PhotoReport) {
 	p.heading("photos")
 	p.counts("counts", r.PPCount, r.SorterCount)
+	p.entitySummary("Photos", len(r.MissingInSorter), len(r.OrphanInSorter), &r.FieldDiffs)
 	p.list("missing_in_sorter", r.MissingInSorter)
 	p.list("orphan_in_sorter", r.OrphanInSorter)
+	p.fieldDiffs(&r.FieldDiffs)
 }
 
 // albums prints the albums section, including slug/title mismatches
@@ -102,6 +105,7 @@ func (p *textPrinter) photos(r *PhotoReport) {
 func (p *textPrinter) albums(r *AlbumReport) {
 	p.heading("albums")
 	p.counts("counts", r.PPCount, r.SorterCount)
+	p.entitySummary("Albums", len(r.MissingInSorter), len(r.OrphanInSorter), &r.FieldDiffs)
 	p.list("missing_in_sorter", r.MissingInSorter)
 	p.list("orphan_in_sorter", r.OrphanInSorter)
 	if len(r.SlugTitleMismatch) > 0 {
@@ -117,6 +121,8 @@ func (p *textPrinter) albums(r *AlbumReport) {
 				d.Slug, d.PPCount, d.SorterCount, len(d.MissingInSorter), len(d.OrphanInSorter))
 		}
 	}
+	p.membershipDiffs("membership_diffs", r.MembershipDiffs)
+	p.fieldDiffs(&r.FieldDiffs)
 }
 
 // labels prints the labels section.
@@ -124,6 +130,7 @@ func (p *textPrinter) labels(r *LabelReport) {
 	p.heading("labels")
 	p.counts("counts", r.PPCount, r.SorterCount)
 	p.counts("photo_pairs", r.PPPhotoPairs, r.SorterPhotoPairs)
+	p.entitySummary("Labels", len(r.MissingInSorter), len(r.OrphanInSorter), &r.FieldDiffs)
 	p.list("missing_in_sorter", r.MissingInSorter)
 	p.list("orphan_in_sorter", r.OrphanInSorter)
 	if len(r.SlugNameMismatch) > 0 {
@@ -138,20 +145,25 @@ func (p *textPrinter) labels(r *LabelReport) {
 			fmt.Fprintf(p.w, "    - %s: pp=%d sorter=%d\n", d.Slug, d.PPCount, d.SorterCount)
 		}
 	}
+	p.membershipDiffs("membership_diffs", r.MembershipDiffs)
+	p.fieldDiffs(&r.FieldDiffs)
 }
 
 // subjects prints the subjects section.
 func (p *textPrinter) subjects(r *SubjectReport) {
 	p.heading("subjects")
 	p.counts("counts", r.PPCount, r.SorterCount)
+	p.entitySummary("Subjects", len(r.MissingInSorter), len(r.OrphanInSorter), &r.FieldDiffs)
 	p.list("missing_in_sorter", r.MissingInSorter)
 	p.list("orphan_in_sorter", r.OrphanInSorter)
+	p.fieldDiffs(&r.FieldDiffs)
 }
 
 // markers prints the markers section.
 func (p *textPrinter) markers(r *MarkerReport) {
 	p.heading("markers")
 	p.counts("counts", r.PPCount, r.SorterCount)
+	p.entitySummary("Markers", 0, 0, &r.FieldDiffs)
 	if len(r.CountDiffs) > 0 {
 		fmt.Fprintf(p.w, "  %s (%d):\n", p.colour(ansiYellow, "count_diffs"), len(r.CountDiffs))
 		for _, d := range r.CountDiffs {
@@ -167,6 +179,7 @@ func (p *textPrinter) markers(r *MarkerReport) {
 				d.SorterX, d.SorterY, d.SorterW, d.SorterH)
 		}
 	}
+	p.fieldDiffs(&r.FieldDiffs)
 }
 
 // disk prints the disk section.
@@ -175,6 +188,113 @@ func (p *textPrinter) disk(r *DiskReport) {
 	p.list("orphan_files", r.OrphanFiles)
 	if len(r.OrphanFiles) == 0 {
 		fmt.Fprintln(p.w, "  (no orphan files)")
+	}
+}
+
+// entitySummary prints a one-line "<Entity>: N missing | M field diffs
+// (field: count, ...)" header. missingN/orphanN are passed in by the
+// caller because each entity reports them slightly differently
+// (markers use count/geometry rather than missing/orphan). When all
+// counts are zero the line is suppressed entirely so a clean section
+// stays tidy.
+func (p *textPrinter) entitySummary(entity string, missingN, orphanN int, fields *FieldDiffBucket) {
+	fieldTotal := 0
+	if fields != nil {
+		fieldTotal = fields.totalDiffs()
+	}
+	if missingN == 0 && orphanN == 0 && fieldTotal == 0 {
+		return
+	}
+	parts := []string{fmt.Sprintf("%s: %d missing", entity, missingN)}
+	if orphanN > 0 {
+		parts = append(parts, fmt.Sprintf("%d orphan", orphanN))
+	}
+	if fieldTotal > 0 {
+		parts = append(parts, fmt.Sprintf("%d field diffs (%s)", fieldTotal, formatFieldCounts(fields.FieldCounts)))
+	}
+	fmt.Fprintf(p.w, "  %s\n", strings.Join(parts, " | "))
+}
+
+// formatFieldCounts renders the per-field tally as "keywords: 2,
+// panorama: 1" in deterministic order so the line is reproducible
+// across runs.
+func formatFieldCounts(counts map[string]int) string {
+	keys := make([]string, 0, len(counts))
+	for k := range counts {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, k := range keys {
+		parts = append(parts, fmt.Sprintf("%s: %d", k, counts[k]))
+	}
+	return strings.Join(parts, ", ")
+}
+
+// fieldDiffs prints the first MaxFieldDiffsTextSample diffs from the
+// bucket, colour-coded by side. Truncation footer is printed when the
+// per-field tally exceeds the printed sample.
+func (p *textPrinter) fieldDiffs(b *FieldDiffBucket) {
+	if !b.HasDiffs() {
+		return
+	}
+	fmt.Fprintf(p.w, "  %s (%d shown):\n", p.colour(ansiYellow, "field_diffs"), p.fieldDiffSampleSize(b))
+	for i, d := range b.Diffs {
+		if i >= MaxFieldDiffsTextSample {
+			break
+		}
+		p.printOneFieldDiff(d)
+	}
+	if total := b.totalDiffs(); total > MaxFieldDiffsTextSample {
+		fmt.Fprintf(p.w, "  %s\n", p.colour(ansiCyan,
+			fmt.Sprintf("...and %d more truncated (use --json for the full report)", total-MaxFieldDiffsTextSample)))
+	}
+}
+
+// fieldDiffSampleSize returns the lower of the bucket size and the
+// text-sample cap, used to render the "(N shown)" prefix accurately.
+func (p *textPrinter) fieldDiffSampleSize(b *FieldDiffBucket) int {
+	if len(b.Diffs) < MaxFieldDiffsTextSample {
+		return len(b.Diffs)
+	}
+	return MaxFieldDiffsTextSample
+}
+
+// printOneFieldDiff renders one FieldDiff entry. Red highlights the
+// source side (which had a value the destination lost); yellow
+// highlights the destination side (which has a value the source did
+// not). When both sides are non-empty both are highlighted.
+func (p *textPrinter) printOneFieldDiff(d FieldDiff) {
+	srcOut := p.colour(ansiRed, "PhotoPrism="+d.Source)
+	if d.Source == "" {
+		srcOut = p.colour(ansiYellow, "PhotoPrism=<empty>")
+	}
+	dstOut := p.colour(ansiYellow, "native="+d.Destination)
+	if d.Destination == "" {
+		dstOut = p.colour(ansiRed, "native=<empty>")
+	}
+	fmt.Fprintf(p.w, "    - %s: %s  %s  %s\n", d.Key, d.Field, srcOut, dstOut)
+}
+
+// membershipDiffs prints the per-pair (photo, container) diffs that
+// widen "1 fewer pair" into identity-level reporting. Truncation
+// follows MaxFieldDiffsTextSample so the section stays consistent
+// with the field-diff sampling rules.
+func (p *textPrinter) membershipDiffs(header string, diffs []MembershipPairDiff) {
+	if len(diffs) == 0 {
+		return
+	}
+	shown := min(len(diffs), MaxFieldDiffsTextSample)
+	fmt.Fprintf(p.w, "  %s (%d shown of %d):\n", p.colour(ansiYellow, header), shown, len(diffs))
+	for i, d := range diffs {
+		if i >= MaxFieldDiffsTextSample {
+			break
+		}
+		style := ansiRed
+		if d.Side == "sorter_only" {
+			style = ansiYellow
+		}
+		fmt.Fprintf(p.w, "    - %s  %s/%s\n", p.colour(style, d.Side), d.ContainerSlug, d.PhotoFileHash)
 	}
 }
 

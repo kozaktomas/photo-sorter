@@ -51,6 +51,17 @@ package (`internal/photoprism/`) and `PHOTOPRISM_*` env vars are scheduled for
 removal at the tail end of that work — until that task lands, treat them as
 load-bearing.
 
+`migrate-verify` now provides field-level coverage: every column the migrator
+is supposed to copy (photo metadata, GPS, EXIF, keywords, flags; subject
+bio/about/alias/type/favorite/private; label description/categories/priority/
+favorite; album description/location/category/notes/filter/order/type/
+favorite/private; marker score/invalid/reviewed/subject_uid) is compared
+cell-by-cell with tolerance bands that `--strict` disables. Membership
+diffs (photo↔album, photo↔label) report by photo `file_hash[:8]` + container
+slug instead of "1 fewer pair". A clean `migrate-verify` (`--strict`
+optional) is the authoritative pre-Docker-drop gate: zero diffs is the
+precondition for cancelling the PhotoPrism + MariaDB compose services.
+
 ## Browser
 
 Chromium is available for headless browsing (e.g. checking web UI output):

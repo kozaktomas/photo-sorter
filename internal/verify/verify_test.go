@@ -128,7 +128,15 @@ func TestVerifyEndToEnd(t *testing.T) {
 // returned report.
 func runVerify(t *testing.T, ctx context.Context, fx *verifyFixture) *verify.Report {
 	t.Helper()
-	report, err := verify.Run(ctx, &verify.Options{
+	return runVerifyWithOpts(t, ctx, fx, &verify.Options{})
+}
+
+// runVerifyWithOpts is like runVerify but lets callers tweak the
+// Options struct (FieldsOnly, Strict, etc.) without re-wiring the
+// per-fixture dependencies.
+func runVerifyWithOpts(t *testing.T, ctx context.Context, fx *verifyFixture, override *verify.Options) *verify.Report {
+	t.Helper()
+	opts := &verify.Options{
 		MariaDB:       fx.maria,
 		OriginalsRoot: fx.originals,
 		Store:         fx.store,
@@ -138,11 +146,174 @@ func runVerify(t *testing.T, ctx context.Context, fx *verifyFixture) *verify.Rep
 		Subjects:      fx.subjects,
 		Markers:       fx.markers,
 		Concurrency:   2,
-	})
+		FieldsOnly:    override.FieldsOnly,
+		Strict:        override.Strict,
+	}
+	report, err := verify.Run(ctx, opts)
 	if err != nil {
 		t.Fatalf("verify.Run: %v", err)
 	}
 	return report
+}
+
+// TestVerifyFieldDiff_DescriptionEdit boots the migration fixture,
+// runs the migrator, mutates one photo's description on the native
+// side, and asserts that migrate-verify reports exactly one field diff
+// on the "description" field. Mirrors the spec's verification step
+// ("UPDATE photos SET notes = 'oops' WHERE photo_uid = ?": one diff,
+// exit 1").
+func TestVerifyFieldDiff_DescriptionEdit(t *testing.T) {
+	fx := setupVerifyFixture(t)
+	if fx == nil {
+		return
+	}
+	defer fx.cleanup()
+
+	ctx := context.Background()
+	if _, err := migrate.Run(ctx, &migrate.Options{
+		MariaDB:       fx.maria,
+		OriginalsRoot: fx.originals,
+		UploaderUID:   "",
+		DryRun:        false,
+		SkipThumbs:    true,
+		BatchSize:     200,
+		Concurrency:   2,
+		Store:         fx.store,
+		Photos:        fx.photos,
+		Subjects:      fx.subjects,
+		Labels:        fx.labels,
+		Albums:        fx.albums,
+		Markers:       fx.markers,
+		Writer:        &bytes.Buffer{},
+	}); err != nil {
+		t.Fatalf("migrate.Run: %v", err)
+	}
+
+	// Mutate the native side: change one photo's notes column to
+	// something PhotoPrism does not carry.
+	uid := pickFirstPhotoUID(t, ctx, fx)
+	if _, err := fx.pgPool.Exec(ctx, `UPDATE photos SET notes = 'oops' WHERE uid = $1`, uid); err != nil {
+		t.Fatalf("UPDATE notes: %v", err)
+	}
+
+	report := runVerify(t, ctx, fx)
+	if !report.HasDiffs() {
+		t.Fatalf("expected diffs after notes edit, got HasDiffs=false")
+	}
+	if got := report.Photos.FieldDiffs.FieldCounts["notes"]; got != 1 {
+		t.Errorf("expected exactly 1 notes diff, got %d (all counts: %v)",
+			got, report.Photos.FieldDiffs.FieldCounts)
+	}
+	// Confirm both values are present in the diff entry.
+	var found bool
+	for _, d := range report.Photos.FieldDiffs.Diffs {
+		if d.Field == "notes" && d.Destination == "oops" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected a notes=oops diff entry in %+v", report.Photos.FieldDiffs.Diffs)
+	}
+}
+
+// TestVerifyFieldDiff_StrictTakenAt confirms that --strict catches a
+// sub-second drift that the default tolerance band would swallow.
+func TestVerifyFieldDiff_StrictTakenAt(t *testing.T) {
+	fx := setupVerifyFixture(t)
+	if fx == nil {
+		return
+	}
+	defer fx.cleanup()
+
+	ctx := context.Background()
+	if _, err := migrate.Run(ctx, &migrate.Options{
+		MariaDB:       fx.maria,
+		OriginalsRoot: fx.originals,
+		UploaderUID:   "",
+		DryRun:        false,
+		SkipThumbs:    true,
+		BatchSize:     200,
+		Concurrency:   2,
+		Store:         fx.store,
+		Photos:        fx.photos,
+		Subjects:      fx.subjects,
+		Labels:        fx.labels,
+		Albums:        fx.albums,
+		Markers:       fx.markers,
+		Writer:        &bytes.Buffer{},
+	}); err != nil {
+		t.Fatalf("migrate.Run: %v", err)
+	}
+
+	// Shift one native photo's taken_at by 500ms — under the default
+	// 1-second tolerance, over the strict mode 0-tolerance.
+	uid := pickFirstPhotoUID(t, ctx, fx)
+	if _, err := fx.pgPool.Exec(ctx,
+		`UPDATE photos SET taken_at = taken_at + INTERVAL '500 milliseconds' WHERE uid = $1`,
+		uid,
+	); err != nil {
+		t.Fatalf("UPDATE taken_at: %v", err)
+	}
+
+	lax := runVerify(t, ctx, fx)
+	if c := lax.Photos.FieldDiffs.FieldCounts["taken_at"]; c != 0 {
+		t.Errorf("lax mode reported %d taken_at diffs, want 0", c)
+	}
+
+	strict := runVerifyWithOpts(t, ctx, fx, &verify.Options{Strict: true})
+	if c := strict.Photos.FieldDiffs.FieldCounts["taken_at"]; c != 1 {
+		t.Errorf("strict mode reported %d taken_at diffs, want 1 (got: %v)",
+			c, strict.Photos.FieldDiffs)
+	}
+}
+
+// TestVerifyFieldsOnly skips the structural pass; the field-diff still
+// runs and reports any planted diff.
+func TestVerifyFieldsOnly(t *testing.T) {
+	fx := setupVerifyFixture(t)
+	if fx == nil {
+		return
+	}
+	defer fx.cleanup()
+
+	ctx := context.Background()
+	if _, err := migrate.Run(ctx, &migrate.Options{
+		MariaDB:       fx.maria,
+		OriginalsRoot: fx.originals,
+		UploaderUID:   "",
+		DryRun:        false,
+		SkipThumbs:    true,
+		BatchSize:     200,
+		Concurrency:   2,
+		Store:         fx.store,
+		Photos:        fx.photos,
+		Subjects:      fx.subjects,
+		Labels:        fx.labels,
+		Albums:        fx.albums,
+		Markers:       fx.markers,
+		Writer:        &bytes.Buffer{},
+	}); err != nil {
+		t.Fatalf("migrate.Run: %v", err)
+	}
+	uid := pickFirstPhotoUID(t, ctx, fx)
+	if _, err := fx.pgPool.Exec(ctx, `UPDATE photos SET description = 'edited' WHERE uid = $1`, uid); err != nil {
+		t.Fatalf("UPDATE description: %v", err)
+	}
+
+	report := runVerifyWithOpts(t, ctx, fx, &verify.Options{FieldsOnly: true})
+	// Structural section must be empty under FieldsOnly.
+	if report.Photos.PPCount != 0 || report.Photos.SorterCount != 0 {
+		t.Errorf("FieldsOnly leaked structural counts: pp=%d sorter=%d",
+			report.Photos.PPCount, report.Photos.SorterCount)
+	}
+	if len(report.Disk.OrphanFiles) != 0 {
+		t.Errorf("FieldsOnly leaked disk orphan walk: got %d", len(report.Disk.OrphanFiles))
+	}
+	// But the field diff for the description edit must still be present.
+	if c := report.Photos.FieldDiffs.FieldCounts["description"]; c != 1 {
+		t.Errorf("expected 1 description diff under FieldsOnly, got %d", c)
+	}
 }
 
 // pickFirstPhotoUID returns the UID of the first photo in the sorter so
@@ -328,6 +499,9 @@ func seedVerifyPhotoPrismSchema(ctx context.Context, db *sql.DB) error {
 			id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
 			photo_uid VARBINARY(42) NOT NULL UNIQUE,
 			taken_at DATETIME NULL,
+			taken_at_local DATETIME NULL,
+			taken_src VARBINARY(8) NULL,
+			time_zone VARBINARY(64) NULL,
 			photo_title VARCHAR(200) NULL,
 			photo_caption VARCHAR(4096) NULL,
 			photo_lat DOUBLE NULL,
@@ -339,6 +513,9 @@ func seedVerifyPhotoPrismSchema(ctx context.Context, db *sql.DB) error {
 			photo_focal_length INT NULL,
 			photo_favorite TINYINT NULL,
 			photo_private TINYINT NULL,
+			photo_panorama TINYINT NULL,
+			photo_scan TINYINT NULL,
+			photo_quality SMALLINT NULL,
 			camera_id INT NULL,
 			lens_id INT NULL,
 			deleted_at DATETIME NULL
@@ -369,7 +546,22 @@ func seedVerifyPhotoPrismSchema(ctx context.Context, db *sql.DB) error {
 		)`,
 		`CREATE TABLE details (
 			photo_id INT NOT NULL PRIMARY KEY,
-			notes VARCHAR(2048) NULL
+			notes VARCHAR(2048) NULL,
+			keywords VARCHAR(2048) NULL,
+			artist VARCHAR(255) NULL,
+			copyright VARCHAR(255) NULL,
+			license VARCHAR(255) NULL,
+			software VARCHAR(255) NULL
+		)`,
+		`CREATE TABLE keywords (
+			id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+			keyword VARCHAR(160) NULL,
+			skip TINYINT NULL
+		)`,
+		`CREATE TABLE photos_keywords (
+			photo_id INT NOT NULL,
+			keyword_id INT NOT NULL,
+			PRIMARY KEY (photo_id, keyword_id)
 		)`,
 		`CREATE TABLE subjects (
 			subj_uid VARBINARY(42) NOT NULL PRIMARY KEY,
@@ -377,6 +569,9 @@ func seedVerifyPhotoPrismSchema(ctx context.Context, db *sql.DB) error {
 			subj_type VARBINARY(8) NULL,
 			subj_favorite TINYINT NULL,
 			subj_private TINYINT NULL,
+			subj_bio VARCHAR(2048) NULL,
+			subj_about VARCHAR(512) NULL,
+			subj_alias VARCHAR(512) NULL,
 			deleted_at DATETIME NULL
 		)`,
 		`CREATE TABLE labels (
@@ -385,6 +580,8 @@ func seedVerifyPhotoPrismSchema(ctx context.Context, db *sql.DB) error {
 			label_slug VARBINARY(160) NULL,
 			label_priority INT NULL,
 			label_favorite TINYINT NULL,
+			label_description VARCHAR(2048) NULL,
+			label_categories VARCHAR(1024) NULL,
 			deleted_at DATETIME NULL
 		)`,
 		`CREATE TABLE photos_labels (
@@ -403,6 +600,11 @@ func seedVerifyPhotoPrismSchema(ctx context.Context, db *sql.DB) error {
 			album_type VARBINARY(8) NULL,
 			album_favorite TINYINT NULL,
 			album_private TINYINT NULL,
+			album_location VARCHAR(512) NULL,
+			album_category VARCHAR(160) NULL,
+			album_notes VARCHAR(2048) NULL,
+			album_filter VARCHAR(2048) NULL,
+			album_order VARBINARY(32) NULL,
 			deleted_at DATETIME NULL
 		)`,
 		`CREATE TABLE photos_albums (

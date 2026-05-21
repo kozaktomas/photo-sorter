@@ -839,15 +839,27 @@ to write NULL `uploaded_by`).
 ### migrate-verify
 
 Compare an existing PhotoPrism instance against the photo-sorter native
-database after a migration. Runs read-only against both data sources and
-prints (or emits as JSON) a section-by-section diff of any rows or files
-that did not make it across.
+database after a migration. Runs read-only against both data sources
+and prints (or emits as JSON) a two-phase diff:
+
+1. **Structural** — counts, existence (`missing_in_sorter` /
+   `orphan_in_sorter`), per-album/label photo memberships, marker
+   geometry drift, on-disk orphan files.
+2. **Field-level** — every column the migrator is supposed to copy is
+   compared cell-by-cell. A field-level mismatch is reported as
+   `field_diffs[]` per entity (JSON) and as colour-coded lines below
+   the structural section (text). Tolerance bands swallow 1-second
+   drift on dates, 1e-6 on lat/lng, 1 m on altitude, and 0.01 on
+   marker score by default; use `--strict` to treat them as diffs.
+
+Zero diffs from `migrate-verify` is the authoritative gate for
+cancelling the PhotoPrism + MariaDB compose services.
 
 ```bash
 photo-sorter migrate-verify \
   --pp-db "<DSN>" \
   --pp-originals <path> \
-  [--json] [--no-color] [--concurrency <N>]
+  [--json] [--no-color] [--concurrency <N>] [--fields-only] [--strict]
 ```
 
 Flags:
@@ -859,6 +871,8 @@ Flags:
 | `--json`         | Emit a machine-readable JSON report instead of the human-readable text.              |
 | `--no-color`     | Disable ANSI colour escapes in the human-readable report (useful for log files/CI). |
 | `--concurrency`  | Goroutine-pool size for the SHA256 re-hash pass (default 4).                         |
+| `--fields-only`  | Skip the structural existence/disk pass and run only the field-level diff. Useful when iterating on migrator fixes (the rehash pass dominates wall time on large libraries). |
+| `--strict`       | Drop every tolerance band: 1-second drift on `taken_at`, 1e-6 on lat/lng, 1 m on altitude, 0.01 on marker score all become diffs. |
 
 Sections in the report:
 
@@ -866,13 +880,36 @@ Sections in the report:
    primary file is re-hashed with SHA256 and looked up by `file_hash`;
    misses go into `missing_in_sorter`. The reverse pass flags sorter
    rows whose hash has no PhotoPrism counterpart as `orphan_in_sorter`.
-2. **albums** — slug + title parity, per-album symmetric photo diff.
-3. **labels** — slug + name parity and per-label photo-pair counts.
+   Field diff covers `taken_at` / `taken_at_source` / `time_zone` /
+   `taken_at_offset`, `description` / `notes`, `keywords` (sorted +
+   NFC-normalised), GPS (`lat` / `lng` / `altitude`), camera /
+   lens (`camera_make` / `camera_model` / `lens_model`), exposure
+   (`iso` / `f_number` / `exposure` / `focal_length`), dimensions
+   (`width` / `height` / `orientation`), flags (`favorite` / `private`
+   / `panorama` / `scan` / `quality`), and EXIF text (`exif_artist` /
+   `exif_copyright` / `exif_license` / `exif_software`).
+2. **albums** — slug + title parity, per-album symmetric photo diff,
+   plus a widened per-pair `membership_diffs` list (PhotoPrism photo
+   `file_hash[:8]` + album slug for each asymmetric membership). Field
+   diff covers `description`, `location`, `category`, `notes`,
+   `filter`, `album_order`, `favorite`, `private`, `type`.
+3. **labels** — slug + name parity, per-label photo-pair counts, and
+   per-pair `membership_diffs` (same shape as albums). Field diff
+   covers `description`, `categories`, `priority`, `favorite`.
 4. **subjects / markers** — accent-insensitive subject name match,
    per-subject marker count diffs, and per-marker geometry drift
-   (markers whose x/y/w/h differs by more than 1% on any axis).
+   (markers whose x/y/w/h differs by more than 1% on any axis). Subject
+   field diff covers `bio`, `about`, `alias`, `favorite`, `private`,
+   `type`. Marker field diff covers `score` (≤ 0.01 tolerance),
+   `invalid`, `reviewed`, and `subject_uid` linkage.
 5. **disk** — orphan files: every regular file under the sorter's
    originals root that has no corresponding `photos.file_path` row.
+
+JSON output: each entity's `field_diffs[]` is capped at 1000 entries
+per field name (a single noisy field cannot crowd out diffs from
+others). The human-readable output samples the first 50 entries per
+entity and prints a `...and N more truncated (use --json for the full
+report)` footer when the bucket overflowed.
 
 Examples:
 
@@ -881,6 +918,18 @@ Examples:
 photo-sorter migrate-verify \
   --pp-db "photoprism:photoprism@tcp(mariadb:3306)/photoprism" \
   --pp-originals /photoprism/originals
+
+# Skip the slow rehash pass and run only the field-level diff.
+photo-sorter migrate-verify \
+  --pp-db "photoprism:photoprism@tcp(mariadb:3306)/photoprism" \
+  --pp-originals /photoprism/originals \
+  --fields-only
+
+# Strict mode: catch even sub-second taken_at drift.
+photo-sorter migrate-verify \
+  --pp-db "photoprism:photoprism@tcp(mariadb:3306)/photoprism" \
+  --pp-originals /photoprism/originals \
+  --strict
 
 # Machine-readable JSON, for jq/CI integration.
 photo-sorter migrate-verify \

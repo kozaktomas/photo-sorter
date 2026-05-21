@@ -22,18 +22,43 @@ var migrateVerifyCmd = &cobra.Command{
 	Short: "Compare PhotoPrism against the sorter database after a migration",
 	Long: `Run a read-only diff between an existing PhotoPrism instance (MariaDB
 + originals tree) and the photo-sorter native database to confirm a
-one-shot migration moved everything correctly. Each section reports
-counts first and then the first 50 missing items per category.
+one-shot migration moved everything correctly. The verifier runs two
+phases:
 
-The exit code is 0 when no differences are found and 1 when at least one
-diff is reported, so the command can be chained into automated post-
-migration checks.
+  1. structural — existence, counts, on-disk orphans, marker geometry.
+     Each section reports counts first and the first 50 missing items.
+
+  2. field-level — every column the migrator is supposed to copy is
+     compared cell-by-cell (photos: 30+ columns including keywords,
+     GPS, EXIF, flags; subjects: bio/about/alias/type/favorite/private;
+     labels: description/categories/priority/favorite; albums:
+     description/location/category/notes/filter/order/favorite/private/
+     type; markers: score/invalid/reviewed/subject_uid). The JSON
+     output exposes a field_diffs[] array per entity; the text output
+     prints a header summarising the per-field counts and the first 50
+     individual diffs.
+
+Tolerance bands tolerate 1-second drift on taken_at, 1e-6 on lat/lng,
+1 m on altitude, and 0.01 on marker score by default; --strict treats
+them as diffs.
+
+The exit code is 0 when no differences are found and 1 when at least
+one diff is reported, so the command can be chained into automated
+post-migration checks. Zero diffs from migrate-verify is the
+authoritative gate for cancelling the PhotoPrism + MariaDB compose
+services.
 
 Examples:
   # Human-readable report with ANSI colour.
   photo-sorter migrate-verify \
       --pp-db "photoprism:photoprism@tcp(mariadb:3306)/photoprism" \
       --pp-originals /photoprism/originals
+
+  # Skip the slow rehash pass and only run the field-level diff.
+  photo-sorter migrate-verify \
+      --pp-db "photoprism:photoprism@tcp(mariadb:3306)/photoprism" \
+      --pp-originals /photoprism/originals \
+      --fields-only
 
   # Machine-readable JSON, for jq/grafana/CI.
   photo-sorter migrate-verify \
@@ -61,6 +86,10 @@ func init() {
 		"Disable ANSI colour escapes in the human-readable report")
 	migrateVerifyCmd.Flags().Int("concurrency", verify.DefaultConcurrency,
 		"Number of parallel workers for the photo hash pass")
+	migrateVerifyCmd.Flags().Bool("fields-only", false,
+		"Skip the structural existence/disk pass and run only the field-level diff")
+	migrateVerifyCmd.Flags().Bool("strict", false,
+		"Treat tolerance-band differences (1s on dates, 1e-6 on coords, 1m altitude, 0.01 score) as diffs")
 	_ = migrateVerifyCmd.MarkFlagRequired("pp-db")
 	_ = migrateVerifyCmd.MarkFlagRequired("pp-originals")
 }
@@ -99,6 +128,8 @@ func executeVerify(cmd *cobra.Command) (bool, error) {
 	jsonOut := mustGetBool(cmd, "json")
 	noColour := mustGetBool(cmd, "no-color")
 	concurrency := mustGetInt(cmd, "concurrency")
+	fieldsOnly := mustGetBool(cmd, "fields-only")
+	strict := mustGetBool(cmd, "strict")
 
 	deps, cleanup, err := openVerifyDeps(cfg, ppDB)
 	if err != nil {
@@ -116,6 +147,8 @@ func executeVerify(cmd *cobra.Command) (bool, error) {
 		Subjects:      deps.subjects,
 		Markers:       deps.markers,
 		Concurrency:   concurrency,
+		FieldsOnly:    fieldsOnly,
+		Strict:        strict,
 	}
 	if !jsonOut {
 		opts.Writer = cmd.OutOrStdout()
