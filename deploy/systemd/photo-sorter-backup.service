@@ -1,0 +1,34 @@
+# photo-sorter-backup.service
+#
+# Oneshot unit that runs `photo-sorter backup` against the configured output
+# directory and retains the most recent 14 runs. Paired with
+# photo-sorter-backup.timer to trigger nightly.
+#
+# Install:
+#   sudo cp deploy/systemd/photo-sorter-backup.{service,timer} /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now photo-sorter-backup.timer
+#
+# The unit assumes:
+#   * /usr/local/bin/photo-sorter is the installed binary path.
+#   * /etc/photo-sorter/backup.env exports STORAGE_ORIGINALS_PATH and
+#     DATABASE_URL (or any overrides such as PATH for pg_dump).
+#   * /var/backups/photo-sorter exists and is writable by the unit's user.
+[Unit]
+Description=photo-sorter backup (originals tar + pg_dump)
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/photo-sorter/backup.env
+ExecStart=/usr/local/bin/photo-sorter backup --output /var/backups/photo-sorter --keep 14
+Nice=10
+IOSchedulingClass=idle
+ProtectSystem=full
+ProtectHome=yes
+NoNewPrivileges=yes
+PrivateTmp=yes
+
+[Install]
+WantedBy=multi-user.target

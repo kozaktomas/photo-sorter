@@ -25,7 +25,7 @@ FROM alpine:3
 # is intentionally not installed (proprietary, not redistributable).
 COPY scripts/install-fonts.sh /tmp/install-fonts.sh
 RUN apk update && \
-    apk add --no-cache ca-certificates tzdata curl unzip \
+    apk add --no-cache ca-certificates tzdata curl unzip postgresql-client \
     texlive-luatex texmf-dist-latexrecommended texmf-dist-fontsrecommended texmf-dist-langczechslovak texmf-dist-pictures && \
     sh /tmp/install-fonts.sh /usr/share/fonts && \
     rm /tmp/install-fonts.sh && \

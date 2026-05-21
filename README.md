@@ -249,6 +249,40 @@ Compute CLIP era embedding centroids for photo era estimation:
 photo-sorter cache compute-eras
 ```
 
+### Backups
+
+Create a timestamped backup of the originals tree and the Postgres database (the thumbnail cache is intentionally excluded because it can be regenerated from the originals):
+
+```bash
+# Daily backup keeping the last 14 runs
+photo-sorter backup --output /var/backups/photo-sorter --keep 14
+
+# Originals only (no database access)
+photo-sorter backup --output /tmp/bak --skip-db
+```
+
+Each run produces `<output>/photo-sorter-<YYYYMMDD-HHMMSS>/` containing `metadata.json`, `db.sql.zst` (or `.gz`), and `originals.tar.zst` (or `.tar.gz`). The directory is written atomically — partial runs leave a `.photo-sorter-<ts>.tmp/` directory for inspection unless `--cleanup-on-failure` is set.
+
+Requires `pg_dump` on `PATH` (`apt: postgresql-client`; the Docker image already ships it).
+
+#### Schedule with systemd
+
+Sample units live in [`deploy/systemd/`](deploy/systemd/). Install with:
+
+```bash
+sudo cp deploy/systemd/photo-sorter-backup.{service,timer} /etc/systemd/system/
+sudo mkdir -p /etc/photo-sorter
+sudo tee /etc/photo-sorter/backup.env <<EOF
+STORAGE_ORIGINALS_PATH=/data/originals
+DATABASE_URL=postgres://user:pass@host:5432/photosorter?sslmode=disable
+EOF
+sudo mkdir -p /var/backups/photo-sorter
+sudo systemctl daemon-reload
+sudo systemctl enable --now photo-sorter-backup.timer
+```
+
+The timer fires the oneshot service nightly at 03:00 (with a 10-minute random jitter, persistent across reboots).
+
 ### Web Interface
 
 Start the web server for browser-based access:

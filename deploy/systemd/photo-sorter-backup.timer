@@ -1,0 +1,17 @@
+# photo-sorter-backup.timer
+#
+# Triggers photo-sorter-backup.service daily at 03:00 local time. Missed runs
+# (e.g. while the machine was off) execute on the next boot thanks to
+# Persistent=true. RandomizedDelaySec=10m spreads load if multiple machines
+# share a NAS target.
+[Unit]
+Description=Run photo-sorter backup daily
+
+[Timer]
+OnCalendar=*-*-* 03:00:00
+Persistent=true
+RandomizedDelaySec=10m
+Unit=photo-sorter-backup.service
+
+[Install]
+WantedBy=timers.target

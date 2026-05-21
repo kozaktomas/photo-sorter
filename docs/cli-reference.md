@@ -569,6 +569,71 @@ See [API Reference — MCP Server](API.md#mcp-server) for detailed parameter doc
 
 ---
 
+### backup
+
+Create a timestamped backup of the originals directory and the photo-sorter Postgres database. The thumbnail cache is intentionally excluded because it can be regenerated from the originals via the thumbnail backfill job.
+
+```bash
+photo-sorter backup --output <dir> [flags]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--output` | string | (required) | Directory where backups are written |
+| `--originals-path` | string | `$STORAGE_ORIGINALS_PATH` | Path to the originals tree |
+| `--db-url` | string | `$DATABASE_URL` | Postgres connection URL passed to `pg_dump` |
+| `--keep` | int | 14 | Number of backups to retain (0 disables pruning) |
+| `--compress` | string | zstd | Compression algorithm: `zstd` or `gzip` |
+| `--skip-originals` | bool | false | Skip the originals tar |
+| `--skip-db` | bool | false | Skip the `pg_dump` |
+| `--cleanup-on-failure` | bool | false | Remove the `.tmp` directory if the run fails |
+| `--progress-every` | int | 500 | Originals progress cadence (files between log lines) |
+
+**Output layout:** Each run produces `<output>/photo-sorter-<YYYYMMDD-HHMMSS>/` containing three sibling files so they can be restored selectively:
+
+- `metadata.json` — `{ created_at, sorter_version, db_size_bytes, originals_bytes, file_count }`
+- `db.sql.zst` (or `.gz`) — `pg_dump --format=plain --no-owner --no-privileges` piped through the compressor.
+- `originals.tar.zst` (or `.tar.gz`) — streamed tar of the originals directory, preserving relative paths.
+
+The directory is written first to `.photo-sorter-<ts>.tmp/` and only renamed atomically once both artifacts succeed; failed runs leave the `.tmp` directory in place unless `--cleanup-on-failure` is set.
+
+**Requirements:**
+
+- `pg_dump` must be on PATH (`apt: postgresql-client`; the Docker image already ships it).
+
+**Examples:**
+
+```bash
+# Daily backup keeping the last 14 runs.
+photo-sorter backup --output /var/backups/photo-sorter --keep 14
+
+# Originals only (no database access).
+photo-sorter backup --output /tmp/bak --skip-db
+
+# Gzip instead of zstd, retain only 3 runs.
+photo-sorter backup --output /tmp/bak --compress gzip --keep 3
+```
+
+#### Scheduling with systemd
+
+Sample units live in [`deploy/systemd/`](../deploy/systemd/). Install with:
+
+```bash
+sudo cp deploy/systemd/photo-sorter-backup.{service,timer} /etc/systemd/system/
+sudo mkdir -p /etc/photo-sorter
+sudo tee /etc/photo-sorter/backup.env <<EOF
+STORAGE_ORIGINALS_PATH=/data/originals
+DATABASE_URL=postgres://user:pass@host:5432/photosorter?sslmode=disable
+EOF
+sudo mkdir -p /var/backups/photo-sorter
+sudo systemctl daemon-reload
+sudo systemctl enable --now photo-sorter-backup.timer
+```
+
+The timer triggers `photo-sorter-backup.service` every day at 03:00 (with a 10-minute random jitter and persistence across reboots).
+
+---
+
 ### version
 
 Print the version number.
