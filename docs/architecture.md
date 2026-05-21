@@ -87,6 +87,7 @@ flowchart TB
 | `internal/facematch/` | Face matching utilities: IoU computation, bounding box conversion, name normalization | `NormalizePersonName`, IoU functions |
 | `internal/fingerprint/` | Perceptual hash computation (pHash, dHash) and embeddings HTTP client | `Fingerprint`, embedding client |
 | `internal/photopipe/` | Native upload pipeline: buffer → hash → format detect → exact-duplicate check → decode → EXIF → near-duplicate scan (pHash + embedding) → originals write → DB rows → thumbnails → pHash persist | `Pipeline`, `Options`, `IngestResult`, `DuplicateMatch`, `DuplicateDetectionOptions` |
+| `internal/imgconvert/` | Format detection + thin wrappers around external decoders (`heif-convert` for HEIC/HEIF, `dcraw` for RAW) that produce an intermediate JPEG the rest of the pipeline can decode | `EnsureDecodable`, `DetectFormat`, `ErrConverterMissing` |
 | `internal/photoprism/` | PhotoPrism REST API client, split by domain (albums, photos, labels, markers, subjects, faces, upload) | `PhotoPrism`, `Album`, `Photo`, `Label`, `Marker`, `Subject` |
 | `internal/sorter/` | Orchestrates photo fetching, AI analysis, and label application | `Sorter` |
 | `internal/latex/` | PDF export via LaTeX — markdown-to-LaTeX conversion, layout validation, 12-column grid system, font registry (24 free fonts: Google Fonts + CTAN + URW Bookman) | `LayoutConfig`, `FormatSlotsGrid`, `FontEntry`, markdown converter |
@@ -243,6 +244,18 @@ Environment variables grouped by service:
 | Variable | Required | Description |
 |----------|----------|-------------|
 | `MCP_API_TOKEN` | No | Bearer token for MCP client authentication (enables MCP endpoint at `/mcp/sse` on `serve` command) |
+
+## External Decoders
+
+The native upload + EXIF pipelines shell out to three external binaries that must be on `PATH`:
+
+| Binary | Used by | Purpose |
+|--------|---------|---------|
+| `dcraw` | `internal/imgconvert/raw.go` | Decode RAW originals (CR2/CR3/NEF/ARW/DNG/RAF/ORF/RW2/PEF/SRW) to a PPM frame the pipeline re-encodes as JPEG |
+| `heif-convert` | `internal/imgconvert/heif.go` | Decode HEIC/HEIF originals to JPEG |
+| `exiftool` | `internal/exif/exiftool.go`, `internal/exif/sidecar.go` | Read EXIF on upload (with a pure-Go fallback) and write XMP sidecars next to originals on EXIF edits |
+
+The official Docker image bundles all three. The runtime stage installs Alpine's `libheif-tools`, `exiftool`, and `libraw-tools` packages, plus a small `scripts/dcraw-shim.sh` wrapper that emulates the `dcraw -c -w -h` invocation our Go code uses on top of LibRaw's `dcraw_emu` (Alpine dropped the upstream `dcraw` package; LibRaw is the maintained replacement). Self-builders running the binary outside Docker must install equivalents themselves. The `serve` command logs a `WARN` line on startup for each missing binary and a single `startup: external decoders OK` line when all three are present, so a broken image regresses loudly instead of silently failing at upload time.
 
 ## Error Handling Strategy
 

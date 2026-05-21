@@ -11,7 +11,7 @@ Today the app sits in front of a [PhotoPrism](https://photoprism.app/) instance 
 Work in progress. The end state is a single binary + Postgres + an embeddings service — no PhotoPrism, no MariaDB. Key pieces being added:
 
 - **Native storage** mirroring the PhotoPrism on-disk layout (`originals/YYYY/MM/`, `cache/thumb/aa/bb/cc/<hash>_<size>.jpg`).
-- **Native upload pipeline**: hash → dedup → EXIF (`exiftool` + go-exif fallback) → thumbnails → DB. Supported formats: JPEG/PNG/WebP, HEIC/HEIF (via `heif-convert`), RAW (CR2/NEF/ARW/DNG/... via `dcraw`).
+- **Native upload pipeline**: hash → dedup → EXIF (`exiftool` + go-exif fallback) → thumbnails → DB. Supported formats: JPEG/PNG/WebP, HEIC/HEIF (via `heif-convert`), RAW — CR2/CR3/NEF/ARW/DNG/RAF/ORF/RW2/PEF/SRW (via `dcraw`). The Docker image bundles `dcraw`, `libheif-tools`, and `exiftool`; self-builders must have all three on PATH for full upload support. The `serve` command logs a startup `WARN` for any missing binary.
 - **Own user management**: `admin` / `editor` / `viewer` roles, bcrypt, bootstrap admin via env vars. Public album sharing planned later.
 - **Native repos** for photos, albums, labels, markers, subjects. Existing pgvector embeddings + HNSW indexes stay.
 - **New features**: soft-delete trash (30-day grace), duplicate detection on upload (pHash + embedding), EXIF edit endpoint with XMP sidecar write, Czech-aware Postgres full-text search, PWA + mobile capture page.

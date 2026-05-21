@@ -23,10 +23,24 @@ FROM alpine:3
 # Font installation is delegated to scripts/install-fonts.sh — single source
 # of truth shared with the `make install-fonts` dev target. Bookman Old Style
 # is intentionally not installed (proprietary, not redistributable).
+#
+# External decoders the upload pipeline shells out to:
+#   - libheif-tools : heif-convert for HEIC/HEIF originals
+#   - exiftool      : XMP sidecar writer for the EXIF edit endpoint and the
+#                     upload-time EXIF reader (with a pure-Go fallback)
+#   - libraw-tools  : dcraw_emu used by the dcraw-shim.sh wrapper below.
+#                     Alpine removed the upstream dcraw package (Dave Coffin
+#                     stopped maintaining it years ago; LibRaw is the
+#                     modern replacement), so the shim translates the
+#                     `dcraw -c -w -h` invocation our Go code uses into a
+#                     dcraw_emu call that emits PPM on stdout.
 COPY scripts/install-fonts.sh /tmp/install-fonts.sh
+COPY scripts/dcraw-shim.sh /usr/local/bin/dcraw
 RUN apk update && \
     apk add --no-cache ca-certificates tzdata curl unzip postgresql-client \
-    texlive-luatex texmf-dist-latexrecommended texmf-dist-fontsrecommended texmf-dist-langczechslovak texmf-dist-pictures && \
+    texlive-luatex texmf-dist-latexrecommended texmf-dist-fontsrecommended texmf-dist-langczechslovak texmf-dist-pictures \
+    libheif-tools exiftool libraw-tools && \
+    chmod 0755 /usr/local/bin/dcraw && \
     sh /tmp/install-fonts.sh /usr/share/fonts && \
     rm /tmp/install-fonts.sh && \
     # Install enumitem.sty from CTAN (avoids pulling huge texmf-dist-latexextra)

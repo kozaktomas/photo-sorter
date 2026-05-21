@@ -16,8 +16,15 @@ that is being replaced incrementally.
 - Own user management: roles `admin` / `editor` / `viewer`, bcrypt, bootstrap admin
   via env vars. Public album sharing later.
 - Native upload pipeline: hash → dedup → EXIF (`exiftool` subprocess + go-exif
-  fallback) → thumbs → DB. Supported formats: JPEG/PNG/WebP, HEIC/HEIF (via
-  `heif-convert`), RAW (CR2/NEF/ARW/DNG/... via `dcraw`).
+  fallback) → thumbs → DB. Supported formats: JPEG/PNG/WebP, RAW
+  (CR2/CR3/NEF/ARW/DNG/RAF/ORF/RW2/PEF/SRW) via `dcraw`, HEIC/HEIF via
+  `heif-convert`, EXIF sidecars via `exiftool`. All three are bundled into
+  the official Docker image and listed as `Depends:` in the .deb. The
+  image actually ships LibRaw's `dcraw_emu` (Alpine dropped the upstream
+  `dcraw` package) plus a small `scripts/dcraw-shim.sh` wrapper installed
+  as `/usr/local/bin/dcraw` that translates the `-c -w -h` invocation
+  the Go code uses. The `serve` command logs a `WARN` line on startup
+  for each missing binary so deployments fail loud, not silent.
 - Native repos for photos, albums, labels, markers, subjects. Existing
   `embeddings` / `faces` (pgvector) and HNSW indexes stay.
 - New features: soft-delete trash (30-day grace), duplicate detection on upload

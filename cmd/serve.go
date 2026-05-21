@@ -294,6 +294,10 @@ func gracefulShutdown(sigChan <-chan os.Signal, server *web.Server, pool *postgr
 func runServe(cmd *cobra.Command, args []string) error {
 	cfg := config.Load()
 
+	// Non-fatal: log a warning per missing external decoder so the next
+	// image regression is loud instead of silently failing at upload time.
+	runDecoderCheck(os.Stdout)
+
 	if cfg.Database.URL == "" {
 		return errors.New("DATABASE_URL environment variable is required")
 	}
