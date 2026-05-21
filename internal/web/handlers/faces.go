@@ -15,23 +15,44 @@ import (
 
 	"github.com/kozaktomas/photo-sorter/internal/config"
 	"github.com/kozaktomas/photo-sorter/internal/database"
+	"github.com/kozaktomas/photo-sorter/internal/storage"
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
 
-// FacesHandler handles face-related endpoints.
+// FacesHandler handles face-related endpoints. The marker / subject / photo
+// repositories back the native data path (replacing the previous PhotoPrism
+// marker / subject calls). They may be nil in tests that exercise paths
+// which do not touch markers or subjects.
 type FacesHandler struct {
 	config         *config.Config
 	sessionManager *middleware.SessionManager
 	faceReader     database.FaceReader
 	faceWriter     database.FaceWriter // For cache sync on Apply
-	writerMu       sync.Mutex          // Protects faceWriter
+	markerRepo     database.MarkerWriter
+	subjectRepo    database.SubjectWriter
+	photoReader    database.PhotoReader
+	storage        *storage.Storage
+	writerMu       sync.Mutex // Protects faceWriter
 }
 
-// NewFacesHandler creates a new faces handler.
-func NewFacesHandler(cfg *config.Config, sm *middleware.SessionManager) *FacesHandler {
+// NewFacesHandler creates a new faces handler. markerRepo, subjectRepo,
+// photoReader and store back the native marker/subject/photo path; any of
+// them may be nil in transitional environments — affected endpoints will
+// then surface a 503 rather than blocking server startup.
+func NewFacesHandler(
+	cfg *config.Config, sm *middleware.SessionManager,
+	markerRepo database.MarkerWriter,
+	subjectRepo database.SubjectWriter,
+	photoReader database.PhotoReader,
+	store *storage.Storage,
+) *FacesHandler {
 	h := &FacesHandler{
 		config:         cfg,
 		sessionManager: sm,
+		markerRepo:     markerRepo,
+		subjectRepo:    subjectRepo,
+		photoReader:    photoReader,
+		storage:        store,
 	}
 	// Try to get a face reader from PostgreSQL.
 	if reader, err := database.GetFaceReader(context.Background()); err == nil {

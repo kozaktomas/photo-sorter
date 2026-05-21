@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -19,11 +18,6 @@ import (
 var errMockError = errors.New("mock error")
 
 func TestFacesHandler_FindOutliers_Success(t *testing.T) {
-	server := setupMockPhotoPrismServer(t, nil)
-	defer server.Close()
-
-	pp := createPhotoPrismClient(t, server)
-
 	mockReader := mock.NewMockFaceReader()
 	// Add faces for "john-doe".
 	embedding1 := make([]float32, 512)
@@ -98,8 +92,7 @@ func TestFacesHandler_FindOutliers_Success(t *testing.T) {
 	}
 
 	body := bytes.NewBufferString(`{"person_name": "john-doe", "threshold": 0.0, "limit": 10}`)
-	req := requestWithPhotoPrism(t, "POST", "/api/v1/faces/outliers", pp)
-	req.Body = io.NopCloser(body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/faces/outliers", body)
 	req.Header.Set("Content-Type", "application/json")
 	recorder := httptest.NewRecorder()
 
@@ -188,11 +181,6 @@ func TestFacesHandler_FindOutliers_NoFaceReader(t *testing.T) {
 }
 
 func TestFacesHandler_FindOutliers_PersonNotFound(t *testing.T) {
-	server := setupMockPhotoPrismServer(t, nil)
-	defer server.Close()
-
-	pp := createPhotoPrismClient(t, server)
-
 	mockReader := mock.NewMockFaceReader()
 	// No faces for "unknown-person".
 
@@ -205,8 +193,7 @@ func TestFacesHandler_FindOutliers_PersonNotFound(t *testing.T) {
 	}
 
 	body := bytes.NewBufferString(`{"person_name": "unknown-person"}`)
-	req := requestWithPhotoPrism(t, "POST", "/api/v1/faces/outliers", pp)
-	req.Body = io.NopCloser(body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/faces/outliers", body)
 	req.Header.Set("Content-Type", "application/json")
 	recorder := httptest.NewRecorder()
 
@@ -231,11 +218,6 @@ func TestFacesHandler_FindOutliers_PersonNotFound(t *testing.T) {
 }
 
 func TestFacesHandler_FindOutliers_DatabaseError(t *testing.T) {
-	server := setupMockPhotoPrismServer(t, nil)
-	defer server.Close()
-
-	pp := createPhotoPrismClient(t, server)
-
 	mockReader := mock.NewMockFaceReader()
 	mockReader.GetFacesBySubjectError = errMockError
 
@@ -248,8 +230,7 @@ func TestFacesHandler_FindOutliers_DatabaseError(t *testing.T) {
 	}
 
 	body := bytes.NewBufferString(`{"person_name": "john-doe"}`)
-	req := requestWithPhotoPrism(t, "POST", "/api/v1/faces/outliers", pp)
-	req.Body = io.NopCloser(body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/faces/outliers", body)
 	req.Header.Set("Content-Type", "application/json")
 	recorder := httptest.NewRecorder()
 
@@ -260,11 +241,6 @@ func TestFacesHandler_FindOutliers_DatabaseError(t *testing.T) {
 }
 
 func TestFacesHandler_FindOutliers_WithThreshold(t *testing.T) {
-	server := setupMockPhotoPrismServer(t, nil)
-	defer server.Close()
-
-	pp := createPhotoPrismClient(t, server)
-
 	mockReader := mock.NewMockFaceReader()
 	// Add similar embeddings.
 	embedding := make([]float32, 512)
@@ -307,8 +283,7 @@ func TestFacesHandler_FindOutliers_WithThreshold(t *testing.T) {
 
 	// High threshold should filter out all faces (they're identical).
 	body := bytes.NewBufferString(`{"person_name": "john-doe", "threshold": 0.5}`)
-	req := requestWithPhotoPrism(t, "POST", "/api/v1/faces/outliers", pp)
-	req.Body = io.NopCloser(body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/faces/outliers", body)
 	req.Header.Set("Content-Type", "application/json")
 	recorder := httptest.NewRecorder()
 
@@ -326,11 +301,6 @@ func TestFacesHandler_FindOutliers_WithThreshold(t *testing.T) {
 }
 
 func TestFacesHandler_FindOutliers_WithLimit(t *testing.T) {
-	server := setupMockPhotoPrismServer(t, nil)
-	defer server.Close()
-
-	pp := createPhotoPrismClient(t, server)
-
 	mockReader := mock.NewMockFaceReader()
 
 	// Add multiple faces with different embeddings.
@@ -362,8 +332,7 @@ func TestFacesHandler_FindOutliers_WithLimit(t *testing.T) {
 	}
 
 	body := bytes.NewBufferString(`{"person_name": "john-doe", "threshold": 0.0, "limit": 3}`)
-	req := requestWithPhotoPrism(t, "POST", "/api/v1/faces/outliers", pp)
-	req.Body = io.NopCloser(body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/faces/outliers", body)
 	req.Header.Set("Content-Type", "application/json")
 	recorder := httptest.NewRecorder()
 
@@ -380,11 +349,6 @@ func TestFacesHandler_FindOutliers_WithLimit(t *testing.T) {
 }
 
 func TestFacesHandler_FindOutliers_MissingEmbeddings(t *testing.T) {
-	server := setupMockPhotoPrismServer(t, nil)
-	defer server.Close()
-
-	pp := createPhotoPrismClient(t, server)
-
 	mockReader := mock.NewMockFaceReader()
 
 	// Add face with valid embedding.
@@ -428,8 +392,7 @@ func TestFacesHandler_FindOutliers_MissingEmbeddings(t *testing.T) {
 	}
 
 	body := bytes.NewBufferString(`{"person_name": "john-doe"}`)
-	req := requestWithPhotoPrism(t, "POST", "/api/v1/faces/outliers", pp)
-	req.Body = io.NopCloser(body)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/faces/outliers", body)
 	req.Header.Set("Content-Type", "application/json")
 	recorder := httptest.NewRecorder()
 

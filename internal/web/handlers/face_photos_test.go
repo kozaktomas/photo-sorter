@@ -12,54 +12,34 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
 
-func TestFacesHandler_GetPhotoFaces_Success(t *testing.T) {
-	// Setup mock PhotoPrism server.
-	server := setupMockPhotoPrismServer(t, map[string]http.HandlerFunc{
-		"/api/v1/photos/photo123": func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			// Include markers in Files - GetPhotoMarkers extracts from Files[].Markers.
-			json.NewEncoder(w).Encode(map[string]any{
-				"UID":   "photo123",
-				"Title": "Test Photo",
-				"Files": []map[string]any{
-					{
-						"UID":         "file123",
-						"Primary":     true,
-						"Width":       1920,
-						"Height":      1080,
-						"Orientation": 1,
-						"Markers": []map[string]any{
-							{
-								"UID":     "marker1",
-								"Type":    "face",
-								"Name":    "john-doe",
-								"SubjUID": "subj1",
-								"X":       0.1,
-								"Y":       0.1,
-								"W":       0.1,
-								"H":       0.15,
-							},
-						},
-					},
-				},
-			})
-		},
-		"/api/v1/subjects": func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode([]map[string]any{
-				{
-					"UID":        "subj1",
-					"Name":       "john-doe",
-					"PhotoCount": 10,
-				},
-			})
-		},
+// seedFacePhoto populates the fake photo reader with a primary file row so
+// the face handler can resolve dimensions and the primary file path.
+func seedFacePhoto(reader *fakePhotoReader, uid string, width, height, orientation int) {
+	reader.add(&database.Photo{
+		UID:             uid,
+		FileWidth:       width,
+		FileHeight:      height,
+		FileOrientation: orientation,
 	})
-	defer server.Close()
+	reader.addFile(database.PhotoFile{
+		PhotoUID: uid, FilePath: "file123", IsPrimary: true,
+	})
+}
 
-	pp := createPhotoPrismClient(t, server)
+func TestFacesHandler_GetPhotoFaces_Success(t *testing.T) {
+	photoReader := newFakePhotoReader()
+	seedFacePhoto(photoReader, "photo123", 1920, 1080, 1)
 
-	// Setup mock face reader.
+	markerRepo := newFakeMarkerRepo()
+	markerRepo.seed(database.Marker{
+		UID: "marker1", PhotoUID: "photo123", SubjectUID: "subj1", Type: "face",
+		X: 0.1, Y: 0.1, W: 0.1, H: 0.15,
+	})
+
+	subjectRepo := newFakeSubjectRepo()
+	subjectRepo.attachMarkers(markerRepo)
+	subjectRepo.seed("subj1", "john-doe")
+
 	mockReader := mock.NewMockFaceReader()
 	mockReader.AddFaces("photo123", []database.StoredFace{
 		{
@@ -77,9 +57,12 @@ func TestFacesHandler_GetPhotoFaces_Success(t *testing.T) {
 		config:         cfg,
 		sessionManager: sm,
 		faceReader:     mockReader,
+		markerRepo:     markerRepo,
+		subjectRepo:    subjectRepo,
+		photoReader:    photoReader,
 	}
 
-	req := requestWithPhotoPrism(t, "GET", "/api/v1/photos/photo123/faces", pp)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/photos/photo123/faces", nil)
 	req = requestWithChiParams(req, map[string]string{"uid": "photo123"})
 	recorder := httptest.NewRecorder()
 
@@ -151,32 +134,7 @@ func TestFacesHandler_GetPhotoFaces_NoFaceReader(t *testing.T) {
 	assertJSONError(t, recorder, "face data not available")
 }
 
-func TestFacesHandler_GetPhotoFaces_NoPhotoPrismClient(t *testing.T) {
-	mockReader := mock.NewMockFaceReader()
-	cfg := testConfig()
-	sm := middleware.NewSessionManager("test-secret", nil)
-	handler := &FacesHandler{
-		config:         cfg,
-		sessionManager: sm,
-		faceReader:     mockReader,
-	}
-
-	// Request without PhotoPrism client in context.
-	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/photos/photo123/faces", nil)
-	req = requestWithChiParams(req, map[string]string{"uid": "photo123"})
-	recorder := httptest.NewRecorder()
-
-	handler.GetPhotoFaces(recorder, req)
-
-	assertStatusCode(t, recorder, http.StatusInternalServerError)
-}
-
 func TestFacesHandler_GetPhotoFaces_DatabaseError(t *testing.T) {
-	server := setupMockPhotoPrismServer(t, nil)
-	defer server.Close()
-
-	pp := createPhotoPrismClient(t, server)
-
 	mockReader := mock.NewMockFaceReader()
 	mockReader.GetFacesError = errMockError
 
@@ -186,9 +144,10 @@ func TestFacesHandler_GetPhotoFaces_DatabaseError(t *testing.T) {
 		config:         cfg,
 		sessionManager: sm,
 		faceReader:     mockReader,
+		photoReader:    newFakePhotoReader(),
 	}
 
-	req := requestWithPhotoPrism(t, "GET", "/api/v1/photos/photo123/faces", pp)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/photos/photo123/faces", nil)
 	req = requestWithChiParams(req, map[string]string{"uid": "photo123"})
 	recorder := httptest.NewRecorder()
 
@@ -199,16 +158,6 @@ func TestFacesHandler_GetPhotoFaces_DatabaseError(t *testing.T) {
 }
 
 func TestFacesHandler_GetPhotoFaces_PhotoDetailsError(t *testing.T) {
-	server := setupMockPhotoPrismServer(t, map[string]http.HandlerFunc{
-		"/api/v1/photos/photo123": func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusNotFound)
-			w.Write([]byte(`{"error": "not found"}`))
-		},
-	})
-	defer server.Close()
-
-	pp := createPhotoPrismClient(t, server)
-
 	mockReader := mock.NewMockFaceReader()
 	mockReader.AddFaces("photo123", []database.StoredFace{
 		{
@@ -220,15 +169,19 @@ func TestFacesHandler_GetPhotoFaces_PhotoDetailsError(t *testing.T) {
 		},
 	})
 
+	// Photo reader returns ErrNotFound — no row seeded.
+	photoReader := newFakePhotoReader()
+
 	cfg := testConfig()
 	sm := middleware.NewSessionManager("test-secret", nil)
 	handler := &FacesHandler{
 		config:         cfg,
 		sessionManager: sm,
 		faceReader:     mockReader,
+		photoReader:    photoReader,
 	}
 
-	req := requestWithPhotoPrism(t, "GET", "/api/v1/photos/photo123/faces", pp)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/photos/photo123/faces", nil)
 	req = requestWithChiParams(req, map[string]string{"uid": "photo123"})
 	recorder := httptest.NewRecorder()
 
@@ -239,35 +192,8 @@ func TestFacesHandler_GetPhotoFaces_PhotoDetailsError(t *testing.T) {
 }
 
 func TestFacesHandler_GetPhotoFaces_NoFacesInPhoto(t *testing.T) {
-	server := setupMockPhotoPrismServer(t, map[string]http.HandlerFunc{
-		"/api/v1/photos/photo123": func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]any{
-				"UID":   "photo123",
-				"Title": "Test Photo",
-				"Files": []map[string]any{
-					{
-						"UID":         "file123",
-						"Primary":     true,
-						"Width":       1920,
-						"Height":      1080,
-						"Orientation": 1,
-					},
-				},
-			})
-		},
-		"/api/v1/photos/photo123/markers": func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`[]`))
-		},
-		"/api/v1/subjects": func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`[]`))
-		},
-	})
-	defer server.Close()
-
-	pp := createPhotoPrismClient(t, server)
+	photoReader := newFakePhotoReader()
+	seedFacePhoto(photoReader, "photo123", 1920, 1080, 1)
 
 	mockReader := mock.NewMockFaceReader()
 	// No faces added.
@@ -278,9 +204,12 @@ func TestFacesHandler_GetPhotoFaces_NoFacesInPhoto(t *testing.T) {
 		config:         cfg,
 		sessionManager: sm,
 		faceReader:     mockReader,
+		photoReader:    photoReader,
+		markerRepo:     newFakeMarkerRepo(),
+		subjectRepo:    newFakeSubjectRepo(),
 	}
 
-	req := requestWithPhotoPrism(t, "GET", "/api/v1/photos/photo123/faces", pp)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/photos/photo123/faces", nil)
 	req = requestWithChiParams(req, map[string]string{"uid": "photo123"})
 	recorder := httptest.NewRecorder()
 
@@ -305,35 +234,8 @@ func TestFacesHandler_GetPhotoFaces_NoFacesInPhoto(t *testing.T) {
 }
 
 func TestFacesHandler_GetPhotoFaces_WithThresholdAndLimit(t *testing.T) {
-	server := setupMockPhotoPrismServer(t, map[string]http.HandlerFunc{
-		"/api/v1/photos/photo123": func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]any{
-				"UID":   "photo123",
-				"Title": "Test Photo",
-				"Files": []map[string]any{
-					{
-						"UID":         "file123",
-						"Primary":     true,
-						"Width":       1920,
-						"Height":      1080,
-						"Orientation": 1,
-					},
-				},
-			})
-		},
-		"/api/v1/photos/photo123/markers": func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`[]`))
-		},
-		"/api/v1/subjects": func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`[]`))
-		},
-	})
-	defer server.Close()
-
-	pp := createPhotoPrismClient(t, server)
+	photoReader := newFakePhotoReader()
+	seedFacePhoto(photoReader, "photo123", 1920, 1080, 1)
 
 	mockReader := mock.NewMockFaceReader()
 	mockReader.AddFaces("photo123", []database.StoredFace{
@@ -352,10 +254,14 @@ func TestFacesHandler_GetPhotoFaces_WithThresholdAndLimit(t *testing.T) {
 		config:         cfg,
 		sessionManager: sm,
 		faceReader:     mockReader,
+		photoReader:    photoReader,
+		markerRepo:     newFakeMarkerRepo(),
+		subjectRepo:    newFakeSubjectRepo(),
 	}
 
 	// Test with custom threshold and limit parameters.
-	req := requestWithPhotoPrism(t, "GET", "/api/v1/photos/photo123/faces?threshold=0.3&limit=5", pp)
+	req := httptest.NewRequestWithContext(context.Background(), "GET",
+		"/api/v1/photos/photo123/faces?threshold=0.3&limit=5", nil)
 	req = requestWithChiParams(req, map[string]string{"uid": "photo123"})
 	recorder := httptest.NewRecorder()
 
@@ -365,44 +271,14 @@ func TestFacesHandler_GetPhotoFaces_WithThresholdAndLimit(t *testing.T) {
 }
 
 func TestFacesHandler_GetPhotoFaces_UnmatchedMarkers(t *testing.T) {
-	server := setupMockPhotoPrismServer(t, map[string]http.HandlerFunc{
-		"/api/v1/photos/photo123": func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			// Include markers in Files - GetPhotoMarkers extracts from Files[].Markers.
-			json.NewEncoder(w).Encode(map[string]any{
-				"UID":   "photo123",
-				"Title": "Test Photo",
-				"Files": []map[string]any{
-					{
-						"UID":         "file123",
-						"Primary":     true,
-						"Width":       1920,
-						"Height":      1080,
-						"Orientation": 1,
-						"Markers": []map[string]any{
-							{
-								"UID":     "marker1",
-								"Type":    "face",
-								"Name":    "",
-								"SubjUID": "",
-								"X":       0.5,
-								"Y":       0.5,
-								"W":       0.1,
-								"H":       0.15,
-							},
-						},
-					},
-				},
-			})
-		},
-		"/api/v1/subjects": func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`[]`))
-		},
-	})
-	defer server.Close()
+	photoReader := newFakePhotoReader()
+	seedFacePhoto(photoReader, "photo123", 1920, 1080, 1)
 
-	pp := createPhotoPrismClient(t, server)
+	markerRepo := newFakeMarkerRepo()
+	markerRepo.seed(database.Marker{
+		UID: "marker1", PhotoUID: "photo123", Type: "face",
+		X: 0.5, Y: 0.5, W: 0.1, H: 0.15,
+	})
 
 	mockReader := mock.NewMockFaceReader()
 	// No database faces, so marker should appear as unmatched.
@@ -413,9 +289,12 @@ func TestFacesHandler_GetPhotoFaces_UnmatchedMarkers(t *testing.T) {
 		config:         cfg,
 		sessionManager: sm,
 		faceReader:     mockReader,
+		photoReader:    photoReader,
+		markerRepo:     markerRepo,
+		subjectRepo:    newFakeSubjectRepo(),
 	}
 
-	req := requestWithPhotoPrism(t, "GET", "/api/v1/photos/photo123/faces", pp)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/photos/photo123/faces", nil)
 	req = requestWithChiParams(req, map[string]string{"uid": "photo123"})
 	recorder := httptest.NewRecorder()
 
@@ -426,7 +305,7 @@ func TestFacesHandler_GetPhotoFaces_UnmatchedMarkers(t *testing.T) {
 	var response PhotoFacesResponse
 	parseJSONResponse(t, recorder, &response)
 
-	// The markers count should show the PhotoPrism marker.
+	// The markers count should show the marker.
 	if response.MarkersCount != 1 {
 		t.Errorf("expected markers_count 1, got %d", response.MarkersCount)
 	}

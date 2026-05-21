@@ -3,16 +3,18 @@ package handlers
 import (
 	"bytes"
 	"context"
-	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/kozaktomas/photo-sorter/internal/config"
-	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
+	"github.com/kozaktomas/photo-sorter/internal/database"
 )
 
-// createFacesHandlerForTest creates a FacesHandler for testing (without database dependencies).
+// createFacesHandlerForTest creates a FacesHandler for tests that do not
+// exercise the database / marker / subject / photo paths. All native
+// repositories are left nil so individual tests can wire what they need.
 func createFacesHandlerForTest(cfg *config.Config) *FacesHandler {
 	return &FacesHandler{
 		config:         cfg,
@@ -22,28 +24,43 @@ func createFacesHandlerForTest(cfg *config.Config) *FacesHandler {
 	}
 }
 
+// createFacesHandlerWithSubjects wires a FacesHandler with the supplied
+// subject + marker repositories — used by subject CRUD and ListSubjects
+// tests so they can exercise the native repo path end-to-end.
+func createFacesHandlerWithSubjects(
+	cfg *config.Config,
+	subjectRepo database.SubjectWriter,
+	markerRepo database.MarkerWriter,
+) *FacesHandler {
+	return &FacesHandler{
+		config:      cfg,
+		subjectRepo: subjectRepo,
+		markerRepo:  markerRepo,
+	}
+}
+
 func TestFacesHandler_ListSubjects_Success(t *testing.T) {
-	subjectsData := `[
-		{"UID": "subj1", "Name": "John Doe", "Slug": "john-doe", "PhotoCount": 50},
-		{"UID": "subj2", "Name": "Jane Doe", "Slug": "jane-doe", "PhotoCount": 30}
-	]`
+	subjectRepo := newFakeSubjectRepo()
+	markerRepo := newFakeMarkerRepo()
+	subjectRepo.attachMarkers(markerRepo)
 
-	server := setupMockPhotoPrismServer(t, map[string]http.HandlerFunc{
-		"/api/v1/subjects": func(w http.ResponseWriter, r *http.Request) {
-			if r.Method != "GET" {
-				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-				return
-			}
-			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(subjectsData))
-		},
-	})
-	defer server.Close()
+	subjectRepo.seed("subj1", "John Doe")
+	subjectRepo.seed("subj2", "Jane Doe")
+	// Add markers so John Doe has 50 photos and Jane Doe has 30.
+	for i := range 50 {
+		markerRepo.seed(database.Marker{
+			PhotoUID: "p-john-" + intToStr(i), SubjectUID: "subj1", Type: "face",
+		})
+	}
+	for i := range 30 {
+		markerRepo.seed(database.Marker{
+			PhotoUID: "p-jane-" + intToStr(i), SubjectUID: "subj2", Type: "face",
+		})
+	}
 
-	pp := createPhotoPrismClient(t, server)
-	handler := createFacesHandlerForTest(testConfig())
+	handler := createFacesHandlerWithSubjects(testConfig(), subjectRepo, markerRepo)
 
-	req := requestWithPhotoPrism(t, "GET", "/api/v1/subjects", pp)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/subjects", nil)
 	recorder := httptest.NewRecorder()
 
 	handler.ListSubjects(recorder, req)
@@ -55,50 +72,41 @@ func TestFacesHandler_ListSubjects_Success(t *testing.T) {
 	parseJSONResponse(t, recorder, &subjects)
 
 	if len(subjects) != 2 {
-		t.Errorf("expected 2 subjects, got %d", len(subjects))
+		t.Fatalf("expected 2 subjects, got %d", len(subjects))
 	}
 
-	if subjects[0].UID != "subj1" {
-		t.Errorf("expected first subject UID 'subj1', got '%s'", subjects[0].UID)
+	byUID := map[string]SubjectResponse{}
+	for _, s := range subjects {
+		byUID[s.UID] = s
 	}
-
-	if subjects[0].Name != "John Doe" {
-		t.Errorf("expected first subject name 'John Doe', got '%s'", subjects[0].Name)
+	if got := byUID["subj1"]; got.Name != "John Doe" {
+		t.Errorf("expected subj1 name 'John Doe', got %q", got.Name)
 	}
-
-	if subjects[0].Slug != "john-doe" {
-		t.Errorf("expected first subject slug 'john-doe', got '%s'", subjects[0].Slug)
+	if got := byUID["subj1"]; got.PhotoCount != 50 {
+		t.Errorf("expected subj1 photo_count 50, got %d", got.PhotoCount)
+	}
+	if got := byUID["subj2"]; got.PhotoCount != 30 {
+		t.Errorf("expected subj2 photo_count 30, got %d", got.PhotoCount)
 	}
 }
 
 func TestFacesHandler_ListSubjects_WithPagination(t *testing.T) {
-	server := setupMockPhotoPrismServer(t, map[string]http.HandlerFunc{
-		"/api/v1/subjects": func(w http.ResponseWriter, r *http.Request) {
-			query := r.URL.Query()
-			if query.Get("count") != "25" {
-				t.Errorf("expected count=25, got %s", query.Get("count"))
-			}
-			if query.Get("offset") != "10" {
-				t.Errorf("expected offset=10, got %s", query.Get("offset"))
-			}
-			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(`[]`))
-		},
-	})
-	defer server.Close()
+	subjectRepo := newFakeSubjectRepo()
+	// Seed enough rows that pagination is observable.
+	for i := range 5 {
+		subjectRepo.seed("s"+intToStr(i), "Subject "+intToStr(i))
+	}
+	handler := createFacesHandlerWithSubjects(testConfig(), subjectRepo, nil)
 
-	pp := createPhotoPrismClient(t, server)
-	handler := createFacesHandlerForTest(testConfig())
-
-	req := requestWithPhotoPrism(t, "GET", "/api/v1/subjects?count=25&offset=10", pp)
+	req := httptest.NewRequestWithContext(context.Background(), "GET",
+		"/api/v1/subjects?count=2&offset=1", nil)
 	recorder := httptest.NewRecorder()
-
 	handler.ListSubjects(recorder, req)
 
 	assertStatusCode(t, recorder, http.StatusOK)
 }
 
-func TestFacesHandler_ListSubjects_NoClient(t *testing.T) {
+func TestFacesHandler_ListSubjects_NoRepo(t *testing.T) {
 	handler := createFacesHandlerForTest(testConfig())
 
 	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/subjects", nil)
@@ -106,22 +114,16 @@ func TestFacesHandler_ListSubjects_NoClient(t *testing.T) {
 
 	handler.ListSubjects(recorder, req)
 
-	assertStatusCode(t, recorder, http.StatusInternalServerError)
+	assertStatusCode(t, recorder, http.StatusServiceUnavailable)
+	assertJSONError(t, recorder, "subject storage not available")
 }
 
-func TestFacesHandler_ListSubjects_PhotoPrismError(t *testing.T) {
-	server := setupMockPhotoPrismServer(t, map[string]http.HandlerFunc{
-		"/api/v1/subjects": func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(`{"error": "internal error"}`))
-		},
-	})
-	defer server.Close()
+func TestFacesHandler_ListSubjects_RepoError(t *testing.T) {
+	subjectRepo := newFakeSubjectRepo()
+	subjectRepo.ListError = errors.New("boom")
+	handler := createFacesHandlerWithSubjects(testConfig(), subjectRepo, nil)
 
-	pp := createPhotoPrismClient(t, server)
-	handler := createFacesHandlerForTest(testConfig())
-
-	req := requestWithPhotoPrism(t, "GET", "/api/v1/subjects", pp)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/subjects", nil)
 	recorder := httptest.NewRecorder()
 
 	handler.ListSubjects(recorder, req)
@@ -131,31 +133,13 @@ func TestFacesHandler_ListSubjects_PhotoPrismError(t *testing.T) {
 }
 
 func TestFacesHandler_GetSubject_Success(t *testing.T) {
-	subjectData := `{
-		"UID": "subj123",
-		"Name": "John Doe",
-		"Slug": "john-doe",
-		"PhotoCount": 50,
-		"Favorite": true,
-		"About": "A person"
-	}`
+	subjectRepo := newFakeSubjectRepo()
+	s := subjectRepo.seed("subj123", "John Doe")
+	s.Favorite = true
 
-	server := setupMockPhotoPrismServer(t, map[string]http.HandlerFunc{
-		"/api/v1/subjects/subj123": func(w http.ResponseWriter, r *http.Request) {
-			if r.Method != "GET" {
-				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-				return
-			}
-			w.Header().Set("Content-Type", "application/json")
-			w.Write([]byte(subjectData))
-		},
-	})
-	defer server.Close()
+	handler := createFacesHandlerWithSubjects(testConfig(), subjectRepo, nil)
 
-	pp := createPhotoPrismClient(t, server)
-	handler := createFacesHandlerForTest(testConfig())
-
-	req := requestWithPhotoPrism(t, "GET", "/api/v1/subjects/subj123", pp)
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/subjects/subj123", nil)
 	req = requestWithChiParams(req, map[string]string{"uid": "subj123"})
 	recorder := httptest.NewRecorder()
 
@@ -168,20 +152,19 @@ func TestFacesHandler_GetSubject_Success(t *testing.T) {
 	parseJSONResponse(t, recorder, &subject)
 
 	if subject.UID != "subj123" {
-		t.Errorf("expected subject UID 'subj123', got '%s'", subject.UID)
+		t.Errorf("expected subject UID 'subj123', got %q", subject.UID)
 	}
-
 	if subject.Name != "John Doe" {
-		t.Errorf("expected name 'John Doe', got '%s'", subject.Name)
+		t.Errorf("expected name 'John Doe', got %q", subject.Name)
 	}
-
 	if !subject.Favorite {
 		t.Error("expected Favorite to be true")
 	}
 }
 
 func TestFacesHandler_GetSubject_MissingUID(t *testing.T) {
-	handler := createFacesHandlerForTest(testConfig())
+	subjectRepo := newFakeSubjectRepo()
+	handler := createFacesHandlerWithSubjects(testConfig(), subjectRepo, nil)
 
 	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/subjects/", nil)
 	req = requestWithChiParams(req, map[string]string{})
@@ -194,53 +177,27 @@ func TestFacesHandler_GetSubject_MissingUID(t *testing.T) {
 }
 
 func TestFacesHandler_GetSubject_NotFound(t *testing.T) {
-	server := setupMockPhotoPrismServer(t, map[string]http.HandlerFunc{
-		"/api/v1/subjects/nonexistent": func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusNotFound)
-			w.Write([]byte(`{"error": "subject not found"}`))
-		},
-	})
-	defer server.Close()
+	subjectRepo := newFakeSubjectRepo()
+	handler := createFacesHandlerWithSubjects(testConfig(), subjectRepo, nil)
 
-	pp := createPhotoPrismClient(t, server)
-	handler := createFacesHandlerForTest(testConfig())
-
-	req := requestWithPhotoPrism(t, "GET", "/api/v1/subjects/nonexistent", pp)
-	req = requestWithChiParams(req, map[string]string{"uid": "nonexistent"})
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/subjects/nope", nil)
+	req = requestWithChiParams(req, map[string]string{"uid": "nope"})
 	recorder := httptest.NewRecorder()
 
 	handler.GetSubject(recorder, req)
 
-	assertStatusCode(t, recorder, http.StatusInternalServerError)
-	assertJSONError(t, recorder, "failed to get subject")
+	assertStatusCode(t, recorder, http.StatusNotFound)
+	assertJSONError(t, recorder, "subject not found")
 }
 
 func TestFacesHandler_UpdateSubject_Success(t *testing.T) {
-	server := setupMockPhotoPrismServer(t, map[string]http.HandlerFunc{
-		"/api/v1/subjects/subj123": func(w http.ResponseWriter, r *http.Request) {
-			if r.Method != "PUT" {
-				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-				return
-			}
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]any{
-				"UID":      "subj123",
-				"Name":     "Updated Name",
-				"Slug":     "updated-name",
-				"Favorite": true,
-			})
-		},
-	})
-	defer server.Close()
-
-	pp := createPhotoPrismClient(t, server)
-	handler := createFacesHandlerForTest(testConfig())
+	subjectRepo := newFakeSubjectRepo()
+	subjectRepo.seed("subj123", "John Doe")
+	handler := createFacesHandlerWithSubjects(testConfig(), subjectRepo, nil)
 
 	body := bytes.NewBufferString(`{"name": "Updated Name", "favorite": true}`)
 	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/subjects/subj123", body)
 	req.Header.Set("Content-Type", "application/json")
-	ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
-	req = req.WithContext(ctx)
 	req = requestWithChiParams(req, map[string]string{"uid": "subj123"})
 
 	recorder := httptest.NewRecorder()
@@ -254,48 +211,29 @@ func TestFacesHandler_UpdateSubject_Success(t *testing.T) {
 	parseJSONResponse(t, recorder, &subject)
 
 	if subject.Name != "Updated Name" {
-		t.Errorf("expected name 'Updated Name', got '%s'", subject.Name)
+		t.Errorf("expected name 'Updated Name', got %q", subject.Name)
 	}
-
 	if !subject.Favorite {
 		t.Error("expected Favorite to be true")
+	}
+	// Verify the slug was regenerated from the new name.
+	stored, err := subjectRepo.GetSubject(context.Background(), "subj123")
+	if err != nil {
+		t.Fatalf("unexpected get error: %v", err)
+	}
+	if stored.Slug != "updated-name" {
+		t.Errorf("expected slug 'updated-name', got %q", stored.Slug)
 	}
 }
 
 func TestFacesHandler_UpdateSubject_PartialUpdate(t *testing.T) {
-	server := setupMockPhotoPrismServer(t, map[string]http.HandlerFunc{
-		"/api/v1/subjects/subj123": func(w http.ResponseWriter, r *http.Request) {
-			if r.Method != "PUT" {
-				http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
-				return
-			}
+	subjectRepo := newFakeSubjectRepo()
+	subjectRepo.seed("subj123", "Original Name")
+	handler := createFacesHandlerWithSubjects(testConfig(), subjectRepo, nil)
 
-			var update map[string]any
-			json.NewDecoder(r.Body).Decode(&update)
-
-			// Should only have About field.
-			if _, ok := update["Name"]; ok {
-				t.Error("Name should not be in update")
-			}
-
-			w.Header().Set("Content-Type", "application/json")
-			json.NewEncoder(w).Encode(map[string]any{
-				"UID":   "subj123",
-				"Name":  "Original Name",
-				"About": "New about text",
-			})
-		},
-	})
-	defer server.Close()
-
-	pp := createPhotoPrismClient(t, server)
-	handler := createFacesHandlerForTest(testConfig())
-
-	body := bytes.NewBufferString(`{"about": "New about text"}`)
+	body := bytes.NewBufferString(`{"notes": "fresh notes"}`)
 	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/subjects/subj123", body)
 	req.Header.Set("Content-Type", "application/json")
-	ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
-	req = req.WithContext(ctx)
 	req = requestWithChiParams(req, map[string]string{"uid": "subj123"})
 
 	recorder := httptest.NewRecorder()
@@ -303,10 +241,21 @@ func TestFacesHandler_UpdateSubject_PartialUpdate(t *testing.T) {
 	handler.UpdateSubject(recorder, req)
 
 	assertStatusCode(t, recorder, http.StatusOK)
+
+	stored, err := subjectRepo.GetSubject(context.Background(), "subj123")
+	if err != nil {
+		t.Fatalf("unexpected get error: %v", err)
+	}
+	if stored.Name != "Original Name" {
+		t.Errorf("expected name unchanged, got %q", stored.Name)
+	}
+	if stored.Notes != "fresh notes" {
+		t.Errorf("expected notes 'fresh notes', got %q", stored.Notes)
+	}
 }
 
 func TestFacesHandler_UpdateSubject_MissingUID(t *testing.T) {
-	handler := createFacesHandlerForTest(testConfig())
+	handler := createFacesHandlerWithSubjects(testConfig(), newFakeSubjectRepo(), nil)
 
 	body := bytes.NewBufferString(`{"name": "Updated"}`)
 	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/subjects/", body)
@@ -322,7 +271,7 @@ func TestFacesHandler_UpdateSubject_MissingUID(t *testing.T) {
 }
 
 func TestFacesHandler_UpdateSubject_InvalidJSON(t *testing.T) {
-	handler := createFacesHandlerForTest(testConfig())
+	handler := createFacesHandlerWithSubjects(testConfig(), newFakeSubjectRepo(), nil)
 
 	body := bytes.NewBufferString(`{invalid json}`)
 	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/subjects/subj123", body)
@@ -337,7 +286,7 @@ func TestFacesHandler_UpdateSubject_InvalidJSON(t *testing.T) {
 	assertJSONError(t, recorder, "invalid request body")
 }
 
-func TestFacesHandler_UpdateSubject_NoClient(t *testing.T) {
+func TestFacesHandler_UpdateSubject_NoRepo(t *testing.T) {
 	handler := createFacesHandlerForTest(testConfig())
 
 	body := bytes.NewBufferString(`{"name": "Updated"}`)
@@ -349,32 +298,22 @@ func TestFacesHandler_UpdateSubject_NoClient(t *testing.T) {
 
 	handler.UpdateSubject(recorder, req)
 
-	assertStatusCode(t, recorder, http.StatusInternalServerError)
+	assertStatusCode(t, recorder, http.StatusServiceUnavailable)
+	assertJSONError(t, recorder, "subject storage not available")
 }
 
-func TestFacesHandler_UpdateSubject_PhotoPrismError(t *testing.T) {
-	server := setupMockPhotoPrismServer(t, map[string]http.HandlerFunc{
-		"/api/v1/subjects/subj123": func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(`{"error": "internal error"}`))
-		},
-	})
-	defer server.Close()
-
-	pp := createPhotoPrismClient(t, server)
-	handler := createFacesHandlerForTest(testConfig())
+func TestFacesHandler_UpdateSubject_NotFound(t *testing.T) {
+	handler := createFacesHandlerWithSubjects(testConfig(), newFakeSubjectRepo(), nil)
 
 	body := bytes.NewBufferString(`{"name": "Updated"}`)
-	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/subjects/subj123", body)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/subjects/nope", body)
 	req.Header.Set("Content-Type", "application/json")
-	ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
-	req = req.WithContext(ctx)
-	req = requestWithChiParams(req, map[string]string{"uid": "subj123"})
+	req = requestWithChiParams(req, map[string]string{"uid": "nope"})
 
 	recorder := httptest.NewRecorder()
 
 	handler.UpdateSubject(recorder, req)
 
-	assertStatusCode(t, recorder, http.StatusInternalServerError)
-	assertJSONError(t, recorder, "failed to update subject")
+	assertStatusCode(t, recorder, http.StatusNotFound)
+	assertJSONError(t, recorder, "subject not found")
 }

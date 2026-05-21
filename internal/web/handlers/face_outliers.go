@@ -6,7 +6,6 @@ import (
 	"sort"
 
 	"github.com/kozaktomas/photo-sorter/internal/database"
-	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
 
 // OutlierRequest represents a request to find face outliers for a person.
@@ -154,8 +153,6 @@ func (h *FacesHandler) FindOutliers(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "person_name is required")
 		return
 	}
-
-	_ = middleware.MustGetPhotoPrism(r.Context(), w)
 
 	ctx := r.Context()
 	allPersonFaces, err := h.faceReader.GetFacesBySubjectName(ctx, req.PersonName)

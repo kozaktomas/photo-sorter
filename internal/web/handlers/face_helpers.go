@@ -1,8 +1,11 @@
 package handlers
 
 import (
+	"context"
+	"fmt"
+
+	"github.com/kozaktomas/photo-sorter/internal/database"
 	"github.com/kozaktomas/photo-sorter/internal/facematch"
-	"github.com/kozaktomas/photo-sorter/internal/photoprism"
 )
 
 // MatchAction is an alias for facematch.MatchAction used in API responses.
@@ -28,11 +31,16 @@ func convertPixelBBoxToDisplayRelative(bbox []float64, displayWidth, displayHeig
 	return facematch.ConvertPixelBBoxToDisplayRelative(bbox, displayWidth, displayHeight, orientation)
 }
 
-func markerToRelativeBBox(m photoprism.Marker) []float64 {
+// markerToRelativeBBox converts a native database.Marker into the corner-form
+// bounding box [x1, y1, x2, y2] used by computeIoU. Native markers store
+// x/y/w/h directly in display-relative space (0..1), so the helper is a
+// straight conversion with no orientation handling.
+func markerToRelativeBBox(m database.Marker) []float64 {
 	return facematch.MarkerToCornerBBox(m.X, m.Y, m.W, m.H)
 }
 
-// primaryFileInfo holds extracted info from the primary file.
+// primaryFileInfo holds extracted info from the primary file. Width/Height
+// are in raw pixel space; Orientation is the EXIF orientation tag (1-8).
 type primaryFileInfo struct {
 	UID         string
 	Width       int
@@ -40,50 +48,50 @@ type primaryFileInfo struct {
 	Orientation int
 }
 
-// findPrimaryFile locates the primary file map from the photo details Files list.
-// Falls back to the first file if no primary is found.
-func findPrimaryFile(details map[string]any) map[string]any {
-	files, ok := details["Files"].([]any)
-	if !ok || len(files) == 0 {
-		return nil
-	}
-
-	for _, f := range files {
-		if file, ok := f.(map[string]any); ok {
-			if isPrimary, ok := file["Primary"].(bool); ok && isPrimary {
-				return file
-			}
+// resolvePrimaryFilePath returns the storage path of the primary
+// PhotoFile, falling back to the first row when no IsPrimary flag is set.
+// Returns the empty string when the slice is empty.
+func resolvePrimaryFilePath(files []database.PhotoFile) string {
+	for i := range files {
+		if files[i].IsPrimary {
+			return files[i].FilePath
 		}
 	}
-	// Fall back to first file if no primary found.
-	primaryFile, _ := files[0].(map[string]any)
-	return primaryFile
+	if len(files) > 0 {
+		return files[0].FilePath
+	}
+	return ""
 }
 
-// parseFileInfo extracts UID, dimensions, and orientation from a file map.
-func parseFileInfo(file map[string]any) *primaryFileInfo {
-	info := &primaryFileInfo{Orientation: 1} // Default orientation
-	if uid, ok := file["UID"].(string); ok {
-		info.UID = uid
+// fetchPhotoFileInfo loads the native Photo + primary PhotoFile for the
+// given UID and folds them into primaryFileInfo. Returns nil + a non-nil
+// error if either lookup fails; returns nil + nil if the photo has no
+// usable primary file (no rows in photo_files, or zero dimensions).
+func fetchPhotoFileInfo(
+	ctx context.Context, reader database.PhotoReader, photoUID string,
+) (*primaryFileInfo, error) {
+	if reader == nil {
+		return nil, nil //nolint:nilnil // No reader configured — caller treats as missing.
 	}
-	if w, ok := file["Width"].(float64); ok {
-		info.Width = int(w)
+	photo, err := reader.GetPhoto(ctx, photoUID)
+	if err != nil {
+		return nil, fmt.Errorf("get photo: %w", err)
 	}
-	if h, ok := file["Height"].(float64); ok {
-		info.Height = int(h)
+	info := &primaryFileInfo{
+		Width:       photo.FileWidth,
+		Height:      photo.FileHeight,
+		Orientation: photo.FileOrientation,
 	}
-	if o, ok := file["Orientation"].(float64); ok {
-		info.Orientation = int(o)
+	if info.Orientation == 0 {
+		info.Orientation = 1
 	}
-	return info
-}
-
-// extractPrimaryFileInfo extracts dimensions and orientation from the primary file in photo details.
-// Face detection runs on the primary file, so we must use its dimensions for coordinate conversion.
-func extractPrimaryFileInfo(details map[string]any) *primaryFileInfo {
-	primaryFile := findPrimaryFile(details)
-	if primaryFile == nil {
-		return nil
+	files, err := reader.ListPhotoFiles(ctx, photoUID)
+	if err != nil {
+		return nil, fmt.Errorf("list photo files: %w", err)
 	}
-	return parseFileInfo(primaryFile)
+	info.UID = resolvePrimaryFilePath(files)
+	if info.Width == 0 || info.Height == 0 {
+		return nil, nil //nolint:nilnil // Photo lacks usable dimensions.
+	}
+	return info, nil
 }

@@ -65,6 +65,31 @@ func (s *Server) resolveLabelRepo() database.LabelWriter {
 	return r
 }
 
+// resolveMarkerRepo best-effort-fetches the native MarkerWriter. Returns
+// nil (and logs) when the registration is missing — the native marker /
+// face endpoints will then surface a 503 rather than blocking server
+// startup.
+func (s *Server) resolveMarkerRepo() database.MarkerWriter {
+	r, err := database.GetMarkerWriter(context.Background())
+	if err != nil {
+		log.Printf("markers: native repo unavailable: %v", err)
+		return nil
+	}
+	return r
+}
+
+// resolveSubjectRepo best-effort-fetches the native SubjectWriter. Returns
+// nil (and logs) when the registration is missing — the native subject
+// endpoints will then surface a 503 rather than blocking server startup.
+func (s *Server) resolveSubjectRepo() database.SubjectWriter {
+	r, err := database.GetSubjectWriter(context.Background())
+	if err != nil {
+		log.Printf("subjects: native repo unavailable: %v", err)
+		return nil
+	}
+	return r
+}
+
 // resolveUserRepos best-effort-fetches the native UserReader and
 // UserWriter. Returns nils (and logs) when the registration is missing —
 // the auth handler then surfaces a 500 from login until the user store is
@@ -91,6 +116,8 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 	photoRepo, photoStore := s.resolveNativePhotoBackends()
 	albumRepo := s.resolveAlbumRepo()
 	labelRepo := s.resolveLabelRepo()
+	markerRepo := s.resolveMarkerRepo()
+	subjectRepo := s.resolveSubjectRepo()
 	userReader, userWriter := s.resolveUserRepos()
 
 	// Create handlers.
@@ -100,7 +127,10 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 	photosHandler := handlers.NewPhotosHandler(s.config, sessionManager, photoRepo, photoStore, labelRepo)
 	sortHandler := handlers.NewSortHandler(s.config, sessionManager, s.jobManager, labelRepo)
 	configHandler := handlers.NewConfigHandler(s.config)
-	facesHandler := handlers.NewFacesHandler(s.config, sessionManager)
+	facesHandler := handlers.NewFacesHandler(
+		s.config, sessionManager,
+		markerRepo, subjectRepo, photoRepo, photoStore,
+	)
 	statsHandler := handlers.NewStatsHandler(s.config, sessionManager)
 	processHandler := handlers.NewProcessHandler(s.config, sessionManager, facesHandler, photosHandler, statsHandler)
 	uploadHandler := handlers.NewUploadHandler(s.config, sessionManager, processHandler)

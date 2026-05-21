@@ -9,10 +9,11 @@ import (
 
 	"github.com/kozaktomas/photo-sorter/internal/database"
 	"github.com/kozaktomas/photo-sorter/internal/database/mock"
-	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
 
-// createFacesHandlerWithMocks creates a FacesHandler with mock database dependencies.
+// createFacesHandlerWithMocks creates a FacesHandler with the supplied face
+// reader/writer; marker / subject / photo repositories are left nil so the
+// Match path exercises only the HNSW + cached-marker code.
 func createFacesHandlerWithMocks(faceReader database.FaceReader, faceWriter database.FaceWriter) *FacesHandler {
 	return &FacesHandler{
 		config:         testConfig(),
@@ -85,37 +86,13 @@ func TestFacesHandler_Match_EmptyPersonName(t *testing.T) {
 	assertJSONError(t, recorder, "person_name is required")
 }
 
-func TestFacesHandler_Match_NoPhotoPrismClient(t *testing.T) {
-	mockReader := mock.NewMockFaceReader()
-	handler := createFacesHandlerWithMocks(mockReader, nil)
-
-	body := bytes.NewBufferString(`{"person_name": "john-doe"}`)
-	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/faces/match", body)
-	req.Header.Set("Content-Type", "application/json")
-
-	recorder := httptest.NewRecorder()
-
-	handler.Match(recorder, req)
-
-	// Should fail because no PhotoPrism client in context.
-	assertStatusCode(t, recorder, http.StatusInternalServerError)
-}
-
 func TestFacesHandler_Match_NoFacesForPerson(t *testing.T) {
 	mockReader := mock.NewMockFaceReader()
 	handler := createFacesHandlerWithMocks(mockReader, nil)
 
-	// Set up mock server for PhotoPrism.
-	server := setupMockPhotoPrismServer(t, nil)
-	defer server.Close()
-
-	pp := createPhotoPrismClient(t, server)
-
 	body := bytes.NewBufferString(`{"person_name": "john-doe"}`)
 	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/faces/match", body)
 	req.Header.Set("Content-Type", "application/json")
-	ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
-	req = req.WithContext(ctx)
 
 	recorder := httptest.NewRecorder()
 
@@ -163,17 +140,9 @@ func TestFacesHandler_Match_WithThresholdAndLimit(t *testing.T) {
 
 	handler := createFacesHandlerWithMocks(mockReader, nil)
 
-	// Set up mock server for PhotoPrism.
-	server := setupMockPhotoPrismServer(t, nil)
-	defer server.Close()
-
-	pp := createPhotoPrismClient(t, server)
-
 	body := bytes.NewBufferString(`{"person_name": "john-doe", "threshold": 0.3, "limit": 10}`)
 	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/faces/match", body)
 	req.Header.Set("Content-Type", "application/json")
-	ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
-	req = req.WithContext(ctx)
 
 	recorder := httptest.NewRecorder()
 
@@ -202,17 +171,10 @@ func TestFacesHandler_Match_DefaultThreshold(t *testing.T) {
 	mockReader := mock.NewMockFaceReader()
 	handler := createFacesHandlerWithMocks(mockReader, nil)
 
-	server := setupMockPhotoPrismServer(t, nil)
-	defer server.Close()
-
-	pp := createPhotoPrismClient(t, server)
-
 	// Request without threshold - should use default 0.5.
 	body := bytes.NewBufferString(`{"person_name": "john-doe"}`)
 	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/faces/match", body)
 	req.Header.Set("Content-Type", "application/json")
-	ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
-	req = req.WithContext(ctx)
 
 	recorder := httptest.NewRecorder()
 
@@ -227,16 +189,9 @@ func TestFacesHandler_Match_GetFacesBySubjectError(t *testing.T) {
 
 	handler := createFacesHandlerWithMocks(mockReader, nil)
 
-	server := setupMockPhotoPrismServer(t, nil)
-	defer server.Close()
-
-	pp := createPhotoPrismClient(t, server)
-
 	body := bytes.NewBufferString(`{"person_name": "john-doe"}`)
 	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/faces/match", body)
 	req.Header.Set("Content-Type", "application/json")
-	ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
-	req = req.WithContext(ctx)
 
 	recorder := httptest.NewRecorder()
 
@@ -244,6 +199,53 @@ func TestFacesHandler_Match_GetFacesBySubjectError(t *testing.T) {
 
 	assertStatusCode(t, recorder, http.StatusInternalServerError)
 	assertJSONError(t, recorder, "failed to get faces for person")
+}
+
+func TestFacesHandler_Match_AugmentsViaMarkerRepo(t *testing.T) {
+	// Pre-existing marker on a photo that doesn't yet have a face row;
+	// augmentSourcePhotoSet should include that photo in source_photos so
+	// it is excluded from the candidate search.
+	mockReader := mock.NewMockFaceReader()
+	mockReader.AddFaces("photo1", []database.StoredFace{
+		{
+			PhotoUID:    "photo1",
+			FaceIndex:   0,
+			Embedding:   make([]float32, 512),
+			BBox:        []float64{100, 100, 200, 200},
+			SubjectName: "John Doe",
+			SubjectUID:  "subj-john",
+			MarkerUID:   "marker-1",
+			PhotoWidth:  1000,
+			PhotoHeight: 800,
+		},
+	})
+	markerRepo := newFakeMarkerRepo()
+	markerRepo.seed(database.Marker{
+		UID: "marker-existing", PhotoUID: "photo-existing", SubjectUID: "subj-john", Type: "face",
+	})
+	subjectRepo := newFakeSubjectRepo()
+	subjectRepo.seed("subj-john", "John Doe")
+
+	handler := &FacesHandler{
+		config:      testConfig(),
+		faceReader:  mockReader,
+		markerRepo:  markerRepo,
+		subjectRepo: subjectRepo,
+	}
+
+	body := bytes.NewBufferString(`{"person_name": "John Doe"}`)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/faces/match", body)
+	req.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+
+	handler.Match(recorder, req)
+
+	assertStatusCode(t, recorder, http.StatusOK)
+	var response MatchResponse
+	parseJSONResponse(t, recorder, &response)
+	if response.SourcePhotos != 2 {
+		t.Errorf("expected source_photos=2 (photo1 + photo-existing via marker), got %d", response.SourcePhotos)
+	}
 }
 
 func TestMatchRequest_Validation(t *testing.T) {
@@ -292,16 +294,9 @@ func TestMatchRequest_Validation(t *testing.T) {
 			mockReader := mock.NewMockFaceReader()
 			handler := createFacesHandlerWithMocks(mockReader, nil)
 
-			server := setupMockPhotoPrismServer(t, nil)
-			defer server.Close()
-
-			pp := createPhotoPrismClient(t, server)
-
 			body := bytes.NewBufferString(tc.body)
 			req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/faces/match", body)
 			req.Header.Set("Content-Type", "application/json")
-			ctx := middleware.SetPhotoPrismInContext(req.Context(), pp)
-			req = req.WithContext(ctx)
 
 			recorder := httptest.NewRecorder()
 

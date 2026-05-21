@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log"
 	"net/http"
 	"sync"
@@ -10,8 +11,6 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/constants"
 	"github.com/kozaktomas/photo-sorter/internal/database"
 	"github.com/kozaktomas/photo-sorter/internal/facematch"
-	"github.com/kozaktomas/photo-sorter/internal/photoprism"
-	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
 
 // MatchRequest represents a face match request.
@@ -224,26 +223,25 @@ func filterAndSortCandidates(matchMap map[string]*matchCandidate, minMatchCount,
 }
 
 // resolveCandidateDimensions resolves width, height, orientation, and fileUID for a candidate.
-// Falls back to the PhotoPrism API if cached data is missing. Returns false if resolution fails.
-func resolveCandidateDimensions(c *matchCandidate, pp interface {
-	GetPhotoDetails(string) (map[string]any, error)
-}) (width, height, orientation int, fileUID string, ok bool) {
+// Falls back to the native PhotoReader if cached data is missing. Returns false if resolution fails.
+func resolveCandidateDimensions(
+	ctx context.Context, c *matchCandidate, photoReader database.PhotoReader,
+) (width, height, orientation int, fileUID string, ok bool) {
 	width, height, orientation = c.PhotoWidth, c.PhotoHeight, c.Orientation
 	fileUID = c.FileUID
 
-	if width == 0 || height == 0 {
-		details, err := pp.GetPhotoDetails(c.PhotoUID)
-		if err != nil {
-			return 0, 0, 0, "", false
+	if width != 0 && height != 0 {
+		if orientation == 0 {
+			orientation = 1
 		}
-		fileInfo := extractPrimaryFileInfo(details)
-		if fileInfo == nil || fileInfo.Width == 0 || fileInfo.Height == 0 {
-			return 0, 0, 0, "", false
-		}
-		width, height, orientation = fileInfo.Width, fileInfo.Height, fileInfo.Orientation
-		fileUID = fileInfo.UID
+		return width, height, orientation, fileUID, true
 	}
-	return width, height, orientation, fileUID, true
+
+	fileInfo, err := fetchPhotoFileInfo(ctx, photoReader, c.PhotoUID)
+	if err != nil || fileInfo == nil {
+		return 0, 0, 0, "", false
+	}
+	return fileInfo.Width, fileInfo.Height, fileInfo.Orientation, fileInfo.UID, true
 }
 
 // determineMatchAction determines the action for a match based on cached marker data.
@@ -257,12 +255,13 @@ func determineMatchAction(c *matchCandidate) (MatchAction, string, string) {
 	return ActionAssignPerson, c.MarkerUID, c.SubjectName
 }
 
-// candidateToMatchResult converts a matchCandidate to a FaceMatchResult, fetching dimensions from the API if needed.
+// candidateToMatchResult converts a matchCandidate to a FaceMatchResult,
+// fetching dimensions from the native PhotoReader if not cached.
 // Returns nil if the candidate should be skipped.
-func candidateToMatchResult(c *matchCandidate, pp interface {
-	GetPhotoDetails(string) (map[string]any, error)
-}) *FaceMatchResult {
-	width, height, orientation, fileUID, ok := resolveCandidateDimensions(c, pp)
+func candidateToMatchResult(
+	ctx context.Context, c *matchCandidate, photoReader database.PhotoReader,
+) *FaceMatchResult {
+	width, height, orientation, fileUID, ok := resolveCandidateDimensions(ctx, c, photoReader)
 	if !ok || len(c.BBox) != 4 {
 		return nil
 	}
@@ -284,14 +283,14 @@ func candidateToMatchResult(c *matchCandidate, pp interface {
 }
 
 // buildMatchResults converts candidates to match results and computes the summary.
-func buildMatchResults(candidates []matchCandidate, pp interface {
-	GetPhotoDetails(string) (map[string]any, error)
-}) ([]FaceMatchResult, MatchSummary) {
+func buildMatchResults(
+	ctx context.Context, candidates []matchCandidate, photoReader database.PhotoReader,
+) ([]FaceMatchResult, MatchSummary) {
 	matches := make([]FaceMatchResult, 0, len(candidates))
 	var summary MatchSummary
 
 	for ci := range candidates {
-		result := candidateToMatchResult(&candidates[ci], pp)
+		result := candidateToMatchResult(ctx, &candidates[ci], photoReader)
 		if result == nil {
 			continue
 		}
@@ -379,31 +378,55 @@ func extractSourceEmbeddings(sourceFaces []matchSourceData) [][]float32 {
 	return embeddings
 }
 
-// augmentSourcePhotoSet queries PhotoPrism for photos already tagged with the person.
-// and adds their UIDs to sourcePhotoSet. This guards against stale local cache where.
-// the faces table doesn't have subject_name set, so the photo would be missed.
-func augmentSourcePhotoSet(pp *photoprism.PhotoPrism, subjectUID string, sourcePhotoSet map[string]bool) {
-	if subjectUID == "" {
-		return
-	}
-	subj, err := pp.GetSubject(subjectUID)
-	if err != nil || subj.Slug == "" {
-		return
-	}
-	query := "person:" + subj.Slug
+// collectSubjectPhotos paginates through the markers for the given subject
+// and folds every (non-invalid) photo UID into target. Errors are logged
+// and end the iteration so a partial fill still benefits the caller.
+func collectSubjectPhotos(
+	ctx context.Context, markerRepo database.MarkerReader,
+	subjectUID string, target map[string]bool,
+) {
 	const pageSize = 500
 	for offset := 0; ; offset += pageSize {
-		photos, err := pp.GetPhotosWithQuery(pageSize, offset, query, 0)
-		if err != nil || len(photos) == 0 {
-			break
+		markers, err := markerRepo.ListMarkersForSubject(ctx, subjectUID, pageSize, offset)
+		if err != nil {
+			log.Printf("[face_match] augment: list markers %s: %v",
+				sanitizeForLog(subjectUID), err)
+			return
 		}
-		for i := range photos {
-			sourcePhotoSet[photos[i].UID] = true
+		if len(markers) == 0 {
+			return
 		}
-		if len(photos) < pageSize {
-			break
+		for i := range markers {
+			if !markers[i].Invalid {
+				target[markers[i].PhotoUID] = true
+			}
+		}
+		if len(markers) < pageSize {
+			return
 		}
 	}
+}
+
+// augmentSourcePhotoSet adds every photo already tagged with the given
+// subject to sourcePhotoSet via the native marker repository. This guards
+// against stale local cache where the faces table does not have
+// subject_name set, so the photo would otherwise be missed.
+func augmentSourcePhotoSet(
+	ctx context.Context, subjectRepo database.SubjectReader, markerRepo database.MarkerReader,
+	subjectUID string, sourcePhotoSet map[string]bool,
+) {
+	if subjectUID == "" || subjectRepo == nil || markerRepo == nil {
+		return
+	}
+	subj, err := subjectRepo.GetSubject(ctx, subjectUID)
+	if err != nil {
+		if !errors.Is(err, database.ErrNotFound) {
+			log.Printf("[face_match] augment: get subject %s: %v",
+				sanitizeForLog(subjectUID), err)
+		}
+		return
+	}
+	collectSubjectPhotos(ctx, markerRepo, subjectUID, sourcePhotoSet)
 	log.Printf("[face_match] augmented sourcePhotoSet to %d photos for subject %s (%s)",
 		len(sourcePhotoSet), sanitizeForLog(subj.Name), sanitizeForLog(subj.Slug))
 }
@@ -422,11 +445,6 @@ func (h *FacesHandler) Match(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pp := middleware.MustGetPhotoPrism(r.Context(), w)
-	if pp == nil {
-		return
-	}
-
 	ctx := r.Context()
 	allPersonFaces, err := h.faceReader.GetFacesBySubjectName(ctx, req.PersonName)
 	if err != nil {
@@ -440,7 +458,7 @@ func (h *FacesHandler) Match(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sourceFaces, sourcePhotoSet := buildMatchSourceData(allPersonFaces)
-	augmentSourcePhotoSet(pp, allPersonFaces[0].SubjectUID, sourcePhotoSet)
+	augmentSourcePhotoSet(ctx, h.subjectRepo, h.markerRepo, allPersonFaces[0].SubjectUID, sourcePhotoSet)
 	sourceEmbeddings := extractSourceEmbeddings(sourceFaces)
 
 	if len(sourceEmbeddings) == 0 {
@@ -459,7 +477,7 @@ func (h *FacesHandler) Match(w http.ResponseWriter, r *http.Request) {
 	)
 	markAlreadyAssignedPhotos(ctx, h.faceReader, matchMap, req.PersonName)
 	candidates := filterAndSortCandidates(matchMap, computeMinMatchCount(len(sourceEmbeddings), req.Threshold), req.Limit)
-	matches, summary := buildMatchResults(candidates, pp)
+	matches, summary := buildMatchResults(ctx, candidates, h.photoReader)
 
 	respondJSON(w, http.StatusOK, MatchResponse{
 		Person: req.PersonName, SourcePhotos: len(sourcePhotoSet),
