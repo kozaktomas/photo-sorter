@@ -267,6 +267,113 @@ func TestPhotosHandler_EditExif_ViewerForbidden(t *testing.T) {
 	assertStatusCode(t, rec, http.StatusForbidden)
 }
 
+// TestPhotosHandler_EditExif_GapFixFields verifies that the metadata
+// gap-fix fields (keywords, panorama, scan, exif_artist / copyright /
+// license / software) round-trip from the request body onto the photo
+// row. quality / time_zone / taken_at_offset are intentionally NOT in
+// this payload because the EXIF endpoint rejects them; see
+// TestPhotosHandler_EditExif_RejectsReadOnly.
+func TestPhotosHandler_EditExif_GapFixFields(t *testing.T) {
+	reader := newFakePhotoReader()
+	reader.add(samplePhoto("photo123", "abc123456789", "p",
+		time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC)))
+	h := createPhotosHandlerNative(testConfig(), reader, newTestStorage(t))
+
+	body := `{
+		"keywords": ["sunset", "veselice", "Veselice ", "  ", "ČR 🇨🇿", "sunset"],
+		"panorama": true,
+		"scan": true,
+		"exif_artist": "Alice Photographer",
+		"exif_copyright": "(c) 2024 Alice",
+		"exif_license": "CC BY-SA 4.0",
+		"exif_software": "PhotoPrism 240801"
+	}`
+	req := newExifEditRequest(t, "photo123", body)
+	rec := httptest.NewRecorder()
+	h.EditExif(rec, req)
+	assertStatusCode(t, rec, http.StatusOK)
+
+	stored, _ := reader.GetPhoto(context.Background(), "photo123")
+	wantKW := []string{"sunset", "veselice", "Veselice", "ČR 🇨🇿"}
+	if len(stored.Keywords) != len(wantKW) {
+		t.Fatalf("keywords = %v, want %v", stored.Keywords, wantKW)
+	}
+	for i, kw := range wantKW {
+		if stored.Keywords[i] != kw {
+			t.Errorf("keywords[%d] = %q, want %q", i, stored.Keywords[i], kw)
+		}
+	}
+	if !stored.Panorama {
+		t.Errorf("Panorama = false, want true")
+	}
+	if !stored.Scan {
+		t.Errorf("Scan = false, want true")
+	}
+	if stored.ExifArtist != "Alice Photographer" {
+		t.Errorf("ExifArtist = %q", stored.ExifArtist)
+	}
+	if stored.ExifCopyright != "(c) 2024 Alice" {
+		t.Errorf("ExifCopyright = %q", stored.ExifCopyright)
+	}
+	if stored.ExifLicense != "CC BY-SA 4.0" {
+		t.Errorf("ExifLicense = %q", stored.ExifLicense)
+	}
+	if stored.ExifSoftware != "PhotoPrism 240801" {
+		t.Errorf("ExifSoftware = %q", stored.ExifSoftware)
+	}
+}
+
+// TestPhotosHandler_EditExif_ClearKeywords confirms that a request
+// containing `"keywords": []` clears the column. Distinguishing
+// "absent" from "explicit empty" matters because the same handler is
+// used for both partial updates and "reset to no keywords" actions.
+func TestPhotosHandler_EditExif_ClearKeywords(t *testing.T) {
+	reader := newFakePhotoReader()
+	p := samplePhoto("photo123", "abc123456789", "p",
+		time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC))
+	p.Keywords = []string{"old", "tags"}
+	reader.add(p)
+	h := createPhotosHandlerNative(testConfig(), reader, newTestStorage(t))
+
+	req := newExifEditRequest(t, "photo123", `{"keywords": []}`)
+	rec := httptest.NewRecorder()
+	h.EditExif(rec, req)
+	assertStatusCode(t, rec, http.StatusOK)
+
+	stored, _ := reader.GetPhoto(context.Background(), "photo123")
+	if len(stored.Keywords) != 0 {
+		t.Errorf("keywords = %v, want empty slice", stored.Keywords)
+	}
+}
+
+// TestPhotosHandler_EditExif_RejectsReadOnly exercises the three keys
+// that GET surfaces but PUT rejects (quality / taken_at_offset /
+// time_zone). Each must produce a 400 with a clear message so a buggy
+// client gets a loud failure rather than a silently dropped field.
+func TestPhotosHandler_EditExif_RejectsReadOnly(t *testing.T) {
+	reader := newFakePhotoReader()
+	reader.add(samplePhoto("photo123", "abc123456789", "p",
+		time.Date(2024, 6, 1, 0, 0, 0, 0, time.UTC)))
+	h := createPhotosHandlerNative(testConfig(), reader, newTestStorage(t))
+
+	cases := []struct {
+		field, body string
+	}{
+		{"quality", `{"quality": 5}`},
+		{"taken_at_offset", `{"taken_at_offset": 7200}`},
+		{"time_zone", `{"time_zone": "Europe/Prague"}`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.field, func(t *testing.T) {
+			req := newExifEditRequest(t, "photo123", tc.body)
+			rec := httptest.NewRecorder()
+			h.EditExif(rec, req)
+			assertStatusCode(t, rec, http.StatusBadRequest)
+			assertJSONError(t, rec, tc.field+" is read-only")
+		})
+	}
+}
+
 func TestSidecarRelPath(t *testing.T) {
 	cases := []struct {
 		in, want string

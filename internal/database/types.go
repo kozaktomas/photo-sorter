@@ -287,7 +287,9 @@ func DefaultSplitPosition(format string) float64 {
 }
 
 // Photo represents a single photo managed by the native photo pipeline.
-// It mirrors the columns of the photos table introduced in migration 032.
+// It mirrors the columns of the photos table introduced in migration 032
+// and extended by migration 036 with the metadata fields that previously
+// fell on the floor during migrate-from-photoprism.
 type Photo struct {
 	UID             string
 	FileHash        string
@@ -300,6 +302,8 @@ type Photo struct {
 	FileOrientation int
 	TakenAt         *time.Time
 	TakenAtSource   string
+	TimeZone        string // IANA name (e.g. "Europe/Prague"); empty when unknown
+	TakenAtOffset   int    // seconds east of UTC for the TakenAt instant
 	Title           string
 	Description     string
 	Notes           string
@@ -314,6 +318,14 @@ type Photo struct {
 	Exposure        string
 	FocalLength     *float64
 	Exif            map[string]any
+	ExifArtist      string
+	ExifCopyright   string
+	ExifLicense     string
+	ExifSoftware    string
+	Keywords        []string
+	Panorama        bool
+	Scan            bool
+	Quality         int16 // PhotoPrism quality tier, clamped 0..7
 	Favorite        bool
 	Private         bool
 	ArchivedAt      *time.Time

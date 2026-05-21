@@ -37,10 +37,13 @@ const (
 // the photos table. The order here matches scanPhoto below.
 const photoColumns = `uid, file_hash, file_path, file_name, file_size, file_mime,
 	file_width, file_height, file_orientation,
-	taken_at, taken_at_source, title, description, notes,
+	taken_at, taken_at_source, time_zone, taken_at_offset,
+	title, description, notes,
 	lat, lng, altitude,
 	camera_make, camera_model, lens_model,
 	iso, aperture, exposure, focal_length, exif,
+	exif_artist, exif_copyright, exif_license, exif_software,
+	keywords, panorama, scan, quality,
 	favorite, private, archived_at, uploaded_by, created_at, updated_at`
 
 // photoFileColumns is the canonical column list for SELECT statements
@@ -227,27 +230,36 @@ func (r *PhotoRepository) CreatePhoto(ctx context.Context, p *database.Photo) er
 		`INSERT INTO photos (
 			uid, file_hash, file_path, file_name, file_size, file_mime,
 			file_width, file_height, file_orientation,
-			taken_at, taken_at_source, title, description, notes,
+			taken_at, taken_at_source, time_zone, taken_at_offset,
+			title, description, notes,
 			lat, lng, altitude,
 			camera_make, camera_model, lens_model,
 			iso, aperture, exposure, focal_length, exif,
+			exif_artist, exif_copyright, exif_license, exif_software,
+			keywords, panorama, scan, quality,
 			favorite, private, archived_at, uploaded_by
 		) VALUES (
 			$1, $2, $3, $4, $5, $6,
 			$7, $8, $9,
-			$10, $11, $12, $13, $14,
-			$15, $16, $17,
-			$18, $19, $20,
-			$21, $22, $23, $24, $25::jsonb,
-			$26, $27, $28, $29
+			$10, $11, $12, $13,
+			$14, $15, $16,
+			$17, $18, $19,
+			$20, $21, $22,
+			$23, $24, $25, $26, $27::jsonb,
+			$28, $29, $30, $31,
+			$32, $33, $34, $35,
+			$36, $37, $38, $39
 		)
 		RETURNING created_at, updated_at`,
 		p.UID, p.FileHash, p.FilePath, p.FileName, p.FileSize, p.FileMime,
 		p.FileWidth, p.FileHeight, p.FileOrientation,
-		p.TakenAt, p.TakenAtSource, p.Title, p.Description, p.Notes,
+		p.TakenAt, p.TakenAtSource, p.TimeZone, p.TakenAtOffset,
+		p.Title, p.Description, p.Notes,
 		p.Lat, p.Lng, p.Altitude,
 		p.CameraMake, p.CameraModel, p.LensModel,
 		p.ISO, p.Aperture, p.Exposure, p.FocalLength, exifJSON,
+		p.ExifArtist, p.ExifCopyright, p.ExifLicense, p.ExifSoftware,
+		pq.Array(normalizeKeywords(p.Keywords)), p.Panorama, p.Scan, clampQuality(p.Quality),
 		p.Favorite, p.Private, p.ArchivedAt, uploadedBy,
 	)
 	if err := row.Scan(&p.CreatedAt, &p.UpdatedAt); err != nil {
@@ -271,25 +283,33 @@ func (r *PhotoRepository) UpdatePhoto(ctx context.Context, p *database.Photo) er
 			file_size = $4, file_mime = $5,
 			file_width = $6, file_height = $7, file_orientation = $8,
 			taken_at = $9, taken_at_source = $10,
-			title = $11, description = $12, notes = $13,
-			lat = $14, lng = $15, altitude = $16,
-			camera_make = $17, camera_model = $18, lens_model = $19,
-			iso = $20, aperture = $21, exposure = $22, focal_length = $23,
-			exif = $24::jsonb,
-			favorite = $25, private = $26, archived_at = $27,
-			uploaded_by = $28,
+			time_zone = $11, taken_at_offset = $12,
+			title = $13, description = $14, notes = $15,
+			lat = $16, lng = $17, altitude = $18,
+			camera_make = $19, camera_model = $20, lens_model = $21,
+			iso = $22, aperture = $23, exposure = $24, focal_length = $25,
+			exif = $26::jsonb,
+			exif_artist = $27, exif_copyright = $28,
+			exif_license = $29, exif_software = $30,
+			keywords = $31, panorama = $32, scan = $33, quality = $34,
+			favorite = $35, private = $36, archived_at = $37,
+			uploaded_by = $38,
 			updated_at = NOW()
-		 WHERE uid = $29
+		 WHERE uid = $39
 		 RETURNING updated_at`,
 		p.FileHash, p.FilePath, p.FileName,
 		p.FileSize, p.FileMime,
 		p.FileWidth, p.FileHeight, p.FileOrientation,
 		p.TakenAt, p.TakenAtSource,
+		p.TimeZone, p.TakenAtOffset,
 		p.Title, p.Description, p.Notes,
 		p.Lat, p.Lng, p.Altitude,
 		p.CameraMake, p.CameraModel, p.LensModel,
 		p.ISO, p.Aperture, p.Exposure, p.FocalLength,
 		exifJSON,
+		p.ExifArtist, p.ExifCopyright,
+		p.ExifLicense, p.ExifSoftware,
+		pq.Array(normalizeKeywords(p.Keywords)), p.Panorama, p.Scan, clampQuality(p.Quality),
 		p.Favorite, p.Private, p.ArchivedAt,
 		uploadedBy,
 		p.UID,
@@ -402,14 +422,18 @@ func scanPhoto(s rowScanner) (*database.Photo, error) {
 		p          database.Photo
 		exifBytes  []byte
 		uploadedBy sql.NullString
+		keywords   pq.StringArray
 	)
 	err := s.Scan(
 		&p.UID, &p.FileHash, &p.FilePath, &p.FileName, &p.FileSize, &p.FileMime,
 		&p.FileWidth, &p.FileHeight, &p.FileOrientation,
-		&p.TakenAt, &p.TakenAtSource, &p.Title, &p.Description, &p.Notes,
+		&p.TakenAt, &p.TakenAtSource, &p.TimeZone, &p.TakenAtOffset,
+		&p.Title, &p.Description, &p.Notes,
 		&p.Lat, &p.Lng, &p.Altitude,
 		&p.CameraMake, &p.CameraModel, &p.LensModel,
 		&p.ISO, &p.Aperture, &p.Exposure, &p.FocalLength, &exifBytes,
+		&p.ExifArtist, &p.ExifCopyright, &p.ExifLicense, &p.ExifSoftware,
+		&keywords, &p.Panorama, &p.Scan, &p.Quality,
 		&p.Favorite, &p.Private, &p.ArchivedAt, &uploadedBy,
 		&p.CreatedAt, &p.UpdatedAt,
 	)
@@ -417,6 +441,7 @@ func scanPhoto(s rowScanner) (*database.Photo, error) {
 		return nil, fmt.Errorf("scan photo row: %w", err)
 	}
 	p.UploadedBy = uploadedBy.String
+	p.Keywords = []string(keywords)
 	p.Exif, err = unmarshalExif(exifBytes)
 	if err != nil {
 		return nil, fmt.Errorf("unmarshal exif: %w", err)
@@ -701,6 +726,33 @@ func nullableString(s string) any {
 		return nil
 	}
 	return s
+}
+
+// normalizeKeywords returns a non-nil slice so pq.Array writes `'{}'` rather
+// than NULL into the keywords column, which is NOT NULL DEFAULT '{}'. The
+// elements are passed through unchanged — the migrator and the EXIF edit
+// endpoint are responsible for trimming whitespace and dropping empties
+// upstream.
+func normalizeKeywords(kw []string) []string {
+	if kw == nil {
+		return []string{}
+	}
+	return kw
+}
+
+// clampQuality keeps quality inside PhotoPrism's documented [0, 7] range.
+// PhotoPrism's upstream column is INT, so a defensive clamp here matches the
+// SMALLINT column constraint and avoids surprising overflow if the source
+// row carries garbage.
+func clampQuality(q int16) int16 {
+	switch {
+	case q < 0:
+		return 0
+	case q > 7:
+		return 7
+	default:
+		return q
+	}
 }
 
 // ensureRowAffectedOrExists distinguishes between "no such photo" (which

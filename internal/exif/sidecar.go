@@ -33,6 +33,13 @@ var sidecarMissingOnce sync.Once
 // written; the rest are left to whatever the existing sidecar (or future
 // re-import) supplies. Apart from String/Notes the fields mirror the
 // Metadata struct so callers can pass them straight through.
+//
+// The trailing block (Keywords, Artist, Copyright, License, Software,
+// Panorama, Scan) was added by the photo-level metadata gap-fix task so
+// the EXIF edit endpoint can persist them to BOTH the photos row AND the
+// XMP sidecar in one call. Keywords are nil-vs-empty-distinguishable:
+// nil means "do not touch", a non-nil slice (including a zero-length
+// one) means "set to exactly this list".
 type SidecarFields struct {
 	TakenAt     *time.Time
 	Lat         *float64
@@ -48,6 +55,13 @@ type SidecarFields struct {
 	Title       string
 	Description string
 	Notes       string
+	Keywords    []string // nil = don't write; []string{} = clear the tag
+	Artist      string
+	Copyright   string
+	License     string
+	Software    string
+	Panorama    *bool
+	Scan        *bool
 }
 
 // hasAny reports whether the struct carries at least one field worth
@@ -57,6 +71,7 @@ func (s SidecarFields) hasAny() bool {
 	ptrs := []bool{
 		s.TakenAt != nil, s.Lat != nil, s.Lng != nil, s.Altitude != nil,
 		s.ISO != nil, s.Aperture != nil, s.FocalLength != nil,
+		s.Panorama != nil, s.Scan != nil,
 	}
 	for _, ok := range ptrs {
 		if ok {
@@ -66,13 +81,14 @@ func (s SidecarFields) hasAny() bool {
 	strs := []string{
 		s.CameraMake, s.CameraModel, s.LensModel, s.Exposure,
 		s.Title, s.Description, s.Notes,
+		s.Artist, s.Copyright, s.License, s.Software,
 	}
 	for _, v := range strs {
 		if v != "" {
 			return true
 		}
 	}
-	return false
+	return s.Keywords != nil
 }
 
 // WriteSidecar writes an XMP sidecar at sidecarPath using exiftool. The
@@ -168,15 +184,74 @@ func buildExiftoolArgs(path string, fields SidecarFields) []string {
 	gps := gpsArgs(fields.Lat, fields.Lng, fields.Altitude)
 	cam := cameraArgs(fields)
 	text := textArgs(fields)
+	tags := tagArgs(fields)
 
-	args := make([]string, 0, len(prefix)+len(date)+len(gps)+len(cam)+len(text)+1)
+	args := make([]string, 0,
+		len(prefix)+len(date)+len(gps)+len(cam)+len(text)+len(tags)+1)
 	args = append(args, prefix...)
 	args = append(args, date...)
 	args = append(args, gps...)
 	args = append(args, cam...)
 	args = append(args, text...)
+	args = append(args, tags...)
 	args = append(args, path)
 	return args
+}
+
+// tagArgs writes the gap-fix metadata: keywords (XMP-dc:Subject is the
+// canonical list-of-strings tag the photo industry uses for keywords),
+// Artist / Copyright / License / Software (Dublin Core + XMP-photoshop /
+// XMP-xmp), and the PhotoPrism-specific panorama / scan flags. The flags
+// are written into XMP-photoshop:Headline-adjacent custom tags — XMP
+// has no standard slot for them, so we follow PhotoPrism's lead and
+// emit XMP-photoshop:Source-style sidecar fields the operator can
+// re-import later. Empty / nil values leave the existing tag untouched.
+func tagArgs(f SidecarFields) []string {
+	var out []string
+	if f.Keywords != nil {
+		// Clear the tag with a single empty argument first so a shorter
+		// list does not retain trailing tokens from a previous write.
+		out = append(out, "-XMP-dc:Subject=")
+		for _, kw := range f.Keywords {
+			if kw == "" {
+				continue
+			}
+			out = append(out, "-XMP-dc:Subject+="+kw)
+		}
+	}
+	if f.Artist != "" {
+		out = append(out, "-XMP-dc:Creator="+f.Artist)
+	}
+	if f.Copyright != "" {
+		out = append(out, "-XMP-dc:Rights="+f.Copyright)
+	}
+	if f.License != "" {
+		out = append(out, "-XMP-xmpRights:WebStatement="+f.License)
+	}
+	if f.Software != "" {
+		out = append(out, "-XMP-xmp:CreatorTool="+f.Software)
+	}
+	if f.Panorama != nil {
+		out = append(out, "-XMP-GPano:UsePanoramaViewer="+boolToString(*f.Panorama))
+	}
+	if f.Scan != nil {
+		// No widely-agreed XMP slot for "was scanned", so mirror
+		// PhotoPrism and tuck the flag into a custom XMP-photo-sorter
+		// namespace. Operators can inspect via `exiftool -a -G1` and
+		// the value re-imports cleanly because exiftool round-trips
+		// unknown namespaces verbatim.
+		out = append(out, "-XMP-photo-sorter:IsScan="+boolToString(*f.Scan))
+	}
+	return out
+}
+
+// boolToString renders a Go bool as the lowercase "true"/"false" XMP
+// expects. Centralised so callers do not invent their own encoding.
+func boolToString(b bool) string {
+	if b {
+		return "true"
+	}
+	return "false"
 }
 
 // dateTimeArgs writes the photo capture date/time to the standard XMP

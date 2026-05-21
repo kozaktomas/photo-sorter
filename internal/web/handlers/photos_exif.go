@@ -17,7 +17,12 @@ import (
 // exifEditFields holds the parsed, validated PUT /photos/{uid}/exif body.
 // Pointer fields are nil when the corresponding JSON key was absent, so we
 // only touch the photo columns and sidecar tags the caller actually
-// supplied.
+// supplied. The trailing block (keywords, artist, copyright, license,
+// software, panorama, scan) was added by the metadata gap-fix task —
+// see docs/specs/task-68fc8ca2-… for the rationale.
+//
+// `keywords` is the one tri-state field: nil means "absent in payload",
+// while a non-nil zero-length slice means "clear all keywords".
 type exifEditFields struct {
 	takenAt     *time.Time
 	lat         *float64
@@ -33,6 +38,15 @@ type exifEditFields struct {
 	title       *string
 	description *string
 	notes       *string
+
+	keywords  []string // nil = absent, []string{} = clear, [...] = set
+	hasKW     bool     // distinguishes nil-because-absent from nil-because-explicit
+	artist    *string
+	copyright *string
+	license   *string
+	software  *string
+	panorama  *bool
+	scan      *bool
 }
 
 // EditExif mutates the EXIF-style metadata on a photo and writes an XMP
@@ -147,29 +161,47 @@ func exifEditToSidecar(f exifEditFields) exif.SidecarFields {
 		ISO:         f.iso,
 		Aperture:    f.aperture,
 		FocalLength: f.focalLength,
+		Panorama:    f.panorama,
+		Scan:        f.scan,
 	}
-	if f.cameraMake != nil {
-		out.CameraMake = *f.cameraMake
-	}
-	if f.cameraModel != nil {
-		out.CameraModel = *f.cameraModel
-	}
-	if f.lensModel != nil {
-		out.LensModel = *f.lensModel
-	}
-	if f.exposure != nil {
-		out.Exposure = *f.exposure
-	}
-	if f.title != nil {
-		out.Title = *f.title
-	}
-	if f.description != nil {
-		out.Description = *f.description
-	}
-	if f.notes != nil {
-		out.Notes = *f.notes
+	copySidecarStringFields(&out, f)
+	if f.hasKW {
+		// Pass the slice through (possibly empty) so the sidecar writer
+		// can tell "clear" from "absent".
+		if f.keywords == nil {
+			out.Keywords = []string{}
+		} else {
+			out.Keywords = f.keywords
+		}
 	}
 	return out
+}
+
+// copySidecarStringFields fans out the *string fields onto the sidecar
+// projection. Split out of exifEditToSidecar so the parent stays under
+// the cyclomatic complexity budget.
+func copySidecarStringFields(out *exif.SidecarFields, f exifEditFields) {
+	pairs := []struct {
+		src *string
+		dst *string
+	}{
+		{f.cameraMake, &out.CameraMake},
+		{f.cameraModel, &out.CameraModel},
+		{f.lensModel, &out.LensModel},
+		{f.exposure, &out.Exposure},
+		{f.title, &out.Title},
+		{f.description, &out.Description},
+		{f.notes, &out.Notes},
+		{f.artist, &out.Artist},
+		{f.copyright, &out.Copyright},
+		{f.license, &out.License},
+		{f.software, &out.Software},
+	}
+	for _, p := range pairs {
+		if p.src != nil {
+			*p.dst = *p.src
+		}
+	}
 }
 
 // applyExifEdit copies the fields the caller supplied onto the photo row.
@@ -183,6 +215,37 @@ func applyExifEdit(p *database.Photo, f exifEditFields) {
 	applyExifGeo(p, f)
 	applyExifCamera(p, f)
 	applyExifText(p, f)
+	applyExifTags(p, f)
+}
+
+// applyExifTags copies the gap-fix metadata fields (keywords, artist,
+// copyright, license, software, panorama, scan) onto the photo row.
+func applyExifTags(p *database.Photo, f exifEditFields) {
+	if f.artist != nil {
+		p.ExifArtist = *f.artist
+	}
+	if f.copyright != nil {
+		p.ExifCopyright = *f.copyright
+	}
+	if f.license != nil {
+		p.ExifLicense = *f.license
+	}
+	if f.software != nil {
+		p.ExifSoftware = *f.software
+	}
+	if f.panorama != nil {
+		p.Panorama = *f.panorama
+	}
+	if f.scan != nil {
+		p.Scan = *f.scan
+	}
+	if f.hasKW {
+		if f.keywords == nil {
+			p.Keywords = []string{}
+		} else {
+			p.Keywords = append([]string(nil), f.keywords...)
+		}
+	}
 }
 
 // applyExifGeo lifts lat/lng/altitude onto the photo. lat and lng must be
@@ -239,6 +302,13 @@ func applyExifText(p *database.Photo, f exifEditFields) {
 	}
 }
 
+// exifEditReadOnlyKeys are payload keys that are exposed via GET but must
+// NEVER be modified through this endpoint. Quality is derived during
+// processing; taken_at_offset and time_zone are set by the upload
+// pipeline and migration. Rejecting them up front gives the caller a
+// clear 400 instead of a silently dropped field.
+var exifEditReadOnlyKeys = []string{"quality", "taken_at_offset", "time_zone"}
+
 // parseExifEdit decodes the JSON body into exifEditFields and runs the
 // per-field validation specified by the task: year in [1900, 2100], lat
 // ∈ [-90, 90], lng ∈ [-180, 180], ISO > 0. Returns an error message
@@ -247,6 +317,11 @@ func parseExifEdit(r *http.Request) (exifEditFields, string) {
 	var raw map[string]json.RawMessage
 	if err := json.NewDecoder(r.Body).Decode(&raw); err != nil {
 		return exifEditFields{}, errInvalidRequestBody
+	}
+	for _, k := range exifEditReadOnlyKeys {
+		if _, present := raw[k]; present {
+			return exifEditFields{}, k + " is read-only"
+		}
 	}
 	out, msg := decodeExifEditFields(raw)
 	if msg != "" {
@@ -277,6 +352,13 @@ func decodeExifEditFields(raw map[string]json.RawMessage) (exifEditFields, strin
 		func() string { return decodeISO(raw, &out.iso) },
 		func() string { return decodeFloatField(raw, "aperture", &out.aperture) },
 		func() string { return decodeFloatField(raw, "focal_length", &out.focalLength) },
+		func() string { return decodeStringField(raw, "exif_artist", &out.artist) },
+		func() string { return decodeStringField(raw, "exif_copyright", &out.copyright) },
+		func() string { return decodeStringField(raw, "exif_license", &out.license) },
+		func() string { return decodeStringField(raw, "exif_software", &out.software) },
+		func() string { return decodeBoolField(raw, "panorama", &out.panorama) },
+		func() string { return decodeBoolField(raw, "scan", &out.scan) },
+		func() string { return decodeKeywords(raw, &out) },
 	}
 	for _, step := range steps {
 		if msg := step(); msg != "" {
@@ -284,6 +366,37 @@ func decodeExifEditFields(raw map[string]json.RawMessage) (exifEditFields, strin
 		}
 	}
 	return out, ""
+}
+
+// decodeKeywords parses raw["keywords"] as a JSON array of strings. Each
+// element is trimmed; empty / whitespace-only tokens are dropped; the
+// resulting slice is deduplicated while preserving first-seen ordering.
+// A non-array value (e.g. a plain string) returns a 400-friendly error.
+func decodeKeywords(raw map[string]json.RawMessage, out *exifEditFields) string {
+	v, ok := raw["keywords"]
+	if !ok {
+		return ""
+	}
+	var arr []string
+	if err := json.Unmarshal(v, &arr); err != nil {
+		return "invalid keywords"
+	}
+	cleaned := make([]string, 0, len(arr))
+	seen := make(map[string]struct{}, len(arr))
+	for _, kw := range arr {
+		kw = strings.TrimSpace(kw)
+		if kw == "" {
+			continue
+		}
+		if _, dup := seen[kw]; dup {
+			continue
+		}
+		seen[kw] = struct{}{}
+		cleaned = append(cleaned, kw)
+	}
+	out.keywords = cleaned
+	out.hasKW = true
+	return ""
 }
 
 // decodeFloatField copies raw[key] into *dest when present.

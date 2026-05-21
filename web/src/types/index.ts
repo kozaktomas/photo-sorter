@@ -35,6 +35,19 @@ export interface Photo {
   original_name: string;
   file_name: string;
   camera_model: string;
+  // Metadata gap-fix fields (added by migration 036 / task 68fc8ca2).
+  // Older API responses omit these; treat missing values as their
+  // documented zero (empty array, false, 0, empty string).
+  keywords: string[];
+  panorama: boolean;
+  scan: boolean;
+  quality: number;
+  time_zone: string;
+  taken_at_offset: number;
+  exif_artist: string;
+  exif_copyright: string;
+  exif_license: string;
+  exif_software: string;
 }
 
 export interface Label {

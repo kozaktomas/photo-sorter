@@ -134,27 +134,40 @@ func (h *PhotosHandler) RefreshReader() {
 }
 
 // PhotoResponse represents a photo in API responses. The shape mirrors the
-// previous PhotoPrism passthrough so the frontend keeps working.
+// previous PhotoPrism passthrough so the frontend keeps working. The
+// trailing block (keywords, panorama, scan, quality, time_zone,
+// taken_at_offset, exif_*) carries the metadata gap-fix fields added in
+// migration 036.
 type PhotoResponse struct {
-	UID          string  `json:"uid"`
-	Title        string  `json:"title"`
-	Description  string  `json:"description"`
-	TakenAt      string  `json:"taken_at"`
-	Year         int     `json:"year"`
-	Month        int     `json:"month"`
-	Day          int     `json:"day"`
-	Hash         string  `json:"hash"`
-	Width        int     `json:"width"`
-	Height       int     `json:"height"`
-	Lat          float64 `json:"lat"`
-	Lng          float64 `json:"lng"`
-	Country      string  `json:"country"`
-	Favorite     bool    `json:"favorite"`
-	Private      bool    `json:"private"`
-	Type         string  `json:"type"`
-	OriginalName string  `json:"original_name"`
-	FileName     string  `json:"file_name"`
-	CameraModel  string  `json:"camera_model"`
+	UID           string   `json:"uid"`
+	Title         string   `json:"title"`
+	Description   string   `json:"description"`
+	TakenAt       string   `json:"taken_at"`
+	Year          int      `json:"year"`
+	Month         int      `json:"month"`
+	Day           int      `json:"day"`
+	Hash          string   `json:"hash"`
+	Width         int      `json:"width"`
+	Height        int      `json:"height"`
+	Lat           float64  `json:"lat"`
+	Lng           float64  `json:"lng"`
+	Country       string   `json:"country"`
+	Favorite      bool     `json:"favorite"`
+	Private       bool     `json:"private"`
+	Type          string   `json:"type"`
+	OriginalName  string   `json:"original_name"`
+	FileName      string   `json:"file_name"`
+	CameraModel   string   `json:"camera_model"`
+	Keywords      []string `json:"keywords"`
+	Panorama      bool     `json:"panorama"`
+	Scan          bool     `json:"scan"`
+	Quality       int16    `json:"quality"`
+	TimeZone      string   `json:"time_zone"`
+	TakenAtOffset int      `json:"taken_at_offset"`
+	ExifArtist    string   `json:"exif_artist"`
+	ExifCopyright string   `json:"exif_copyright"`
+	ExifLicense   string   `json:"exif_license"`
+	ExifSoftware  string   `json:"exif_software"`
 }
 
 // PhotoListResponse is the envelope returned by List.
@@ -356,25 +369,42 @@ func nativePhotoToResponse(p database.Photo) PhotoResponse {
 	if p.Lng != nil {
 		lng = *p.Lng
 	}
+	keywords := p.Keywords
+	if keywords == nil {
+		// A photo with no keywords renders as `"keywords": []` rather than
+		// `"keywords": null`, which is what the frontend's type signatures
+		// already expect.
+		keywords = []string{}
+	}
 	return PhotoResponse{
-		UID:          p.UID,
-		Title:        p.Title,
-		Description:  p.Description,
-		TakenAt:      takenAtStr,
-		Year:         year,
-		Month:        month,
-		Day:          day,
-		Hash:         p.FileHash,
-		Width:        p.FileWidth,
-		Height:       p.FileHeight,
-		Lat:          lat,
-		Lng:          lng,
-		Favorite:     p.Favorite,
-		Private:      p.Private,
-		Type:         photoTypeFromMime(p.FileMime),
-		OriginalName: p.FileName,
-		FileName:     p.FileName,
-		CameraModel:  p.CameraModel,
+		UID:           p.UID,
+		Title:         p.Title,
+		Description:   p.Description,
+		TakenAt:       takenAtStr,
+		Year:          year,
+		Month:         month,
+		Day:           day,
+		Hash:          p.FileHash,
+		Width:         p.FileWidth,
+		Height:        p.FileHeight,
+		Lat:           lat,
+		Lng:           lng,
+		Favorite:      p.Favorite,
+		Private:       p.Private,
+		Type:          photoTypeFromMime(p.FileMime),
+		OriginalName:  p.FileName,
+		FileName:      p.FileName,
+		CameraModel:   p.CameraModel,
+		Keywords:      keywords,
+		Panorama:      p.Panorama,
+		Scan:          p.Scan,
+		Quality:       p.Quality,
+		TimeZone:      p.TimeZone,
+		TakenAtOffset: p.TakenAtOffset,
+		ExifArtist:    p.ExifArtist,
+		ExifCopyright: p.ExifCopyright,
+		ExifLicense:   p.ExifLicense,
+		ExifSoftware:  p.ExifSoftware,
 	}
 }
 

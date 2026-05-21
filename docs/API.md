@@ -434,7 +434,13 @@ Requires write access (admin or editor). Archived photos return 404.
   "camera_make": "Canon", "camera_model": "EOS R5",
   "lens_model": "RF 50mm f/1.2", "iso": 100,
   "aperture": 1.8, "exposure": "1/250", "focal_length": 50,
-  "title": "...", "description": "...", "notes": "..."
+  "title": "...", "description": "...", "notes": "...",
+  "keywords": ["sunset", "veselice"],
+  "panorama": false, "scan": false,
+  "exif_artist": "Alice Photographer",
+  "exif_copyright": "(c) 2024 Alice",
+  "exif_license": "CC BY-SA 4.0",
+  "exif_software": "PhotoPrism 240801"
 }
 ```
 
@@ -443,8 +449,19 @@ Requires write access (admin or editor). Archived photos return 404.
 - `lat` / `lng` — must be provided together; lat ∈ [-90, 90], lng ∈ [-180, 180].
 - `iso` — must be > 0.
 - `title` — at most 255 characters.
+- `keywords` — JSON array of strings. Tokens are trimmed; empty and
+  duplicate tokens are dropped. An explicit empty array (`[]`) clears
+  the column; omitting the key leaves it alone.
 
-**Response (200):** Updated photo object.
+**Read-only keys (rejected with 400 if present):** `quality`,
+`taken_at_offset`, `time_zone`. These are exposed in the GET response
+but are derived from EXIF / set by the upload pipeline; the EXIF edit
+endpoint must not mutate them.
+
+**Response (200):** Updated photo object. The response carries the gap-fix
+fields too — `keywords`, `panorama`, `scan`, `quality`, `time_zone`,
+`taken_at_offset`, and the four `exif_*` strings — so callers can
+read them after the update without a separate GET.
 
 ### Get Photo Thumbnail
 

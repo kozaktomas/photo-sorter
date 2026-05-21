@@ -216,6 +216,7 @@ func seedPhotoPrismSchema(ctx context.Context, db *sql.DB) error {
 			id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
 			photo_uid VARBINARY(42) NOT NULL UNIQUE,
 			taken_at DATETIME NULL,
+			taken_at_local DATETIME NULL,
 			photo_title VARCHAR(200) NULL,
 			photo_caption VARCHAR(4096) NULL,
 			photo_lat DOUBLE NULL,
@@ -227,6 +228,10 @@ func seedPhotoPrismSchema(ctx context.Context, db *sql.DB) error {
 			photo_focal_length INT NULL,
 			photo_favorite TINYINT NULL,
 			photo_private TINYINT NULL,
+			photo_panorama TINYINT NULL,
+			photo_scan TINYINT NULL,
+			photo_quality SMALLINT NULL,
+			time_zone VARBINARY(64) NULL,
 			camera_id INT NULL,
 			lens_id INT NULL,
 			deleted_at DATETIME NULL
@@ -257,7 +262,22 @@ func seedPhotoPrismSchema(ctx context.Context, db *sql.DB) error {
 		)`,
 		`CREATE TABLE details (
 			photo_id INT NOT NULL PRIMARY KEY,
-			notes VARCHAR(2048) NULL
+			notes VARCHAR(2048) NULL,
+			keywords VARCHAR(2048) NULL,
+			artist VARCHAR(1024) NULL,
+			copyright VARCHAR(1024) NULL,
+			license VARCHAR(1024) NULL,
+			software VARCHAR(1024) NULL
+		)`,
+		`CREATE TABLE keywords (
+			id INT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+			keyword VARCHAR(64) NULL,
+			skip TINYINT NULL
+		)`,
+		`CREATE TABLE photos_keywords (
+			photo_id INT NOT NULL,
+			keyword_id INT NOT NULL,
+			PRIMARY KEY (photo_id, keyword_id)
 		)`,
 		`CREATE TABLE subjects (
 			subj_uid VARBINARY(42) NOT NULL PRIMARY KEY,
@@ -375,20 +395,33 @@ func insertSubjectsLabelsAlbums(ctx context.Context, db *sql.DB) error {
 }
 
 // insertPhotosFilesDetails inserts the three photo rows + their primary
-// files + the details table notes for photo #1.
+// files + the details table notes for photo #1. Photo #1 also exercises
+// the gap-fix metadata columns (panorama, scan, quality, time_zone,
+// taken_at_local for offset, keywords + EXIF-ish fields) so the
+// end-to-end test can assert they round-trip into the destination.
 func insertPhotosFilesDetails(ctx context.Context, db *sql.DB) error {
 	if _, err := db.ExecContext(ctx,
-		`INSERT INTO photos (id, photo_uid, taken_at, photo_title, photo_caption,
+		`INSERT INTO photos (id, photo_uid, taken_at, taken_at_local,
+		                     photo_title, photo_caption,
 		                     photo_lat, photo_lng, photo_iso, photo_f_number, photo_exposure,
 		                     photo_focal_length, photo_favorite, photo_private,
+		                     photo_panorama, photo_scan, photo_quality, time_zone,
 		                     camera_id, lens_id)
 		 VALUES
-			(1, 'p001', '2024-06-15 12:00:00', 'Sunset', 'A nice sunset',
-			 49.5, 16.5, 100, 2.8, '1/200', 35, 1, 0, 1, 1),
-			(2, 'p002', '2024-07-04 09:30:00', 'Park walk', '',
-			 NULL, NULL, NULL, NULL, '', NULL, 0, 0, 1, NULL),
-			(3, 'p003', NULL, 'No date', '',
-			 NULL, NULL, NULL, NULL, '', NULL, 0, 1, NULL, NULL)`,
+			(1, 'p001', '2024-06-15 10:00:00', '2024-06-15 12:00:00',
+			 'Sunset', 'A nice sunset',
+			 49.5, 16.5, 100, 2.8, '1/200', 35, 1, 0,
+			 1, 0, 5, 'Europe/Prague',
+			 1, 1),
+			(2, 'p002', '2024-07-04 09:30:00', '2024-07-04 09:30:00',
+			 'Park walk', '',
+			 NULL, NULL, NULL, NULL, '', NULL, 0, 0,
+			 0, 1, 3, 'Local',
+			 1, NULL),
+			(3, 'p003', NULL, NULL, 'No date', '',
+			 NULL, NULL, NULL, NULL, '', NULL, 0, 1,
+			 0, 0, 0, NULL,
+			 NULL, NULL)`,
 	); err != nil {
 		return fmt.Errorf("insert photos: %w", err)
 	}
@@ -404,8 +437,25 @@ func insertPhotosFilesDetails(ctx context.Context, db *sql.DB) error {
 		return fmt.Errorf("insert files: %w", err)
 	}
 	if _, err := db.ExecContext(ctx,
-		`INSERT INTO details (photo_id, notes) VALUES (1, 'shot at golden hour')`); err != nil {
+		`INSERT INTO details (photo_id, notes, keywords, artist, copyright, license, software)
+		 VALUES
+			(1, 'shot at golden hour', 'sunset, golden hour, Veselice, 🌅',
+			 'Alice Photographer', '(c) 2024 Alice', 'CC BY-SA 4.0', 'PhotoPrism 240801')`); err != nil {
 		return fmt.Errorf("insert details: %w", err)
+	}
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO keywords (id, keyword, skip) VALUES
+			(1, 'sunset', 0),
+			(2, 'czech republic', 0),
+			(3, 'auto-ignored', 1)`); err != nil {
+		return fmt.Errorf("insert keywords: %w", err)
+	}
+	if _, err := db.ExecContext(ctx,
+		`INSERT INTO photos_keywords (photo_id, keyword_id) VALUES
+			(1, 1),
+			(1, 2),
+			(1, 3)`); err != nil {
+		return fmt.Errorf("insert photos_keywords: %w", err)
 	}
 	return nil
 }
@@ -497,6 +547,7 @@ func TestMigrationEndToEnd(t *testing.T) {
 	assertFirstRunCounts(t, report)
 	assertFirstRunPersisted(t, ctx, fx)
 	assertPhotoUIDsPreserved(t, ctx, fx)
+	assertGapFixFieldsPersisted(t, ctx, fx)
 	assertPreExistingReferencesReconnect(t, ctx, fx)
 
 	// Re-run: every stage should now report zero creations because the
@@ -506,6 +557,185 @@ func TestMigrationEndToEnd(t *testing.T) {
 		t.Fatalf("re-run migration: %v", err)
 	}
 	assertReRunNoNewRows(t, report2)
+	assertGapFixBackfillPreservesEdits(t, ctx, fx)
+}
+
+// assertGapFixFieldsPersisted checks the metadata fields added by task
+// 68fc8ca2 — keywords, panorama, scan, quality, time_zone,
+// taken_at_offset, and the EXIF-ish artist / copyright / license /
+// software fields. Photo p001 in the fixture exercises non-default
+// values for all of them so this assertion covers first-run writes.
+func assertGapFixFieldsPersisted(t *testing.T, ctx context.Context, fx *testFixture) {
+	t.Helper()
+	photo, err := fx.photos.GetPhoto(ctx, "p001")
+	if err != nil {
+		t.Fatalf("get p001: %v", err)
+	}
+	// Keywords: details.keywords ("sunset, golden hour, Veselice, 🌅")
+	// + photos_keywords ("sunset", "czech republic"; "auto-ignored" is
+	// skip=1 and must be filtered out). Order is "details first then
+	// join", with sunset deduped.
+	wantKW := map[string]struct{}{
+		"sunset":      {},
+		"golden hour": {},
+		"Veselice":    {},
+		"🌅":           {},
+		// from photos_keywords (skip=0 only; "auto-ignored" stays out):
+		"czech republic": {},
+	}
+	if len(photo.Keywords) != len(wantKW) {
+		t.Errorf("keywords = %v, want %d items", photo.Keywords, len(wantKW))
+	}
+	for _, kw := range photo.Keywords {
+		if _, ok := wantKW[kw]; !ok {
+			t.Errorf("unexpected keyword %q in %v", kw, photo.Keywords)
+		}
+	}
+	if !photo.Panorama {
+		t.Errorf("p001 panorama = false, want true")
+	}
+	if photo.Scan {
+		t.Errorf("p001 scan = true, want false")
+	}
+	if photo.Quality != 5 {
+		t.Errorf("p001 quality = %d, want 5", photo.Quality)
+	}
+	if photo.TimeZone != "Europe/Prague" {
+		t.Errorf("p001 time_zone = %q, want Europe/Prague", photo.TimeZone)
+	}
+	if photo.TakenAtOffset != 2*60*60 {
+		t.Errorf("p001 taken_at_offset = %d seconds, want %d (2h)",
+			photo.TakenAtOffset, 2*60*60)
+	}
+	if photo.ExifArtist != "Alice Photographer" {
+		t.Errorf("p001 exif_artist = %q", photo.ExifArtist)
+	}
+	if photo.ExifCopyright != "(c) 2024 Alice" {
+		t.Errorf("p001 exif_copyright = %q", photo.ExifCopyright)
+	}
+	if photo.ExifLicense != "CC BY-SA 4.0" {
+		t.Errorf("p001 exif_license = %q", photo.ExifLicense)
+	}
+	if photo.ExifSoftware != "PhotoPrism 240801" {
+		t.Errorf("p001 exif_software = %q", photo.ExifSoftware)
+	}
+
+	// p002 carries time_zone "Local" — the migrator normalises that
+	// sentinel to empty string. Its taken_at == taken_at_local so the
+	// computed offset is 0.
+	p2, err := fx.photos.GetPhoto(ctx, "p002")
+	if err != nil {
+		t.Fatalf("get p002: %v", err)
+	}
+	if p2.TimeZone != "" {
+		t.Errorf(`p002 time_zone = %q, want "" (Local sentinel)`, p2.TimeZone)
+	}
+	if p2.TakenAtOffset != 0 {
+		t.Errorf("p002 taken_at_offset = %d, want 0", p2.TakenAtOffset)
+	}
+	if !p2.Scan {
+		t.Errorf("p002 scan = false, want true")
+	}
+	if p2.Quality != 3 {
+		t.Errorf("p002 quality = %d, want 3", p2.Quality)
+	}
+	if len(p2.Keywords) != 0 {
+		t.Errorf("p002 keywords = %v, want empty", p2.Keywords)
+	}
+
+	// p003 has no details row and a NULL time_zone — every gap-fix
+	// field must arrive at the column's zero value.
+	p3, err := fx.photos.GetPhoto(ctx, "p003")
+	if err != nil {
+		t.Fatalf("get p003: %v", err)
+	}
+	if p3.TimeZone != "" || p3.TakenAtOffset != 0 || p3.Quality != 0 {
+		t.Errorf("p003 unexpected non-zero: tz=%q offset=%d quality=%d",
+			p3.TimeZone, p3.TakenAtOffset, p3.Quality)
+	}
+	if p3.ExifArtist != "" || len(p3.Keywords) != 0 {
+		t.Errorf("p003 unexpected non-zero: artist=%q keywords=%v",
+			p3.ExifArtist, p3.Keywords)
+	}
+}
+
+// assertGapFixBackfillPreservesEdits verifies the merge semantics of the
+// re-run path: the migrator backfills fields whose destination value is
+// still the column zero value but never overwrites a value the user has
+// already edited natively. Setup: between the first and second run the
+// test mutates p001 to mimic a manual edit, then we assert the second
+// run leaves the edited value alone while still filling p003's defaults
+// once the operator goes back and tags it in PhotoPrism.
+func assertGapFixBackfillPreservesEdits(t *testing.T, ctx context.Context, fx *testFixture) {
+	t.Helper()
+	// Step 1: a user edits p001 in the native UI, changing the artist
+	// string and adding a private keyword the PhotoPrism source does
+	// not know about. The migrator must NOT clobber those.
+	edit, err := fx.photos.GetPhoto(ctx, "p001")
+	if err != nil {
+		t.Fatalf("get p001: %v", err)
+	}
+	edit.ExifArtist = "Edited by native UI"
+	edit.Keywords = []string{"native-only-tag"}
+	if err := fx.photos.UpdatePhoto(ctx, edit); err != nil {
+		t.Fatalf("manual edit p001: %v", err)
+	}
+
+	// Step 2: a third migration run executes; backfill must see "Edit"
+	// in ExifArtist (non-default) and leave it alone.
+	if _, err := Run(ctx, buildOptions(fx)); err != nil {
+		t.Fatalf("third migration: %v", err)
+	}
+	after, err := fx.photos.GetPhoto(ctx, "p001")
+	if err != nil {
+		t.Fatalf("re-get p001: %v", err)
+	}
+	if after.ExifArtist != "Edited by native UI" {
+		t.Errorf("ExifArtist after re-run = %q, user edit was clobbered",
+			after.ExifArtist)
+	}
+	if len(after.Keywords) != 1 || after.Keywords[0] != "native-only-tag" {
+		t.Errorf("Keywords after re-run = %v, want [native-only-tag]",
+			after.Keywords)
+	}
+
+	// Step 3: simulate p003 (which has no metadata in the source yet)
+	// being tagged in PhotoPrism. After updating the source row, a
+	// re-run must backfill the columns that are still default.
+	if _, err := fx.maria.ExecContext(ctx,
+		`INSERT INTO details (photo_id, notes, keywords, artist)
+		 VALUES (3, 'late add', 'birds,trees', 'New artist')`); err != nil {
+		t.Fatalf("seed details for p003: %v", err)
+	}
+	if _, err := fx.maria.ExecContext(ctx,
+		`UPDATE photos SET photo_quality = 4, time_zone = 'UTC' WHERE id = 3`); err != nil {
+		t.Fatalf("update p003 in mariadb: %v", err)
+	}
+	if _, err := Run(ctx, buildOptions(fx)); err != nil {
+		t.Fatalf("fourth migration: %v", err)
+	}
+	p3, err := fx.photos.GetPhoto(ctx, "p003")
+	if err != nil {
+		t.Fatalf("get p003 after backfill: %v", err)
+	}
+	if p3.Quality != 4 {
+		t.Errorf("p003 quality after backfill = %d, want 4", p3.Quality)
+	}
+	if p3.TimeZone != "UTC" {
+		t.Errorf("p003 time_zone after backfill = %q, want UTC", p3.TimeZone)
+	}
+	if p3.ExifArtist != "New artist" {
+		t.Errorf("p003 exif_artist after backfill = %q", p3.ExifArtist)
+	}
+	wantKW3 := map[string]struct{}{"birds": {}, "trees": {}}
+	if len(p3.Keywords) != len(wantKW3) {
+		t.Errorf("p003 keywords after backfill = %v, want 2 items", p3.Keywords)
+	}
+	for _, kw := range p3.Keywords {
+		if _, ok := wantKW3[kw]; !ok {
+			t.Errorf("p003 unexpected keyword %q", kw)
+		}
+	}
 }
 
 // assertPhotoUIDsPreserved checks that every native photo row carries
