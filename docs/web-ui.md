@@ -705,6 +705,8 @@ The Web UI communicates with these backend endpoints:
 | POST | `/api/v1/photos/duplicates` | Find near-duplicate photos |
 | POST | `/api/v1/photos/batch/archive` | Archive (soft-delete) photos |
 | POST | `/api/v1/photos/batch/restore` | Restore (un-archive) photos |
+| GET | `/api/v1/photos/trash` | List archived photos (trash view; any role) |
+| POST | `/api/v1/photos/batch/purge` | Hard-delete archived photos (admin only) |
 | POST | `/api/v1/photos/suggest-albums` | Album completion — find missing photos for existing albums |
 | DELETE | `/api/v1/albums/:uid/photos/batch` | Remove specific photos from album |
 | GET | `/api/v1/books` | List all photo books |

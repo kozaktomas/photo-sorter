@@ -196,6 +196,7 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 				r.Post("/photos/batch/edit", photosHandler.BatchEdit)
 				r.Post("/photos/batch/archive", photosHandler.BatchArchive)
 				r.Post("/photos/batch/restore", photosHandler.BatchRestore)
+				r.Get("/photos/trash", photosHandler.ListTrash)
 				r.Post("/photos/duplicates", photosHandler.FindDuplicates)
 				r.Post("/photos/suggest-albums", photosHandler.SuggestAlbums)
 				r.Post("/photos/search-by-text", photosHandler.SearchByText)
@@ -278,7 +279,7 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 				r.Get("/me", usersHandler.Me)
 				r.Post("/me/password", usersHandler.ChangeMyPassword)
 
-				// Admin-only user management.
+				// Admin-only routes.
 				r.Group(func(r chi.Router) {
 					r.Use(middleware.RequireRole(auth.RoleAdmin))
 					r.Get("/users", usersHandler.List)
@@ -288,6 +289,10 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 					r.Post("/users/{uid}/password", usersHandler.SetPassword)
 					r.Post("/users/{uid}/disable", usersHandler.SetDisabled)
 					r.Delete("/users/{uid}", usersHandler.Delete)
+
+					// Trash hard delete is admin-only: it removes the
+					// originals from disk and is irreversible.
+					r.Post("/photos/batch/purge", photosHandler.BatchPurge)
 				})
 			})
 

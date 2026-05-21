@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"sync"
 	"syscall"
 	"time"
@@ -17,6 +18,8 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/database/postgres"
 	mcpserver "github.com/kozaktomas/photo-sorter/internal/mcp"
 	"github.com/kozaktomas/photo-sorter/internal/photoprism"
+	"github.com/kozaktomas/photo-sorter/internal/storage"
+	"github.com/kozaktomas/photo-sorter/internal/trash"
 	"github.com/kozaktomas/photo-sorter/internal/web"
 	"github.com/kozaktomas/photo-sorter/internal/web/handlers"
 	"github.com/spf13/cobra"
@@ -200,6 +203,73 @@ func bootstrapAdminUser(ctx context.Context, cfg *config.Config) error {
 	return nil
 }
 
+// resolveTrashStore wires the dependencies that internal/trash.PurgePhoto
+// needs to hard-delete a photo. Must be called after registerServeBackends.
+// Returns nil and logs a warning when any dependency is missing — the
+// auto-purge daemon then refuses to start rather than partially purging.
+func resolveTrashStore(ctx context.Context, cfg *config.Config) *trash.Store {
+	photoWriter, err := database.GetPhotoWriter(ctx)
+	if err != nil {
+		fmt.Printf("trash: photo writer unavailable: %v (auto-purge disabled)\n", err)
+		return nil
+	}
+	embWriter, err := database.GetEmbeddingWriter(ctx)
+	if err != nil {
+		fmt.Printf("trash: embedding writer unavailable: %v (auto-purge disabled)\n", err)
+		return nil
+	}
+	faceWriter, err := database.GetFaceWriter(ctx)
+	if err != nil {
+		fmt.Printf("trash: face writer unavailable: %v (auto-purge disabled)\n", err)
+		return nil
+	}
+	store, err := storage.New(cfg.Storage.OriginalsPath, cfg.Storage.CachePath)
+	if err != nil {
+		fmt.Printf("trash: on-disk storage unavailable: %v (auto-purge disabled)\n", err)
+		return nil
+	}
+	return &trash.Store{
+		Photos:     photoWriter,
+		Embeddings: embWriter,
+		Faces:      faceWriter,
+		Files:      store,
+	}
+}
+
+// trashRetention reads TRASH_RETENTION_DAYS and returns the configured
+// retention window. Falls back to trash.DefaultRetention (30 days) when
+// the env var is unset, empty, or unparseable so an operator typo can
+// never accidentally turn the daemon into an aggressive eviction policy.
+func trashRetention() time.Duration {
+	raw := os.Getenv("TRASH_RETENTION_DAYS")
+	if raw == "" {
+		return trash.DefaultRetention
+	}
+	days, err := strconv.Atoi(raw)
+	if err != nil || days <= 0 {
+		fmt.Printf("trash: invalid TRASH_RETENTION_DAYS=%q, using default\n", raw)
+		return trash.DefaultRetention
+	}
+	return time.Duration(days) * 24 * time.Hour
+}
+
+// startTrashDaemon kicks off the auto-purge background goroutine. Returns
+// the cancel function so gracefulShutdown can stop the daemon cleanly.
+// No-op (returns a no-op cancel) when the trash store could not be
+// resolved — the BatchPurge HTTP route already surfaces a 503 in that
+// case, so the daemon just stays dark to match.
+func startTrashDaemon(cfg *config.Config) context.CancelFunc {
+	ctx, cancel := context.WithCancel(context.Background())
+	store := resolveTrashStore(ctx, cfg)
+	if store == nil {
+		cancel()
+		return func() {}
+	}
+	retention := trashRetention()
+	go trash.RunDaemon(ctx, trash.DefaultPurgeInterval, retention, store)
+	return cancel
+}
+
 // gracefulShutdown waits for a signal, then shuts down the HTTP server, saves HNSW indexes, and closes the DB pool.
 func gracefulShutdown(sigChan <-chan os.Signal, server *web.Server, pool *postgres.Pool) {
 	<-sigChan
@@ -261,6 +331,12 @@ func runServe(cmd *cobra.Command, args []string) error {
 	}
 
 	server := web.NewServer(cfg, port, host, sessionSecret, sessionRepo, mcpHandler)
+
+	// Auto-purge daemon for trash retention. Started after the photo +
+	// embedding + face writers are registered. The returned cancel is
+	// invoked from gracefulShutdown so the goroutine drains cleanly.
+	stopTrashDaemon := startTrashDaemon(cfg)
+	defer stopTrashDaemon()
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)

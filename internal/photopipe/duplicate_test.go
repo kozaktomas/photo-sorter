@@ -73,6 +73,12 @@ func (s *fakePhotoStore) ListPhotoFiles(
 	return append([]database.PhotoFile(nil), s.files[uid]...), nil
 }
 
+func (s *fakePhotoStore) ListArchivedBefore(
+	_ context.Context, _ time.Time,
+) ([]string, error) {
+	panic("not implemented")
+}
+
 func (s *fakePhotoStore) CreatePhoto(_ context.Context, p *database.Photo) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

@@ -255,6 +255,7 @@ Environment variables (loaded from `.env`):
 - `DUPLICATE_CHECK_ENABLED` (optional bool, defaults to `true`) — globally gates the upload-time near-duplicate detector (pHash + embedding scan); set to `false` to skip the scan even when the per-request flag is on
 - `DUPLICATE_PHASH_MAX_DIFF` (optional int, defaults to `8`) — max hamming distance between two 64-bit pHashes at which they are reported as near-duplicates (0..64)
 - `DUPLICATE_EMBEDDING_MAX_DIST` (optional float, defaults to `0.05`) — max cosine distance between two CLIP embeddings at which they are reported as near-duplicates (0..2)
+- `TRASH_RETENTION_DAYS` (optional int, defaults to `30`) — retention window for the soft-delete trash. The auto-purge daemon (launched from `cmd/serve.go`) hard-deletes any photo whose `archived_at` is older than this window on each hourly tick. Set to a larger number to keep the trash around longer; values that fail to parse or are non-positive fall back to the default.
 
 ### AI Provider API Calls
 
@@ -493,6 +494,8 @@ Session cookies use `HttpOnly`, `SameSite=Strict`, and auto-detect `Secure` flag
 - `POST /api/v1/photos/batch/edit` - Batch edit photos (favorite, private)
 - `POST /api/v1/photos/batch/archive` - Archive (soft-delete) photos
 - `POST /api/v1/photos/batch/restore` - Restore (un-archive) photos
+- `GET /api/v1/photos/trash` - List archived photos (trash view; same filters/sort/pagination as `GET /photos`, the `archived` query param is ignored). Any authenticated role.
+- `POST /api/v1/photos/batch/purge` - Hard-delete archived photos (admin only). Per UID: skip-with-error if not archived; otherwise drop the photo row (cascades phashes / markers / files / album_photos / photo_labels), the embedding row, cached face rows, on-disk originals, and every cached thumbnail size. A background daemon in `cmd/serve.go` runs the same logic hourly against photos older than `TRASH_RETENTION_DAYS` (default 30).
 - `POST /api/v1/photos/duplicates` - Find near-duplicate photos via embedding similarity
 - `POST /api/v1/photos/suggest-albums` - Album completion via HNSW centroid search
 - `POST /api/v1/sort` - Start AI sort job

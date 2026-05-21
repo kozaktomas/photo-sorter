@@ -178,6 +178,34 @@ func (r *PhotoRepository) ListPhotoFiles(
 	return files, nil
 }
 
+// ListArchivedBefore returns UIDs of photos whose archived_at is strictly
+// before cutoff. The result is ordered by archived_at ascending so a caller
+// purging in chunks sees the oldest rows first.
+func (r *PhotoRepository) ListArchivedBefore(
+	ctx context.Context, cutoff time.Time,
+) ([]string, error) {
+	rows, err := r.pool.Query(ctx,
+		`SELECT uid FROM photos
+		 WHERE archived_at IS NOT NULL AND archived_at < $1
+		 ORDER BY archived_at ASC`, cutoff)
+	if err != nil {
+		return nil, fmt.Errorf("list archived before: %w", err)
+	}
+	defer rows.Close()
+	var uids []string
+	for rows.Next() {
+		var uid string
+		if err := rows.Scan(&uid); err != nil {
+			return nil, fmt.Errorf("scan archived uid: %w", err)
+		}
+		uids = append(uids, uid)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate archived uids: %w", err)
+	}
+	return uids, nil
+}
+
 // --- Writes ---
 
 // CreatePhoto inserts a new photo, generating a UID via NewPhotoUID when

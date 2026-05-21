@@ -24,18 +24,19 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/fingerprint"
 	"github.com/kozaktomas/photo-sorter/internal/photoprism"
 	"github.com/kozaktomas/photo-sorter/internal/storage"
+	"github.com/kozaktomas/photo-sorter/internal/trash"
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
 
 // PhotosHandler handles photo-related endpoints.
 //
 // The native endpoints (List, Get, Thumbnail, Download, Update, BatchEdit,
-// BatchArchive, BatchRestore) read and write the local Postgres photos
-// table plus the on-disk storage tree; they no longer proxy to PhotoPrism.
-// The remaining endpoints (face/album/label batch ops, similarity, era
-// estimation, etc.) still rely on the PhotoPrism client injected per
-// request via middleware.MustGetPhotoPrism — they will be migrated in
-// follow-up tasks.
+// BatchArchive, BatchRestore, ListTrash, BatchPurge) read and write the
+// local Postgres photos table plus the on-disk storage tree; they no longer
+// proxy to PhotoPrism. The remaining endpoints (face/album/label batch ops,
+// similarity, era estimation, etc.) still rely on the PhotoPrism client
+// injected per request via middleware.MustGetPhotoPrism — they will be
+// migrated in follow-up tasks.
 type PhotosHandler struct {
 	config          *config.Config
 	sessionManager  *middleware.SessionManager
@@ -50,6 +51,14 @@ type PhotosHandler struct {
 	// labels backs the bulk-label endpoint (POST /photos/batch/labels). May
 	// be nil in tests that do not exercise the label paths.
 	labels database.LabelWriter
+
+	// trashStore bundles the dependencies needed to hard-delete a photo:
+	// the photo writer, the embedding writer, the face writer, and the
+	// on-disk Storage. It is populated lazily inside NewPhotosHandler from
+	// the registered providers. When any dependency is missing (during the
+	// PhotoPrism transition or in tests), the BatchPurge endpoint surfaces
+	// a 503 rather than partially purging a photo.
+	trashStore *trash.Store
 }
 
 // NewPhotosHandler creates a new photos handler. repo, store, and labels
@@ -74,7 +83,32 @@ func NewPhotosHandler(
 		h.embeddingReader = r
 	}
 
+	// Resolve the trash dependencies (embedding writer + face writer). All
+	// four pieces (photo writer, embedding writer, face writer, storage)
+	// must be present for the BatchPurge endpoint to function; we leave
+	// trashStore nil otherwise and the endpoint returns 503.
+	if repo != nil && store != nil {
+		if ew, err := database.GetEmbeddingWriter(context.Background()); err == nil {
+			if fw, err := database.GetFaceWriter(context.Background()); err == nil {
+				h.trashStore = &trash.Store{
+					Photos:     repo,
+					Embeddings: ew,
+					Faces:      fw,
+					Files:      store,
+				}
+			}
+		}
+	}
+
 	return h
+}
+
+// TrashStore returns the configured trash store, or nil if the
+// dependencies were not all available at startup. Exposed so the serve
+// command can wire the auto-purge daemon against the same store the
+// BatchPurge handler uses.
+func (h *PhotosHandler) TrashStore() *trash.Store {
+	return h.trashStore
 }
 
 // getEmbeddingReader returns the cached embedding reader, falling back to fetching from the database.
@@ -938,6 +972,97 @@ func (h *PhotosHandler) BatchRestore(w http.ResponseWriter, r *http.Request) {
 	h.runBatchUIDOp(w, r, "restore", func(ctx context.Context, writer database.PhotoWriter, uid string) error {
 		return writer.RestorePhoto(ctx, uid)
 	})
+}
+
+// ListTrash returns the archived photos page (the "trash" view). It shares
+// the photo filter / sort / pagination logic with List, but force-overrides
+// the archived flag to true so callers cannot accidentally ask for live
+// photos via this route. Any role can read the trash.
+func (h *PhotosHandler) ListTrash(w http.ResponseWriter, r *http.Request) {
+	reader := h.requirePhotoReader(w)
+	if reader == nil {
+		return
+	}
+	filter, ok := parsePhotoFilter(w, r)
+	if !ok {
+		return
+	}
+	yes := true
+	filter.Archived = &yes
+
+	photos, total, err := reader.ListPhotos(r.Context(), filter)
+	if err != nil {
+		log.Printf("photos trash list: %v", err)
+		respondError(w, http.StatusInternalServerError, "failed to get trash")
+		return
+	}
+
+	response := PhotoListResponse{
+		Photos: make([]PhotoResponse, 0, len(photos)),
+		Total:  total,
+		Limit:  filter.Limit,
+		Offset: filter.Offset,
+	}
+	if response.Limit == 0 {
+		response.Limit = constants.DefaultHandlerPageSize
+	}
+	for i := range photos {
+		response.Photos = append(response.Photos, nativePhotoToResponse(photos[i]))
+	}
+	respondJSON(w, http.StatusOK, response)
+}
+
+// BatchPurgeRequest is the JSON envelope for POST /photos/batch/purge. It
+// mirrors BatchArchiveRequest so the frontend can pass the same selection
+// state to either endpoint.
+type BatchPurgeRequest struct {
+	PhotoUIDs []string `json:"photo_uids"`
+}
+
+// BatchPurgeResponse is the envelope returned by BatchPurge. Per-photo
+// failures are surfaced via Errors while still allowing the operation to
+// make progress for the rest of the batch (matching the BatchArchive /
+// BatchRestore contract).
+type BatchPurgeResponse struct {
+	Purged int               `json:"purged"`
+	Errors []BatchPhotoError `json:"errors,omitempty"`
+}
+
+// BatchPurge hard-deletes the listed photos. Photos that are not currently
+// archived are skipped with an entry in Errors (the row keeps existing).
+// Admin role is enforced at the router via RequireRole("admin"); this
+// handler still calls requireWriteRole as a belt-and-braces guard against
+// future route reshuffles.
+func (h *PhotosHandler) BatchPurge(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "write access required")
+		return
+	}
+	var req BatchPurgeRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
+		return
+	}
+	if len(req.PhotoUIDs) == 0 {
+		respondError(w, http.StatusBadRequest, "photo_uids is required")
+		return
+	}
+	if h.trashStore == nil {
+		respondError(w, http.StatusServiceUnavailable, "trash store not available")
+		return
+	}
+
+	var batchErrors []BatchPhotoError
+	purged := 0
+	for _, uid := range req.PhotoUIDs {
+		if err := trash.PurgePhoto(r.Context(), uid, h.trashStore); err != nil {
+			batchErrors = append(batchErrors, BatchPhotoError{PhotoUID: uid, Error: err.Error()})
+			log.Printf("photos batch purge %s: %v", sanitizeForLog(uid), err)
+			continue
+		}
+		purged++
+	}
+	respondJSON(w, http.StatusOK, BatchPurgeResponse{Purged: purged, Errors: batchErrors})
 }
 
 // runBatchUIDOp decodes the standard {photo_uids:[...]} payload, enforces

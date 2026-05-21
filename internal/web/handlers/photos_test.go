@@ -3,6 +3,7 @@ package handlers
 import (
 	"bytes"
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -16,6 +17,7 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/database"
 	"github.com/kozaktomas/photo-sorter/internal/database/mock"
 	"github.com/kozaktomas/photo-sorter/internal/storage"
+	"github.com/kozaktomas/photo-sorter/internal/trash"
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
 
@@ -110,6 +112,26 @@ func (f *fakePhotoReader) ListPhotoFiles(
 		return out[i].ID < out[j].ID
 	})
 	return out, nil
+}
+
+// ListArchivedBefore returns UIDs of archived photos whose ArchivedAt is
+// strictly before cutoff. The fake walks the in-memory map so test cases can
+// stage archived photos with explicit timestamps and assert the helper's
+// selection logic.
+func (f *fakePhotoReader) ListArchivedBefore(
+	_ context.Context, cutoff time.Time,
+) ([]string, error) {
+	if f.err != nil {
+		return nil, f.err
+	}
+	var uids []string
+	for uid, p := range f.photos {
+		if p.ArchivedAt != nil && p.ArchivedAt.Before(cutoff) {
+			uids = append(uids, uid)
+		}
+	}
+	sort.Strings(uids)
+	return uids, nil
 }
 
 // CreatePhoto inserts a photo. Stub for PhotoWriter interface compliance.
@@ -1368,4 +1390,215 @@ func TestPhotosHandler_BatchRestore_ViewerForbidden(t *testing.T) {
 	rec := httptest.NewRecorder()
 	h.BatchRestore(rec, req)
 	assertStatusCode(t, rec, http.StatusForbidden)
+}
+
+// archivePhoto marks the given UID as archived in the fake reader. Used by
+// the trash tests to set up the precondition for BatchPurge / ListTrash.
+func archivePhoto(t *testing.T, r *fakePhotoReader, uid string, archivedAt time.Time) {
+	t.Helper()
+	if err := r.ArchivePhoto(context.Background(), uid); err != nil {
+		t.Fatalf("archive %s: %v", uid, err)
+	}
+	r.photos[uid].ArchivedAt = &archivedAt
+}
+
+// createPhotosHandlerWithTrash wires a PhotosHandler with the given native
+// repo + storage and a fully-functional trash.Store backed by the mock
+// embedding / face writers, so the BatchPurge endpoint can be exercised
+// end-to-end.
+func createPhotosHandlerWithTrash(
+	t *testing.T, cfg *config.Config, repo *fakePhotoReader, store *storage.Storage,
+) (*PhotosHandler, *mock.MockEmbeddingWriter, *mock.MockFaceWriter) {
+	t.Helper()
+	embs := mock.NewMockEmbeddingWriter()
+	faces := mock.NewMockFaceWriter()
+	h := &PhotosHandler{
+		config: cfg,
+		repo:   repo,
+		store:  store,
+		trashStore: &trash.Store{
+			Photos:     repo,
+			Embeddings: embs,
+			Faces:      faces,
+			Files:      store,
+		},
+	}
+	return h, embs, faces
+}
+
+func TestPhotosHandler_ListTrash_OnlyArchived(t *testing.T) {
+	reader := newFakePhotoReader()
+	reader.add(samplePhoto("live", "h1ffffffff00", "live", time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)))
+	reader.add(samplePhoto("arch", "h2ffffffff00", "arch", time.Date(2024, 2, 1, 0, 0, 0, 0, time.UTC)))
+	archivePhoto(t, reader, "arch", time.Now())
+	h := createPhotosHandlerNative(testConfig(), reader, newTestStorage(t))
+
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/photos/trash", nil)
+	rec := httptest.NewRecorder()
+	h.ListTrash(rec, req)
+
+	assertStatusCode(t, rec, http.StatusOK)
+	var resp PhotoListResponse
+	parseJSONResponse(t, rec, &resp)
+	if resp.Total != 1 {
+		t.Fatalf("Total = %d, want 1", resp.Total)
+	}
+	if resp.Photos[0].UID != "arch" {
+		t.Errorf("expected arch in trash, got %s", resp.Photos[0].UID)
+	}
+}
+
+func TestPhotosHandler_ListTrash_OverridesArchivedQueryParam(t *testing.T) {
+	reader := newFakePhotoReader()
+	reader.add(samplePhoto("live", "h1ffffffff00", "live", time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)))
+	reader.add(samplePhoto("arch", "h2ffffffff00", "arch", time.Date(2024, 2, 1, 0, 0, 0, 0, time.UTC)))
+	archivePhoto(t, reader, "arch", time.Now())
+	h := createPhotosHandlerNative(testConfig(), reader, newTestStorage(t))
+
+	// ?archived=false is intentionally ignored — /photos/trash always lists
+	// archived rows.
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/photos/trash?archived=false", nil)
+	rec := httptest.NewRecorder()
+	h.ListTrash(rec, req)
+
+	assertStatusCode(t, rec, http.StatusOK)
+	var resp PhotoListResponse
+	parseJSONResponse(t, rec, &resp)
+	if resp.Total != 1 || resp.Photos[0].UID != "arch" {
+		t.Errorf("trash list ignored archived=false override: total=%d photos=%+v", resp.Total, resp.Photos)
+	}
+}
+
+func TestPhotosHandler_ListTrash_NoReader(t *testing.T) {
+	h := createPhotosHandlerForTest(testConfig())
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/photos/trash", nil)
+	rec := httptest.NewRecorder()
+	h.ListTrash(rec, req)
+	assertStatusCode(t, rec, http.StatusServiceUnavailable)
+}
+
+func TestPhotosHandler_BatchPurge_NoTrashStore(t *testing.T) {
+	h := createPhotosHandlerNative(testConfig(), newFakePhotoReader(), newTestStorage(t))
+	req := newBatchRequest(t, "/api/v1/photos/batch/purge", `{"photo_uids": ["p1"]}`)
+	rec := httptest.NewRecorder()
+	h.BatchPurge(rec, req)
+	assertStatusCode(t, rec, http.StatusServiceUnavailable)
+}
+
+func TestPhotosHandler_BatchPurge_MissingUIDs(t *testing.T) {
+	reader := newFakePhotoReader()
+	store := newTestStorage(t)
+	h, _, _ := createPhotosHandlerWithTrash(t, testConfig(), reader, store)
+
+	req := newBatchRequest(t, "/api/v1/photos/batch/purge", `{}`)
+	rec := httptest.NewRecorder()
+	h.BatchPurge(rec, req)
+	assertStatusCode(t, rec, http.StatusBadRequest)
+	assertJSONError(t, rec, "photo_uids is required")
+}
+
+func TestPhotosHandler_BatchPurge_InvalidJSON(t *testing.T) {
+	reader := newFakePhotoReader()
+	store := newTestStorage(t)
+	h, _, _ := createPhotosHandlerWithTrash(t, testConfig(), reader, store)
+
+	req := newBatchRequest(t, "/api/v1/photos/batch/purge", `{invalid}`)
+	rec := httptest.NewRecorder()
+	h.BatchPurge(rec, req)
+	assertStatusCode(t, rec, http.StatusBadRequest)
+	assertJSONError(t, rec, "invalid request body")
+}
+
+func TestPhotosHandler_BatchPurge_ViewerForbidden(t *testing.T) {
+	reader := newFakePhotoReader()
+	store := newTestStorage(t)
+	h, _, _ := createPhotosHandlerWithTrash(t, testConfig(), reader, store)
+
+	req := newBatchRequest(t, "/api/v1/photos/batch/purge", `{"photo_uids": ["p1"]}`)
+	ctx := middleware.SetSessionInContext(req.Context(), &middleware.Session{Role: "viewer"})
+	req = req.WithContext(ctx)
+	rec := httptest.NewRecorder()
+	h.BatchPurge(rec, req)
+	assertStatusCode(t, rec, http.StatusForbidden)
+}
+
+func TestPhotosHandler_BatchPurge_Success(t *testing.T) {
+	reader := newFakePhotoReader()
+	store := newTestStorage(t)
+	h, embs, faces := createPhotosHandlerWithTrash(t, testConfig(), reader, store)
+
+	hash := "aabbcc112233"
+	reader.add(samplePhoto("arch1", hash, "arch1", time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)))
+	archivePhoto(t, reader, "arch1", time.Now().Add(-31*24*time.Hour))
+	// Stage an embedding + face so we can assert they were also cleaned.
+	embs.DeleteEmbeddingCalls = nil
+	faces.AddFaces("arch1", []database.StoredFace{{ID: 7, PhotoUID: "arch1"}})
+
+	req := newBatchRequest(t, "/api/v1/photos/batch/purge", `{"photo_uids": ["arch1"]}`)
+	rec := httptest.NewRecorder()
+	h.BatchPurge(rec, req)
+
+	assertStatusCode(t, rec, http.StatusOK)
+	var resp BatchPurgeResponse
+	parseJSONResponse(t, rec, &resp)
+	if resp.Purged != 1 {
+		t.Errorf("Purged = %d, want 1", resp.Purged)
+	}
+	if len(resp.Errors) != 0 {
+		t.Errorf("Errors = %+v, want empty", resp.Errors)
+	}
+	if _, err := reader.GetPhoto(context.Background(), "arch1"); !errors.Is(err, database.ErrNotFound) {
+		t.Errorf("photo should be hard-deleted; got err %v", err)
+	}
+	if len(embs.DeleteEmbeddingCalls) != 1 || embs.DeleteEmbeddingCalls[0] != "arch1" {
+		t.Errorf("expected DeleteEmbedding(arch1), got %+v", embs.DeleteEmbeddingCalls)
+	}
+	if len(faces.DeleteFacesCalls) != 1 || faces.DeleteFacesCalls[0] != "arch1" {
+		t.Errorf("expected DeleteFacesByPhoto(arch1), got %+v", faces.DeleteFacesCalls)
+	}
+}
+
+func TestPhotosHandler_BatchPurge_RejectsLivePhoto(t *testing.T) {
+	reader := newFakePhotoReader()
+	store := newTestStorage(t)
+	h, embs, _ := createPhotosHandlerWithTrash(t, testConfig(), reader, store)
+
+	// "live" is intentionally not archived; "arch" is archived. The purge
+	// must report the live photo in Errors but still hard-delete the
+	// archived one.
+	reader.add(samplePhoto("live", "111111abcabc", "live", time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)))
+	reader.add(samplePhoto("arch", "222222abcabc", "arch", time.Date(2024, 2, 1, 0, 0, 0, 0, time.UTC)))
+	archivePhoto(t, reader, "arch", time.Now())
+
+	req := newBatchRequest(t, "/api/v1/photos/batch/purge",
+		`{"photo_uids": ["live", "arch", "missing"]}`)
+	rec := httptest.NewRecorder()
+	h.BatchPurge(rec, req)
+
+	assertStatusCode(t, rec, http.StatusOK)
+	var resp BatchPurgeResponse
+	parseJSONResponse(t, rec, &resp)
+	if resp.Purged != 1 {
+		t.Errorf("Purged = %d, want 1", resp.Purged)
+	}
+	if len(resp.Errors) != 2 {
+		t.Fatalf("Errors length = %d, want 2 (live + missing); got %+v", len(resp.Errors), resp.Errors)
+	}
+
+	uidToErr := map[string]string{}
+	for _, e := range resp.Errors {
+		uidToErr[e.PhotoUID] = e.Error
+	}
+	if !strings.Contains(uidToErr["live"], "not archived") {
+		t.Errorf("live photo error = %q, want a 'not archived' message", uidToErr["live"])
+	}
+	if _, ok := uidToErr["missing"]; !ok {
+		t.Errorf("missing photo should produce an error entry")
+	}
+	if _, err := reader.GetPhoto(context.Background(), "live"); errors.Is(err, database.ErrNotFound) {
+		t.Errorf("live photo must NOT be hard-deleted")
+	}
+	if len(embs.DeleteEmbeddingCalls) != 1 {
+		t.Errorf("DeleteEmbedding should run exactly once for arch; got %v", embs.DeleteEmbeddingCalls)
+	}
 }

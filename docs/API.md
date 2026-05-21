@@ -561,6 +561,87 @@ POST /photos/batch/restore
 }
 ```
 
+### List Trash
+
+Return archived (soft-deleted) photos. Same filters / sort / pagination as
+`GET /photos`, but the `archived` flag is force-overridden to `true` —
+callers cannot accidentally fetch live photos via this route. Available
+to any authenticated role.
+
+```
+GET /photos/trash
+```
+
+**Query parameters:** Identical to `GET /photos` except `archived` is
+ignored. `q`, `taken_from` / `taken_to`, `min_lat` / `min_lng` / `max_lat`
+/ `max_lng`, `sort`, `limit`, `offset` all behave the same way.
+
+**Response (200):**
+```json
+{
+  "photos": [
+    {
+      "uid": "pq8abc123",
+      "title": "Trash item",
+      "file_name": "old.jpg",
+      "hash": "abc123def456",
+      ...
+    }
+  ],
+  "total": 1,
+  "limit": 50,
+  "offset": 0
+}
+```
+
+### Batch Purge Photos (admin only)
+
+Hard-delete archived photos. Every UID must already be archived; live
+photos are skipped with an entry in `errors[]`. The purge removes the
+photo row (cascading `photo_files`, `photo_phashes`, `markers`,
+`album_photos`, `photo_labels`), the embedding row, every cached face
+row, every original file from disk, and every cached thumbnail (one per
+size in `storage.ValidThumbSizes`). Auto-purge runs the same logic on a
+30-day window — see the daemon section below.
+
+Admin role required (`RequireRole("admin")`).
+
+```
+POST /photos/batch/purge
+```
+
+**Request:**
+```json
+{
+  "photo_uids": ["pq8abc123", "pq8def456"]
+}
+```
+
+**Response (200):**
+```json
+{
+  "purged": 1,
+  "errors": [
+    { "photo_uid": "pq8def456", "error": "photo is not archived" }
+  ]
+}
+```
+
+**Error codes:**
+- `400 Bad Request` — empty `photo_uids` list or invalid JSON body.
+- `403 Forbidden` — caller is not in the `admin` role.
+- `503 Service Unavailable` — the trash store backend (embedding writer
+  + face writer + on-disk storage) could not be resolved at startup.
+
+#### Auto-purge daemon
+
+The serve command launches a background ticker that calls the same purge
+logic every hour with cutoff = `now − TRASH_RETENTION_DAYS`. Override
+`TRASH_RETENTION_DAYS` (default `30`) to change the retention window.
+The daemon does nothing on a fresh install where no photos are archived;
+it logs the count and the cutoff timestamp on each tick that purges at
+least one photo.
+
 ### Find Similar Photos
 
 Find photos visually similar to a source photo using CLIP embeddings.

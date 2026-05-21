@@ -2,6 +2,7 @@ package database
 
 import (
 	"context"
+	"time"
 )
 
 // EmbeddingReader provides read-only access to image embeddings.
@@ -223,6 +224,10 @@ type PhotoReader interface {
 	GetPhotoByHash(ctx context.Context, hash string) (*Photo, error)
 	ListPhotos(ctx context.Context, filter PhotoFilter) ([]Photo, int, error)
 	ListPhotoFiles(ctx context.Context, photoUID string) ([]PhotoFile, error)
+	// ListArchivedBefore returns UIDs of photos whose archived_at is strictly
+	// before the given cutoff. Used by the trash auto-purge daemon to find
+	// photos that have outlived the retention window.
+	ListArchivedBefore(ctx context.Context, cutoff time.Time) ([]string, error)
 }
 
 // PhotoWriter provides write access to native photos and their physical
