@@ -2,65 +2,56 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Migration Roadmap: Away from PhotoPrism (in progress)
+## Overview
 
-Photo-sorter is migrating from a PhotoPrism front-end to a fully self-contained
-photo management application. PhotoPrism is still the source of truth for
-photos, albums, labels, faces, and authentication at the time of writing — but
-that is being replaced incrementally.
+Photo-sorter is a self-contained photo management application: one Go binary,
+one Postgres database (with pgvector), and an external embeddings service.
+PostgreSQL is the single source of truth for photos, albums, labels, faces,
+subjects, markers, photo books, and user accounts.
 
-**End-state goals:**
-- One database only: PostgreSQL + pgvector (no MariaDB).
-- Native storage layer that mirrors the PhotoPrism on-disk layout
-  (`originals/YYYY/MM/`, `cache/thumb/aa/bb/cc/<hash>_<size>.jpg`).
-- Own user management: roles `admin` / `editor` / `viewer`, bcrypt, bootstrap admin
-  via env vars. Public album sharing later.
-- Native upload pipeline: hash → dedup → EXIF (`exiftool` subprocess + go-exif
-  fallback) → thumbs → DB. Supported formats: JPEG/PNG/WebP, RAW
-  (CR2/CR3/NEF/ARW/DNG/RAF/ORF/RW2/PEF/SRW) via `dcraw`, HEIC/HEIF via
-  `heif-convert`, EXIF sidecars via `exiftool`. All three are bundled into
-  the official Docker image and listed as `Depends:` in the .deb. The
-  image actually ships LibRaw's `dcraw_emu` (Alpine dropped the upstream
-  `dcraw` package) plus a small `scripts/dcraw-shim.sh` wrapper installed
-  as `/usr/local/bin/dcraw` that translates the `-c -w -h` invocation
-  the Go code uses. The `serve` command logs a `WARN` line on startup
-  for each missing binary so deployments fail loud, not silent.
-- Native repos for photos, albums, labels, markers, subjects. Existing
-  `embeddings` / `faces` (pgvector) and HNSW indexes stay.
-- New features: soft-delete trash (30-day grace), duplicate detection on upload
-  (pHash + embedding), EXIF edit endpoint with XMP sidecar write, Czech-aware
-  Postgres full-text search, PWA + mobile capture page, backup CLI (tar
-  originals + `pg_dump`).
-- One-shot migration via `photo-sorter migrate-from-photoprism` (with dry-run
-  and `migrate-verify`), then PhotoPrism + MariaDB containers are dropped from
-  compose.
+### Storage layout
 
-`photo_uid` from PhotoPrism is preserved as the native photo UID; downstream
-tables (`embeddings`, `faces`, `section_photos`, `page_slots`, ...) keep their
-references without remap. Albums, subjects, and markers preserve their
-PhotoPrism UIDs too, so cached PhotoPrism references in `faces.subject_uid` /
-`faces.marker_uid` stay valid. For operators who landed an older buggy version
-of the migrator (which generated new UIDs), a separate
-`photo-sorter migrate-remap-references --map <file>` command rewrites every
-soft-FK column in one transaction; `migrate-from-photoprism --emit-photo-map
-<path>` writes the JSON the remap command consumes.
+Originals live on disk under `STORAGE_ORIGINALS_PATH` in the layout
+`YYYY/MM/<filename>` (same on-disk shape as PhotoPrism — an existing
+PhotoPrism library can be migrated in place without renaming). The
+thumbnail cache lives under `STORAGE_CACHE_PATH/thumb/<aa>/<bb>/<cc>/<hash>_<size>.jpg`,
+where `<hash>` is the photo's SHA256 and `<aa>/<bb>/<cc>` are the first
+three byte-pair shards of the hash. The thumbnail cache is regenerable
+from the originals via `cache build-thumbs`; backups intentionally skip it.
 
-Granular work is tracked as Botka tasks (project `photo-sorter`); see
-`mcp__botka__list_tasks --project-name photo-sorter`. The PhotoPrism client
-package (`internal/photoprism/`) and `PHOTOPRISM_*` env vars are scheduled for
-removal at the tail end of that work — until that task lands, treat them as
-load-bearing.
+### Users + bootstrap
 
-`migrate-verify` now provides field-level coverage: every column the migrator
-is supposed to copy (photo metadata, GPS, EXIF, keywords, flags; subject
-bio/about/alias/type/favorite/private; label description/categories/priority/
-favorite; album description/location/category/notes/filter/order/type/
-favorite/private; marker score/invalid/reviewed/subject_uid) is compared
-cell-by-cell with tolerance bands that `--strict` disables. Membership
-diffs (photo↔album, photo↔label) report by photo `file_hash[:8]` + container
-slug instead of "1 fewer pair". A clean `migrate-verify` (`--strict`
-optional) is the authoritative pre-Docker-drop gate: zero diffs is the
-precondition for cancelling the PhotoPrism + MariaDB compose services.
+Users authenticate against the local `users` table (bcrypt-hashed
+passwords) with roles `admin` / `editor` / `viewer`. The first admin is
+created automatically from `BOOTSTRAP_ADMIN_USERNAME` + `BOOTSTRAP_ADMIN_PASSWORD`
+on a fresh install (no-op once any user exists). Subsequent users are
+managed via `/api/v1/users/*` (admin only) or the Settings page.
+
+### Upload pipeline
+
+`internal/photopipe` ingests JPEG/PNG/WebP/TIFF/GIF natively and shells
+out to `heif-convert` for HEIC/HEIF and `dcraw` for RAW
+(CR2/CR3/NEF/ARW/DNG/RAF/ORF/RW2/PEF/SRW). EXIF is read via `exiftool`
+(with a pure-Go fallback); EXIF edits also write an XMP sidecar via
+`exiftool`. The official Docker image bundles `dcraw_emu` (Alpine's
+LibRaw replacement, wrapped by `scripts/dcraw-shim.sh` installed as
+`/usr/local/bin/dcraw`), `libheif-tools`, and `exiftool`. The `serve`
+command logs a startup `WARN` line for each missing binary so
+deployments fail loud, not silent.
+
+### Migration from PhotoPrism (historical)
+
+Operators with an existing PhotoPrism instance can import it with
+`photo-sorter migrate-from-photoprism` (read PhotoPrism's MariaDB and
+copy originals) followed by `photo-sorter migrate-verify` (cell-by-cell
+diff with tolerance bands; `--strict` disables them). A clean
+`migrate-verify` is the gate for dropping PhotoPrism + MariaDB. UIDs are
+preserved verbatim across photos, albums, subjects, and markers, so
+cached references in `embeddings`, `faces`, `section_photos`, and
+`page_slots` stay valid without a remap pass. See
+[`docs/migration-from-photoprism.md`](docs/migration-from-photoprism.md)
+for the full runbook. The `internal/photoprism/` REST client is retained
+only to drive the migration commands.
 
 ## Browser
 
@@ -163,7 +154,7 @@ tail -f /app/photo-sorter.log
 ```
 
 The dev environment uses:
-- PostgreSQL: `pgvector:5432` (postgres/photoprism) — only managed service in `docker-compose.yml`
+- PostgreSQL: `pgvector:5432` — the only managed service in `docker-compose.yml` (credentials come from `.env.dev`)
 - Embeddings (CLIP + faces): external, configured via `EMBEDDING_URL` in `.env.dev`
 - Originals tree: `STORAGE_ORIGINALS_PATH` (defaults to `./data/originals`) — `YYYY/MM/<filename>`
 - Thumbnail cache: `STORAGE_CACHE_PATH` (defaults to `./data/cache`) — `thumb/<aa>/<bb>/<cc>/<hash>_<size>.jpg`
@@ -182,110 +173,100 @@ and is not installed automatically; see the script header for manual
 installation instructions. `dev.sh` warns if the canonical sentinel font is
 missing.
 
-## Direct PhotoPrism API Auth (for Playwright/curl)
+## API auth (curl/Playwright)
 
-When testing the PhotoPrism API directly (not through photo-sorter), authentication works as follows:
+Photo-sorter exposes a cookie-based session. Log in once and reuse the
+`session` cookie for subsequent calls:
 
-1. **Login:** `POST http://photoprism-test:2342/api/v1/session` with body `{"username":"admin","password":"photoprism"}`
-2. **Session ID:** The response JSON contains an `id` field (same value as `access_token`) — use either as the session token. Do NOT use the `session_id` field (it's a different value and won't work).
-3. **Subsequent requests:** Pass the session ID via the `X-Session-ID` header
-
-```bash
-# Login and extract session ID
-TOKEN=$(curl -s -X POST http://photoprism-test:2342/api/v1/session \
-  -H 'Content-Type: application/json' \
-  -d '{"username":"admin","password":"photoprism"}' | jq -r '.id')
-
-# Use the token
-curl -s -H "X-Session-ID: $TOKEN" "http://photoprism-test:2342/api/v1/photos?count=10"
-```
-
-**Photo-sorter's own API** uses cookie-based auth instead:
 ```bash
 curl -c cookies.txt -X POST http://localhost:8085/api/v1/auth/login \
   -H 'Content-Type: application/json' \
-  -d '{"username":"admin","password":"photoprism"}'
+  -d '{"username":"admin","password":"your-password"}'
 curl -b cookies.txt "http://localhost:8085/api/v1/albums"
 ```
 
+The bootstrap admin credentials come from `BOOTSTRAP_ADMIN_USERNAME` /
+`BOOTSTRAP_ADMIN_PASSWORD` on the first run; additional users are managed
+via `/api/v1/users/*` (admin only).
+
 ## Architecture
 
-This is a CLI tool that sorts photos in PhotoPrism using AI providers. Built with Cobra for CLI and Viper for configuration.
+A single Go binary (Cobra CLI + Chi HTTP router) backed by PostgreSQL and
+an external embeddings service. The frontend is React + TypeScript +
+TailwindCSS, embedded into the binary at compile time via `go:embed`.
 
 ### Core Components
 
-- **cmd/** - Cobra commands (albums, labels, count, move, sort, upload, photo, photo info/match/similar/clear-faces, cache sync/compute-eras/push-embeddings, create, clear, version, serve)
-- **internal/photoprism/** - PhotoPrism REST API client (split by domain: albums, photos, labels, markers, subjects, upload)
-- **internal/ai/** - AI provider interface with OpenAI, Gemini, Ollama, and llama.cpp implementations
-- **internal/sorter/** - Orchestrates photo fetching → AI analysis → label application
-- **internal/config/** - Environment-based configuration loader
-- **internal/fingerprint/** - Perceptual hash computation (pHash, dHash), image/face embeddings client
-- **internal/database/** - PostgreSQL storage with pgvector for embeddings and faces data
-- **internal/facematch/** - Face matching utilities (IoU computation, bbox conversion, name normalization, marker matching)
-- **internal/constants/** - Shared constants (page sizes, thresholds, concurrency, upload limits)
-- **internal/latex/** - PDF export via LaTeX (markdown-to-LaTeX, layout validation, 12-column grid, font registry, templates). `GeneratePDFWithCallbacks` accepts an `ExportOptions.OnProgress` callback so the web job flow can emit SSE progress events for photo downloads and lualatex passes. The original `GeneratePDF`/`GeneratePDFWithOptions` entry points delegate with a nil callback.
-- **internal/web/** - Web server with Chi router, REST API handlers, and SSE for real-time updates
-- **web/** - React + TypeScript + TailwindCSS frontend (built with Vite, i18n with Czech + English)
+- **cmd/** — Cobra commands (sort, albums, labels, count, move, upload, photo, cache, serve, backup, migrate-from-photoprism, migrate-verify, migrate-remap-references, version)
+- **internal/ai/** — AI provider interface with OpenAI, Gemini, Ollama, and llama.cpp implementations
+- **internal/auth/** — Password hashing, role constants, bootstrap admin creation
+- **internal/config/** — Environment-based configuration loader
+- **internal/constants/** — Shared constants (page sizes, thresholds, concurrency, upload limits)
+- **internal/database/** — PostgreSQL storage with pgvector, repository interfaces, HNSW index wrappers
+- **internal/exif/** — EXIF reader (`exiftool` subprocess + pure-Go fallback) and XMP sidecar writer
+- **internal/facematch/** — Face matching utilities (IoU, bbox conversion, name normalization)
+- **internal/fingerprint/** — Perceptual hash computation (pHash, dHash) + embeddings HTTP client
+- **internal/imgconvert/** — Format detection + thin wrappers around `heif-convert` (HEIC/HEIF) and `dcraw` (RAW), producing intermediate JPEGs
+- **internal/latex/** — PDF export via LaTeX (markdown-to-LaTeX, layout validation, 12-column grid, font registry, templates). `GeneratePDFWithCallbacks` accepts an `ExportOptions.OnProgress` callback so the web job flow can emit SSE progress events.
+- **internal/mcp/** — MCP server (HTTP SSE + Bearer auth) for AI agent integration
+- **internal/migrate/** — One-shot PhotoPrism→native migrator (historical; used by `migrate-from-photoprism`)
+- **internal/photopipe/** — Native upload pipeline: buffer → hash → format detect → exact-duplicate check → decode → EXIF → near-duplicate scan (pHash + embedding) → originals write → DB rows → thumbnails → pHash persist
+- **internal/photoprism/** — PhotoPrism REST API client; retained only to drive the migration commands
+- **internal/sorter/** — AI sort orchestration (photo fetch → AnalyzePhoto → label application)
+- **internal/storage/** — On-disk layout for originals (`YYYY/MM/<filename>`) and the thumbnail cache (`thumb/<aa>/<bb>/<cc>/<hash>_<size>.jpg`)
+- **internal/thumb/** — Thumbnail registry + `GenerateSizes` (decode once, resize many)
+- **internal/trash/** — Soft-delete trash store and the hourly auto-purge daemon
+- **internal/verify/** — Field-level `migrate-verify` comparator
+- **internal/web/** — Web server (Chi router, REST handlers, SSE, embedded SPA)
+- **web/** — React + TypeScript + TailwindCSS frontend (Vite, i18n with Czech + English)
 
-### PhotoPrism Package Structure
+### Data Flow (upload)
 
-The PhotoPrism client is split by domain for maintainability:
-
-```
-internal/photoprism/
-├── photoprism.go      # Core client: struct, constructors, auth, logout
-├── http.go            # Generic HTTP helpers: doGetJSON, doPostJSON, doPutJSON, doDeleteJSON
-├── types.go           # All type definitions (Album, Photo, Label, Marker, Subject, etc.)
-├── albums.go          # Album operations: GetAlbum, GetAlbums, CreateAlbum, AddPhotosToAlbum, etc.
-├── photos.go          # Photo operations: GetPhotos, EditPhoto, GetPhotoDetails, GetPhotoDownload, etc.
-├── labels.go          # Label operations: GetLabels, UpdateLabel, DeleteLabels, AddPhotoLabel, etc.
-├── markers.go         # Marker operations: GetPhotoMarkers, CreateMarker, UpdateMarker, etc.
-├── subjects.go        # Subject operations: GetSubject, UpdateSubject, GetSubjects
-├── faces.go           # Face operations: GetFaces
-└── upload.go          # Upload operations: UploadFile, UploadFiles, ProcessUpload
-```
-
-**HTTP Helpers:** The `http.go` file provides generic helpers that reduce boilerplate:
-```go
-result, err := doGetJSON[Album](pp, "/api/v1/albums/"+uid)
-result, err := doPostJSON[Album](pp, "/api/v1/albums", createReq)
-err := doDelete(pp, "/api/v1/labels/"+uid)
-```
-
-### Data Flow
-
-1. CLI command invokes sorter with album UID
-2. Sorter fetches photos via PhotoPrism client
-3. Each photo is downloaded and sent to AI provider for analysis
-4. AI suggests categories/labels
-5. Labels are applied back to PhotoPrism (unless dry-run)
+1. Multipart upload arrives at `POST /api/v1/upload` (or `/upload/job` for SSE).
+2. `internal/photopipe` buffers to a temp file and SHA256-hashes it.
+3. Format detection + exact-duplicate check (by SHA256). HEIC/RAW are decoded to JPEG via `imgconvert`.
+4. EXIF is read with `exiftool` (pure-Go fallback). Near-duplicate scan (pHash + CLIP embedding) when enabled.
+5. The original is written to `STORAGE_ORIGINALS_PATH/YYYY/MM/<basename>` and rows are inserted into the `photos`, `photo_files`, and `photo_phashes` tables.
+6. `internal/thumb.GenerateSizes` writes every registered thumbnail size under the cache tree.
+7. Optionally the embeddings service is called to populate `embeddings` + `faces` (Process job, can also run later).
 
 ### Configuration
 
 Environment variables (loaded from `.env`):
-- `PHOTOPRISM_URL`, `PHOTOPRISM_USERNAME`, `PHOTOPRISM_PASSWORD`
-- `PHOTOPRISM_DOMAIN` (optional, public URL for generating clickable photo links)
-- `OPENAI_TOKEN`
-- `GEMINI_API_KEY`
-- `OLLAMA_URL` (optional, defaults to http://localhost:11434)
-- `OLLAMA_MODEL` (optional, defaults to llama3.2-vision:11b)
-- `LLAMACPP_URL` (optional, defaults to http://localhost:8080)
-- `LLAMACPP_MODEL` (optional, defaults to llava)
-- `EMBEDDING_URL` (optional, defaults to http://localhost:8000)
-- `EMBEDDING_DIM` (optional, defaults to 768)
-- `DATABASE_URL` (required, e.g., `postgres://user:pass@host:5432/photosorter?sslmode=disable`)
-- `DATABASE_MAX_OPEN_CONNS` (optional, defaults to 25)
-- `DATABASE_MAX_IDLE_CONNS` (optional, defaults to 5)
-- `HNSW_INDEX_PATH` (optional, path to persist face HNSW index, e.g., `/data/faces.pg.hnsw`)
-- `HNSW_EMBEDDING_INDEX_PATH` (optional, path to persist embedding HNSW index, e.g., `/data/embeddings.pg.hnsw`)
-- `STORAGE_ORIGINALS_PATH` (optional, root for the native originals tree — PhotoPrism-style `YYYY/MM/<filename>`; defaults to `/data/originals` in Docker, `./data/originals` in dev)
-- `STORAGE_CACHE_PATH` (optional, root for the thumbnail cache — thumbnails live under `<CachePath>/thumb/<aa>/<bb>/<cc>/<hash>_<size>.jpg`; defaults to `/data/cache` in Docker, `./data/cache` in dev)
-- `PHOTOPRISM_DATABASE_URL` (optional, MariaDB DSN for direct database access, e.g., `photoprism:photoprism@tcp(mariadb:3306)/photoprism`)
-- `MCP_API_TOKEN` (optional, enables MCP endpoint at `/mcp/sse` on the `serve` command; Bearer token for MCP client authentication)
-- `DUPLICATE_CHECK_ENABLED` (optional bool, defaults to `true`) — globally gates the upload-time near-duplicate detector (pHash + embedding scan); set to `false` to skip the scan even when the per-request flag is on
-- `DUPLICATE_PHASH_MAX_DIFF` (optional int, defaults to `8`) — max hamming distance between two 64-bit pHashes at which they are reported as near-duplicates (0..64)
-- `DUPLICATE_EMBEDDING_MAX_DIST` (optional float, defaults to `0.05`) — max cosine distance between two CLIP embeddings at which they are reported as near-duplicates (0..2)
-- `TRASH_RETENTION_DAYS` (optional int, defaults to `30`) — retention window for the soft-delete trash. The auto-purge daemon (launched from `cmd/serve.go`) hard-deletes any photo whose `archived_at` is older than this window on each hourly tick. Set to a larger number to keep the trash around longer; values that fail to parse or are non-positive fall back to the default.
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `DATABASE_URL` | Yes | PostgreSQL connection string with pgvector |
+| `DATABASE_MAX_OPEN_CONNS` | No | Max open connections (default 25) |
+| `DATABASE_MAX_IDLE_CONNS` | No | Max idle connections (default 5) |
+| `STORAGE_ORIGINALS_PATH` | No | Originals root (default `/data/originals` in Docker, `./data/originals` in dev) — layout `YYYY/MM/<filename>` |
+| `STORAGE_CACHE_PATH` | No | Cache root (default `/data/cache` in Docker, `./data/cache` in dev) — thumbnails live under `<CachePath>/thumb/<aa>/<bb>/<cc>/<hash>_<size>.jpg` |
+| `BOOTSTRAP_ADMIN_USERNAME` | No* | Username for the first admin auto-created on a fresh install |
+| `BOOTSTRAP_ADMIN_PASSWORD` | No* | Password for the first admin (warns and skips if either is unset and no users exist) |
+| `TRASH_RETENTION_DAYS` | No | Retention window for the soft-delete trash (default 30). The hourly auto-purge daemon hard-deletes archived photos older than this. |
+| `DUPLICATE_CHECK_ENABLED` | No | `true`/`false` global gate for the upload-time near-duplicate scan (default `true`) |
+| `DUPLICATE_PHASH_MAX_DIFF` | No | Max hamming distance (0..64) between pHashes for the near-duplicate scan (default 8) |
+| `DUPLICATE_EMBEDDING_MAX_DIST` | No | Max cosine distance (0..2) between CLIP embeddings for the near-duplicate scan (default 0.05) |
+| `EMBEDDING_URL` | No | Embeddings service URL (default `http://localhost:8000`) |
+| `EMBEDDING_DIM` | No | Embedding dimensions (default 768) |
+| `HNSW_INDEX_PATH` | No | Path to persist the face HNSW index for fast startup (e.g. `/data/faces.pg.hnsw`) |
+| `HNSW_EMBEDDING_INDEX_PATH` | No | Path to persist the embedding HNSW index for fast startup |
+| `OPENAI_TOKEN` | No** | OpenAI API key (sort, text check/rewrite/consistency, CLIP translate) |
+| `GEMINI_API_KEY` | No** | Google Gemini API key |
+| `OLLAMA_URL` | No | Ollama server URL (default `http://localhost:11434`) |
+| `OLLAMA_MODEL` | No | Ollama model name (default `llama3.2-vision:11b`) |
+| `LLAMACPP_URL` | No | llama.cpp server URL (default `http://localhost:8080`) |
+| `LLAMACPP_MODEL` | No | llama.cpp model name (default `llava`) |
+| `MCP_API_TOKEN` | No | Bearer token for MCP clients; when set, MCP is mounted at `/mcp/sse` on the `serve` command |
+| `WEB_PORT` | No | Server port (default 8080) |
+| `WEB_HOST` | No | Server host (default 0.0.0.0) |
+| `WEB_SESSION_SECRET` | No | Secret for signing session cookies (warns at startup if unset) |
+| `WEB_ALLOWED_ORIGINS` | No | Comma-separated CORS allowed origins (localhost is always allowed) |
+
+*If both bootstrap vars are missing on a fresh install, the server logs a
+WARN and starts anyway — the operator must create the first user manually.
+
+**At least one AI provider must be configured for the sort command.
 
 ### AI Provider API Calls
 
@@ -349,14 +330,18 @@ go run . photo clear-faces <photo-uid>        # Clear cached face data for a pho
 ### Cache Commands
 
 ```bash
-go run . cache sync [flags]                   # Sync face markers from PhotoPrism to local cache
-  --concurrency N   Parallel workers (default 20)
-  --json            Output as JSON
-
-go run . cache push-embeddings [flags]        # Push InsightFace embeddings to PhotoPrism MariaDB
-  --dry-run               Preview changes
-  --recompute-centroids   Recompute face cluster centroids
+go run . cache build-thumbs [flags]           # Backfill missing thumbnails (decode once, write every registered size)
+  --concurrency N         Parallel workers (default 4)
+  --sizes a,b,c           Subset of registered sizes
+  --only-missing[=false]  Force regenerate existing thumbs when false (default true)
+  --limit N               Cap photos processed
+  --photo-uid UID         Backfill a single photo (overrides --limit)
   --json                  Output as JSON
+
+go run . cache compute-phashes [flags]        # Backfill pHash + dHash for photos that lack them
+  --limit N         Cap photos processed
+  --concurrency N   Parallel workers (default 4)
+  --json            Output as JSON
 
 go run . cache compute-eras [flags]           # Compute CLIP era embedding centroids
   --dry-run   Preview without saving
@@ -379,8 +364,8 @@ internal/mcp/
 ├── sections.go        # Section and section photo tool handlers
 ├── pages.go           # Page and slot tool handlers
 ├── photos.go          # Photo metadata, thumbnails, similarity, text search
-├── albums.go          # PhotoPrism album management tools
-├── labels.go          # PhotoPrism label management tools
+├── albums.go          # Album management tools
+├── labels.go          # Label management tools
 ├── text.go            # AI text check, rewrite, consistency, version history
 ```
 
@@ -413,11 +398,9 @@ internal/database/
     └── migrations/     # SQL migrations 001-034 (embedded)
 ```
 
-**Tables:** `embeddings` (768-dim CLIP), `faces` (512-dim ResNet100 with cached PhotoPrism marker data), `era_embeddings` (768-dim CLIP text centroids), `faces_processed` (tracking), `sessions` (with `user_uid` for upload support across restarts), `photo_books` (with typography settings: `body_font`, `heading_font`, `body_font_size`, `body_line_height`, `h1_font_size`, `h2_font_size`, `caption_opacity`, `caption_font_size`, `heading_color_bleed` added in migrations 021-023, plus `body_text_pad_mm` in migration 029 — inner padding (mm) added to body text on the side of a text slot adjacent to a photo in mixed layouts), `book_chapters` (migration 016, with `color` column added in migration 020 for per-chapter color themes), `book_sections` (with optional `chapter_id`), `section_photos`, `book_pages` (with `split_position` for adjustable column splits in mixed formats, plus `hide_page_number` for per-page folio suppression added in migration 025, and `1_fullbleed` format added to the CHECK constraint in migration 027), `page_slots` (with `text_content` for text-only slots, `is_captions_slot` (BOOLEAN, migration 026) routing photo captions into the slot while suppressing the bottom strip — at most one per page, `is_contents_slot` (BOOLEAN, migration 030) auto-rendering the book's table of contents (chapters → sections with printed page ranges) in two columns inside the slot — at most one per page, both enforced via partial unique indexes, `crop_x`/`crop_y`/`crop_scale` for per-photo crop control; photo_uid / text_content / is_captions_slot / is_contents_slot are mutually exclusive), `text_versions` (migration 017, version history for text fields), `text_check_results` (migration 019, persisted AI text check results with content hash for stale detection, extended by migration 028 with a `suggestions JSONB` column storing advisory readability recommendations).
+**Tables:** `users` (admin/editor/viewer with bcrypt hashes), `photos`, `photo_files`, `albums` + `album_photos`, `labels` + `photo_labels`, `subjects`, `markers`, `photo_phashes`, `embeddings` (768-dim CLIP), `faces` (512-dim ResNet100 with cached marker metadata), `era_embeddings` (768-dim CLIP text centroids), `faces_processed` (tracking), `sessions` (with `user_uid` for upload support across restarts), `photo_books` (with typography settings: `body_font`, `heading_font`, `body_font_size`, `body_line_height`, `h1_font_size`, `h2_font_size`, `caption_opacity`, `caption_font_size`, `heading_color_bleed` added in migrations 021-023, plus `body_text_pad_mm` in migration 029), `book_chapters` (migration 016, with `color` column from migration 020), `book_sections` (with optional `chapter_id`), `section_photos`, `book_pages` (with `split_position`, `hide_page_number` from migration 025, `1_fullbleed` format added to the CHECK constraint in migration 027), `page_slots` (with `text_content`, `is_captions_slot` from migration 026, `is_contents_slot` from migration 030, `crop_x`/`crop_y`/`crop_scale`; photo_uid / text_content / is_captions_slot / is_contents_slot are mutually exclusive), `text_versions` (migration 017), `text_check_results` (migration 019, extended by migration 028 with a `suggestions JSONB` column).
 
 **Face name normalization:** `GetFacesBySubjectName` normalizes names via `facematch.NormalizePersonName` (remove diacritics, lowercase, dashes→spaces) using the `unaccent` PostgreSQL extension.
-
-**Cache sync:** Stays in sync automatically via UI. If faces assigned in PhotoPrism native UI, use Sync Cache to re-sync. Also cleans up orphaned data for deleted/archived photos.
 
 ### AI Prompts
 
@@ -442,28 +425,13 @@ Model prices are in `internal/config/prices.yaml` (embedded at compile time). Su
 
 ### Metadata Behavior
 
-When applying AI results to PhotoPrism:
+When applying AI results to a photo:
 - **Labels:** Replaced with AI-suggested labels (confidence > 80%)
 - **Description/Caption:** Always regenerated (includes AI model info)
 - **Date (TakenAt):** Only set if photo has no existing date (Year = 0 or 1), unless `--force-date` is used
 - **Notes:** Updated with "Analyzed by: <model>"
 
-Existing EXIF dates are preserved - AI date estimation only fills gaps. Use `--force-date` to overwrite incorrect dates.
-
-### PhotoPrism API Documentation
-
-PhotoPrism API swagger spec is at `internal/photoprism/swagger.yaml`. Reference this when implementing new API methods.
-
-**API Quirk:** `GetAlbum()` (single album endpoint `/albums/{uid}`) does NOT return `PhotoCount` - it only appears in the list endpoint (`/albums`). Do not rely on `PhotoCount` from single album responses; fetch photos directly to determine if an album is empty.
-
-### API Response Capturing
-
-Use `--capture <dir>` flag to save API responses for testing:
-```bash
-go run . --capture ./testdata albums
-```
-
-Test fixtures are stored in `internal/photoprism/testdata/` following Go conventions.
+Existing EXIF dates are preserved — AI date estimation only fills gaps. Use `--force-date` to overwrite incorrect dates.
 
 ### Web UI
 
@@ -493,7 +461,7 @@ Session cookies use `HttpOnly`, `SameSite=Strict`, and auto-detect `Secure` flag
 
 **API Endpoints:**
 - `GET /api/v1/health` - Health check (no auth)
-- `POST /api/v1/auth/login` - Login with PhotoPrism credentials
+- `POST /api/v1/auth/login` - Login with the local user account (bcrypt-hashed password against the `users` table)
 - `POST /api/v1/auth/logout` - Logout
 - `GET /api/v1/auth/status` - Check authentication status
 - `GET /api/v1/albums` - List albums
@@ -549,7 +517,7 @@ Session cookies use `HttpOnly`, `SameSite=Strict`, and auto-detect `Secure` flag
 - `GET /api/v1/process/{jobId}/events` - SSE stream for process job progress
 - `DELETE /api/v1/process/{jobId}` - Cancel process job
 - `POST /api/v1/process/rebuild-index` - Rebuild HNSW indexes and reload in memory
-- `POST /api/v1/process/sync-cache` - Sync face marker data from PhotoPrism to local cache
+- `POST /api/v1/process/sync-cache` - Re-derive cached face marker metadata (photo dimensions, orientation, subject linkage) from the canonical native `markers` table; useful after bulk data fixes outside the UI
 - `POST /api/v1/process/build-thumbs` - Admin-only thumbnail backfill. Body: `{ concurrency?, sizes?, only_missing?, limit?, photo_uid? }`. Returns `{ job_id }`; progress streams via `/process/{jobId}/events` with `progress` (`{done,total,current_photo_uid}`) and final `summary` (`{generated,skipped,failed}`) events. Reuses the existing `ProcessJobManager` — one job at a time. Backed by `cache build-thumbs` CLI / `internal/thumb.GenerateSizes`.
 - `GET /api/v1/books` - List all photo books
 - `POST /api/v1/books` - Create a new book
@@ -593,6 +561,15 @@ Session cookies use `HttpOnly`, `SameSite=Strict`, and auto-detect `Secure` flag
 - `GET /api/v1/books/{id}/text-check-status` - Get text check status for all book texts
 - `GET /api/v1/text-versions` - List text version history
 - `POST /api/v1/text-versions/{id}/restore` - Restore a previous text version
+- `GET /api/v1/me` - Currently authenticated user
+- `POST /api/v1/me/password` - Change own password (current + new)
+- `GET /api/v1/users` - List users (admin only)
+- `POST /api/v1/users` - Create user (admin only)
+- `GET /api/v1/users/{uid}` - Get user (admin only)
+- `PUT /api/v1/users/{uid}` - Update user (admin only)
+- `POST /api/v1/users/{uid}/password` - Reset another user's password (admin only)
+- `POST /api/v1/users/{uid}/disable` - Disable/enable a user (admin only)
+- `DELETE /api/v1/users/{uid}` - Delete a user (admin only; the last admin cannot be deleted)
 
 **Frontend Structure:**
 ```
@@ -713,10 +690,6 @@ Page formats: `4_landscape` (4 slots), `2l_1p` (3 slots), `1p_2l` (3 slots), `2_
 
 **Text Slot Markdown:** Text slots support GFM markdown: headings (`#`/`##`), bold, italic, lists, blockquotes, alignment macros (`->text<-` for center, `->text->` for right-align), and tables (GFM pipe syntax). Tables support optional column width percentages in the separator row (e.g., `|--- 60% ---|--- 40% ---|`). Frontend renders via `marked.js` + DOMPurify with `<colgroup>` width injection; PDF uses `tabularx` with `\hsize`-scaled `X` columns. Text type auto-detection: T1 (explanation), T2 (fact box/list), T3 (oral history/blockquote).
 
-**PhotoPrism Client Middleware:**
-
-Handlers use `middleware.MustGetPhotoPrism(r.Context(), w)` to get the PhotoPrism client from context. For background goroutines that outlive the request, capture the session first via `middleware.GetSessionFromContext(r.Context())` and create a new client in the goroutine.
-
 The frontend is embedded in the Go binary at compile time via `go:embed`. Run `make build` to build both frontend and backend into a single binary.
 
 **Common Pitfall - Bounding Box Positioning:**
@@ -727,7 +700,7 @@ The `Thumb` field on `Subject` and `Album` structs is a **file hash**, not a pho
 
 ### Photo Faces API
 
-The `GET /api/v1/photos/:uid/faces` endpoint combines faces from the embeddings database (InsightFace) and PhotoPrism markers, matched via IoU (threshold >= 0.1) in display coordinate space.
+The `GET /api/v1/photos/:uid/faces` endpoint combines faces from the embeddings database (InsightFace) and rows in the native `markers` table, matched via IoU (threshold >= 0.1) in display coordinate space.
 
 **Minimum face size:** `GetPhotoFaces` does NOT filter by face size (for manual inspection). `Match` endpoint applies minimum size filtering (`MinFaceWidthPx = 35`, `MinFaceWidthRel = 0.01` from `constants.go`).
 
@@ -735,15 +708,23 @@ The `GET /api/v1/photos/:uid/faces` endpoint combines faces from the embeddings 
 
 ### Face Outlier Detection
 
-Detects wrongly assigned faces by computing the centroid of a person's face embeddings and ranking by cosine distance. Faces with `missing_embeddings` (in PhotoPrism but not in database) have `face_index: -1` and `dist_from_centroid: -1`.
+Detects wrongly assigned faces by computing the centroid of a person's face embeddings and ranking by cosine distance. Faces with `missing_embeddings` (a marker exists but no InsightFace embedding is stored) have `face_index: -1` and `dist_from_centroid: -1`.
 
-**Coordinate handling:** Both PhotoPrism markers and InsightFace embeddings use display space coordinates. For EXIF orientations 5-8 (90° rotations), raw file dimensions must be swapped for display. The `convertPixelBBoxToDisplayRelative` function handles this.
+**Coordinate handling:** Both markers and InsightFace embeddings use display-space coordinates. For EXIF orientations 5-8 (90° rotations), raw file dimensions must be swapped for display. The `convertPixelBBoxToDisplayRelative` function handles this.
 
 **Unassigning faces:** `POST /api/v1/faces/apply` with `action: "unassign_person"` calls `ClearMarkerSubject`.
 
 ### Recognition Page
 
 Scans all known people for high-confidence face matches. Iterates subjects with `photo_count > 0`, calls `matchFaces` with concurrency 3, filters to actionable matches only (`create_marker` or `assign_person`). Results stream incrementally per person. Confidence maps to distance: `distanceThreshold = 1 - confidence / 100`.
+
+### Native API Endpoint Refresher
+
+For the full endpoint catalogue see [`docs/API.md`](docs/API.md); the
+self-management surface lives at `/api/v1/me/*` (any role) and
+`/api/v1/users/*` (admin only). Trash is at `/api/v1/photos/trash`,
+`/api/v1/photos/batch/restore`, and `/api/v1/photos/batch/purge` (admin
+only). EXIF edits go through `PUT /api/v1/photos/{uid}/exif`.
 
 ## Documentation Requirements
 
@@ -764,13 +745,14 @@ When adding or modifying features, update the relevant documentation:
 Documentation files:
 ```
 docs/
-├── API.md                  # REST API documentation
-├── architecture.md         # System design, package structure, and data flow
-├── cli-reference.md        # Complete CLI command reference
-├── era-estimation.md       # Era estimation: centroids, API, and UI
-├── hnsw-architecture.md    # In-memory HNSW vs pgvector design rationale
-├── markers.md              # Marker system and face-to-marker matching
-├── photo-book.md           # Photo book planning tool
-├── testing-environment.md  # Dev/test environment setup
-└── web-ui.md               # Web UI features and API endpoints
+├── API.md                       # REST API documentation
+├── architecture.md              # System design, package structure, and data flow
+├── cli-reference.md             # Complete CLI command reference
+├── era-estimation.md            # Era estimation: centroids, API, and UI
+├── hnsw-architecture.md         # In-memory HNSW vs pgvector design rationale
+├── markers.md                   # Native markers table and face-to-marker matching
+├── migration-from-photoprism.md # One-shot PhotoPrism → photo-sorter runbook
+├── photo-book.md                # Photo book planning tool
+├── testing-environment.md       # Dev/test environment setup
+└── web-ui.md                    # Web UI features and API endpoints
 ```

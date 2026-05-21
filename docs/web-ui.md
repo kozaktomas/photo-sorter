@@ -23,7 +23,12 @@ make dev-go
 
 ## Authentication
 
-The Web UI uses your PhotoPrism credentials for authentication. Enter your PhotoPrism username and password on the login page.
+The Web UI uses local user accounts stored in the `users` table (bcrypt-
+hashed passwords) with roles `admin` / `editor` / `viewer`. The first
+admin is bootstrapped from `BOOTSTRAP_ADMIN_USERNAME` /
+`BOOTSTRAP_ADMIN_PASSWORD` on a fresh install; further users are managed
+via **Settings → Users** (admin only). Sessions are 30-day signed
+`HttpOnly` cookies persisted in PostgreSQL.
 
 ## Language Support
 
@@ -55,7 +60,9 @@ The header navigation groups items to reduce clutter:
 - **Primary** (always visible): Dashboard, Albums, Photos, Labels
 - **AI** dropdown: Analyze, Text Search
 - **Faces** dropdown: Faces, Recognition, Outliers
-- **Tools** dropdown: Similar, Expand, Duplicates, Album Completion, Photo Book, Upload, Process
+- **Tools** dropdown: Similar, Expand, Duplicates, Album Completion, Photo Book, Upload, Process, Trash
+- **User menu** (top-right): Settings (admin-only on the Users tab), Logout
+- **Mobile-only** (visible below the `md` breakpoint): Capture link to the PWA shoot page
 
 Dropdown buttons highlight when one of their child pages is active. Dropdowns close when clicking outside.
 
@@ -73,7 +80,7 @@ The home page displays:
 
 ### Albums
 
-Browse and manage your PhotoPrism albums.
+Browse and manage your albums (from the native `albums` table).
 
 **Features:**
 - View all albums with photo counts
@@ -87,7 +94,7 @@ Browse and manage your PhotoPrism albums.
 
 Browse all photos in your library with powerful filtering.
 
-**Deleted Photo Filtering:** Soft-deleted (archived) photos are automatically filtered out from the listing. PhotoPrism's API may return photos with a non-empty `DeletedAt` field; these are excluded before sending the response to the frontend.
+**Deleted Photo Filtering:** Soft-deleted (archived) photos are excluded from the default `GET /api/v1/photos` listing. Use the Trash page (or `?archived=true`) to view them.
 
 **Features:**
 - **Search** - Full-text search across photo metadata
@@ -118,7 +125,8 @@ Detailed view of a single photo with face management capabilities.
 **Features:**
 - Full-resolution photo display with interactive face bounding boxes
 - Photo metadata (title, date, dimensions)
-- Quick actions: Copy UID, Open in PhotoPrism, Find Similar, Add to Book, Load Faces
+- **Edit EXIF** — corrects `taken_at`, GPS, camera/lens/exposure, title/description/notes, keywords, and the EXIF text fields. Writes the photo row AND an XMP sidecar next to the original via `exiftool`; the DB is authoritative when the sidecar write fails. Requires `editor`/`admin`.
+- Quick actions: Copy UID, Find Similar, Add to Book, Load Faces
 - **Album membership** - If the photo belongs to any albums, an "In albums" panel is shown in the right sidebar listing each album as a clickable link to the album detail page
 - **Book membership** - If the photo belongs to any photo book sections, a "In books" panel is shown in the right sidebar (above Era Estimation) listing each book/section as a clickable link to the book editor
 - **Add to Book dropdown** - Click "Book" in the header to open a two-step picker (book → section) to quickly add the photo to a book section without leaving the page. Shows success/error feedback and auto-closes
@@ -160,7 +168,7 @@ When accessing a photo from an album, label, or the Photos page, navigation cont
 
 ### Labels
 
-Manage labels in your PhotoPrism library.
+Manage labels in your library (from the native `labels` table).
 
 **Features:**
 - View all labels with photo counts
@@ -185,7 +193,7 @@ View and edit a single person/subject.
 
 **Features:**
 - **Rename** - Click pencil icon to edit the person name inline
-- **Thumbnail** - Subject's face thumbnail from PhotoPrism
+- **Thumbnail** - Subject's face thumbnail from the `subjects` table
 - **Details** - Shows slug, about, alias, bio, notes, photo count, favorite/hidden/excluded status, created date
 - **Photo Grid** - Thumbnails of all photos tagged with this person (up to 60)
 
@@ -287,36 +295,35 @@ Use this when you've modified face data directly in PostgreSQL outside of Photo 
 
 **Sync Cache:**
 
-Syncs face marker data from PhotoPrism to the local cache without recomputing embeddings. This is useful when faces have been assigned or unassigned directly in PhotoPrism's native UI, and you want the Photo Sorter cache to reflect those changes. Also cleans up orphaned data for photos that have been deleted or archived in PhotoPrism — detects both hard-deleted photos (404) and soft-deleted photos (with `DeletedAt` timestamp set).
+Re-derives the cached face-marker columns on the `faces` table (subject linkage, photo dimensions, orientation) from the canonical native `markers` table. Useful after bulk data fixes outside the UI — face assignments performed inside the UI are already kept in sync automatically. Also cleans up orphaned data for photos that have been archived or hard-deleted.
 
 - **Description** - Explains when to use sync
-- **Sync Cache** button - Syncs marker data for all photos with faces/embeddings
+- **Sync Cache** button - Refreshes marker metadata for all photos with faces/embeddings
 - **Success message** - Shows photos scanned, faces updated, deleted photos cleaned up, and duration
 - **Error handling** - Displays any errors that occur during sync
 
 **What gets synced:**
 | Field | Description |
 |-------|-------------|
-| `marker_uid` | PhotoPrism marker UID |
-| `subject_uid` | Subject/person UID from marker |
-| `subject_name` | Person name from marker |
+| `marker_uid` | Marker UID |
+| `subject_uid` | Subject/person UID from the marker |
+| `subject_name` | Person name from the subject row |
 | `photo_width`, `photo_height` | Photo dimensions |
 | `orientation` | EXIF orientation (1-8) |
 | `file_uid` | Primary file UID |
 
 **When to use:**
-- After assigning/unassigning faces in PhotoPrism's native UI
-- After bulk face operations in PhotoPrism
+- After bulk modifications to the `markers` / `subjects` tables outside the UI
 - When face matches show incorrect "already_done" status
 
-The sync operation processes all photos with faces in parallel (20 workers) and only updates faces where the cached data differs from PhotoPrism.
+The sync operation processes all photos with faces in parallel (20 workers) and only writes back rows whose cached data drifted.
 
 **API Endpoints:**
 - `POST /api/v1/process` - Start processing job
 - `GET /api/v1/process/{jobId}/events` - SSE event stream
 - `DELETE /api/v1/process/{jobId}` - Cancel running job
 - `POST /api/v1/process/rebuild-index` - Rebuild HNSW indexes
-- `POST /api/v1/process/sync-cache` - Sync face marker data from PhotoPrism
+- `POST /api/v1/process/sync-cache` - Re-derive cached marker metadata on the `faces` table
 
 Only one process job can run at a time. Changes are immediately available in the database.
 
@@ -325,7 +332,7 @@ Only one process job can run at a time. Changes are immediately available in the
 Find and match faces across your photo library.
 
 **Search:**
-- Select a person from the dropdown (people already tagged in PhotoPrism)
+- Select a person from the dropdown (subjects with at least one assigned face)
 - Adjust threshold (lower = stricter matching)
 - Set result limit
 
@@ -410,7 +417,7 @@ Each person with actionable matches gets their own card showing:
 
 **Individual Actions:**
 - **Accept** - Apply a single match (create marker or assign person)
-- **Reject** - Remove from view without modifying PhotoPrism
+- **Reject** - Remove from view without modifying any marker
 
 **Empty State:**
 When no actionable matches are found after scanning, displays "All matches already assigned".
@@ -496,7 +503,7 @@ Press `K` or click the wand button to cycle through effects. The active effect n
 
 ### Upload (`/upload`)
 
-Upload photos to PhotoPrism with optional labels, multi-album assignment, book section placement, and auto-processing.
+Upload photos with optional labels, multi-album assignment, book section placement, and auto-processing. Files are ingested via the native `internal/photopipe` pipeline (hash + format detect → exact-duplicate skip → HEIC/RAW decode → EXIF → near-duplicate scan → write to `STORAGE_ORIGINALS_PATH/YYYY/MM/` → `photos` + `photo_files` rows → `internal/thumb.GenerateSizes`).
 
 **Configuration (left card):**
 - **Drag & Drop Zone** - Drag files or click to browse. Supports JPG, PNG, GIF, HEIC, WebP, TIFF, RAW formats. Files are validated by MIME type and extension, deduplicated by name+size
@@ -508,8 +515,7 @@ Upload photos to PhotoPrism with optional labels, multi-album assignment, book s
 **Progress (right card):**
 - Real-time progress via SSE with phase indicators:
   - Uploading (per-file progress with filename)
-  - Processing in PhotoPrism
-  - Detecting new photos (before/after album diff)
+  - Processing (hash, EXIF, dedup, write originals, generate thumbs)
   - Applying labels, albums, book section
   - Computing embeddings & faces (if auto-process enabled)
 - Cancel button during upload
@@ -517,8 +523,8 @@ Upload photos to PhotoPrism with optional labels, multi-album assignment, book s
 - Thumbnail grid of new photos linking to Photo Detail
 
 **Backend:**
-- Files uploaded one-by-one to PhotoPrism for per-file progress
-- New photos detected via before/after album UID diffing
+- Files ingested one-by-one through `internal/photopipe` for per-file progress
+- Exact duplicates are short-circuited by SHA256 and surfaced in the summary
 - Only one upload job runs at a time
 
 ### Capture (`/capture`)
@@ -544,6 +550,28 @@ The site is also installable as a PWA via `web/public/manifest.webmanifest`
 icons in `web/public/icons/`). Opening the installed app lands on the
 dashboard; users navigate to `/capture` via the mobile-only header link or by
 bookmarking it as the home-screen target.
+
+### Trash (`/trash`)
+
+Soft-delete inbox for archived photos. Any authenticated role can browse
+and restore; the irreversible "Empty trash" hard-delete is admin-only.
+
+- **List** — `GET /api/v1/photos/trash` lists archived photos with the same filters / sort / pagination as `/api/v1/photos`; the `archived` flag is force-overridden so callers can never reach live photos via this route.
+- **Restore** — `POST /api/v1/photos/batch/restore` clears `archived_at` on the selected UIDs and moves them back to the main library.
+- **Empty trash** (admin only) — `POST /api/v1/photos/batch/purge` hard-deletes the selected photos: the photo row (cascades to phashes, markers, files, album_photos, photo_labels), the embedding, every cached face row, every original file on disk, and every cached thumbnail size. Non-archived UIDs are skipped with an error.
+- **Auto-purge** — a background daemon launched from `cmd/serve.go` runs the same purge hourly against photos older than `TRASH_RETENTION_DAYS` (default 30) so the trash never grows unbounded.
+
+### Settings (`/settings`)
+
+Two-tab page for account and user management.
+
+- **Profile** (any role) — Shows the signed-in user's username / display name / role and lets them change their own password (`POST /api/v1/me/password`, current + new). Wrong current password → `401`; new password under 8 characters → `400`.
+- **Users** (admin only) — Lists all users from `GET /api/v1/users` with role and disabled status. The dialog supports:
+  - Create user — `POST /api/v1/users` with `{ username, display_name, email, role, password }`. Username collisions return `409`.
+  - Rename / change role / change email — `PUT /api/v1/users/{uid}` (username itself is immutable).
+  - Reset another user's password — `POST /api/v1/users/{uid}/password`.
+  - Disable / re-enable an account — `POST /api/v1/users/{uid}/disable` with `{ disabled: bool }`.
+  - Delete user — `DELETE /api/v1/users/{uid}`. The last remaining admin cannot be deleted (`409`).
 
 ### Photo Book (`/books`)
 
@@ -689,7 +717,7 @@ The Web UI communicates with these backend endpoints:
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| POST | `/api/v1/auth/login` | Login with PhotoPrism credentials |
+| POST | `/api/v1/auth/login` | Login with a local user account (bcrypt, against the `users` table) |
 | GET | `/api/v1/auth/status` | Check authentication status |
 | POST | `/api/v1/auth/logout` | Logout |
 | GET | `/api/v1/albums` | List albums |
@@ -727,7 +755,7 @@ The Web UI communicates with these backend endpoints:
 | GET | `/api/v1/process/:jobId/events` | SSE stream for process job |
 | DELETE | `/api/v1/process/:jobId` | Cancel process job |
 | POST | `/api/v1/process/rebuild-index` | Rebuild HNSW indexes |
-| POST | `/api/v1/process/sync-cache` | Sync face marker data from PhotoPrism |
+| POST | `/api/v1/process/sync-cache` | Re-derive cached face-marker metadata on the `faces` table |
 | POST | `/api/v1/photos/batch/edit` | Batch edit photos (favorite, private) |
 | POST | `/api/v1/photos/duplicates` | Find near-duplicate photos |
 | POST | `/api/v1/photos/batch/archive` | Archive (soft-delete) photos |
@@ -778,11 +806,23 @@ The Web UI communicates with these backend endpoints:
 | GET | `/api/v1/text-versions` | List text version history |
 | POST | `/api/v1/text-versions/:id/restore` | Restore a text version |
 | POST | `/api/v1/process/rebuild-index` | Rebuild HNSW indexes |
-| POST | `/api/v1/process/sync-cache` | Sync face cache from PhotoPrism |
+| POST | `/api/v1/process/sync-cache` | Re-derive cached face-marker metadata on the `faces` table |
+| POST | `/api/v1/process/build-thumbs` | Admin-only thumbnail backfill job |
 | POST | `/api/v1/photos/batch/edit` | Batch edit photos (favorite, private) |
 | POST | `/api/v1/photos/batch/archive` | Batch archive photos |
 | POST | `/api/v1/photos/batch/restore` | Batch restore (un-archive) photos |
+| POST | `/api/v1/photos/batch/purge` | Hard-delete archived photos (admin only) |
 | DELETE | `/api/v1/albums/:uid/photos/batch` | Remove specific photos from album |
+| PUT | `/api/v1/photos/:uid/exif` | Edit EXIF metadata (writes DB + XMP sidecar via exiftool) |
+| GET | `/api/v1/me` | Currently authenticated user |
+| POST | `/api/v1/me/password` | Change own password |
+| GET | `/api/v1/users` | List users (admin only) |
+| POST | `/api/v1/users` | Create user (admin only) |
+| GET | `/api/v1/users/:uid` | Get user (admin only) |
+| PUT | `/api/v1/users/:uid` | Update user (admin only) |
+| POST | `/api/v1/users/:uid/password` | Reset user password (admin only) |
+| POST | `/api/v1/users/:uid/disable` | Disable / re-enable user (admin only) |
+| DELETE | `/api/v1/users/:uid` | Delete user (admin only; last admin protected) |
 
 ## Frontend Architecture
 
@@ -1055,13 +1095,16 @@ if (isLoading) return <PageLoading text="Loading..." />;
 
 The face recognition system uses two key optimizations to achieve sub-second response times:
 
-### Cached PhotoPrism Data
+### Cached marker metadata
 
-During `photo process`, the system caches PhotoPrism marker data directly in PostgreSQL:
+The processing pipeline denormalises a few columns from the `markers` /
+`subjects` / `photos` tables directly onto the `faces` row so face
+matching, outlier detection, and the "Faces" panel never have to join
+across them at request time:
 
 | Cached Field | Purpose |
 |--------------|---------|
-| `MarkerUID` | PhotoPrism marker identifier for applying changes |
+| `MarkerUID` | Marker UID (for applying changes) |
 | `SubjectUID` | Person/subject identifier |
 | `SubjectName` | Person name (e.g., "john-doe") |
 | `PhotoWidth` | Photo dimensions for coordinate conversion |
@@ -1070,9 +1113,10 @@ During `photo process`, the system caches PhotoPrism marker data directly in Pos
 | `FileUID` | Primary file identifier |
 
 **Benefits:**
-- Face suggestions load instantly (0 API calls vs ~200 calls per face)
-- Face matching and outlier detection use cached data
-- Cache stays synchronized when faces are assigned via the UI
+- Face suggestions load instantly (no per-face joins)
+- Face matching and outlier detection read everything from `faces`
+- Cache stays synchronized when faces are assigned via the UI; bulk
+  out-of-band fixes can be re-derived via `POST /api/v1/process/sync-cache`
 
 ### HNSW Indexes
 

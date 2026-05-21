@@ -1,6 +1,6 @@
 # API Reference
 
-This document describes all REST API endpoints for the PhotoPrism AI Sorter web server.
+This document describes all REST API endpoints for the photo-sorter web server. Authentication is native (local `users` table, bcrypt-hashed passwords, 30-day cookie sessions); roles are `admin` / `editor` / `viewer`.
 
 **Base URL:** `/api/v1`
 
@@ -15,6 +15,7 @@ This document describes all REST API endpoints for the PhotoPrism AI Sorter web 
 - [Sort (AI Analysis)](#sort-ai-analysis)
 - [Process (Embeddings & Faces)](#process-embeddings--faces)
 - [Upload](#upload)
+- [Users (Admin) / Self-service](#users-admin--self-service)
 - [Configuration](#configuration)
 - [Statistics](#statistics)
 - [Health Check](#health-check)
@@ -440,7 +441,7 @@ Requires write access (admin or editor). Archived photos return 404.
   "exif_artist": "Alice Photographer",
   "exif_copyright": "(c) 2024 Alice",
   "exif_license": "CC BY-SA 4.0",
-  "exif_software": "PhotoPrism 240801"
+  "exif_software": "photo-sorter v1.2.0"
 }
 ```
 
@@ -862,8 +863,7 @@ GET /labels
 ```
 
 `description` and `notes` are kept on the wire for backwards compatibility
-with the previous PhotoPrism passthrough but are always empty on the
-native labels table.
+but are always empty on the native labels table.
 
 ### Get Label
 
@@ -1194,7 +1194,7 @@ POST /faces/outliers
 
 **Notes:**
 - `outliers` are sorted by `dist_from_centroid` descending (most suspicious first)
-- `missing_embeddings` are faces in PhotoPrism without matching database embeddings
+- `missing_embeddings` are faces that have a marker row but no InsightFace embedding
 
 ### Get Faces in Photo
 
@@ -1265,7 +1265,7 @@ GET /photos/{uid}/faces
 
 **Notes:**
 - `face_index >= 0`: Face from embeddings database
-- `face_index < 0`: Unmatched PhotoPrism marker (no embedding, always has empty suggestions)
+- `face_index < 0`: Unmatched marker (no embedding stored; always has empty suggestions)
 - `embeddings_count` vs `markers_count` surfaces discrepancies
 - Suggestions use a fallback mechanism: if the `threshold` yields fewer than `limit` results, a wider search (max cosine distance 2.0) fills remaining slots so faces with embeddings always get suggestions when named people exist in the database
 
@@ -1521,7 +1521,10 @@ POST /process/rebuild-index
 
 ### Sync Cache
 
-Synchronize face marker data from PhotoPrism to local cache. Updates marker metadata and cleans up orphaned data for deleted/archived photos.
+Re-derive cached face-marker metadata on the `faces` table from the
+canonical `markers` / `subjects` / `photos` rows. Useful after bulk data
+fixes performed outside the UI. Also cleans up orphaned face / embedding
+rows for photos that have been archived or hard-deleted.
 
 ```
 POST /process/sync-cache
@@ -1665,7 +1668,7 @@ GET /upload/{jobId}/events
 |-------|------|-------------|
 | `started` | - | Job started |
 | `upload_progress` | `{current, total, filename}` | Per-file upload progress |
-| `processing_upload` | - | PhotoPrism processing phase |
+| `processing_upload` | - | Native pipeline processing phase (hash, EXIF, dedup, originals write, thumbnails) |
 | `detecting_photos` | - | Detecting new photos via album diff |
 | `applying_labels` | `{current, total}` | Applying labels to new photos |
 | `applying_albums` | - | Adding to additional albums |
@@ -1687,6 +1690,119 @@ DELETE /upload/{jobId}
   "cancelled": true
 }
 ```
+
+---
+
+## Users (Admin) / Self-service
+
+Native user accounts (bcrypt-hashed passwords) backed by the `users`
+table. The first admin is created automatically from
+`BOOTSTRAP_ADMIN_USERNAME` + `BOOTSTRAP_ADMIN_PASSWORD` on a fresh
+install; further accounts are managed through the endpoints below.
+
+Roles: `admin`, `editor`, `viewer`. The last remaining admin cannot be
+deleted or have their role downgraded.
+
+### Self-service (any authenticated role)
+
+#### Current User
+
+```
+GET /me
+```
+
+**Response (200):**
+```json
+{
+  "uid": "u3z8h2k9p4q1r5s6",
+  "username": "admin",
+  "display_name": "Admin",
+  "email": "",
+  "role": "admin",
+  "disabled": false,
+  "created_at": "2026-01-01T00:00:00Z",
+  "updated_at": "2026-01-01T00:00:00Z"
+}
+```
+
+#### Change Own Password
+
+```
+POST /me/password
+```
+
+**Request:**
+```json
+{
+  "current_password": "old",
+  "new_password": "newpassword"
+}
+```
+
+**Errors:** `400` for new passwords under 8 characters, `401` if the
+current password is wrong.
+
+### Admin only
+
+All endpoints below require `RequireRole("admin")`.
+
+#### List Users
+
+```
+GET /users
+```
+
+**Response (200):** `UserResponse[]`.
+
+#### Create User
+
+```
+POST /users
+```
+
+**Request:**
+```json
+{
+  "username": "alice",
+  "password": "first-password",
+  "display_name": "Alice",
+  "email": "alice@example.com",
+  "role": "editor"
+}
+```
+
+**Validation:** username matches `^[a-z][a-z0-9_-]{1,30}$`; password ≥ 8
+characters; role ∈ {`admin`, `editor`, `viewer`}. Username collisions
+return `409`.
+
+**Response (201):** `UserResponse`.
+
+#### Get / Update / Delete User
+
+```
+GET    /users/{uid}
+PUT    /users/{uid}
+DELETE /users/{uid}
+```
+
+`PUT` accepts any subset of `display_name`, `email`, `role` (username is
+immutable — supplying a different username returns `400`). `DELETE`
+returns `409` when the target is the last admin.
+
+#### Reset Another User's Password / Disable
+
+```
+POST /users/{uid}/password
+POST /users/{uid}/disable
+```
+
+Both endpoints take a single-field JSON body:
+
+- `POST /users/{uid}/password` → `{ "password": "new-password" }`
+- `POST /users/{uid}/disable` → `{ "disabled": true }`
+
+A disabled user keeps their data but cannot log in. Disabling the last
+admin returns `409`.
 
 ---
 
@@ -3138,7 +3254,7 @@ The MCP (Model Context Protocol) server is integrated into the `serve` command. 
 
 | Tool | Description | Parameters |
 |------|-------------|------------|
-| `list_albums` | List PhotoPrism albums | `type` (string, optional — `album`, `folder`, `moment`, `month`, `state`), `order` (string, optional), `query` (string, optional), `count` (number, optional — default 50, max 500), `offset` (number, optional) |
+| `list_albums` | List albums | `type` (string, optional — `album`, `folder`, `moment`, `month`, `state`), `order` (string, optional), `query` (string, optional), `count` (number, optional — default 50, max 500), `offset` (number, optional) |
 | `get_album` | Get album details by UID | `album_uid` (string, required) |
 | `create_album` | Create a new album | `title` (string, required) |
 | `get_album_photos` | Get photos in an album with pagination | `album_uid` (string, required), `count` (number, optional — default 50, max 500), `offset` (number, optional) |
@@ -3149,7 +3265,7 @@ The MCP (Model Context Protocol) server is integrated into the `serve` command. 
 
 | Tool | Description | Parameters |
 |------|-------------|------------|
-| `list_labels` | List PhotoPrism labels | `count` (number, optional — default 100, max 1000), `offset` (number, optional), `all` (boolean, optional — include empty labels) |
+| `list_labels` | List labels | `count` (number, optional — default 100, max 1000), `offset` (number, optional), `all` (boolean, optional — include empty labels) |
 | `get_label` | Get label details by UID | `label_uid` (string, required) |
 | `update_label` | Update label properties | `label_uid` (string, required), `name` (string, optional), `description` (string, optional), `notes` (string, optional), `priority` (number, optional), `favorite` (boolean, optional) |
 | `delete_labels` | Delete labels by UIDs | `label_uids` (array of strings, required) |

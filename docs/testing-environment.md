@@ -33,9 +33,35 @@ pgvector-test:
   via `EMBEDDING_URL` in `.env.dev`.
 - **Originals + cache:** local filesystem under `STORAGE_ORIGINALS_PATH`
   (default `./data/originals`) and `STORAGE_CACHE_PATH` (default
-  `./data/cache`). The originals tree follows the PhotoPrism layout
-  `YYYY/MM/<filename>`; the cache stores thumbnails as
+  `./data/cache`). The originals tree uses the layout
+  `YYYY/MM/<filename>` (same shape PhotoPrism uses so a migrated tree can
+  be reused in place); the cache stores thumbnails as
   `thumb/<aa>/<bb>/<cc>/<hash>_<size>.jpg`.
+
+### Bootstrap admin
+
+The first admin user is created automatically from
+`BOOTSTRAP_ADMIN_USERNAME` + `BOOTSTRAP_ADMIN_PASSWORD` when the `users`
+table is empty. Set both in `.env.dev`:
+
+```env
+BOOTSTRAP_ADMIN_USERNAME=admin
+BOOTSTRAP_ADMIN_PASSWORD=dev-password
+```
+
+If either variable is missing on a fresh install, the server logs a WARN
+and starts anyway — you'll have to create the first user manually before
+you can log in. Once any user exists the bootstrap path is a no-op, so
+the variables can safely stay in `.env.dev` forever.
+
+### Trash + duplicate detection knobs
+
+| Variable | Default | What to override it for |
+|----------|---------|-------------------------|
+| `TRASH_RETENTION_DAYS` | 30 | Drop to `1` while testing the hourly auto-purge daemon end-to-end. |
+| `DUPLICATE_CHECK_ENABLED` | `true` | Set to `false` to bypass the pHash + embedding scan when uploading manufactured fixtures. |
+| `DUPLICATE_PHASH_MAX_DIFF` | 8 | Larger → looser matching (more reported near-duplicates). |
+| `DUPLICATE_EMBEDDING_MAX_DIST` | 0.05 | Larger → looser matching. |
 
 ## Access Methods
 
@@ -85,7 +111,7 @@ SELECT unaccent('Příliš žluťoučký kůň');
 
 | Table | Description |
 |-------|-------------|
-| `photos` | Photo metadata (replaces PhotoPrism `photos`) |
+| `photos` | Photo metadata (the canonical native photo row) |
 | `albums`, `album_photos` | Albums and membership |
 | `labels`, `photo_labels` | Labels and tagging |
 | `subjects`, `markers` | People and face markers |

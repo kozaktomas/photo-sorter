@@ -1,51 +1,48 @@
 # Photo Sorter
 
-A CLI tool and web interface for organizing photos using AI — labels, descriptions, date estimates, face recognition, and similarity search via image and face embeddings.
+A self-contained photo management application: one Go binary, one Postgres
+database (with pgvector), and an external CLIP/InsightFace embeddings
+service. Photos are stored on disk in a deterministic `YYYY/MM/<filename>`
+tree, with all metadata, albums, labels, faces, people, photo books, and
+user accounts kept in Postgres.
 
-Today the app sits in front of a [PhotoPrism](https://photoprism.app/) instance for storage, browsing, and auth. The codebase is being migrated to a fully self-contained photo manager backed only by PostgreSQL + pgvector; see [Roadmap](#roadmap-away-from-photoprism) below.
-
-> **Note:** This entire project was vibe-coded. Not a single line of code was written by a human - it's 100% AI-generated using [Claude Code](https://claude.ai/code).
-
-## Roadmap: away from PhotoPrism
-
-Work in progress. The end state is a single binary + Postgres + an embeddings service — no PhotoPrism, no MariaDB. Key pieces being added:
-
-- **Native storage** mirroring the PhotoPrism on-disk layout (`originals/YYYY/MM/`, `cache/thumb/aa/bb/cc/<hash>_<size>.jpg`).
-- **Native upload pipeline**: hash → dedup → EXIF (`exiftool` + go-exif fallback) → thumbnails → DB. Supported formats: JPEG/PNG/WebP, HEIC/HEIF (via `heif-convert`), RAW — CR2/CR3/NEF/ARW/DNG/RAF/ORF/RW2/PEF/SRW (via `dcraw`). The Docker image bundles `dcraw`, `libheif-tools`, and `exiftool`; self-builders must have all three on PATH for full upload support. The `serve` command logs a startup `WARN` for any missing binary.
-- **Own user management**: `admin` / `editor` / `viewer` roles, bcrypt, bootstrap admin via env vars. Public album sharing planned later.
-- **Native repos** for photos, albums, labels, markers, subjects. Existing pgvector embeddings + HNSW indexes stay.
-- **New features**: soft-delete trash (30-day grace), duplicate detection on upload (pHash + embedding), EXIF edit endpoint with XMP sidecar write, Czech-aware Postgres full-text search, PWA + mobile capture page.
-- **Backup CLI** that tars the originals dir and `pg_dump`s the pgvector database in one timestamped folder, with retention.
-- **One-shot migration** via `photo-sorter migrate-from-photoprism` (with `--dry-run`) + `migrate-verify` for diff reporting.
-
-After migration the `internal/photoprism/` client and `PHOTOPRISM_*` env vars are removed and the PhotoPrism + MariaDB services drop out of `docker-compose.yml`.
+> **Note:** This entire project was vibe-coded. Not a single line of code was written by a human — it's 100% AI-generated using [Claude Code](https://claude.ai/code).
 
 ## Features
 
-- **AI-Powered Photo Analysis** - Analyze photos and generate labels, descriptions, and date estimates
-- **Multiple AI Providers** - Support for OpenAI, Google Gemini, Ollama, and llama.cpp
-- **Batch Processing** - Process entire albums with optional batch API for 50% cost savings
-- **Image Similarity Search** - Find similar photos using CLIP embeddings
-- **Text-to-Image Search** - Search photos by text description with automatic Czech-to-English translation
-- **Face Recognition** - Detect faces, find matches across your library, and assign people
-- **Face Outlier Detection** - Find incorrectly assigned faces by computing distance from centroid
-- **Photo Books** - Create and manage photo book layouts with multiple page formats, chapter color themes, customizable typography (24 free fonts, adjustable sizes and caption opacity), auto-generated table of contents with per-chapter TOC visibility, captions slots, and PDF export via LaTeX
-- **Era Estimation** - Estimate photo time periods using CLIP embedding comparison
-- **Duplicate Detection** - Find near-duplicate photos via embedding similarity
-- **Album Suggestions** - Find photos missing from albums via HNSW centroid search
-- **Photo Comparison** - Side-by-side photo comparison with metadata diff
-- **Slideshow** - Full-screen photo slideshow with keyboard navigation
-- **MCP Server** - Model Context Protocol server for AI agent integration (52 tools for books, photos, albums, labels, text)
-- **Web Interface** - Browser-based UI with real-time progress updates via SSE
-- **Internationalization** - Czech and English language support
-- **Dry Run Mode** - Preview changes before applying them
+- **Native upload pipeline** — JPEG/PNG/WebP/TIFF/GIF in pure Go; HEIC/HEIF via `heif-convert`; RAW (CR2/CR3/NEF/ARW/DNG/RAF/ORF/RW2/PEF/SRW) via `dcraw`. EXIF is read with `exiftool` (pure-Go fallback) and EXIF edits write an XMP sidecar next to the original.
+- **AI-Powered Photo Analysis** — Analyze photos and generate labels, descriptions, and date estimates
+- **Multiple AI Providers** — OpenAI, Google Gemini, Ollama, and llama.cpp
+- **Batch Processing** — Process entire albums with optional batch API for 50% cost savings
+- **Image Similarity Search** — Find similar photos using CLIP embeddings
+- **Text-to-Image Search** — Search photos by text description with automatic Czech-to-English translation
+- **Face Recognition** — Detect faces, find matches across the library, and assign people
+- **Face Outlier Detection** — Find incorrectly assigned faces by computing distance from the per-person centroid
+- **Photo Books** — Plan multi-format printed photo books with chapter color themes, customizable typography (24 free fonts), auto-generated table of contents, captions slots, and PDF export via LaTeX
+- **Era Estimation** — Estimate photo time periods using CLIP embedding comparison
+- **Duplicate Detection** — Find near-duplicate photos via pHash + CLIP embedding similarity
+- **Trash with auto-purge** — Soft-delete photos to a per-user trash; an hourly daemon hard-deletes anything older than `TRASH_RETENTION_DAYS` (default 30)
+- **EXIF edit** — Fix date, GPS, camera/lens/exposure, and EXIF text fields from the UI; changes also land in an XMP sidecar
+- **Czech-aware full-text search** — Diacritic-folded `q=` filter on photo title/description/notes/file_name
+- **Album Suggestions** — Find photos missing from albums via HNSW centroid search
+- **Photo Comparison** — Side-by-side photo comparison with metadata diff
+- **Slideshow** — Full-screen photo slideshow with keyboard navigation
+- **Mobile capture (PWA)** — `/capture` page that opens the device camera and uploads single shots
+- **User management** — Native bcrypt accounts with roles `admin` / `editor` / `viewer`, first admin bootstrapped from env vars
+- **Backup CLI** — `photo-sorter backup` tars the originals dir and `pg_dump`s the Postgres database in one timestamped folder, with retention
+- **PhotoPrism migration** — One-shot `migrate-from-photoprism` + cell-by-cell `migrate-verify` for operators moving off PhotoPrism
+- **MCP Server** — Model Context Protocol server for AI agent integration (52 tools)
+- **Web Interface** — Browser-based UI with real-time progress updates via SSE
+- **Internationalization** — Czech and English language support
+- **Dry Run Mode** — Preview AI sort changes before applying them
 
 ## Requirements
 
 - Go 1.26+
-- Node.js 18+ (for web UI)
-- A running PhotoPrism instance
-- PostgreSQL 15+ with pgvector extension (for vector storage)
+- Node.js 18+ (for the web UI)
+- PostgreSQL 15+ with pgvector
+- An embeddings service that exposes `POST /embed/image` and `POST /embed/text` (CLIP + InsightFace)
+- `exiftool`, `heif-convert`, and `dcraw` on `PATH` for the upload pipeline (the Docker image bundles all three)
 
 ## Installation
 
@@ -72,9 +69,11 @@ docker pull ghcr.io/kozaktomas/photo-sorter:main
 # Run with environment variables
 docker run -p 8080:8080 \
   -e DATABASE_URL=postgres://user:pass@host:5432/photosorter?sslmode=disable \
-  -e PHOTOPRISM_URL=http://photoprism:2342 \
-  -e PHOTOPRISM_USERNAME=admin \
-  -e PHOTOPRISM_PASSWORD=secret \
+  -e STORAGE_ORIGINALS_PATH=/data/originals \
+  -e STORAGE_CACHE_PATH=/data/cache \
+  -e BOOTSTRAP_ADMIN_USERNAME=admin \
+  -e BOOTSTRAP_ADMIN_PASSWORD=change-me \
+  -e EMBEDDING_URL=http://embeddings:8000 \
   -e OPENAI_TOKEN=sk-... \
   -v /path/to/data:/data \
   ghcr.io/kozaktomas/photo-sorter:main
@@ -94,15 +93,32 @@ The image is automatically built and pushed to GHCR on every push to `main` and 
 Create a `.env` file in the project root:
 
 ```env
-# PhotoPrism connection (required)
-PHOTOPRISM_URL=http://localhost:2342
-PHOTOPRISM_USERNAME=admin
-PHOTOPRISM_PASSWORD=your-password
+# PostgreSQL with pgvector (required)
+DATABASE_URL=postgres://user:pass@localhost:5432/photosorter?sslmode=disable
+DATABASE_MAX_OPEN_CONNS=25
+DATABASE_MAX_IDLE_CONNS=5
 
-# Optional: public URL for generating clickable photo links
-PHOTOPRISM_DOMAIN=https://photos.example.com
+# On-disk storage
+STORAGE_ORIGINALS_PATH=/data/originals    # YYYY/MM/<filename>
+STORAGE_CACHE_PATH=/data/cache            # thumb/<aa>/<bb>/<cc>/<hash>_<size>.jpg
 
-# AI Providers (configure at least one)
+# Bootstrap admin (consumed only on a fresh install)
+BOOTSTRAP_ADMIN_USERNAME=admin
+BOOTSTRAP_ADMIN_PASSWORD=change-me
+
+# Trash retention
+TRASH_RETENTION_DAYS=30
+
+# Duplicate detection on upload
+DUPLICATE_CHECK_ENABLED=true
+DUPLICATE_PHASH_MAX_DIFF=8
+DUPLICATE_EMBEDDING_MAX_DIST=0.05
+
+# Embeddings service
+EMBEDDING_URL=http://localhost:8000
+EMBEDDING_DIM=768
+
+# AI Providers (configure at least one for sort / text AI)
 OPENAI_TOKEN=sk-...
 GEMINI_API_KEY=...
 
@@ -111,20 +127,11 @@ OLLAMA_URL=http://localhost:11434
 OLLAMA_MODEL=llama3.2-vision:11b
 LLAMACPP_URL=http://localhost:8080
 
-# Embeddings service (optional)
-EMBEDDING_URL=http://localhost:8000
-EMBEDDING_DIM=768
-
-# PostgreSQL with pgvector (required)
-DATABASE_URL=postgres://user:pass@localhost:5432/photosorter?sslmode=disable
-DATABASE_MAX_OPEN_CONNS=25
-DATABASE_MAX_IDLE_CONNS=5
-
 # Optional: persist HNSW indexes for fast startup
 HNSW_INDEX_PATH=/data/faces.pg.hnsw
 HNSW_EMBEDDING_INDEX_PATH=/data/embeddings.pg.hnsw
 
-# Web server (optional)
+# Web server
 WEB_PORT=8080
 WEB_HOST=0.0.0.0
 WEB_SESSION_SECRET=change-me-in-production
@@ -219,27 +226,15 @@ photo-sorter photo info --album <album-uid> --json
 
 ### Cache Management
 
-Sync face marker data from PhotoPrism to keep the local cache up-to-date:
+Backfill thumbnails and perceptual hashes after migrating or wiping the
+cache:
 
 ```bash
-# Sync face markers from PhotoPrism
-photo-sorter cache sync
+# Generate every missing thumbnail
+photo-sorter cache build-thumbs
 
-# With custom concurrency
-photo-sorter cache sync --concurrency 5
-
-# JSON output for scripting
-photo-sorter cache sync --json
-```
-
-Push InsightFace embeddings to PhotoPrism's MariaDB:
-
-```bash
-# Preview what would be updated
-photo-sorter cache push-embeddings --dry-run
-
-# Push embeddings
-photo-sorter cache push-embeddings
+# Backfill pHash + dHash for photos that lack them
+photo-sorter cache compute-phashes
 ```
 
 Compute CLIP era embedding centroids for photo era estimation:
@@ -283,6 +278,37 @@ sudo systemctl enable --now photo-sorter-backup.timer
 
 The timer fires the oneshot service nightly at 03:00 (with a 10-minute random jitter, persistent across reboots).
 
+### Migrating from PhotoPrism
+
+If you are coming from an existing PhotoPrism install, photo-sorter can
+import its MariaDB database and primary originals directly:
+
+```bash
+# Dry-run: walk the source, print counts, no DB writes
+photo-sorter migrate-from-photoprism \
+  --pp-db "photoprism:photoprism@tcp(mariadb:3306)/photoprism" \
+  --pp-originals /photoprism/originals \
+  --uploader-username admin \
+  --dry-run
+
+# Full migration
+photo-sorter migrate-from-photoprism \
+  --pp-db "photoprism:photoprism@tcp(mariadb:3306)/photoprism" \
+  --pp-originals /photoprism/originals \
+  --uploader-username admin
+
+# Cell-by-cell verification (zero diffs = safe to drop PhotoPrism)
+photo-sorter migrate-verify \
+  --pp-db "photoprism:photoprism@tcp(mariadb:3306)/photoprism" \
+  --pp-originals /photoprism/originals
+```
+
+UIDs (photos, albums, subjects, markers) are preserved verbatim so cached
+references in `embeddings`, `faces`, `section_photos`, and `page_slots`
+stay valid without a remap pass. See
+[`docs/migration-from-photoprism.md`](docs/migration-from-photoprism.md)
+for the full runbook.
+
 ### Web Interface
 
 Start the web server for browser-based access:
@@ -295,7 +321,10 @@ photo-sorter serve
 photo-sorter serve --port 3000
 ```
 
-The web UI requires authentication. Log in with your PhotoPrism credentials to access all features.
+The web UI requires authentication. Log in with the bootstrap admin you
+created via `BOOTSTRAP_ADMIN_USERNAME` / `BOOTSTRAP_ADMIN_PASSWORD` on
+first start, then create additional users from **Settings → Users** (admin
+only).
 
 For development with hot reload:
 
@@ -315,26 +344,37 @@ photo-sorter/
 ├── internal/
 │   ├── ai/                 # AI provider implementations
 │   │   └── prompts/        # Embedded prompt templates
+│   ├── auth/               # Password hashing + bootstrap admin
 │   ├── config/             # Configuration and pricing
 │   ├── constants/          # Shared constants (page sizes, thresholds)
 │   ├── database/           # PostgreSQL+pgvector storage backend
+│   ├── exif/               # EXIF reader + XMP sidecar writer
 │   ├── facematch/          # Face matching utilities (IoU, bbox conversion)
 │   ├── fingerprint/        # Perceptual hashing and embeddings
+│   ├── imgconvert/         # HEIC/RAW → JPEG via heif-convert / dcraw
 │   ├── latex/              # PDF export via LaTeX
 │   ├── mcp/                # MCP server for AI agent integration
-│   ├── photoprism/         # PhotoPrism REST API client
+│   ├── migrate/            # PhotoPrism→native one-shot migrator
+│   ├── photopipe/          # Upload pipeline (hash → dedup → EXIF → store → thumbs)
+│   ├── photoprism/         # PhotoPrism REST client (used only by migration)
 │   ├── sorter/             # Photo analysis orchestration
+│   ├── storage/            # On-disk layout for originals + thumbnail cache
+│   ├── thumb/              # Thumbnail registry + GenerateSizes
+│   ├── trash/              # Soft-delete trash + hourly auto-purge daemon
+│   ├── verify/             # migrate-verify field-level comparator
 │   └── web/                # Web server and API handlers
 └── web/                    # React + TypeScript frontend
 ```
 
-### Data Flow
+### Data Flow (upload)
 
-1. CLI command invokes sorter with album UID
-2. Sorter fetches photos via PhotoPrism client
-3. Each photo is downloaded and sent to AI provider
-4. AI suggests categories/labels
-5. Labels are applied back to PhotoPrism (unless dry-run)
+1. Multipart upload arrives at `POST /api/v1/upload`.
+2. `internal/photopipe` hashes the file (SHA256), detects the format, and skips exact duplicates by hash.
+3. HEIC/RAW are funnelled through `imgconvert` to a JPEG intermediate. EXIF is read via `exiftool` (pure-Go fallback).
+4. The near-duplicate scan (pHash + CLIP embedding) runs when enabled.
+5. The original is written to `STORAGE_ORIGINALS_PATH/YYYY/MM/<basename>`; rows land in `photos`, `photo_files`, `photo_phashes`.
+6. `internal/thumb.GenerateSizes` decodes the source once and writes every registered thumbnail size under `STORAGE_CACHE_PATH/thumb/...`.
+7. Optionally the embeddings service is called to populate `embeddings` + `faces` (also reachable via the Process job).
 
 ## Documentation
 
@@ -343,9 +383,10 @@ photo-sorter/
 - [Web UI Guide](docs/web-ui.md) - Guide to the web interface features
 - [API Reference](docs/API.md) - REST API documentation
 - [HNSW Architecture](docs/hnsw-architecture.md) - In-memory HNSW vs pgvector design rationale
-- [Face Markers](docs/markers.md) - Face matching and marker coordinate handling
+- [Face Markers](docs/markers.md) - Marker system and face-to-marker matching
 - [Era Estimation](docs/era-estimation.md) - Era estimation using CLIP embeddings
 - [Photo Books](docs/photo-book.md) - Photo book planning tool
+- [Migration from PhotoPrism](docs/migration-from-photoprism.md) - One-shot import runbook
 - [Testing Environment](docs/testing-environment.md) - Dev/test environment setup
 
 ## Development

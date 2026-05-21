@@ -12,7 +12,7 @@ Complete reference for all Photo Sorter CLI commands.
 
 ### albums
 
-List all albums from PhotoPrism.
+List albums from the native `albums` table.
 
 ```bash
 photo-sorter albums [flags]
@@ -277,183 +277,17 @@ photo-sorter photo info --album aq8xyz789 --json
 
 ---
 
-### photo clear-faces
+### Face / embedding diagnostics — web UI only
 
-Remove all face markers from a photo in PhotoPrism.
+For deeper face data, use the web UI:
 
-```bash
-photo-sorter photo clear-faces <photo-uid> [flags]
-```
+- `GET /api/v1/photos/{uid}/faces` — list detected faces + suggestions
+- `POST /api/v1/photos/{uid}/faces/compute` — recompute embeddings
+- `POST /api/v1/process/sync-cache` — re-derive cached marker metadata for every face
 
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `--dry-run` | bool | false | Preview changes without applying them |
-| `--assigned-only` | bool | false | Only remove markers with person assignments |
-
-**Examples:**
-```bash
-# Delete all face markers
-photo-sorter photo clear-faces pt4abc123def
-
-# Only remove assigned markers
-photo-sorter photo clear-faces pt4abc123def --assigned-only
-
-# Preview changes
-photo-sorter photo clear-faces pt4abc123def --dry-run
-```
-
----
-
-### photo similar
-
-Find visually similar photos using image embeddings.
-
-```bash
-photo-sorter photo similar [photo-uid] [flags]
-photo-sorter photo similar --label <label-name> [flags]
-```
-
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `--threshold` | float | 0.3 | Maximum cosine distance (lower = more similar) |
-| `--limit` | int | 50 | Maximum number of results |
-| `--json` | bool | false | Output as JSON |
-| `--label` | string[] | | Find photos similar to all photos with this label |
-| `--apply` | bool | false | Apply the label(s) to similar photos found |
-| `--dry-run` | bool | false | Preview label assignments without applying |
-
-**Examples:**
-```bash
-# Find similar to a photo
-photo-sorter photo similar pq8abc123def
-
-# Find similar by label
-photo-sorter photo similar --label "cat"
-
-# Multiple labels
-photo-sorter photo similar --label "cat" --label "dog"
-
-# Apply labels to matches
-photo-sorter photo similar --label "cat" --apply
-
-# Preview first
-photo-sorter photo similar --label "cat" --apply --dry-run
-```
-
----
-
-### photo match
-
-Find all photos containing a specific person by comparing face embeddings.
-
-```bash
-photo-sorter photo match <person-name> [flags]
-```
-
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `--threshold` | float | 0.5 | Maximum cosine distance for face matching |
-| `--limit` | int | 0 | Limit number of results (0 = no limit) |
-| `--json` | bool | false | Output as JSON |
-| `--apply` | bool | false | Apply changes to PhotoPrism (create markers and assign person) |
-| `--dry-run` | bool | false | Preview changes without applying them (use with --apply) |
-
-**Examples:**
-```bash
-# Find photos of a person
-photo-sorter photo match john-doe
-
-# Strict matching
-photo-sorter photo match john-doe --threshold 0.3
-
-# Preview changes
-photo-sorter photo match john-doe --apply --dry-run
-
-# Apply changes
-photo-sorter photo match john-doe --apply
-```
-
-#### How It Works
-
-1. Queries PhotoPrism for photos tagged with the person
-2. Retrieves face embeddings for those photos from PostgreSQL
-3. Uses cosine distance to find similar faces across all photos
-4. Only keeps faces that match at least 10% of the source embeddings (reduces false positives)
-5. Compares bounding boxes (IoU) with existing PhotoPrism markers to determine action
-
-#### Threshold Guidelines
-
-| Threshold | Behavior | Use Case |
-|-----------|----------|----------|
-| 0.2 - 0.3 | Very strict | High confidence matches only |
-| 0.3 - 0.4 | Strict | Good for well-lit photos with clear faces |
-| 0.4 - 0.5 | Moderate (default) | General use |
-| 0.5 - 0.6 | Loose | Catches more but increases false positives |
-
-Face embeddings vary due to lighting, pose angle, image quality, age, occlusions, and expression.
-
-#### Output Actions
-
-| Action | Description |
-|--------|-------------|
-| `create_marker` | No marker exists - need to create one |
-| `assign_person` | Marker exists but no person assigned |
-| `already_done` | Already correctly tagged |
-
-#### Prerequisites
-
-1. Use the web UI Process page to detect faces and store embeddings
-2. At least some photos must be tagged with the person name in PhotoPrism
-3. `DATABASE_URL` environment variable must be set
-
----
-
-### cache sync
-
-Sync face marker data from PhotoPrism to the local PostgreSQL cache.
-
-```bash
-photo-sorter cache sync [flags]
-```
-
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `--concurrency` | int | 20 | Number of parallel workers |
-| `--json` | bool | false | Output as JSON instead of progress bar |
-
-**Examples:**
-```bash
-# Run sync with default concurrency
-photo-sorter cache sync
-
-# Limit concurrency
-photo-sorter cache sync --concurrency 5
-
-# JSON output for scripting
-photo-sorter cache sync --json
-```
-
-#### When to Use
-
-Use `cache sync` when faces have been assigned or unassigned directly in PhotoPrism's native UI. The local cache stores marker assignments to avoid repeated API calls during face matching. This command refreshes the cache to match PhotoPrism's current state.
-
-#### What It Does
-
-1. Gets all photos with detected faces from the database
-2. For each photo (parallelized):
-   - Fetches current photo details from PhotoPrism
-   - Detects deleted photos: hard-deleted (404) or soft-deleted (`DeletedAt` field set) — removes their faces, embeddings, and processing records
-   - Fetches current markers from PhotoPrism
-   - Matches database faces to markers using IoU
-   - Updates cached marker UID, subject UID, and subject name
-   - Updates cached photo dimensions and orientation
-3. Reports how many faces were updated and photos cleaned up
-
-#### Prerequisites
-
-- `DATABASE_URL` environment variable must be set
-- PhotoPrism credentials configured
-- Faces already detected via web UI Process page
+Face matching and outlier detection are exposed via the web UI and the
+equivalent `POST /api/v1/faces/match` / `POST /api/v1/faces/outliers`
+endpoints.
 
 ---
 
@@ -618,48 +452,6 @@ The resulting centroids can be compared against photo image embeddings using cos
 
 ---
 
-### cache push-embeddings
-
-Push InsightFace embeddings from PostgreSQL to PhotoPrism's MariaDB, replacing the default TensorFlow embeddings.
-
-```bash
-photo-sorter cache push-embeddings [flags]
-```
-
-| Flag | Type | Default | Description |
-|------|------|---------|-------------|
-| `--dry-run` | bool | false | Preview changes without writing to MariaDB |
-| `--recompute-centroids` | bool | false | Recompute face cluster centroids from new embeddings |
-| `--json` | bool | false | Output as JSON |
-
-**Examples:**
-```bash
-# Preview changes
-photo-sorter cache push-embeddings --dry-run
-
-# Push embeddings
-photo-sorter cache push-embeddings
-
-# Push and recompute centroids
-photo-sorter cache push-embeddings --recompute-centroids
-
-# JSON output
-photo-sorter cache push-embeddings --json
-```
-
-#### What It Does
-
-1. Fetches all faces from PostgreSQL that have a `marker_uid` linkage
-2. For each face, writes its InsightFace embedding to MariaDB `markers.embeddings_json` as `[[e1,...,e512]]`
-3. If `--recompute-centroids`: for each face cluster, averages all linked marker embeddings and writes the centroid to `faces.embedding_json`
-
-#### Prerequisites
-
-- `DATABASE_URL` environment variable must be set (PostgreSQL)
-- `PHOTOPRISM_DATABASE_URL` environment variable must be set (MariaDB DSN, e.g., `photoprism:photoprism@tcp(mariadb:3306)/photoprism`)
-- Faces already detected and linked to markers (run `cache sync` first)
-
----
 
 ### MCP Server (integrated into serve)
 

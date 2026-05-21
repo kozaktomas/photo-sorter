@@ -117,7 +117,7 @@ book_sections
 section_photos
 ├── id (PK, BIGSERIAL)
 ├── section_id (FK → book_sections, CASCADE)
-├── photo_uid (references PhotoPrism)
+├── photo_uid (references the native photos table)
 ├── description (caption for printed book)
 ├── note (internal creator note, not printed)
 ├── added_at
@@ -347,11 +347,11 @@ Both the sync (`GET /api/v1/books/{id}/export-pdf`) and async
 preflight endpoint (`GET /api/v1/books/{id}/preflight?photo_quality=...`) so
 that warnings specific to a tier are reported up-front.
 
-| Value | PhotoPrism source | Use case | Approx. file size |
-|-------|-------------------|----------|-------------------|
-| `low` | `fit_720` thumbnails | quick preview — small, fast | tens of MB |
-| `medium` (default) | `fit_3840` thumbnails | standard export, prior behaviour | ~100 MB to ~1 GB |
-| `original` | `GetPhotoDownload` primary file | final print | multi-GB possible for large books |
+| Value | Source | Use case | Approx. file size |
+|-------|--------|----------|-------------------|
+| `low` | `fit_720` cached thumbnails | quick preview — small, fast | tens of MB |
+| `medium` (default) | `fit_3840` cached thumbnails | standard export | ~100 MB to ~1 GB |
+| `original` | primary file from the originals tree | final print | multi-GB possible for large books |
 
 **Longest-side cap for `original`.** When `photo_quality=original`, the
 primary file is streamed to a temp file on disk (no full-payload buffer in
@@ -375,9 +375,9 @@ memory per worker; the lower bound keeps the resident-memory peak well below
 **HEIC / RAW handling.** The photo-sorter binary is built with
 `CGO_ENABLED=0` and ships no HEIC / RAW decoder. If the primary file cannot
 be decoded in pure Go (e.g. HEIC from iPhone, CR2/NEF/ARW/DNG from cameras),
-the export falls back to PhotoPrism's largest pre-rendered JPEG thumbnail
-(`fit_7680`, ≤ 7680 px on the longest side). A log line with the photo UID
-and the decode error is emitted so the behaviour is traceable.
+the export falls back to the largest pre-rendered JPEG thumbnail in the
+cache (`fit_7680`, ≤ 7680 px on the longest side). A log line with the
+photo UID and the decode error is emitted so the behaviour is traceable.
 
 **`original_downgrade` preflight warning.** When `photo_quality=original` is
 selected, preflight walks every placed photo and warns for any photo whose
