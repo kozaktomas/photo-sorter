@@ -24,6 +24,7 @@ import { BooksPage } from './pages/Books/index';
 import { BookEditorPage } from './pages/BookEditor/index';
 import { UploadPage } from './pages/Upload/index';
 import { CapturePage } from './pages/Capture/Capture';
+import { TrashPage } from './pages/Trash/Trash';
 import { LoginPage } from './pages/Login';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 
@@ -276,6 +277,16 @@ function AppRoutes() {
           <ProtectedRoute>
             <Layout>
               <CapturePage />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/trash"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <TrashPage />
             </Layout>
           </ProtectedRoute>
         }

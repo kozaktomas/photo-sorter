@@ -10,13 +10,12 @@ import { PhotoCard } from '../components/PhotoCard';
 import { StatsGrid } from '../components/StatsGrid';
 import { FormInput } from '../components/FormInput';
 import { FormSelect } from '../components/FormSelect';
-import { getSubjects, findFaceOutliers, getConfig, applyFaceMatch } from '../api/client';
-import type { Subject, OutlierResponse, OutlierResult, Config } from '../types';
+import { getSubjects, findFaceOutliers, applyFaceMatch } from '../api/client';
+import type { Subject, OutlierResponse, OutlierResult } from '../types';
 
 export function OutliersPage() {
   const { t } = useTranslation(['pages', 'common']);
   const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [config, setConfig] = useState<Config | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -35,12 +34,8 @@ export function OutliersPage() {
   useEffect(() => {
     async function loadData() {
       try {
-        const [subjectsData, configData] = await Promise.all([
-          getSubjects({ count: 500 }),
-          getConfig(),
-        ]);
+        const subjectsData = await getSubjects({ count: 500 });
         setSubjects(subjectsData);
-        setConfig(configData);
       } catch (err) {
         console.error('Failed to load subjects:', err);
         setError('Failed to load subjects. Make sure you are logged in.');
@@ -253,7 +248,6 @@ export function OutliersPage() {
                   <PhotoCard
                     key={key}
                     photoUid={outlier.photo_uid}
-                    photoprismDomain={config?.photoprism_domain}
                     matchPercent={Math.round((1 - outlier.dist_from_centroid) * 100)}
                     thumbnailSize="fit_720"
                     aspectRatio="auto"
@@ -289,7 +283,6 @@ export function OutliersPage() {
                   <PhotoCard
                     key={key}
                     photoUid={outlier.photo_uid}
-                    photoprismDomain={config?.photoprism_domain}
                     thumbnailSize="fit_720"
                     aspectRatio="auto"
                     bboxRel={outlier.bbox_rel}

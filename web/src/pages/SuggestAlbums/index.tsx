@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Search, AlertCircle, FolderPlus } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '../../components/Card';
@@ -8,13 +8,12 @@ import { PageHeader } from '../../components/PageHeader';
 import { PAGE_CONFIGS } from '../../constants/pageConfig';
 import { PhotoCard } from '../../components/PhotoCard';
 import { StatsGrid } from '../../components/StatsGrid';
-import { suggestAlbums, addPhotosToAlbum, getConfig } from '../../api/client';
+import { suggestAlbums, addPhotosToAlbum } from '../../api/client';
 import { DEFAULT_SUGGEST_ALBUM_THRESHOLD, DEFAULT_SUGGEST_ALBUM_TOP_K } from '../../constants';
-import type { SuggestAlbumsResponse, Config } from '../../types';
+import type { SuggestAlbumsResponse } from '../../types';
 
 export function SuggestAlbumsPage() {
   const { t } = useTranslation(['pages', 'common']);
-  const [config, setConfig] = useState<Config | null>(null);
 
   // Form state
   const [threshold, setThreshold] = useState(DEFAULT_SUGGEST_ALBUM_THRESHOLD);
@@ -28,11 +27,6 @@ export function SuggestAlbumsPage() {
   // Add-to-album state
   const [addingAlbum, setAddingAlbum] = useState<string | null>(null);
   const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string; albumUid?: string } | null>(null);
-
-  // Load config on mount
-  useEffect(() => {
-    void getConfig().then(setConfig).catch(() => null);
-  }, []);
 
   const handleSuggest = async () => {
     setIsSearching(true);
@@ -212,7 +206,6 @@ export function SuggestAlbumsPage() {
                     <PhotoCard
                       key={photo.photo_uid}
                       photoUid={photo.photo_uid}
-                      photoprismDomain={config?.photoprism_domain}
                       matchPercent={Math.round(photo.similarity * 100)}
                     />
                   ))}

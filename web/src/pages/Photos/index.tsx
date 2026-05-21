@@ -8,13 +8,13 @@ import { PageHeader } from '../../components/PageHeader';
 import { PAGE_CONFIGS } from '../../constants/pageConfig';
 import { PhotoGrid } from '../../components/PhotoGrid';
 import { BulkActionBar } from '../../components/BulkActionBar';
-import { getLabels, getAlbums, getConfig } from '../../api/client';
+import { getLabels, getAlbums } from '../../api/client';
 import { MAX_LABELS_FETCH, MAX_ALBUMS_FETCH, PHOTOS_CACHE_KEY } from '../../constants';
 import { usePhotosFilters } from './hooks/usePhotosFilters';
 import { usePhotosPagination } from './hooks/usePhotosPagination';
 import { usePhotoSelection } from '../../hooks/usePhotoSelection';
 import { PhotosFilters } from './PhotosFilters';
-import type { Photo, Label, Album, Config } from '../../types';
+import type { Photo, Label, Album } from '../../types';
 
 export function PhotosPage() {
   const { t } = useTranslation(['pages', 'common']);
@@ -44,7 +44,6 @@ export function PhotosPage() {
   // Dropdown data
   const [labels, setLabels] = useState<Label[]>([]);
   const [albums, setAlbums] = useState<Album[]>([]);
-  const [config, setConfig] = useState<Config | null>(null);
 
   const handlePhotoClick = (photo: Photo) => {
     // Save current state to cache before navigating
@@ -59,18 +58,16 @@ export function PhotosPage() {
     selection.deselectAll();
   };
 
-  // Load dropdown data and config
+  // Load dropdown data
   useEffect(() => {
     async function loadFilterData() {
       try {
-        const [labelsData, albumsData, configData] = await Promise.all([
+        const [labelsData, albumsData] = await Promise.all([
           getLabels({ count: MAX_LABELS_FETCH, all: true }),
           getAlbums({ count: MAX_ALBUMS_FETCH }),
-          getConfig().catch(() => null),
         ]);
         setLabels(labelsData.sort((a, b) => a.name.localeCompare(b.name)));
         setAlbums(albumsData.sort((a, b) => a.title.localeCompare(b.title)));
-        setConfig(configData);
       } catch (err) {
         console.error('Failed to load filter data:', err);
       }
@@ -200,7 +197,6 @@ export function PhotosPage() {
               <PhotoGrid
                 photos={pagination.photos}
                 onPhotoClick={selectionMode ? undefined : handlePhotoClick}
-                photoprismDomain={config?.photoprism_domain}
                 selectable={selectionMode}
                 selectedPhotos={selection.selectedPhotos}
                 onSelectionChange={(uid) => selection.toggleSelection(uid)}

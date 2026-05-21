@@ -10,15 +10,14 @@ import { PAGE_CONFIGS } from '../../constants/pageConfig';
 import { PhotoCard } from '../../components/PhotoCard';
 import { BulkActionBar } from '../../components/BulkActionBar';
 import { StatsGrid } from '../../components/StatsGrid';
-import { findDuplicates, getAlbums, getConfig } from '../../api/client';
+import { findDuplicates, getAlbums } from '../../api/client';
 import { usePhotoSelection } from '../../hooks/usePhotoSelection';
 import { DEFAULT_DUPLICATE_THRESHOLD, DEFAULT_DUPLICATE_LIMIT, MAX_ALBUMS_FETCH, percentToDistance } from '../../constants';
-import type { DuplicatesResponse, Config, Album } from '../../types';
+import type { DuplicatesResponse, Album } from '../../types';
 
 export function DuplicatesPage() {
   const { t } = useTranslation(['pages', 'common']);
   const navigate = useNavigate();
-  const [config, setConfig] = useState<Config | null>(null);
 
   // Form state
   const [scopeAlbum, setScopeAlbum] = useState('');
@@ -34,16 +33,12 @@ export function DuplicatesPage() {
   // Selection state
   const selection = usePhotoSelection();
 
-  // Load albums + config on mount
+  // Load albums on mount
   useEffect(() => {
     async function loadData() {
       try {
-        const [albumsData, configData] = await Promise.all([
-          getAlbums({ count: MAX_ALBUMS_FETCH, order: 'name' }),
-          getConfig().catch(() => null),
-        ]);
+        const albumsData = await getAlbums({ count: MAX_ALBUMS_FETCH, order: 'name' });
         setAvailableAlbums(albumsData);
-        setConfig(configData);
       } catch (err) {
         console.error('Failed to load data:', err);
       }
@@ -239,7 +234,6 @@ export function DuplicatesPage() {
                     <PhotoCard
                       key={photo.photo_uid}
                       photoUid={photo.photo_uid}
-                      photoprismDomain={config?.photoprism_domain}
                       matchPercent={Math.round((1 - photo.distance) * 100)}
                       selectable
                       selected={selection.selectedPhotos.has(photo.photo_uid)}

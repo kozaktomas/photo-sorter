@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
-import { Copy, ExternalLink, Search, Check, Loader2, X, Eye, Star } from 'lucide-react';
+import { Copy, Search, Check, Loader2, X, Eye, Star } from 'lucide-react';
 import { getThumbnailUrl } from '../api/client';
 import { copyToClipboard } from '../utils/clipboard';
 import { LazyImage } from './LazyImage';
@@ -10,7 +10,6 @@ import type { MatchAction } from '../types';
 
 export interface PhotoCardProps {
   photoUid: string;
-  photoprismDomain?: string;
   // Match percentage (0-100), shown if provided
   matchPercent?: number;
   // Selection
@@ -35,7 +34,6 @@ export interface PhotoCardProps {
 
 export function PhotoCard({
   photoUid,
-  photoprismDomain,
   matchPercent,
   selectable = false,
   selected = false,
@@ -59,14 +57,6 @@ export function PhotoCard({
     void copyToClipboard(photoUid);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
-  };
-
-  const handleOpenPhotoprism = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (photoprismDomain) {
-      const url = `${photoprismDomain}/library/browse?view=cards&order=oldest&q=uid:${photoUid}`;
-      window.open(url, '_blank');
-    }
   };
 
   const handleApprove = async (e: React.MouseEvent) => {
@@ -213,18 +203,6 @@ export function PhotoCard({
             >
               {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
             </button>
-
-            {/* PhotoPrism link */}
-            {photoprismDomain && (
-              <button
-                onClick={handleOpenPhotoprism}
-                className="p-1.5 bg-black/60 rounded text-white hover:bg-black/80 transition-colors"
-                title={t('buttons.openInPhotoprism')}
-                aria-label={t('buttons.openInPhotoprism')}
-              >
-                <ExternalLink className="h-3 w-3" />
-              </button>
-            )}
           </div>
         </div>
       </div>
@@ -267,11 +245,9 @@ export function PhotoCard({
 // Simple link version for basic grids
 export function PhotoCardLink({
   photoUid,
-  photoprismDomain,
   favorite,
 }: {
   photoUid: string;
-  photoprismDomain?: string;
   favorite?: boolean;
 }) {
   const { t } = useTranslation('common');
@@ -283,15 +259,6 @@ export function PhotoCardLink({
     void copyToClipboard(photoUid);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
-  };
-
-  const handleOpenPhotoprism = (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (photoprismDomain) {
-      const url = `${photoprismDomain}/library/browse?view=cards&order=oldest&q=uid:${photoUid}`;
-      window.open(url, '_blank');
-    }
   };
 
   return (
@@ -336,18 +303,6 @@ export function PhotoCardLink({
           >
             {copied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
           </button>
-
-          {/* PhotoPrism link */}
-          {photoprismDomain && (
-            <button
-              onClick={handleOpenPhotoprism}
-              className="p-1.5 bg-black/60 rounded text-white hover:bg-black/80 transition-colors"
-              title={t('buttons.openInPhotoprism')}
-              aria-label={t('buttons.openInPhotoprism')}
-            >
-              <ExternalLink className="h-3 w-3" />
-            </button>
-          )}
         </div>
       </div>
     </Link>

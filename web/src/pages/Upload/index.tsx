@@ -9,6 +9,7 @@ import { FormCheckbox } from '../../components/FormCheckbox';
 import { Combobox } from '../../components/Combobox';
 import { PAGE_CONFIGS } from '../../constants/pageConfig';
 import { DropZone } from './DropZone';
+import { NearDuplicatesModal } from './NearDuplicatesModal';
 import { useUploadJob } from './hooks/useUploadJob';
 import { getAlbums, getLabels, getBooks, getBook, getThumbnailUrl } from '../../api/client';
 import type { Album, Label, PhotoBook, BookDetail, BookSection } from '../../types';
@@ -190,7 +191,13 @@ export function UploadPage() {
     phase, progress, result, error,
     isRunning, isDone, isStarting,
     startUpload, cancelUpload, resetUpload,
+    nearDuplicates, clearNearDuplicates,
   } = useUploadJob();
+
+  // The near-duplicate dialog is suppressed during the run so we don't
+  // distract the user; it is shown once the job reaches a terminal state
+  // and there is at least one pending decision to make.
+  const showNearDuplicatesModal = isDone && nearDuplicates.length > 0;
 
   // Load albums + labels + books
   useEffect(() => {
@@ -508,6 +515,13 @@ export function UploadPage() {
           </CardContent>
         </Card>
       </div>
+
+      {showNearDuplicatesModal && (
+        <NearDuplicatesModal
+          events={nearDuplicates}
+          onClose={clearNearDuplicates}
+        />
+      )}
     </div>
   );
 }

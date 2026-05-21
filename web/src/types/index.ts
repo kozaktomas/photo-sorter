@@ -109,19 +109,27 @@ export interface ProviderInfo {
 
 export interface Config {
   providers: ProviderInfo[];
-  photoprism_domain?: string;
   embeddings_writable?: boolean;
   version: string;
   commit_sha: string;
 }
 
+export interface User {
+  uid: string;
+  username: string;
+  display_name: string;
+  role: string;
+}
+
 export interface AuthStatus {
   authenticated: boolean;
+  user?: User;
   expires_at?: string;
 }
 
 export interface LoginResponse {
-  success: boolean;
+  success?: boolean;
+  user?: User;
   session_id?: string;
   expires_at?: string;
   error?: string;
@@ -528,6 +536,20 @@ export interface UploadJobResult {
   labels_applied: number;
   albums_applied: number;
   book_added: number;
+}
+
+export interface DuplicateMatch {
+  photo_uid: string;
+  file_name: string;
+  taken_at?: string;
+  score_phash: number;
+  score_embedding: number;
+}
+
+export interface NearDuplicatesEvent {
+  filename: string;
+  photo_uid: string;
+  matches: DuplicateMatch[];
 }
 
 // Preflight check types

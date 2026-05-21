@@ -19,6 +19,7 @@
     "process": "Process",
     "upload": "Upload",
     "capture": "Capture",
+    "trash": "Trash",
     "signOut": "Sign out"
   },
   "buttons": {

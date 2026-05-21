@@ -16,7 +16,7 @@ import type { FaceMatch } from '../../types';
 
 export function RecognitionPage() {
   const { t } = useTranslation(['pages', 'common']);
-  const { subjects, config, isLoading, error } = useSubjectsAndConfig();
+  const { subjects, isLoading, error } = useSubjectsAndConfig();
 
   const {
     confidence,
@@ -175,7 +175,6 @@ export function RecognitionPage() {
           key={personResult.slug}
           name={personResult.name}
           actionable={personResult.actionable}
-          photoprismDomain={config?.photoprism_domain}
           isAccepting={acceptingPerson === personResult.slug}
           acceptProgress={acceptProgress}
           onAcceptAll={handleAcceptAllForPerson(personResult.slug, personResult.name)}

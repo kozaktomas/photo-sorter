@@ -771,5 +771,34 @@
     "uploaded": "Uploaded",
     "upload_failed": "Upload failed",
     "recent": "Recent"
+  },
+  "trash": {
+    "title": "Trash",
+    "subtitle_one": "{{count}} archived photo",
+    "subtitle_other": "{{count}} archived photos",
+    "subtitle": "{{count}} archived photos",
+    "empty": "Trash is empty",
+    "restore": "Restore",
+    "purge": "Purge",
+    "restored": "Restored {{count}} photos",
+    "restoredWithErrors": "Restored {{count}} photos with {{errors}} errors",
+    "purged": "Purged {{count}} photos",
+    "purgedWithErrors": "Purged {{count}} photos with {{errors}} errors",
+    "confirmPurgeTitle": "Permanently delete selected photos?",
+    "confirmPurgeMessage": "This will permanently delete {{count}} photos along with their original files and cached thumbnails. This cannot be undone."
+  },
+  "nearDuplicates": {
+    "title": "Possible duplicates detected",
+    "intro_one": "{{count}} just-uploaded photo looks similar to an existing one. Decide what to do with each.",
+    "intro_other": "{{count}} just-uploaded photos look similar to existing ones. Decide what to do with each.",
+    "yourUpload": "Your upload",
+    "existing": "Existing",
+    "keepBoth": "Keep both",
+    "deleteUploaded": "Delete just-uploaded copy",
+    "scoreHash": "pHash distance: {{value}}",
+    "scoreEmbedding": "Embedding similarity: {{value}}",
+    "deletedSummary_one": "Archived {{count}} just-uploaded copy",
+    "deletedSummary_other": "Archived {{count}} just-uploaded copies",
+    "close": "Close"
   }
 }

@@ -775,5 +775,38 @@
     "bio": "Životopis",
     "yes": "Ano",
     "no": "Ne"
+  },
+  "trash": {
+    "title": "Koš",
+    "subtitle_one": "{{count}} archivovaná fotka",
+    "subtitle_few": "{{count}} archivované fotky",
+    "subtitle_many": "{{count}} archivovaných fotek",
+    "subtitle": "{{count}} archivovaných fotek",
+    "empty": "Koš je prázdný",
+    "restore": "Obnovit",
+    "purge": "Trvale smazat",
+    "restored": "Obnoveno {{count}} fotek",
+    "restoredWithErrors": "Obnoveno {{count}} fotek, {{errors}} chyb",
+    "purged": "Trvale smazáno {{count}} fotek",
+    "purgedWithErrors": "Trvale smazáno {{count}} fotek, {{errors}} chyb",
+    "confirmPurgeTitle": "Trvale smazat vybrané fotky?",
+    "confirmPurgeMessage": "Tímto se trvale odstraní {{count}} fotek včetně originálních souborů a náhledů. Akci nelze vrátit."
+  },
+  "nearDuplicates": {
+    "title": "Možné duplicitní fotky",
+    "intro_one": "{{count}} právě nahraná fotka je podobná již existující. Rozhodněte, co s ní.",
+    "intro_few": "{{count}} právě nahrané fotky jsou podobné již existujícím. Rozhodněte, co s nimi.",
+    "intro_many": "{{count}} právě nahraných fotek je podobných již existujícím. Rozhodněte, co s nimi.",
+    "yourUpload": "Vaše nahrávka",
+    "existing": "Existující",
+    "keepBoth": "Ponechat obě",
+    "deleteUploaded": "Smazat právě nahranou kopii",
+    "scoreHash": "Vzdálenost pHash: {{value}}",
+    "scoreEmbedding": "Podobnost embeddingu: {{value}}",
+    "deletedSummary_one": "Archivována {{count}} právě nahraná kopie",
+    "deletedSummary_few": "Archivovány {{count}} právě nahrané kopie",
+    "deletedSummary_many": "Archivováno {{count}} právě nahraných kopií",
+    "close": "Zavřít"
   }
 }
+

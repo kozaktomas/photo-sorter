@@ -8,7 +8,6 @@ import type { FaceMatch } from '../../types';
 interface PersonResultCardProps {
   name: string;
   actionable: FaceMatch[];
-  photoprismDomain?: string;
   isAccepting: boolean;
   acceptProgress: { current: number; total: number };
   onAcceptAll: () => void;
@@ -20,7 +19,6 @@ interface PersonResultCardProps {
 export function PersonResultCard({
   name,
   actionable,
-  photoprismDomain,
   isAccepting,
   acceptProgress,
   onAcceptAll,
@@ -55,7 +53,6 @@ export function PersonResultCard({
       <CardContent>
         <FaceMatchGrid
           matches={actionable}
-          photoprismDomain={photoprismDomain}
           onApprove={onApprove}
           onReject={onReject}
         />

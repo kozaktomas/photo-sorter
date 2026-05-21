@@ -1,7 +1,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Loader2, AlertCircle, Images, ScanFace, Copy, ExternalLink, User, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Loader2, AlertCircle, Images, ScanFace, Copy, User, RefreshCw } from 'lucide-react';
 import { AddToBookDropdown } from './AddToBookDropdown';
 import { Button } from '../../components/Button';
 import { colorMap } from '../../constants/pageConfig';
@@ -43,7 +43,6 @@ export function PhotoDetailPage() {
     photo,
     loading: photoLoading,
     error: photoError,
-    config,
     embeddingsStatus,
     updateEmbeddingsStatus,
   } = usePhotoData(uid);
@@ -149,13 +148,6 @@ export function PhotoDetailPage() {
     if (uid) void copyToClipboard(uid);
   };
 
-  const handleOpenInPhotoprism = () => {
-    if (config?.photoprism_domain && uid) {
-      const url = `${config.photoprism_domain}/library/browse?view=cards&order=oldest&q=uid:${uid}`;
-      window.open(url, '_blank');
-    }
-  };
-
   const selectedFace = selectedFaceIndex !== null ? facesData?.faces[selectedFaceIndex] : null;
 
   if (photoLoading) {
@@ -205,12 +197,6 @@ export function PhotoDetailPage() {
             <Copy className="h-4 w-4 mr-1" />
             {t('pages:photoDetail.copyUid')}
           </Button>
-          {config?.photoprism_domain && (
-            <Button variant="ghost" size="sm" onClick={handleOpenInPhotoprism} title={t('common:buttons.openInPhotoprism')}>
-              <ExternalLink className="h-4 w-4 mr-1" />
-              {t('pages:photoDetail.photoprism')}
-            </Button>
-          )}
           <Button variant="ghost" size="sm" onClick={handleFindSimilar} title={t('pages:photoDetail.similar')}>
             <Images className="h-4 w-4 mr-1" />
             {t('pages:photoDetail.similar')}

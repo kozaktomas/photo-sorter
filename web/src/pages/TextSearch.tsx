@@ -7,14 +7,12 @@ import { Alert } from '../components/Alert';
 import { PageHeader } from '../components/PageHeader';
 import { PAGE_CONFIGS } from '../constants/pageConfig';
 import { PhotoCard } from '../components/PhotoCard';
-import { searchByText, getConfig, getAlbums, getLabels, addPhotosToAlbum, batchAddLabels } from '../api/client';
+import { searchByText, getAlbums, getLabels, addPhotosToAlbum, batchAddLabels } from '../api/client';
 import { percentToDistance } from '../constants';
-import type { TextSearchResponse, Config, Album, Label } from '../types';
+import type { TextSearchResponse, Album, Label } from '../types';
 
 export function TextSearchPage() {
   const { t } = useTranslation(['pages', 'common']);
-  const [config, setConfig] = useState<Config | null>(null);
-  const [isConfigLoaded, setIsConfigLoaded] = useState(false);
 
   // Form state
   const [text, setText] = useState('');
@@ -36,22 +34,8 @@ export function TextSearchPage() {
   const [isAddingLabel, setIsAddingLabel] = useState(false);
   const [actionMessage, setActionMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
 
-  const ensureConfig = async () => {
-    if (!isConfigLoaded) {
-      try {
-        const configData = await getConfig();
-        setConfig(configData);
-      } catch {
-        // Config is optional
-      }
-      setIsConfigLoaded(true);
-    }
-  };
-
   const handleSearch = async () => {
     if (!text.trim()) return;
-
-    await ensureConfig();
 
     setIsSearching(true);
     setSearchError(null);
@@ -430,7 +414,6 @@ export function TextSearchPage() {
                 <PhotoCard
                   key={photo.photo_uid}
                   photoUid={photo.photo_uid}
-                  photoprismDomain={config?.photoprism_domain}
                   matchPercent={Math.round(photo.similarity * 100)}
                   thumbnailSize="tile_500"
                   selectable

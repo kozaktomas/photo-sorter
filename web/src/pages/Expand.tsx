@@ -8,15 +8,13 @@ import { PageHeader } from '../components/PageHeader';
 import { PAGE_CONFIGS } from '../constants/pageConfig';
 import { PhotoCard } from '../components/PhotoCard';
 import { BulkActionBar } from '../components/BulkActionBar';
-import { findSimilarToCollection, getConfig, getAlbums, getLabels } from '../api/client';
+import { findSimilarToCollection, getAlbums, getLabels } from '../api/client';
 import { percentToDistance } from '../constants';
 import { usePhotoSelection } from '../hooks/usePhotoSelection';
-import type { CollectionSimilarResponse, Config, Album, Label } from '../types';
+import type { CollectionSimilarResponse, Album, Label } from '../types';
 
 export function ExpandPage() {
   const { t } = useTranslation(['pages', 'common']);
-  const [config, setConfig] = useState<Config | null>(null);
-  const [isConfigLoaded, setIsConfigLoaded] = useState(false);
 
   // Form state
   const [sourceType, setSourceType] = useState<'label' | 'album'>('label');
@@ -58,23 +56,8 @@ export function ExpandPage() {
     }
   };
 
-  // Load config on first search if not loaded
-  const ensureConfig = async () => {
-    if (!isConfigLoaded) {
-      try {
-        const configData = await getConfig();
-        setConfig(configData);
-      } catch {
-        // Config is optional, continue without it
-      }
-      setIsConfigLoaded(true);
-    }
-  };
-
   const performSearch = async () => {
     if (!sourceId) return;
-
-    await ensureConfig();
 
     setIsSearching(true);
     setSearchError(null);
@@ -349,7 +332,6 @@ export function ExpandPage() {
                 <PhotoCard
                   key={photo.photo_uid}
                   photoUid={photo.photo_uid}
-                  photoprismDomain={config?.photoprism_domain}
                   matchPercent={Math.round((1 - photo.distance) * 100)}
                   badge={`${photo.match_count} matches`}
                   thumbnailSize="tile_500"

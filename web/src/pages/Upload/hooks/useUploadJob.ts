@@ -1,7 +1,7 @@
 import { useState, useCallback } from 'react';
 import { startUploadJob, cancelUploadJob } from '../../../api/client';
 import { useSSE } from '../../../hooks/useSSE';
-import type { UploadJobResult } from '../../../types';
+import type { NearDuplicatesEvent, UploadJobResult } from '../../../types';
 
 type UploadPhase =
   | 'idle'
@@ -29,6 +29,7 @@ interface UploadJobState {
   result: UploadJobResult | null;
   error: string | null;
   isStarting: boolean;
+  nearDuplicates: NearDuplicatesEvent[];
 }
 
 export function useUploadJob() {
@@ -39,6 +40,7 @@ export function useUploadJob() {
     result: null,
     error: null,
     isStarting: false,
+    nearDuplicates: [],
   });
 
   const sseUrl = state.jobId ? `/api/v1/upload/${state.jobId}/events` : null;
@@ -116,6 +118,20 @@ export function useUploadJob() {
         break;
       }
 
+      case 'near_duplicates': {
+        // Payload shape: { filename, photo_uid, matches: [...] }. The
+        // server only emits the event when matches is non-empty, but
+        // we double-check defensively before queueing the user prompt.
+        const data = eventData?.data as NearDuplicatesEvent | undefined;
+        if (data?.photo_uid && data.matches?.length > 0) {
+          setState(prev => ({
+            ...prev,
+            nearDuplicates: [...prev.nearDuplicates, data],
+          }));
+        }
+        break;
+      }
+
       case 'completed': {
         const result = eventData?.data as UploadJobResult | undefined;
         setState(prev => ({
@@ -155,7 +171,7 @@ export function useUploadJob() {
       auto_process?: boolean;
     },
   ) => {
-    setState(prev => ({ ...prev, isStarting: true, error: null }));
+    setState(prev => ({ ...prev, isStarting: true, error: null, nearDuplicates: [] }));
     try {
       const response = await startUploadJob(files, config);
       setState({
@@ -165,6 +181,7 @@ export function useUploadJob() {
         result: null,
         error: null,
         isStarting: false,
+        nearDuplicates: [],
       });
     } catch (err) {
       setState(prev => ({
@@ -194,7 +211,15 @@ export function useUploadJob() {
       result: null,
       error: null,
       isStarting: false,
+      nearDuplicates: [],
     });
+  }, []);
+
+  // Clears just the near-duplicate queue after the user has resolved it.
+  // Leaves the rest of the upload state intact so the user can still see
+  // the result summary.
+  const clearNearDuplicates = useCallback(() => {
+    setState(prev => ({ ...prev, nearDuplicates: [] }));
   }, []);
 
   const isRunning = ['uploading', 'processing', 'detecting', 'labels', 'albums', 'book', 'embeddings'].includes(state.phase);
@@ -207,5 +232,6 @@ export function useUploadJob() {
     startUpload,
     cancelUpload,
     resetUpload,
+    clearNearDuplicates,
   };
 }

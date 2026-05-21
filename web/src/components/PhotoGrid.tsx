@@ -3,14 +3,13 @@ import type { Photo } from '../types';
 
 interface PhotoGridProps {
   photos: Photo[];
-  photoprismDomain?: string;
   onPhotoClick?: (photo: Photo) => void;
   selectable?: boolean;
   selectedPhotos?: Set<string>;
   onSelectionChange?: (uid: string, selected: boolean) => void;
 }
 
-export function PhotoGrid({ photos, photoprismDomain, onPhotoClick, selectable, selectedPhotos, onSelectionChange }: PhotoGridProps) {
+export function PhotoGrid({ photos, onPhotoClick, selectable, selectedPhotos, onSelectionChange }: PhotoGridProps) {
   if (photos.length === 0) {
     return (
       <div className="text-center py-12 text-slate-400">
@@ -27,7 +26,6 @@ export function PhotoGrid({ photos, photoprismDomain, onPhotoClick, selectable, 
           <PhotoCard
             key={photo.uid}
             photoUid={photo.uid}
-            photoprismDomain={photoprismDomain}
             selectable
             selected={selectedPhotos.has(photo.uid)}
             onSelectionChange={() => onSelectionChange(photo.uid, !selectedPhotos.has(photo.uid))}
@@ -46,7 +44,6 @@ export function PhotoGrid({ photos, photoprismDomain, onPhotoClick, selectable, 
           <PhotoCard
             key={photo.uid}
             photoUid={photo.uid}
-            photoprismDomain={photoprismDomain}
             onClick={() => onPhotoClick(photo)}
           />
         ))}
@@ -60,7 +57,6 @@ export function PhotoGrid({ photos, photoprismDomain, onPhotoClick, selectable, 
         <PhotoCardLink
           key={photo.uid}
           photoUid={photo.uid}
-          photoprismDomain={photoprismDomain}
           favorite={photo.favorite}
         />
       ))}

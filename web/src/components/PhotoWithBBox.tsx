@@ -4,7 +4,6 @@ import type { FaceMatch, MatchAction } from '../types';
 interface FaceMatchGridProps {
   matches: FaceMatch[];
   filter?: MatchAction | 'all';
-  photoprismDomain?: string;
   onApprove?: (match: FaceMatch) => Promise<void>;
   onReject?: (match: FaceMatch) => void;
   onPhotoClick?: (match: FaceMatch) => void;
@@ -13,7 +12,6 @@ interface FaceMatchGridProps {
 export function FaceMatchGrid({
   matches,
   filter = 'all',
-  photoprismDomain,
   onApprove,
   onReject,
 }: FaceMatchGridProps) {
@@ -36,7 +34,6 @@ export function FaceMatchGrid({
         <PhotoCard
           key={`${match.photo_uid}-${match.face_index}`}
           photoUid={match.photo_uid}
-          photoprismDomain={photoprismDomain}
           matchPercent={Math.round((1 - match.distance) * 100)}
           thumbnailSize="fit_720"
           aspectRatio="auto"

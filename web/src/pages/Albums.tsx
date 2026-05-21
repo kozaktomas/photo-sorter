@@ -9,9 +9,9 @@ import { PageHeader } from '../components/PageHeader';
 import { PAGE_CONFIGS } from '../constants/pageConfig';
 import { PhotoGrid } from '../components/PhotoGrid';
 import { usePhotoSelection } from '../hooks/usePhotoSelection';
-import { getAlbums, getAlbum, getAlbumPhotos, getThumbnailUrl, getConfig } from '../api/client';
+import { getAlbums, getAlbum, getAlbumPhotos, getThumbnailUrl } from '../api/client';
 import { ALBUM_PHOTOS_CACHE_KEY } from '../constants';
-import type { Album, Photo, Config } from '../types';
+import type { Album, Photo } from '../types';
 
 export function AlbumsPage() {
   const { uid } = useParams<{ uid: string }>();
@@ -119,7 +119,6 @@ function AlbumDetailPage({ uid }: { uid: string }) {
   const { t } = useTranslation(['pages', 'common']);
   const [album, setAlbum] = useState<Album | null>(null);
   const [photos, setPhotos] = useState<Photo[]>([]);
-  const [config, setConfig] = useState<Config | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [selectionMode, setSelectionMode] = useState(false);
   const selection = usePhotoSelection();
@@ -145,14 +144,12 @@ function AlbumDetailPage({ uid }: { uid: string }) {
   useEffect(() => {
     async function loadData() {
       try {
-        const [albumData, photosData, configData] = await Promise.all([
+        const [albumData, photosData] = await Promise.all([
           getAlbum(uid),
           getAlbumPhotos(uid, { count: 500 }),
-          getConfig().catch(() => null),
         ]);
         setAlbum(albumData);
         setPhotos(photosData);
-        setConfig(configData);
       } catch (err) {
         console.error('Failed to load album:', err);
       } finally {
@@ -238,13 +235,12 @@ function AlbumDetailPage({ uid }: { uid: string }) {
           {selectionMode ? (
             <PhotoGrid
               photos={photos}
-              photoprismDomain={config?.photoprism_domain}
               selectable
               selectedPhotos={selection.selectedPhotos}
               onSelectionChange={(photoUid) => selection.toggleSelection(photoUid)}
             />
           ) : (
-            <PhotoGrid photos={photos} onPhotoClick={handlePhotoClick} photoprismDomain={config?.photoprism_domain} />
+            <PhotoGrid photos={photos} onPhotoClick={handlePhotoClick} />
           )}
         </CardContent>
       </Card>

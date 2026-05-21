@@ -16,7 +16,6 @@ interface FilterTabConfig {
 interface FacesMatchGridCardProps {
   matches: FaceMatch[];
   summary: { create_marker: number; assign_person: number; already_done: number };
-  photoprismDomain?: string;
   activeFilter: FilterTab;
   setActiveFilter: (filter: FilterTab) => void;
   actionableCount: number;
@@ -31,7 +30,6 @@ interface FacesMatchGridCardProps {
 export function FacesMatchGridCard({
   matches,
   summary,
-  photoprismDomain,
   activeFilter,
   setActiveFilter,
   actionableCount,
@@ -99,7 +97,6 @@ export function FacesMatchGridCard({
         <FaceMatchGrid
           matches={matches}
           filter={activeFilter}
-          photoprismDomain={photoprismDomain}
           onApprove={onApprove}
           onReject={onReject}
           onPhotoClick={onPhotoClick}

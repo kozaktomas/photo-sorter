@@ -2,7 +2,7 @@ import type { ComponentType } from 'react';
 import {
   Home, FolderOpen, Camera, Tags, Sparkles, Type,
   Users, ShieldCheck, AlertTriangle, Images, Maximize2,
-  Copy, FolderSearch, Cpu, Play, BookOpen, Upload,
+  Copy, FolderSearch, Cpu, Play, BookOpen, Upload, Trash2,
 } from 'lucide-react';
 
 export type AccentColor =
@@ -36,6 +36,7 @@ export const PAGE_CONFIGS: Record<string, PageConfig> = {
   process:        { color: 'rose',    icon: Cpu,            category: 'tools' },
   books:          { color: 'rose',    icon: BookOpen,       category: 'tools' },
   upload:         { color: 'emerald', icon: Upload,       category: 'tools' },
+  trash:          { color: 'rose',    icon: Trash2,       category: 'tools' },
   // Detail pages inherit parent colors
   photoDetail:    { color: 'indigo',  icon: Camera },
   labelDetail:    { color: 'cyan',    icon: Tags },
@@ -263,6 +264,7 @@ export const PATH_TO_PAGE: Record<string, string> = {
   '/process': 'process',
   '/books': 'books',
   '/upload': 'upload',
+  '/trash': 'trash',
 };
 
 export function getPageConfigForPath(pathname: string): PageConfig | undefined {

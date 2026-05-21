@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Search, AlertCircle, Check, X, Copy, ExternalLink } from 'lucide-react';
+import { Search, AlertCircle, Check, X, Copy } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '../components/Card';
 import { Button } from '../components/Button';
 import { Alert } from '../components/Alert';
@@ -9,18 +9,16 @@ import { PageHeader } from '../components/PageHeader';
 import { PAGE_CONFIGS } from '../constants/pageConfig';
 import { PhotoCard } from '../components/PhotoCard';
 import { BulkActionBar } from '../components/BulkActionBar';
-import { findSimilarPhotos, getThumbnailUrl, getConfig } from '../api/client';
+import { findSimilarPhotos, getThumbnailUrl } from '../api/client';
 import { percentToDistance } from '../constants';
 import { usePhotoSelection } from '../hooks/usePhotoSelection';
 import { copyToClipboard } from '../utils/clipboard';
-import type { SimilarPhotosResponse, Config } from '../types';
+import type { SimilarPhotosResponse } from '../types';
 
 export function SimilarPhotosPage() {
   const { t } = useTranslation(['pages', 'common']);
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
-  const [config, setConfig] = useState<Config | null>(null);
-  const [isConfigLoaded, setIsConfigLoaded] = useState(false);
   const hasAutoSearched = useRef(false);
 
   // Form state
@@ -36,19 +34,6 @@ export function SimilarPhotosPage() {
   // Selection state (shared hook)
   const selection = usePhotoSelection();
 
-  // Load config on first search if not loaded
-  const ensureConfig = async () => {
-    if (!isConfigLoaded) {
-      try {
-        const configData = await getConfig();
-        setConfig(configData);
-      } catch {
-        // Config is optional, continue without it
-      }
-      setIsConfigLoaded(true);
-    }
-  };
-
   // Auto-fill and auto-search from URL params
   useEffect(() => {
     const photoParam = searchParams.get('photo');
@@ -63,8 +48,6 @@ export function SimilarPhotosPage() {
 
   const performSearch = async (uid: string) => {
     if (!uid.trim()) return;
-
-    await ensureConfig();
 
     setIsSearching(true);
     setSearchError(null);
@@ -93,13 +76,6 @@ export function SimilarPhotosPage() {
 
   const handlePhotoClick = (uid: string) => {
     void navigate(`/photos/${uid}`);
-  };
-
-  const handleOpenInPhotoprism = (uid: string) => {
-    if (config?.photoprism_domain) {
-      const url = `${config.photoprism_domain}/library/browse?view=cards&order=oldest&q=uid:${uid}`;
-      window.open(url, '_blank');
-    }
   };
 
   const handleCopyUID = (uid: string) => {
@@ -236,15 +212,6 @@ export function SimilarPhotosPage() {
                     >
                       <Copy className="h-4 w-4" />
                     </button>
-                    {config?.photoprism_domain && (
-                      <button
-                        onClick={() => handleOpenInPhotoprism(result.source_photo_uid)}
-                        className="p-2 text-slate-400 hover:text-white transition-colors"
-                        title={t('common:buttons.openInPhotoprism')}
-                      >
-                        <ExternalLink className="h-4 w-4" />
-                      </button>
-                    )}
                   </div>
                 </div>
 
@@ -313,7 +280,6 @@ export function SimilarPhotosPage() {
                 <PhotoCard
                   key={photo.photo_uid}
                   photoUid={photo.photo_uid}
-                  photoprismDomain={config?.photoprism_domain}
                   matchPercent={Math.round((1 - photo.distance) * 100)}
                   thumbnailSize="tile_500"
                   selectable

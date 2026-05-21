@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { AlertCircle } from 'lucide-react';
 import { applyFaceMatch } from '../../api/client';
@@ -15,7 +16,8 @@ import type { FaceMatch } from '../../types';
 
 export function FacesPage() {
   const { t } = useTranslation('pages');
-  const { subjects, config, isLoading, error } = useSubjectsAndConfig();
+  const navigate = useNavigate();
+  const { subjects, isLoading, error } = useSubjectsAndConfig();
 
   const {
     selectedPerson,
@@ -41,10 +43,7 @@ export function FacesPage() {
   const [applyError, setApplyError] = useState<string | null>(null);
 
   const handlePhotoClick = (match: { photo_uid: string }) => {
-    if (config?.photoprism_domain) {
-      const url = `${config.photoprism_domain}/library/browse?view=cards&order=oldest&q=uid:${match.photo_uid}`;
-      window.open(url, '_blank');
-    }
+    void navigate(`/photos/${match.photo_uid}`);
   };
 
   const getPersonName = () => {
@@ -173,7 +172,6 @@ export function FacesPage() {
         <FacesMatchGridCard
           matches={result.matches}
           summary={result.summary}
-          photoprismDomain={config?.photoprism_domain}
           activeFilter={activeFilter}
           setActiveFilter={setActiveFilter}
           actionableCount={actionableCount}

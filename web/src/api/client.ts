@@ -263,6 +263,10 @@ export function getThumbnailUrl(uid: string, size: string): string {
   return `${API_BASE}/photos/${uid}/thumb/${size}`;
 }
 
+export function getDownloadUrl(uid: string): string {
+  return `${API_BASE}/photos/${uid}/download`;
+}
+
 // Sort
 export async function startSort(params: {
   album_uid: string;
@@ -521,11 +525,50 @@ export async function removePhotosFromAlbum(
 // Archive (soft-delete) photos
 export async function archivePhotos(
   photoUids: string[]
-): Promise<{ archived: number }> {
-  return request<{ archived: number }>('/photos/batch/archive', {
+): Promise<{ updated: number; errors?: { photo_uid: string; error: string }[] }> {
+  return request<{ updated: number; errors?: { photo_uid: string; error: string }[] }>('/photos/batch/archive', {
     method: 'POST',
     body: JSON.stringify({ photo_uids: photoUids }),
   });
+}
+
+// Restore (un-archive) photos
+export async function restorePhotos(
+  photoUids: string[]
+): Promise<{ updated: number; errors?: { photo_uid: string; error: string }[] }> {
+  return request<{ updated: number; errors?: { photo_uid: string; error: string }[] }>('/photos/batch/restore', {
+    method: 'POST',
+    body: JSON.stringify({ photo_uids: photoUids }),
+  });
+}
+
+// Hard-delete archived photos (admin only)
+export async function purgePhotos(
+  photoUids: string[]
+): Promise<{ purged: number; errors?: { photo_uid: string; error: string }[] }> {
+  return request<{ purged: number; errors?: { photo_uid: string; error: string }[] }>('/photos/batch/purge', {
+    method: 'POST',
+    body: JSON.stringify({ photo_uids: photoUids }),
+  });
+}
+
+// List archived photos (the trash view). Uses the same filters/sort/pagination
+// shape as getPhotos; the archived flag is forced server-side.
+export async function getTrashPhotos(params?: {
+  limit?: number;
+  offset?: number;
+  sort?: string;
+  q?: string;
+}): Promise<{ photos: Photo[]; total: number; limit: number; offset: number }> {
+  const searchParams = new URLSearchParams();
+  if (params?.limit) searchParams.set('limit', params.limit.toString());
+  if (params?.offset) searchParams.set('offset', params.offset.toString());
+  if (params?.sort) searchParams.set('sort', params.sort);
+  if (params?.q) searchParams.set('q', params.q);
+  const query = searchParams.toString();
+  return request<{ photos: Photo[]; total: number; limit: number; offset: number }>(
+    `/photos/trash${query ? `?${query}` : ''}`,
+  );
 }
 
 // Find duplicate photos
