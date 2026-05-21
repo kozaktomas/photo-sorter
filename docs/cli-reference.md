@@ -691,6 +691,78 @@ The timer triggers `photo-sorter-backup.service` every day at 03:00 (with a 10-m
 
 ---
 
+### migrate-from-photoprism
+
+One-shot import of an existing PhotoPrism instance into photo-sorter's
+native PostgreSQL schema and storage tree. Reads directly from
+PhotoPrism's MariaDB and copies primary originals from the source
+filesystem.
+
+```bash
+photo-sorter migrate-from-photoprism \
+  --pp-db "<DSN>" \
+  --pp-originals <path> \
+  [--pp-cache <path>] \
+  [--uploader-username <name>] \
+  [--dry-run] [--skip-thumbs] \
+  [--batch-size 200] [--concurrency 4] \
+  [--only subjects,photos,labels,albums,markers,thumbs]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--pp-db` | string | (required) | PhotoPrism MariaDB DSN (`user:pw@tcp(host:3306)/db`) |
+| `--pp-originals` | string | (required) | Path to PhotoPrism's originals directory |
+| `--pp-cache` | string | `""` | PhotoPrism storage/cache dir (currently unused; reserved) |
+| `--uploader-username` | string | `""` | Native photo-sorter username written to `photos.uploaded_by` |
+| `--dry-run` | bool | false | Walk PhotoPrism and print counts; no DB writes, no file copies |
+| `--skip-thumbs` | bool | false | Skip thumbnail regeneration |
+| `--batch-size` | int | 200 | Source DB query batch size |
+| `--concurrency` | int | 4 | Thumbnail generation worker count |
+| `--only` | strings | (all) | Limit stages: `subjects`, `photos`, `labels`, `albums`, `markers`, `thumbs` |
+
+**Stages (in order):**
+
+1. **subjects** — read PhotoPrism `subjects` and upsert into native `subjects` (idempotent on name).
+2. **photos** — read `photos` joined with `files`/`cameras`/`lenses`/`details`; SHA256-hash each primary file, skip if `photos.file_hash` already exists, copy bytes into `STORAGE_ORIGINALS_PATH/YYYY/MM/<basename>`, insert the photo row, attach non-primary files.
+3. **labels** — upsert labels by slug (priority < 0 excluded), then attach `photos_labels` rows with `source = "import"`.
+4. **albums** — upsert albums by slug, then attach `photos_albums` rows (skipping already-linked photos).
+5. **markers** — create face/label markers for newly-created photos. Markers are skipped for photos that already existed before this run (they are presumed to already carry their markers).
+6. **thumbnails** — regenerate every cached thumbnail size for the photos created in this run (skipped via `--skip-thumbs`).
+
+**Idempotency:** photos are skipped by SHA256 file_hash; subjects/labels/albums are looked up by name/slug before insert; album_photos and photo_labels are pre-checked; markers are only created for newly-inserted photos. A re-run prints "Created=0" for every stage.
+
+**Examples:**
+
+```bash
+# Dry-run against a live PhotoPrism (find missing files, estimate scope).
+photo-sorter migrate-from-photoprism \
+  --pp-db "photoprism:photoprism@tcp(mariadb:3306)/photoprism" \
+  --pp-originals /photoprism/originals \
+  --uploader-username admin \
+  --dry-run
+
+# Full migration without regenerating thumbnails (run cache compute-*
+# afterwards instead).
+photo-sorter migrate-from-photoprism \
+  --pp-db "photoprism:photoprism@tcp(mariadb:3306)/photoprism" \
+  --pp-originals /photoprism/originals \
+  --uploader-username admin \
+  --skip-thumbs
+
+# Re-run only the markers stage (after manual cleanup, for example).
+photo-sorter migrate-from-photoprism \
+  --pp-db "photoprism:photoprism@tcp(mariadb:3306)/photoprism" \
+  --pp-originals /photoprism/originals \
+  --only markers
+```
+
+The native uploader user must exist before the migration runs;
+create one with the admin tooling (or leave `--uploader-username` empty
+to write NULL `uploaded_by`).
+
+---
+
 ### version
 
 Print the version number.
