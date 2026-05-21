@@ -210,6 +210,12 @@ export async function getPhotos(params?: {
   year?: number;
   label?: string;
   album?: string;
+  taken_from?: string;
+  taken_to?: string;
+  min_lat?: number;
+  min_lng?: number;
+  max_lat?: number;
+  max_lng?: number;
 }): Promise<Photo[]> {
   const searchParams = new URLSearchParams();
   if (params?.count) searchParams.set('count', params.count.toString());
@@ -219,6 +225,12 @@ export async function getPhotos(params?: {
   if (params?.year) searchParams.set('year', params.year.toString());
   if (params?.label) searchParams.set('label', params.label);
   if (params?.album) searchParams.set('album', params.album);
+  if (params?.taken_from) searchParams.set('taken_from', params.taken_from);
+  if (params?.taken_to) searchParams.set('taken_to', params.taken_to);
+  if (params?.min_lat !== undefined) searchParams.set('min_lat', params.min_lat.toString());
+  if (params?.min_lng !== undefined) searchParams.set('min_lng', params.min_lng.toString());
+  if (params?.max_lat !== undefined) searchParams.set('max_lat', params.max_lat.toString());
+  if (params?.max_lng !== undefined) searchParams.set('max_lng', params.max_lng.toString());
   const query = searchParams.toString();
   return request<Photo[]>(`/photos${query ? `?${query}` : ''}`);
 }

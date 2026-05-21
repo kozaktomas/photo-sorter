@@ -94,6 +94,9 @@ Browse all photos in your library with powerful filtering.
 - **Filter by Year** - Dropdown to filter by year
 - **Filter by Label** - Autocomplete combobox to filter by label (type to search, keyboard navigation)
 - **Filter by Album** - Autocomplete combobox to filter by album (type to search, keyboard navigation)
+- **More filters** (collapsible) - Additional optional filters:
+  - **Date range** - Two `<input type="date">` controls ("Od"/"Do" in Czech, "From"/"To" in English). Empty bounds are open-ended; values are sent to the backend as RFC3339 `taken_from`/`taken_to` (start-of-day / end-of-day in local time)
+  - **GPS bbox** - Single text input accepting `lat1,lng1,lat2,lng2`; parsed into `min_lat`/`min_lng`/`max_lat`/`max_lng` (min/max derived from the two corners). Invalid (non-empty, not four numbers) input shows an inline error and is not sent to the backend
 - **Sort Options** - Date (newest/oldest), recently added, recently edited, name, title
 - **Selection Mode** - Click "Select" to enter multi-select mode:
   - Click photos to select/deselect
@@ -101,7 +104,7 @@ Browse all photos in your library with powerful filtering.
   - Bulk actions: Add to Album, Add Label, Favorite
   - When viewing album filter: Remove from Album action
   - Click "Cancel" to exit selection mode
-- **Filter persistence** - Active filters are stored in the URL (`?q=…&year=…&label=…&album=…&sort=…`) and forwarded to Photo Detail, so the back button returns you to the same filtered view with cached photos and scroll position restored
+- **Filter persistence** - Active filters are stored in the URL (`?q=…&year=…&label=…&album=…&sort=…&taken_from=…&taken_to=…&bbox=lat1,lng1,lat2,lng2`) and forwarded to Photo Detail, so the back button returns you to the same filtered view with cached photos and scroll position restored. Sharing the URL preserves the full filter (including date range and bbox).
 - **Photo navigation context** - When clicking a photo, navigation arrows and position counter are available in Photo Detail
 - **Photo Detail Modal** - Click any photo to see full details
   - Photo metadata (date, camera, location)

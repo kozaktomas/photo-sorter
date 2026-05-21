@@ -48,7 +48,15 @@
     "selectBook": "Select book...",
     "selectSection": "Select section...",
     "addedToSection": "Added {{count}} photos to section {{section}}",
-    "noBooks": "No books"
+    "noBooks": "No books",
+    "filters": {
+      "more": "More filters",
+      "date_from": "From",
+      "date_to": "To",
+      "bbox": "GPS bounding box",
+      "bbox_help": "Tip: paste from map coordinates",
+      "bbox_invalid": "Enter four comma-separated numbers: lat1,lng1,lat2,lng2"
+    }
   },
   "labels": {
     "title": "Labels",

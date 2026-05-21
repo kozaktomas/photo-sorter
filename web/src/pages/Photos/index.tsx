@@ -31,6 +31,9 @@ export function PhotosPage() {
     selectedLabel: filters.selectedLabel,
     selectedAlbum: filters.selectedAlbum,
     sortBy: filters.sortBy,
+    takenFrom: filters.takenFrom,
+    takenTo: filters.takenTo,
+    bbox: filters.bbox,
     filterKey: filters.filterKey,
   });
 
@@ -86,7 +89,16 @@ export function PhotosPage() {
     // Clear cache when filters change (user is browsing, not returning)
     sessionStorage.removeItem(PHOTOS_CACHE_KEY);
     void pagination.loadPhotos(true);
-  }, [filters.search, filters.selectedYear, filters.selectedLabel, filters.selectedAlbum, filters.sortBy]);
+  }, [
+    filters.search,
+    filters.selectedYear,
+    filters.selectedLabel,
+    filters.selectedAlbum,
+    filters.sortBy,
+    filters.takenFrom,
+    filters.takenTo,
+    filters.bbox,
+  ]);
 
   return (
     <div className="space-y-6">
@@ -123,6 +135,13 @@ export function PhotosPage() {
         setSelectedAlbum={filters.setSelectedAlbum}
         sortBy={filters.sortBy}
         setSortBy={filters.setSortBy}
+        takenFrom={filters.takenFrom}
+        setTakenFrom={filters.setTakenFrom}
+        takenTo={filters.takenTo}
+        setTakenTo={filters.setTakenTo}
+        bboxInput={filters.bboxInput}
+        setBboxInput={filters.setBboxInput}
+        bboxError={filters.bboxError}
         hasActiveFilters={filters.hasActiveFilters}
         clearFilters={filters.clearFilters}
         labels={labels}

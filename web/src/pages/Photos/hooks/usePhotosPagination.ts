@@ -2,6 +2,7 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { getPhotos } from '../../../api/client';
 import { PHOTOS_PER_PAGE, PHOTOS_CACHE_KEY } from '../../../constants';
 import type { Photo } from '../../../types';
+import type { BBox } from './usePhotosFilters';
 
 interface PhotosCache {
   photos: Photo[];
@@ -17,7 +18,28 @@ interface FilterParams {
   selectedLabel: string;
   selectedAlbum: string;
   sortBy: string;
+  takenFrom: string;
+  takenTo: string;
+  bbox: BBox | null | undefined;
   filterKey: string;
+}
+
+// toRFC3339Start converts a YYYY-MM-DD date string into an RFC3339 timestamp
+// at the start of that local day. Returns undefined for empty input.
+function toRFC3339Start(date: string): string | undefined {
+  if (!date) return undefined;
+  const d = new Date(`${date}T00:00:00`);
+  if (Number.isNaN(d.getTime())) return undefined;
+  return d.toISOString();
+}
+
+// toRFC3339End converts a YYYY-MM-DD date string into an RFC3339 timestamp
+// at the end of that local day. Returns undefined for empty input.
+function toRFC3339End(date: string): string | undefined {
+  if (!date) return undefined;
+  const d = new Date(`${date}T23:59:59.999`);
+  if (Number.isNaN(d.getTime())) return undefined;
+  return d.toISOString();
 }
 
 export interface UsePhotosPaginationReturn {
@@ -90,6 +112,12 @@ export function usePhotosPagination(filters: FilterParams): UsePhotosPaginationR
         year: filters.selectedYear || undefined,
         label: filters.selectedLabel || undefined,
         album: filters.selectedAlbum || undefined,
+        taken_from: toRFC3339Start(filters.takenFrom),
+        taken_to: toRFC3339End(filters.takenTo),
+        min_lat: filters.bbox ? filters.bbox.minLat : undefined,
+        min_lng: filters.bbox ? filters.bbox.minLng : undefined,
+        max_lat: filters.bbox ? filters.bbox.maxLat : undefined,
+        max_lng: filters.bbox ? filters.bbox.maxLng : undefined,
       });
 
       if (resetOffset) {
@@ -106,7 +134,17 @@ export function usePhotosPagination(filters: FilterParams): UsePhotosPaginationR
       setIsLoading(false);
       setIsLoadingMore(false);
     }
-  }, [filters.search, filters.selectedYear, filters.selectedLabel, filters.selectedAlbum, filters.sortBy, offset]);
+  }, [
+    filters.search,
+    filters.selectedYear,
+    filters.selectedLabel,
+    filters.selectedAlbum,
+    filters.sortBy,
+    filters.takenFrom,
+    filters.takenTo,
+    filters.bbox,
+    offset,
+  ]);
 
   const handleLoadMore = useCallback(() => {
     if (!isLoadingMore && hasMore) {

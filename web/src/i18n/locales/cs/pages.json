@@ -48,7 +48,15 @@
     "selectBook": "Vyberte fotoknihu...",
     "selectSection": "Vyberte sekci...",
     "addedToSection": "Přidáno {{count}} fotek do sekce {{section}}",
-    "noBooks": "Žádné fotoknihy"
+    "noBooks": "Žádné fotoknihy",
+    "filters": {
+      "more": "Další filtry",
+      "date_from": "Od",
+      "date_to": "Do",
+      "bbox": "GPS oblast",
+      "bbox_help": "Tip: vložte ze souřadnic mapy",
+      "bbox_invalid": "Zadejte čtyři čísla oddělená čárkou: lat1,lng1,lat2,lng2"
+    }
   },
   "labels": {
     "title": "Štítky",
