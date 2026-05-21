@@ -323,7 +323,7 @@ Reads from the native Postgres `photos` table. Archived rows are excluded by def
 | `taken_from` | RFC3339 datetime | - | Lower bound on `taken_at` (inclusive) |
 | `taken_to` | RFC3339 datetime | - | Upper bound on `taken_at` (inclusive) |
 | `min_lat`, `min_lng`, `max_lat`, `max_lng` | float | - | All four required to enable bbox filtering |
-| `q` | string | - | Substring match against title/description/file_name |
+| `q` | string | - | Full-text (tsvector) match against title / description / notes / file_name. Diacritic-folded (Czech-aware) and lowercased server-side; multi-word queries use AND semantics and results are re-ranked by `ts_rank` before the regular sort. Queries with no tokens of length ≥ 2 (e.g. a single character) fall back to a prefix ILIKE on the title. |
 | `sort` | enum | `newest` | `newest` \| `oldest` \| `name` |
 | `limit` | int | 50 | Page size, capped at 500 |
 | `offset` | int | 0 | Pagination offset |

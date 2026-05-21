@@ -114,8 +114,8 @@ func (r *PhotoRepository) GetPhotoByHash(ctx context.Context, hash string) (*dat
 func (r *PhotoRepository) ListPhotos(
 	ctx context.Context, filter database.PhotoFilter,
 ) ([]database.Photo, int, error) {
-	where, args := buildPhotoFilter(filter)
-	orderBy := photoOrderBy(filter.SortBy)
+	where, rankPrefix, args := buildPhotoFilter(filter)
+	orderBy := rankPrefix + photoOrderBy(filter.SortBy)
 	limit, offset := paginationBounds(filter)
 
 	countSQL := "SELECT COUNT(*) FROM photos p" + photoFilterJoins(filter) + where
@@ -454,9 +454,12 @@ func photoFilterJoins(filter database.PhotoFilter) string {
 }
 
 // buildPhotoFilter constructs the WHERE clause and the matching argument
-// slice for ListPhotos. It returns (clause, args) where clause is either
-// empty or begins with " WHERE ".
-func buildPhotoFilter(filter database.PhotoFilter) (string, []any) {
+// slice for ListPhotos. It returns (whereClause, orderByRankPrefix, args)
+// where whereClause is either empty or begins with " WHERE ", and
+// orderByRankPrefix is either empty or a "ts_rank(...) DESC, " fragment
+// that should be prepended to the regular ORDER BY when full-text search
+// is active.
+func buildPhotoFilter(filter database.PhotoFilter) (string, string, []any) {
 	b := newPhotoFilterBuilder()
 	b.applyArchived(filter.Archived)
 	b.applyAlbum(filter.AlbumUID)
@@ -468,14 +471,18 @@ func buildPhotoFilter(filter database.PhotoFilter) (string, []any) {
 	b.applyBBox(filter.BBox)
 	b.applyUploadedBy(filter.UploadedBy)
 	b.applySearch(filter.Search)
-	return b.build()
+	where, args := b.build()
+	return where, b.rankPrefix, args
 }
 
 // photoFilterBuilder accumulates WHERE clauses and bind args while keeping
-// placeholder numbering in sync.
+// placeholder numbering in sync. rankPrefix is set by applySearch when a
+// full-text search is active, so ListPhotos can prepend the rank to its
+// ORDER BY.
 type photoFilterBuilder struct {
-	clauses []string
-	args    []any
+	clauses    []string
+	args       []any
+	rankPrefix string
 }
 
 func newPhotoFilterBuilder() *photoFilterBuilder {
@@ -584,16 +591,46 @@ func (b *photoFilterBuilder) applyUploadedBy(uid string) {
 	b.add("p.uploaded_by = " + ph)
 }
 
+// applySearch wires the user's free-form search query into the WHERE
+// clause (and, when full-text search is active, into the ORDER BY via
+// rankPrefix).
+//
+// The fts column on photos is indexed as
+//
+//	to_tsvector('simple', immutable_unaccent(title || description || ...))
+//
+// so we mirror the same lowercase+unaccent normalization in Go before
+// passing the query to plainto_tsquery. Tokens shorter than 2 characters
+// are dropped to keep the tsquery useful — those would otherwise turn
+// into noise that matches every row.
+//
+// A 1-character query (or any query that contains no >=2 char tokens
+// after normalization) falls back to a prefix ILIKE on the title so
+// "type-as-you-go" search still feels alive while the user is mid-word.
 func (b *photoFilterBuilder) applySearch(search string) {
 	search = strings.TrimSpace(search)
 	if search == "" {
 		return
 	}
-	ph := b.next("%" + search + "%")
-	b.add(fmt.Sprintf(
-		"(p.title ILIKE %s OR p.description ILIKE %s OR p.file_name ILIKE %s)",
-		ph, ph, ph,
-	))
+
+	normalized := strings.ToLower(foldDiacritics(search))
+	var tokens []string
+	for tok := range strings.FieldsSeq(normalized) {
+		if len(tok) >= 2 {
+			tokens = append(tokens, tok)
+		}
+	}
+
+	if len(tokens) == 0 {
+		ph := b.next(search)
+		b.add(fmt.Sprintf("LOWER(p.title) LIKE LOWER(%s) || '%%'", ph))
+		return
+	}
+
+	queryText := strings.Join(tokens, " ")
+	ph := b.next(queryText)
+	b.add(fmt.Sprintf("p.fts @@ plainto_tsquery('simple', %s)", ph))
+	b.rankPrefix = fmt.Sprintf("ts_rank(p.fts, plainto_tsquery('simple', %s)) DESC, ", ph)
 }
 
 func (b *photoFilterBuilder) build() (string, []any) {

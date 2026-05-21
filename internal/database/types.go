@@ -371,10 +371,14 @@ type PhotoFilter struct {
 	TakenTo     *time.Time
 	BBox        *BBox
 	UploadedBy  string
-	Search      string // ILIKE match against title/description/file_name
-	SortBy      string // "newest" (default) / "oldest" / "name"
-	Limit       int    // 0 = default 50, capped at 500
-	Offset      int
+	// Search drives the full-text (tsvector) match against
+	// title/description/notes/file_name; results are re-ranked by
+	// ts_rank when this is non-empty. Queries with no tokens of length
+	// >= 2 fall back to a prefix ILIKE on title.
+	Search string
+	SortBy string // "newest" (default) / "oldest" / "name"
+	Limit  int    // 0 = default 50, capped at 500
+	Offset int
 }
 
 // Album is a curated or auto-generated grouping of photos. Mirrors the

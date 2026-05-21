@@ -517,3 +517,110 @@ func fileNames(photos []database.Photo) []string {
 	}
 	return out
 }
+
+// TestPhotoRepository_FullTextSearch exercises the Czech-aware full-text
+// search added in migration 035_photo_fts.sql. It covers the three cases
+// called out in the spec: a diacritic-folded match, multi-word AND
+// semantics, and the no-op pass-through for an empty search.
+func TestPhotoRepository_FullTextSearch(t *testing.T) {
+	pool, cleanup := setupTestContainer(t)
+	if pool == nil {
+		return
+	}
+	defer cleanup()
+	ctx := context.Background()
+	repo := NewPhotoRepository(pool)
+
+	// All three photos share an empty description and notes so the only
+	// text that contributes to the fts column is the title and the
+	// file_name. Distinct taken_at values let us assert the default
+	// (newest-first) sort order for the "no search" case.
+	p1 := makePhoto("hash-fts-1", "deti.jpg")
+	p1.Title = "Děti na kole v Praze"
+	p1.Description = ""
+	p1.Notes = ""
+	t1 := time.Date(2024, 1, 1, 0, 0, 0, 0, time.UTC)
+	p1.TakenAt = &t1
+	if err := repo.CreatePhoto(ctx, p1); err != nil {
+		t.Fatalf("CreatePhoto p1: %v", err)
+	}
+
+	p2 := makePhoto("hash-fts-2", "praha.jpg")
+	p2.Title = "Praha v noci"
+	p2.Description = ""
+	p2.Notes = ""
+	t2 := time.Date(2024, 2, 1, 0, 0, 0, 0, time.UTC)
+	p2.TakenAt = &t2
+	if err := repo.CreatePhoto(ctx, p2); err != nil {
+		t.Fatalf("CreatePhoto p2: %v", err)
+	}
+
+	// p3 is the only row containing both "kolo" and "praha" as
+	// separate tokens, so it is the only one that satisfies the
+	// AND-semantics tsquery "kolo & praha".
+	p3 := makePhoto("hash-fts-3", "kolo-praha.jpg")
+	p3.Title = "Kolo a Praha"
+	p3.Description = ""
+	p3.Notes = ""
+	t3 := time.Date(2024, 3, 1, 0, 0, 0, 0, time.UTC)
+	p3.TakenAt = &t3
+	if err := repo.CreatePhoto(ctx, p3); err != nil {
+		t.Fatalf("CreatePhoto p3: %v", err)
+	}
+
+	// Diacritic-folded single-word search: "deti" must match "Děti".
+	listed, total, err := repo.ListPhotos(ctx, database.PhotoFilter{Search: "deti"})
+	if err != nil {
+		t.Fatalf("ListPhotos deti: %v", err)
+	}
+	if total != 1 || len(listed) != 1 || listed[0].UID != p1.UID {
+		t.Errorf("search 'deti' should match only p1 (%q), got %+v (total=%d)",
+			p1.FileName, fileNames(listed), total)
+	}
+
+	// Multi-word AND search: both tokens must appear in the same row.
+	listed, total, err = repo.ListPhotos(ctx, database.PhotoFilter{Search: "kolo praha"})
+	if err != nil {
+		t.Fatalf("ListPhotos kolo praha: %v", err)
+	}
+	if total != 1 || len(listed) != 1 || listed[0].UID != p3.UID {
+		t.Errorf("search 'kolo praha' should match only p3 (%q), got %+v (total=%d)",
+			p3.FileName, fileNames(listed), total)
+	}
+
+	// Empty search returns every row in the default newest-first order.
+	listed, total, err = repo.ListPhotos(ctx, database.PhotoFilter{})
+	if err != nil {
+		t.Fatalf("ListPhotos empty: %v", err)
+	}
+	if total != 3 || len(listed) != 3 {
+		t.Fatalf("empty search should return all 3 rows, got %d (total=%d)",
+			len(listed), total)
+	}
+	if listed[0].UID != p3.UID || listed[2].UID != p1.UID {
+		t.Errorf("empty search should be sorted newest first (p3, p2, p1), got %+v",
+			fileNames(listed))
+	}
+
+	// Diacritic-folded multi-word search: "praha noci" should match
+	// only p2 ("Praha v noci"), not p3 (no "noci").
+	listed, total, err = repo.ListPhotos(ctx, database.PhotoFilter{Search: "praha noci"})
+	if err != nil {
+		t.Fatalf("ListPhotos praha noci: %v", err)
+	}
+	if total != 1 || len(listed) != 1 || listed[0].UID != p2.UID {
+		t.Errorf("search 'praha noci' should match only p2 (%q), got %+v (total=%d)",
+			p2.FileName, fileNames(listed), total)
+	}
+
+	// Single-character query falls back to a prefix ILIKE on the
+	// title. "K" should match p3 ("Kolo a Praha") but not p1 or p2.
+	listed, total, err = repo.ListPhotos(ctx, database.PhotoFilter{Search: "K"})
+	if err != nil {
+		t.Fatalf("ListPhotos K: %v", err)
+	}
+	if total != 1 || len(listed) != 1 || listed[0].UID != p3.UID {
+		t.Errorf("1-char prefix search 'K' should match only p3 (%q), got %+v (total=%d)",
+			p3.FileName, fileNames(listed), total)
+	}
+}
