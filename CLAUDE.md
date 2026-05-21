@@ -28,6 +28,16 @@ that is being replaced incrementally.
   and `migrate-verify`), then PhotoPrism + MariaDB containers are dropped from
   compose.
 
+`photo_uid` from PhotoPrism is preserved as the native photo UID; downstream
+tables (`embeddings`, `faces`, `section_photos`, `page_slots`, ...) keep their
+references without remap. Albums, subjects, and markers preserve their
+PhotoPrism UIDs too, so cached PhotoPrism references in `faces.subject_uid` /
+`faces.marker_uid` stay valid. For operators who landed an older buggy version
+of the migrator (which generated new UIDs), a separate
+`photo-sorter migrate-remap-references --map <file>` command rewrites every
+soft-FK column in one transaction; `migrate-from-photoprism --emit-photo-map
+<path>` writes the JSON the remap command consumes.
+
 Granular work is tracked as Botka tasks (project `photo-sorter`); see
 `mcp__botka__list_tasks --project-name photo-sorter`. The PhotoPrism client
 package (`internal/photoprism/`) and `PHOTOPRISM_*` env vars are scheduled for

@@ -98,6 +98,14 @@ type Options struct {
 	// starts.
 	Only []string
 
+	// EmitPhotoMapPath, when non-empty, makes the migrator write a JSON
+	// dump of the PhotoPrism→native photo UID map after the photos stage
+	// completes. The happy path now preserves PhotoPrism UIDs verbatim so
+	// the map is an identity; the file still has value as input to
+	// `photo-sorter migrate-remap-references` for operators who already
+	// ran the previous (broken) version.
+	EmitPhotoMapPath string
+
 	// Store is the destination storage layer (originals + cache root).
 	// Required unless DryRun is true (and even then it must be set so the
 	// migrator can compute destination paths and emit a realistic

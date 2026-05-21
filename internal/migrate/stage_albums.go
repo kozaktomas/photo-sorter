@@ -96,6 +96,11 @@ func (m *migrator) processOneAlbum(
 		}
 	}
 	native := &database.Album{
+		// Preserve the PhotoPrism album_uid as the native album.uid so any
+		// pre-existing native rows referencing this album by PhotoPrism UID
+		// stay valid without a remap pass. CreateAlbum keeps a non-empty
+		// UID; only blank values trigger NewAlbumUID().
+		UID:         a.UID,
 		Slug:        a.Slug,
 		Title:       a.Title,
 		Description: a.Description,

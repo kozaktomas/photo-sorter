@@ -769,7 +769,8 @@ photo-sorter migrate-from-photoprism \
   [--uploader-username <name>] \
   [--dry-run] [--skip-thumbs] \
   [--batch-size 200] [--concurrency 4] \
-  [--only subjects,photos,labels,albums,markers,thumbs]
+  [--only subjects,photos,labels,albums,markers,thumbs] \
+  [--emit-photo-map /tmp/photo-map.json]
 ```
 
 | Flag | Type | Default | Description |
@@ -783,6 +784,15 @@ photo-sorter migrate-from-photoprism \
 | `--batch-size` | int | 200 | Source DB query batch size |
 | `--concurrency` | int | 4 | Thumbnail generation worker count |
 | `--only` | strings | (all) | Limit stages: `subjects`, `photos`, `labels`, `albums`, `markers`, `thumbs` |
+| `--emit-photo-map` | string | `""` | Optional path: after the photos stage, write a JSON dump of the PhotoPrism→native photo UID map (consumed by `migrate-remap-references`). Identity map in the happy path. |
+
+**UID preservation:** PhotoPrism UIDs for photos, albums, subjects, and
+markers are written verbatim into the native `uid` columns. Cached
+PhotoPrism references in `embeddings`, `faces` (`subject_uid`,
+`marker_uid`), `section_photos`, and `page_slots` therefore reconnect
+without a remap pass. Operators who already ran an older buggy version
+of this command (which generated new UIDs) should follow the migration
+with `migrate-remap-references --map <emit-file>`.
 
 **Stages (in order):**
 
@@ -882,6 +892,67 @@ photo-sorter migrate-verify \
 Exit code is `0` when no differences are found and `1` when at least one
 diff is reported, so the command can be chained into automated
 post-migration checks.
+
+---
+
+### migrate-remap-references
+
+Rewrite every soft `photo_uid` reference in the native database using a
+photo-UID map (as emitted by `migrate-from-photoprism --emit-photo-map`).
+
+Intended for operators who landed an older buggy version of the migrator
+that wrote generated UIDs into `photos` instead of preserving the
+PhotoPrism UIDs. After the fixed migrator runs, the operator's
+historical `embeddings` / `faces` / `section_photos` / `page_slots`
+rows still reference the old (buggy) UIDs; this command rewrites them
+in one transaction so they point at the new UIDs.
+
+```bash
+photo-sorter migrate-remap-references \
+  --map <path> \
+  [--dry-run] [--yes]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--map` | string | (required) | Path to the photo-UID map JSON file (`{"version":1,"photo_uid_map":{...},"file_uid_map":{...}}`) |
+| `--dry-run` | bool | false | Run the UPDATEs and roll back; report row counts and orphan stats without writing |
+| `--yes` | bool | false | Skip the interactive confirmation prompt |
+
+**Tables rewritten** (every (old, new) pair in `photo_uid_map`):
+
+- `embeddings.photo_uid`
+- `faces.photo_uid`
+- `faces_processed.photo_uid`
+- `markers.photo_uid`
+- `album_photos.photo_uid`
+- `photo_labels.photo_uid`
+- `photo_phashes.photo_uid`
+- `section_photos.photo_uid`
+- `page_slots.photo_uid`
+
+All updates run inside one Postgres transaction; either every table is
+remapped or nothing is. An identity map (every key equal to its value)
+short-circuits before any work is done — the command prints
+"nothing to remap" and exits 0.
+
+After the UPDATEs, the command runs an integrity audit and prints, per
+table, how many rows now point at a `photo_uid` that does not match any
+`photos.uid`. Non-zero is informational (some PhotoPrism originals may
+have been deleted before the migration); the command does not fail.
+
+**Examples:**
+
+```bash
+# Dry run against the file the migrator just wrote.
+photo-sorter migrate-remap-references --map /tmp/photo-map.json --dry-run
+
+# Apply remap, skip the confirmation.
+photo-sorter migrate-remap-references --map /tmp/photo-map.json --yes
+```
+
+See [`docs/specs/cross-server-migration.md`](specs/cross-server-migration.md)
+for the full migration runbook.
 
 ---
 

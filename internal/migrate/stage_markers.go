@@ -26,10 +26,10 @@ type ppMarker struct {
 // a marker carries a subject_uid we look it up by name (subjects were
 // already migrated) and assign it on insert.
 //
-// Markers in PhotoPrism are unique by `marker_uid`; the native schema
-// generates its own UID. We do NOT try to round-trip the source UID
-// (idempotency comes from the photoMap — a re-imported photo skips the
-// pre-existing UID and so do its markers).
+// The PhotoPrism marker_uid is preserved as the native markers.uid so
+// faces.marker_uid (which caches the PhotoPrism UID) keeps pointing at
+// the right row. Idempotency comes from the photoMap — a re-imported
+// photo skips the pre-existing UID and so do its markers.
 func (m *migrator) stageMarkers(ctx context.Context) error {
 	markers, err := m.readPPMarkers(ctx)
 	if err != nil {
@@ -71,6 +71,10 @@ func (m *migrator) stageMarkers(ctx context.Context) error {
 		nativeSubject := m.resolveSubjectUID(ctx, subjMap, mk.SubjectUID)
 
 		marker := &database.Marker{
+			// Preserve the PhotoPrism marker_uid so faces.marker_uid
+			// (which caches the PhotoPrism UID) keeps pointing at the
+			// right row after the migration.
+			UID:        mk.MarkerUID,
 			PhotoUID:   nativePhoto,
 			SubjectUID: nativeSubject,
 			Type:       markerType(mk.Type),

@@ -70,7 +70,10 @@ func (m *migrator) runStage(ctx context.Context, stage string) error {
 	case StageSubjects:
 		return m.stageSubjects(ctx)
 	case StagePhotos:
-		return m.stagePhotos(ctx)
+		if err := m.stagePhotos(ctx); err != nil {
+			return err
+		}
+		return m.emitPhotoMap()
 	case StageLabels:
 		return m.stageLabels(ctx)
 	case StageAlbums:
@@ -86,6 +89,23 @@ func (m *migrator) runStage(ctx context.Context, stage string) error {
 	default:
 		return fmt.Errorf("unhandled stage %q", stage)
 	}
+}
+
+// emitPhotoMap writes the PhotoPrism→native photo UID mapping to disk
+// when Options.EmitPhotoMapPath is set. Failure to write is treated as a
+// fatal error: the operator explicitly asked for the file and a half-
+// migration with no map leaves them with nothing to feed into
+// migrate-remap-references should they need it.
+func (m *migrator) emitPhotoMap() error {
+	if m.opts.EmitPhotoMapPath == "" {
+		return nil
+	}
+	if err := writePhotoMap(m.opts.EmitPhotoMapPath, m.photoMap, m.fileMap); err != nil {
+		return fmt.Errorf("emit photo map: %w", err)
+	}
+	fmt.Fprintf(m.out, "Photo UID map written to %s (%d photos, %d files)\n",
+		m.opts.EmitPhotoMapPath, len(m.photoMap), len(m.fileMap))
+	return nil
 }
 
 // printSummary writes the aggregated counts. Each stage gets one line; the

@@ -62,7 +62,11 @@ func (m *migrator) processOneSubject(
 	if subjectType == "" {
 		subjectType = "person"
 	}
-	created, err := m.opts.Subjects.EnsureSubject(ctx, s.Name, subjectType)
+	// Preserve the PhotoPrism subj_uid as the native subjects.uid so
+	// cached PhotoPrism references in faces.subject_uid keep pointing at
+	// the right row. EnsureSubjectWithUID only uses the supplied UID on
+	// insert; an existing row matched by name keeps its native UID.
+	created, err := m.opts.Subjects.EnsureSubjectWithUID(ctx, s.UID, s.Name, subjectType)
 	if err != nil {
 		fmt.Fprintf(m.out, "\nsubject %q: %v\n", s.Name, err)
 		summary.Failed++

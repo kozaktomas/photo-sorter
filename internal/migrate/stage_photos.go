@@ -220,9 +220,14 @@ func (m *migrator) persistOnePhoto(
 	summary.Created++
 }
 
-// handleCreateConflict converges on a file_hash UNIQUE-violation by
-// re-reading the conflicting row and treating the photo as skipped. Any
-// other error is logged and the orphaned original is deleted.
+// handleCreateConflict converges on a UNIQUE-violation on either file_hash
+// or uid. The file_hash path is the original idempotency case: the photo
+// is already migrated, so register the mapping using the existing row and
+// count it as skipped. The uid path is the legacy-data case: a previous
+// (buggy) migration wrote rows with generated UIDs, so the native DB
+// already holds a different file_hash under this PhotoPrism UID — that
+// photo is logged with a runbook pointer and counted as failed. Any other
+// error is logged and the orphaned original is deleted.
 func (m *migrator) handleCreateConflict(
 	ctx context.Context, p *ppPhoto, files []ppFile, hash, relPath string,
 	createErr error, summary *StageSummary,
@@ -233,9 +238,46 @@ func (m *migrator) handleCreateConflict(
 		summary.Skipped++
 		return
 	}
+	if m.handleUIDCollision(ctx, p, hash, relPath, createErr, summary) {
+		return
+	}
 	fmt.Fprintf(m.out, "\nphoto %s: insert: %v\n", p.PhotoUID, createErr)
 	summary.Failed++
 	_ = m.opts.Store.DeleteOriginal(relPath)
+}
+
+// handleUIDCollision detects the "different photo, same PhotoPrism UID"
+// case: a row with this UID already exists in the destination but carries
+// a different file_hash. This means a prior buggy migration wrote rows
+// with generated UIDs and at least one of those happens to clash with
+// today's PhotoPrism UID. The orphaned original is removed and the photo
+// is recorded as failed so the operator knows to run migrate-remap-
+// references. Returns true when the case applied (caller bails out).
+func (m *migrator) handleUIDCollision(
+	ctx context.Context, p *ppPhoto, hash, relPath string,
+	createErr error, summary *StageSummary,
+) bool {
+	existing, err := m.opts.Photos.GetPhoto(ctx, p.PhotoUID)
+	if err != nil || existing == nil {
+		return false
+	}
+	if existing.FileHash == hash {
+		// Same file under the same UID — the by-hash branch above should
+		// already have caught this; treat as skipped defensively.
+		summary.Skipped++
+		_ = m.opts.Store.DeleteOriginal(relPath)
+		return true
+	}
+	fmt.Fprintf(m.out,
+		"\nphoto %s: UID collision with an existing native row carrying a "+
+			"different file_hash. This usually means a previous (buggy) "+
+			"migration created native rows with generated UIDs. Run "+
+			"`photo-sorter migrate-remap-references` after this command "+
+			"finishes (see --emit-photo-map). Insert error: %v\n",
+		p.PhotoUID, createErr)
+	summary.Failed++
+	_ = m.opts.Store.DeleteOriginal(relPath)
+	return true
 }
 
 // attachExtraFiles registers every non-primary PhotoPrism file as a
@@ -333,7 +375,9 @@ func copyOriginal(srcPath, relPath string, store *storage.Storage) (string, int6
 
 // buildPhotoRecord assembles the native photo row from the PhotoPrism
 // projections. taken_at_source is "exif" when PhotoPrism had a date, else
-// "unknown".
+// "unknown". The PhotoPrism photo_uid is preserved verbatim as the native
+// photos.uid so historic references in other tables (embeddings, faces,
+// section_photos, page_slots, ...) keep working without a remap pass.
 func buildPhotoRecord(
 	p *ppPhoto, primary ppFile, relPath, hash string, size int64,
 	takenAt *time.Time, uploaderUID string,
@@ -351,6 +395,7 @@ func buildPhotoRecord(
 		mime = "application/octet-stream"
 	}
 	return &database.Photo{
+		UID:             p.PhotoUID,
 		FileHash:        hash,
 		FilePath:        relPath,
 		FileName:        filepath.Base(primary.FileName),

@@ -442,9 +442,9 @@ func insertMembershipsAndMarkers(ctx context.Context, db *sql.DB) error {
 // differ.
 func writeSampleJPEGs(root string) error {
 	files := map[string]byte{
-		"2024/06/IMG_0001.jpg":     0x01,
-		"2024/07/IMG_0002.jpg":     0x02,
-		"unknown/IMG_0003.jpg":     0x03,
+		"2024/06/IMG_0001.jpg": 0x01,
+		"2024/07/IMG_0002.jpg": 0x02,
+		"unknown/IMG_0003.jpg": 0x03,
 	}
 	for rel, seed := range files {
 		full := filepath.Join(root, rel)
@@ -496,6 +496,8 @@ func TestMigrationEndToEnd(t *testing.T) {
 	}
 	assertFirstRunCounts(t, report)
 	assertFirstRunPersisted(t, ctx, fx)
+	assertPhotoUIDsPreserved(t, ctx, fx)
+	assertPreExistingReferencesReconnect(t, ctx, fx)
 
 	// Re-run: every stage should now report zero creations because the
 	// destination already has the rows.
@@ -504,6 +506,114 @@ func TestMigrationEndToEnd(t *testing.T) {
 		t.Fatalf("re-run migration: %v", err)
 	}
 	assertReRunNoNewRows(t, report2)
+}
+
+// assertPhotoUIDsPreserved checks that every native photo row carries
+// the PhotoPrism photo_uid as its primary key (the bug this task fixed).
+// Subjects, albums, and markers get the same check — preserving those
+// UIDs is what keeps faces.subject_uid / faces.marker_uid pointing at
+// the right rows.
+func assertPhotoUIDsPreserved(t *testing.T, ctx context.Context, fx *testFixture) {
+	t.Helper()
+	wantPhotoUIDs := map[string]bool{"p001": false, "p002": false, "p003": false}
+	rows, err := fx.pgPool.Query(ctx, `SELECT uid FROM photos`)
+	if err != nil {
+		t.Fatalf("select photo uids: %v", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var uid string
+		if err := rows.Scan(&uid); err != nil {
+			t.Fatalf("scan photo uid: %v", err)
+		}
+		if _, ok := wantPhotoUIDs[uid]; !ok {
+			t.Errorf("photos.uid = %q, not a PhotoPrism UID we migrated", uid)
+			continue
+		}
+		wantPhotoUIDs[uid] = true
+	}
+	for uid, seen := range wantPhotoUIDs {
+		if !seen {
+			t.Errorf("photos.uid = %q missing — not preserved from PhotoPrism", uid)
+		}
+	}
+
+	var subjectUID string
+	if err := fx.pgPool.QueryRow(ctx,
+		`SELECT uid FROM subjects WHERE name = 'Alice Example'`).Scan(&subjectUID); err != nil {
+		t.Fatalf("select subject: %v", err)
+	}
+	if subjectUID != "s001" {
+		t.Errorf("subject Alice Example: uid = %q, want %q", subjectUID, "s001")
+	}
+
+	var albumUID string
+	if err := fx.pgPool.QueryRow(ctx,
+		`SELECT uid FROM albums WHERE slug = 'holiday-2024'`).Scan(&albumUID); err != nil {
+		t.Fatalf("select album: %v", err)
+	}
+	if albumUID != "a001" {
+		t.Errorf("album holiday-2024: uid = %q, want %q", albumUID, "a001")
+	}
+
+	var markerUID string
+	if err := fx.pgPool.QueryRow(ctx,
+		`SELECT uid FROM markers LIMIT 1`).Scan(&markerUID); err != nil {
+		t.Fatalf("select marker: %v", err)
+	}
+	if markerUID != "m001" {
+		t.Errorf("marker uid = %q, want %q", markerUID, "m001")
+	}
+}
+
+// assertPreExistingReferencesReconnect simulates the real motivation for
+// the photo_uid preservation: any embedding / section_photos row that
+// was created against a PhotoPrism photo UID *before* the migration ran
+// should still find its photo afterwards. We can't run this BEFORE the
+// migration because the photos rows don't exist yet — so we insert the
+// reference rows here (post-migration) and confirm the JOIN counts
+// match.
+func assertPreExistingReferencesReconnect(
+	t *testing.T, ctx context.Context, fx *testFixture,
+) {
+	t.Helper()
+	// Use a 768-element vector literal — pgvector accepts any sized
+	// VECTOR(768) value as a string in the form '[0,0,...]'.
+	embedding := embeddingZeroLiteral(768)
+	if _, err := fx.pgPool.Exec(ctx,
+		`INSERT INTO embeddings (photo_uid, embedding, model, pretrained)
+		 VALUES ('p001', $1::vector, 'test', 'test')`,
+		embedding,
+	); err != nil {
+		t.Fatalf("seed embedding by PhotoPrism uid: %v", err)
+	}
+	var joined int
+	if err := fx.pgPool.QueryRow(ctx,
+		`SELECT COUNT(*) FROM embeddings e
+		 JOIN photos p ON p.uid = e.photo_uid
+		 WHERE e.photo_uid = 'p001'`).Scan(&joined); err != nil {
+		t.Fatalf("count joined embeddings: %v", err)
+	}
+	if joined != 1 {
+		t.Errorf("embeddings → photos join on PhotoPrism UID: count = %d, want 1", joined)
+	}
+}
+
+// embeddingZeroLiteral returns a pgvector-friendly literal "[0,0,...]"
+// of the requested dimension. Vectors are stored as text on the wire
+// before pgvector parses them, so a string literal is the easiest way to
+// seed a row without an extra Go dependency.
+func embeddingZeroLiteral(dim int) string {
+	parts := make([]byte, 0, dim*2+2)
+	parts = append(parts, '[')
+	for i := 0; i < dim; i++ {
+		if i > 0 {
+			parts = append(parts, ',')
+		}
+		parts = append(parts, '0')
+	}
+	parts = append(parts, ']')
+	return string(parts)
 }
 
 // buildOptions assembles a fresh Options bound to the test fixture. A
@@ -533,13 +643,13 @@ func buildOptions(fx *testFixture) *Options {
 func assertFirstRunCounts(t *testing.T, report *Report) {
 	t.Helper()
 	want := map[string]int{
-		StageSubjects:   1,
-		StagePhotos:     3,
-		StageLabels:     2,
-		"photo_labels":  3,
-		StageAlbums:     1,
-		"album_photos":  2,
-		StageMarkers:    1,
+		StageSubjects:  1,
+		StagePhotos:    3,
+		StageLabels:    2,
+		"photo_labels": 3,
+		StageAlbums:    1,
+		"album_photos": 2,
+		StageMarkers:   1,
 	}
 	for _, s := range report.Stages {
 		if expected, ok := want[s.Stage]; ok {

@@ -352,10 +352,14 @@ type SubjectReader interface {
 // SubjectWriter provides write access to subjects. EnsureSubject upserts
 // by accent-insensitive lowercased name so concurrent callers cannot
 // race-create duplicate rows; the slug is generated from the name.
+// EnsureSubjectWithUID behaves the same but uses the supplied UID
+// verbatim on insert — the PhotoPrism migrator uses it to preserve
+// subj_uid so cached references in faces.subject_uid keep working.
 type SubjectWriter interface {
 	SubjectReader
 
 	EnsureSubject(ctx context.Context, name, subjectType string) (*Subject, error)
+	EnsureSubjectWithUID(ctx context.Context, uid, name, subjectType string) (*Subject, error)
 	UpdateSubject(ctx context.Context, s *Subject) error
 	DeleteSubject(ctx context.Context, uid string) error
 }

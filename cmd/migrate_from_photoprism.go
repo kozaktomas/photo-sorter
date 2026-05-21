@@ -84,6 +84,10 @@ func init() {
 	migrateFromPhotoPrismCmd.Flags().StringSlice(
 		"only", nil,
 		"Stages to run: subjects,photos,labels,albums,markers,thumbs (default all)")
+	migrateFromPhotoPrismCmd.Flags().String(
+		"emit-photo-map", "",
+		"Optional path: after the photos stage, write a JSON dump of the "+
+			"PhotoPrism→native photo UID map (consumable by migrate-remap-references)")
 
 	_ = migrateFromPhotoPrismCmd.MarkFlagRequired("pp-db")
 	_ = migrateFromPhotoPrismCmd.MarkFlagRequired("pp-originals")
@@ -105,6 +109,7 @@ func runMigrateFromPhotoPrism(cmd *cobra.Command, _ []string) error {
 	batchSize := mustGetInt(cmd, "batch-size")
 	concurrency := mustGetInt(cmd, "concurrency")
 	only := mustGetStringSlice(cmd, "only")
+	emitPhotoMap := mustGetString(cmd, "emit-photo-map")
 
 	deps, cleanup, err := openMigrateDeps(ctx, cfg, ppDB)
 	if err != nil {
@@ -118,22 +123,23 @@ func runMigrateFromPhotoPrism(cmd *cobra.Command, _ []string) error {
 	}
 
 	opts := &migrate.Options{
-		MariaDB:       deps.mariaDB,
-		OriginalsRoot: ppOriginals,
-		CacheRoot:     ppCache,
-		UploaderUID:   uploaderUID,
-		DryRun:        dryRun,
-		SkipThumbs:    skipThumbs,
-		BatchSize:     batchSize,
-		Concurrency:   concurrency,
-		Only:          only,
-		Store:         deps.store,
-		Photos:        deps.photos,
-		Subjects:      deps.subjects,
-		Labels:        deps.labels,
-		Albums:        deps.albums,
-		Markers:       deps.markers,
-		Writer:        cmd.OutOrStdout(),
+		MariaDB:          deps.mariaDB,
+		OriginalsRoot:    ppOriginals,
+		CacheRoot:        ppCache,
+		UploaderUID:      uploaderUID,
+		DryRun:           dryRun,
+		SkipThumbs:       skipThumbs,
+		BatchSize:        batchSize,
+		Concurrency:      concurrency,
+		Only:             only,
+		EmitPhotoMapPath: emitPhotoMap,
+		Store:            deps.store,
+		Photos:           deps.photos,
+		Subjects:         deps.subjects,
+		Labels:           deps.labels,
+		Albums:           deps.albums,
+		Markers:          deps.markers,
+		Writer:           cmd.OutOrStdout(),
 	}
 
 	start := time.Now()

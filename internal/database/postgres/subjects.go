@@ -233,6 +233,27 @@ func (r *SubjectRepository) ListSubjectsForPhoto(
 func (r *SubjectRepository) EnsureSubject(
 	ctx context.Context, name, subjectType string,
 ) (*database.Subject, error) {
+	return r.ensureSubjectWithUID(ctx, "", name, subjectType)
+}
+
+// EnsureSubjectWithUID behaves exactly like EnsureSubject but uses the
+// supplied UID verbatim on insert (only relevant when no existing row
+// matches the name). The PhotoPrism migrator uses this to preserve the
+// PhotoPrism subj_uid as the native subjects.uid so cached references in
+// faces.subject_uid keep pointing at the right row. A blank uid falls
+// back to the default behaviour (NewSubjectUID).
+func (r *SubjectRepository) EnsureSubjectWithUID(
+	ctx context.Context, uid, name, subjectType string,
+) (*database.Subject, error) {
+	return r.ensureSubjectWithUID(ctx, uid, name, subjectType)
+}
+
+// ensureSubjectWithUID is the shared body of EnsureSubject and
+// EnsureSubjectWithUID. The empty-UID path generates a fresh UID inside
+// the inner transaction.
+func (r *SubjectRepository) ensureSubjectWithUID(
+	ctx context.Context, preferredUID, name, subjectType string,
+) (*database.Subject, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return nil, errors.New("ensure subject: name is required")
@@ -247,7 +268,7 @@ func (r *SubjectRepository) EnsureSubject(
 	}
 	defer func() { _ = tx.Rollback() }()
 
-	uid, err := ensureSubjectTx(ctx, tx, name, subjectType)
+	uid, err := ensureSubjectTx(ctx, tx, preferredUID, name, subjectType)
 	if err != nil {
 		return nil, err
 	}
@@ -260,9 +281,12 @@ func (r *SubjectRepository) EnsureSubject(
 // ensureSubjectTx is the body of EnsureSubject extracted into a helper
 // so the public method stays under the cyclomatic-complexity limit.
 // Returns the UID of the (existing or newly inserted) row; the caller
-// is responsible for committing the surrounding transaction.
+// is responsible for committing the surrounding transaction. A blank
+// preferredUID picks a freshly generated one via NewSubjectUID; a
+// non-blank value is used verbatim (so the PhotoPrism migrator can
+// preserve subj_uid).
 func ensureSubjectTx(
-	ctx context.Context, tx *sql.Tx, name, subjectType string,
+	ctx context.Context, tx *sql.Tx, preferredUID, name, subjectType string,
 ) (string, error) {
 	var existingUID string
 	err := tx.QueryRowContext(ctx,
@@ -280,7 +304,10 @@ func ensureSubjectTx(
 	if err != nil {
 		return "", err
 	}
-	uid := NewSubjectUID()
+	uid := preferredUID
+	if uid == "" {
+		uid = NewSubjectUID()
+	}
 	if _, err := tx.ExecContext(ctx,
 		`INSERT INTO subjects (uid, slug, name, type)
 		 VALUES ($1, $2, $3, $4)`,

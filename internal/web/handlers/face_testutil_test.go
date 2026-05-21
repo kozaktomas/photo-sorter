@@ -151,7 +151,13 @@ func (f *fakeSubjectRepo) ListSubjectsForPhoto(
 // --- SubjectWriter implementation. ---
 
 func (f *fakeSubjectRepo) EnsureSubject(
-	_ context.Context, name, subjectType string,
+	ctx context.Context, name, subjectType string,
+) (*database.Subject, error) {
+	return f.EnsureSubjectWithUID(ctx, "", name, subjectType)
+}
+
+func (f *fakeSubjectRepo) EnsureSubjectWithUID(
+	_ context.Context, preferredUID, name, subjectType string,
 ) (*database.Subject, error) {
 	if f.EnsureError != nil {
 		return nil, f.EnsureError
@@ -170,7 +176,10 @@ func (f *fakeSubjectRepo) EnsureSubject(
 		cp := f.snapshot(f.byUID[uid])
 		return &cp, nil
 	}
-	uid := "s-fake-" + strings.ReplaceAll(key, " ", "-")
+	uid := preferredUID
+	if uid == "" {
+		uid = "s-fake-" + strings.ReplaceAll(key, " ", "-")
+	}
 	slug := strings.ReplaceAll(key, " ", "-")
 	now := time.Now()
 	s := &database.Subject{
