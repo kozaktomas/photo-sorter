@@ -597,6 +597,92 @@ func TestLabelsHandler_BatchDelete_NoRepo(t *testing.T) {
 	assertStatusCode(t, rec, http.StatusServiceUnavailable)
 }
 
+// TestLabelsHandler_Get_IncludesDescriptionAndCategories verifies the
+// description and categories columns added by task 332a727c surface on
+// the API response.
+func TestLabelsHandler_Get_IncludesDescriptionAndCategories(t *testing.T) {
+	repo := newFakeLabelRepo()
+	l := repo.seed("label1", "Nature")
+	l.Description = "Outdoor scenes."
+	l.Categories = []string{"family", "kids", "travel"}
+	h := createLabelsHandler(t, repo)
+
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/labels/label1", nil)
+	req = requestWithChiParams(req, map[string]string{"uid": "label1"})
+	rec := httptest.NewRecorder()
+	h.Get(rec, req)
+
+	assertStatusCode(t, rec, http.StatusOK)
+	var got LabelResponse
+	parseJSONResponse(t, rec, &got)
+	if got.Description != "Outdoor scenes." {
+		t.Errorf("description = %q", got.Description)
+	}
+	if len(got.Categories) != 3 {
+		t.Errorf("categories = %v, want 3 entries", got.Categories)
+	}
+}
+
+// TestLabelsHandler_Update_DescriptionAndCategoriesRoundTrip exercises a
+// PUT that writes the new columns and asserts the response + storage
+// reflect them.
+func TestLabelsHandler_Update_DescriptionAndCategoriesRoundTrip(t *testing.T) {
+	repo := newFakeLabelRepo()
+	repo.seed("label1", "Nature")
+	h := createLabelsHandler(t, repo)
+
+	body := bytes.NewBufferString(
+		`{"description":"new desc","categories":["a","b","c"]}`,
+	)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/labels/label1", body)
+	req.Header.Set("Content-Type", "application/json")
+	req = requestWithChiParams(req, map[string]string{"uid": "label1"})
+	rec := httptest.NewRecorder()
+	h.Update(rec, req)
+
+	assertStatusCode(t, rec, http.StatusOK)
+	var got LabelResponse
+	parseJSONResponse(t, rec, &got)
+	if got.Description != "new desc" {
+		t.Errorf("description = %q", got.Description)
+	}
+	if len(got.Categories) != 3 || got.Categories[1] != "b" {
+		t.Errorf("categories = %v", got.Categories)
+	}
+	stored, _ := repo.GetLabel(context.Background(), "label1")
+	if stored.Description != "new desc" || len(stored.Categories) != 3 {
+		t.Errorf("storage mismatch: desc=%q cats=%v", stored.Description, stored.Categories)
+	}
+}
+
+// TestLabelsHandler_Update_CategoriesTooMany asserts the 50-entry cap on
+// the categories array.
+func TestLabelsHandler_Update_CategoriesTooMany(t *testing.T) {
+	repo := newFakeLabelRepo()
+	repo.seed("label1", "Nature")
+	h := createLabelsHandler(t, repo)
+
+	// Build a 51-entry JSON array literal.
+	cats := make([]byte, 0, 51*8)
+	cats = append(cats, '[')
+	for i := range 51 {
+		if i > 0 {
+			cats = append(cats, ',')
+		}
+		cats = append(cats, '"', 'x', '"')
+	}
+	cats = append(cats, ']')
+	body := bytes.NewBufferString(`{"categories":` + string(cats) + `}`)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/labels/label1", body)
+	req.Header.Set("Content-Type", "application/json")
+	req = requestWithChiParams(req, map[string]string{"uid": "label1"})
+	rec := httptest.NewRecorder()
+	h.Update(rec, req)
+
+	assertStatusCode(t, rec, http.StatusBadRequest)
+	assertJSONError(t, rec, "categories exceeds 50 entry limit")
+}
+
 func TestLabelsHandler_RoundTrip(t *testing.T) {
 	// Exercise the create + list + update + delete path through the
 	// handlers. There is no public POST /labels endpoint (labels are born

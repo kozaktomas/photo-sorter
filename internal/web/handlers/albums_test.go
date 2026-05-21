@@ -663,3 +663,116 @@ func TestAlbumsHandler_GetPhotoAlbums_NoRepo(t *testing.T) {
 	h.GetPhotoAlbums(rec, req)
 	assertStatusCode(t, rec, http.StatusServiceUnavailable)
 }
+
+// TestAlbumsHandler_Get_IncludesGapFixFields verifies the
+// location / category / notes / filter / order columns added by task
+// 332a727c are surfaced on the API response.
+func TestAlbumsHandler_Get_IncludesGapFixFields(t *testing.T) {
+	repo := newFakeAlbumRepo()
+	a := sampleAlbum("album1", "Holiday")
+	a.Location = "Italy, Tuscany"
+	a.Category = "Travel"
+	a.Notes = "trip notes"
+	a.Filter = "public:true year:2024"
+	a.Order = "newest"
+	repo.add(a)
+	h := createAlbumsHandler(t, repo, nil)
+
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/albums/album1", nil)
+	req = requestWithChiParams(req, map[string]string{"uid": "album1"})
+	rec := httptest.NewRecorder()
+	h.Get(rec, req)
+
+	assertStatusCode(t, rec, http.StatusOK)
+	var got AlbumResponse
+	parseJSONResponse(t, rec, &got)
+	if got.Location != "Italy, Tuscany" {
+		t.Errorf("location = %q", got.Location)
+	}
+	if got.Category != "Travel" {
+		t.Errorf("category = %q", got.Category)
+	}
+	if got.Notes != "trip notes" {
+		t.Errorf("notes = %q", got.Notes)
+	}
+	if got.Filter != "public:true year:2024" {
+		t.Errorf("filter = %q (smart-album DSL must be preserved verbatim)", got.Filter)
+	}
+	if got.Order != "newest" {
+		t.Errorf("order = %q", got.Order)
+	}
+}
+
+// TestAlbumsHandler_Create_GapFixFieldsRoundTrip exercises POST with the
+// new columns and asserts the response + storage reflect them.
+func TestAlbumsHandler_Create_GapFixFieldsRoundTrip(t *testing.T) {
+	repo := newFakeAlbumRepo()
+	h := createAlbumsHandler(t, repo, nil)
+
+	body := bytes.NewBufferString(
+		`{"title":"Holiday","location":"Italy","category":"Travel",` +
+			`"notes":"n","filter":"public:true","order":"newest"}`,
+	)
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/albums", body)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	h.Create(rec, req)
+
+	assertStatusCode(t, rec, http.StatusCreated)
+	var got AlbumResponse
+	parseJSONResponse(t, rec, &got)
+	if got.Location != "Italy" || got.Category != "Travel" || got.Notes != "n" ||
+		got.Filter != "public:true" || got.Order != "newest" {
+		t.Errorf("round-trip mismatch: %+v", got)
+	}
+}
+
+// TestAlbumsHandler_Update_GapFixFieldsRoundTrip exercises PUT with the
+// new columns on an existing album.
+func TestAlbumsHandler_Update_GapFixFieldsRoundTrip(t *testing.T) {
+	repo := newFakeAlbumRepo()
+	repo.add(sampleAlbum("album1", "Holiday"))
+	h := createAlbumsHandler(t, repo, nil)
+
+	body := bytes.NewBufferString(
+		`{"location":"Italy","category":"Travel","notes":"n",` +
+			`"filter":"public:true","order":"oldest"}`,
+	)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/albums/album1", body)
+	req.Header.Set("Content-Type", "application/json")
+	req = requestWithChiParams(req, map[string]string{"uid": "album1"})
+	rec := httptest.NewRecorder()
+	h.Update(rec, req)
+
+	assertStatusCode(t, rec, http.StatusOK)
+	var got AlbumResponse
+	parseJSONResponse(t, rec, &got)
+	if got.Location != "Italy" || got.Order != "oldest" || got.Filter != "public:true" {
+		t.Errorf("round-trip mismatch: %+v", got)
+	}
+	stored, _ := repo.GetAlbum(context.Background(), "album1")
+	if stored.Location != "Italy" || stored.Notes != "n" || stored.Filter != "public:true" {
+		t.Errorf("storage mismatch: %+v", stored)
+	}
+}
+
+// TestAlbumsHandler_Update_NotesTooLong asserts the 8 KiB cap on notes.
+func TestAlbumsHandler_Update_NotesTooLong(t *testing.T) {
+	repo := newFakeAlbumRepo()
+	repo.add(sampleAlbum("album1", "Holiday"))
+	h := createAlbumsHandler(t, repo, nil)
+
+	oversized := make([]byte, 8*1024+1)
+	for i := range oversized {
+		oversized[i] = 'x'
+	}
+	body := bytes.NewBufferString(`{"notes":"` + string(oversized) + `"}`)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/albums/album1", body)
+	req.Header.Set("Content-Type", "application/json")
+	req = requestWithChiParams(req, map[string]string{"uid": "album1"})
+	rec := httptest.NewRecorder()
+	h.Update(rec, req)
+
+	assertStatusCode(t, rec, http.StatusBadRequest)
+	assertJSONError(t, rec, "notes exceeds 8 KiB limit")
+}

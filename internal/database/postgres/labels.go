@@ -46,8 +46,11 @@ const (
 // labelColumns is the canonical column list for SELECT statements against
 // the labels table. The order here matches scanLabel below. PhotoCount is
 // computed via a correlated subquery so callers do not need a separate
-// query to display the per-label photo count.
-const labelColumns = `l.uid, l.slug, l.name, l.priority, l.favorite,
+// query to display the per-label photo count. Description and Categories
+// were added by migration 037 to preserve PhotoPrism's label_description
+// and label_categories during migration.
+const labelColumns = `l.uid, l.slug, l.name, l.description, l.categories,
+	l.priority, l.favorite,
 	l.created_at, l.updated_at,
 	COALESCE((SELECT COUNT(*) FROM photo_labels pl WHERE pl.label_uid = l.uid), 0) AS photo_count`
 
@@ -243,13 +246,16 @@ func (r *LabelRepository) UpdateLabel(ctx context.Context, l *database.Label) er
 		return err
 	}
 	l.Slug = slug
+	categories := categoriesArray(l.Categories)
 	row := r.pool.QueryRow(ctx,
 		`UPDATE labels SET
-			slug = $1, name = $2, priority = $3, favorite = $4,
+			slug = $1, name = $2, description = $3, categories = $4,
+			priority = $5, favorite = $6,
 			updated_at = NOW()
-		 WHERE uid = $5
+		 WHERE uid = $7
 		 RETURNING updated_at`,
-		l.Slug, l.Name, l.Priority, l.Favorite, l.UID,
+		l.Slug, l.Name, l.Description, categories,
+		l.Priority, l.Favorite, l.UID,
 	)
 	if err := row.Scan(&l.UpdatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -324,14 +330,32 @@ func (r *LabelRepository) RemovePhotoLabel(
 // scanLabel reads one labels row using the column order in labelColumns.
 func scanLabel(s rowScanner) (*database.Label, error) {
 	var l database.Label
+	var categories pq.StringArray
 	if err := s.Scan(
-		&l.UID, &l.Slug, &l.Name, &l.Priority, &l.Favorite,
+		&l.UID, &l.Slug, &l.Name, &l.Description, &categories,
+		&l.Priority, &l.Favorite,
 		&l.CreatedAt, &l.UpdatedAt,
 		&l.PhotoCount,
 	); err != nil {
 		return nil, fmt.Errorf("scan label row: %w", err)
 	}
+	if categories == nil {
+		l.Categories = []string{}
+	} else {
+		l.Categories = []string(categories)
+	}
 	return &l, nil
+}
+
+// categoriesArray wraps a string slice into a pq.StringArray suitable for
+// binding to a TEXT[] parameter. A nil slice is normalised to an empty
+// array so the destination column never receives NULL (the schema is
+// NOT NULL with a '{}' default).
+func categoriesArray(in []string) pq.StringArray {
+	if len(in) == 0 {
+		return pq.StringArray{}
+	}
+	return pq.StringArray(in)
 }
 
 // buildLabelWhere assembles the WHERE clause + bind args for ListLabels.

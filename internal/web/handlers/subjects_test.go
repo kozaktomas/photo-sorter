@@ -317,3 +317,87 @@ func TestFacesHandler_UpdateSubject_NotFound(t *testing.T) {
 	assertStatusCode(t, recorder, http.StatusNotFound)
 	assertJSONError(t, recorder, "subject not found")
 }
+
+// TestFacesHandler_GetSubject_IncludesBioFields verifies that the
+// bio/about/alias columns added by task 332a727c are surfaced on the
+// API response. Without this, the migrator can populate them but the
+// frontend never sees them.
+func TestFacesHandler_GetSubject_IncludesBioFields(t *testing.T) {
+	subjectRepo := newFakeSubjectRepo()
+	s := subjectRepo.seed("subj123", "Alice")
+	s.Bio = "Bio body"
+	s.About = "Short tagline"
+	s.Alias = "A., Alice E."
+	handler := createFacesHandlerWithSubjects(testConfig(), subjectRepo, nil)
+
+	req := httptest.NewRequestWithContext(context.Background(), "GET", "/api/v1/subjects/subj123", nil)
+	req = requestWithChiParams(req, map[string]string{"uid": "subj123"})
+	rec := httptest.NewRecorder()
+	handler.GetSubject(rec, req)
+
+	assertStatusCode(t, rec, http.StatusOK)
+	var got SubjectResponse
+	parseJSONResponse(t, rec, &got)
+	if got.Bio != "Bio body" {
+		t.Errorf("bio = %q, want %q", got.Bio, "Bio body")
+	}
+	if got.About != "Short tagline" {
+		t.Errorf("about = %q", got.About)
+	}
+	if got.Alias != "A., Alice E." {
+		t.Errorf("alias = %q (commas must be preserved verbatim)", got.Alias)
+	}
+}
+
+// TestFacesHandler_UpdateSubject_BioFieldsRoundTrip confirms that PUTting
+// bio/about/alias values writes them through to the repository and that
+// the response echoes them back unchanged.
+func TestFacesHandler_UpdateSubject_BioFieldsRoundTrip(t *testing.T) {
+	subjectRepo := newFakeSubjectRepo()
+	subjectRepo.seed("subj123", "Alice")
+	handler := createFacesHandlerWithSubjects(testConfig(), subjectRepo, nil)
+
+	body := bytes.NewBufferString(
+		`{"bio":"A bio","about":"A tagline","alias":"A.E."}`,
+	)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/subjects/subj123", body)
+	req.Header.Set("Content-Type", "application/json")
+	req = requestWithChiParams(req, map[string]string{"uid": "subj123"})
+	rec := httptest.NewRecorder()
+	handler.UpdateSubject(rec, req)
+
+	assertStatusCode(t, rec, http.StatusOK)
+	var got SubjectResponse
+	parseJSONResponse(t, rec, &got)
+	if got.Bio != "A bio" || got.About != "A tagline" || got.Alias != "A.E." {
+		t.Errorf("round-trip mismatch: %+v", got)
+	}
+	stored, _ := subjectRepo.GetSubject(context.Background(), "subj123")
+	if stored.Bio != "A bio" || stored.About != "A tagline" || stored.Alias != "A.E." {
+		t.Errorf("storage mismatch: bio=%q about=%q alias=%q",
+			stored.Bio, stored.About, stored.Alias)
+	}
+}
+
+// TestFacesHandler_UpdateSubject_BioTooLong asserts the spec's 8 KiB cap
+// on bio (and by extension about/notes, which share validateSubjectUpdate).
+func TestFacesHandler_UpdateSubject_BioTooLong(t *testing.T) {
+	subjectRepo := newFakeSubjectRepo()
+	subjectRepo.seed("subj123", "Alice")
+	handler := createFacesHandlerWithSubjects(testConfig(), subjectRepo, nil)
+
+	oversized := make([]byte, 8*1024+1)
+	for i := range oversized {
+		oversized[i] = 'x'
+	}
+	payload := `{"bio":"` + string(oversized) + `"}`
+	body := bytes.NewBufferString(payload)
+	req := httptest.NewRequestWithContext(context.Background(), "PUT", "/api/v1/subjects/subj123", body)
+	req.Header.Set("Content-Type", "application/json")
+	req = requestWithChiParams(req, map[string]string{"uid": "subj123"})
+	rec := httptest.NewRecorder()
+	handler.UpdateSubject(rec, req)
+
+	assertStatusCode(t, rec, http.StatusBadRequest)
+	assertJSONError(t, rec, "bio exceeds 8 KiB limit")
+}

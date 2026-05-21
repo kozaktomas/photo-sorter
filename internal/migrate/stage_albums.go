@@ -8,13 +8,22 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/database"
 )
 
-// ppAlbum is a single row of PhotoPrism's `albums` table.
+// ppAlbum is a single row of PhotoPrism's `albums` table. Location /
+// Category / Notes / Filter / Order were added by task 332a727c to plug
+// data loss for smart albums and locality metadata; album_filter is
+// preserved verbatim because photo-sorter has no smart-album evaluator
+// yet (see the comment on stage_albums.processOneAlbum).
 type ppAlbum struct {
 	UID         string
 	Slug        string
 	Title       string
 	Description string
 	Type        string
+	Location    string
+	Category    string
+	Notes       string
+	Filter      string
+	Order       string
 	Favorite    bool
 	Private     bool
 }
@@ -72,8 +81,17 @@ func (m *migrator) upsertAlbums(
 }
 
 // processOneAlbum upserts a single album and records its native UID in
-// uidMap. Existing rows are counted as Skipped so re-runs report
-// zero creations.
+// uidMap. Existing rows are counted as Skipped so re-runs report zero
+// creations — but the location/category/notes/filter/order columns are
+// backfilled when the destination value is still the column zero value
+// (task 332a727c).
+//
+// album_filter is preserved verbatim — photo-sorter has no smart-album
+// evaluator yet, so the field is informational-only for the time being.
+// Smart albums (album_type != 'album', e.g. month/moment/state) are
+// migrated as regular albums with their album_filter intact so the
+// operator can audit them and a future smart-album feature can consume
+// the DSL.
 func (m *migrator) processOneAlbum(
 	ctx context.Context, a *ppAlbum, uidMap map[string]string, summary *StageSummary,
 ) {
@@ -86,6 +104,7 @@ func (m *migrator) processOneAlbum(
 		existing, err := m.opts.Albums.GetAlbumBySlug(ctx, a.Slug)
 		if err == nil && existing != nil {
 			uidMap[a.UID] = existing.UID
+			m.backfillAlbumExtras(ctx, a, existing)
 			summary.Skipped++
 			return
 		}
@@ -107,6 +126,11 @@ func (m *migrator) processOneAlbum(
 		Type:        normaliseAlbumType(a.Type),
 		Favorite:    a.Favorite,
 		Private:     a.Private,
+		Location:    a.Location,
+		Category:    a.Category,
+		Notes:       a.Notes,
+		Filter:      a.Filter,
+		Order:       a.Order,
 	}
 	if err := m.opts.Albums.CreateAlbum(ctx, native); err != nil {
 		fmt.Fprintf(m.out, "\nalbum %q: %v\n", a.Title, err)
@@ -115,6 +139,48 @@ func (m *migrator) processOneAlbum(
 	}
 	uidMap[a.UID] = native.UID
 	summary.Created++
+}
+
+// backfillAlbumExtras fills location/category/notes/filter/order on an
+// existing destination row when the destination value is still the
+// column zero value and the PhotoPrism source has a non-default value.
+// The spec only asks for the new columns to be backfilled, so user-
+// editable columns (title/description/favorite/private) are left alone.
+func (m *migrator) backfillAlbumExtras(
+	ctx context.Context, a *ppAlbum, existing *database.Album,
+) {
+	if !mergeAlbumExtras(existing, a) {
+		return
+	}
+	if err := m.opts.Albums.UpdateAlbum(ctx, existing); err != nil {
+		fmt.Fprintf(m.out, "\nalbum %q backfill: %v\n", a.Title, err)
+	}
+}
+
+// mergeAlbumExtras copies each PhotoPrism extra column into the
+// destination only when the destination is still the column zero value.
+// Returns true when at least one field was updated. Split out from
+// backfillAlbumExtras to keep the cyclomatic-complexity per function
+// inside the linter's budget.
+func mergeAlbumExtras(existing *database.Album, a *ppAlbum) bool {
+	pairs := []struct {
+		dst *string
+		src string
+	}{
+		{&existing.Location, a.Location},
+		{&existing.Category, a.Category},
+		{&existing.Notes, a.Notes},
+		{&existing.Filter, a.Filter},
+		{&existing.Order, a.Order},
+	}
+	changed := false
+	for _, p := range pairs {
+		if *p.dst == "" && p.src != "" {
+			*p.dst = p.src
+			changed = true
+		}
+	}
+	return changed
 }
 
 // linkAlbumPhotos groups memberships by native album, then calls
@@ -204,12 +270,22 @@ func normaliseAlbumType(t string) string {
 	}
 }
 
-// readPPAlbums loads non-deleted PhotoPrism albums.
+// readPPAlbums loads non-deleted PhotoPrism albums. album_location /
+// album_category / album_notes / album_filter / album_order are pulled
+// into the projection so the migrator can populate the native columns
+// added by migration 037 (task 332a727c). Smart albums (album_type !=
+// 'album') keep their album_filter so a future smart-album feature can
+// consume the DSL.
 func (m *migrator) readPPAlbums(ctx context.Context) ([]ppAlbum, error) {
 	rows, err := m.opts.MariaDB.QueryContext(ctx, `
 		SELECT album_uid, COALESCE(album_slug, ''), COALESCE(album_title, ''),
 		       COALESCE(album_description, ''), COALESCE(album_type, ''),
-		       COALESCE(album_favorite, 0), COALESCE(album_private, 0)
+		       COALESCE(album_favorite, 0), COALESCE(album_private, 0),
+		       COALESCE(album_location, ''),
+		       COALESCE(album_category, ''),
+		       COALESCE(album_notes, ''),
+		       COALESCE(album_filter, ''),
+		       COALESCE(album_order, '')
 		FROM albums
 		WHERE deleted_at IS NULL AND COALESCE(album_title, '') <> ''
 		ORDER BY id`)
@@ -220,12 +296,15 @@ func (m *migrator) readPPAlbums(ctx context.Context) ([]ppAlbum, error) {
 	var out []ppAlbum
 	for rows.Next() {
 		var (
-			a             ppAlbum
-			slugRaw, tRaw []byte
-			fav, priv     int
+			a                          ppAlbum
+			slugRaw, tRaw              []byte
+			fav, priv                  int
+			location, category         []byte
+			notes, filterRaw, orderRaw []byte
 		)
 		if err := rows.Scan(
 			&a.UID, &slugRaw, &a.Title, &a.Description, &tRaw, &fav, &priv,
+			&location, &category, &notes, &filterRaw, &orderRaw,
 		); err != nil {
 			return nil, fmt.Errorf("scan album: %w", err)
 		}
@@ -233,6 +312,11 @@ func (m *migrator) readPPAlbums(ctx context.Context) ([]ppAlbum, error) {
 		a.Type = string(tRaw)
 		a.Favorite = fav != 0
 		a.Private = priv != 0
+		a.Location = string(location)
+		a.Category = string(category)
+		a.Notes = string(notes)
+		a.Filter = string(filterRaw)
+		a.Order = string(orderRaw)
 		out = append(out, a)
 	}
 	if err := rows.Err(); err != nil {

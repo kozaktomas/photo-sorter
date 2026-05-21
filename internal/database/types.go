@@ -394,7 +394,8 @@ type PhotoFilter struct {
 }
 
 // Album is a curated or auto-generated grouping of photos. Mirrors the
-// columns of the albums table introduced in migration 032. PhotoCount is
+// columns of the albums table introduced in migration 032 and extended by
+// migration 037 with Location/Category/Notes/Filter/Order. PhotoCount is
 // computed at query time (it is not a stored column).
 type Album struct {
 	UID           string
@@ -407,9 +408,26 @@ type Album struct {
 	Private       bool
 	OrderBy       string
 	CreatedBy     string
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
-	PhotoCount    int
+	// Location is the free-form place string from PhotoPrism's album_location.
+	Location string
+	// Category is the PhotoPrism album_category column (free-form text).
+	Category string
+	// Notes mirrors PhotoPrism's album_notes (free-form, distinct from description).
+	Notes string
+	// Filter holds the raw smart-album DSL string from PhotoPrism's
+	// album_filter column. photo-sorter has no smart-album evaluator yet;
+	// the value is preserved verbatim so a future feature can consume it
+	// and so the operator can audit which albums were smart-filtered.
+	Filter string
+	// Order is the PhotoPrism album_order sort-order setting (e.g. "oldest"
+	// / "newest"). It is distinct from OrderBy (which is the native column
+	// already used by the album list endpoints) and is preserved verbatim
+	// so future smart-album features can honour the user's PhotoPrism
+	// preference.
+	Order      string
+	CreatedAt  time.Time
+	UpdatedAt  time.Time
+	PhotoCount int
 }
 
 // AlbumPhoto is a single row of the album_photos junction table. SortOrder
@@ -436,12 +454,20 @@ type AlbumQuery struct {
 var ErrAlbumPhotoNotInAlbum = errors.New("photo is not in album")
 
 // Label is a tag/category that can be applied to photos. Mirrors the columns
-// of the labels table introduced in migration 032. PhotoCount is computed at
-// query time (it is not a stored column).
+// of the labels table introduced in migration 032 and extended by migration
+// 037 with Description/Categories. PhotoCount is computed at query time (it
+// is not a stored column).
 type Label struct {
-	UID        string
-	Slug       string
-	Name       string
+	UID  string
+	Slug string
+	Name string
+	// Description is PhotoPrism's label_description (free-form text).
+	Description string
+	// Categories mirrors PhotoPrism's label_categories. PhotoPrism stores
+	// the value as a comma-separated string; the migrator unpacks that
+	// into a deduplicated slice. The native column is TEXT[] so empty maps
+	// to an empty slice, not nil-on-the-wire.
+	Categories []string
 	Priority   int
 	Favorite   bool
 	PhotoCount int
@@ -481,12 +507,22 @@ type Marker struct {
 
 // Subject is a recurring face/label target (a person, pet, or other named
 // entity). PhotoCount and FaceCount are computed at query time from the
-// markers table (both exclude markers flagged invalid).
+// markers table (both exclude markers flagged invalid). Bio/About/Alias
+// were added by migration 037 to plug PhotoPrism subj_bio / subj_about /
+// subj_alias data loss during migration.
 type Subject struct {
-	UID           string
-	Slug          string
-	Name          string
-	Type          string // "person" / "pet" / "other"
+	UID  string
+	Slug string
+	Name string
+	Type string // "person" / "pet" / "other"
+	// Bio is the long-form biography string from PhotoPrism's subj_bio.
+	Bio string
+	// About is the short tagline from PhotoPrism's subj_about.
+	About string
+	// Alias holds the PhotoPrism subj_alias column verbatim. PhotoPrism
+	// may store multiple aliases as a single comma-separated string;
+	// the native schema preserves that exactly (no parsing).
+	Alias         string
 	Favorite      bool
 	Private       bool
 	Notes         string

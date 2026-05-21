@@ -11,6 +11,14 @@ export interface Album {
   thumb: string;
   type: string;
   favorite: boolean;
+  // Smart-album + locality metadata added by migration 037 / task 332a727c.
+  // `filter` carries the raw PhotoPrism smart-album DSL verbatim — there
+  // is no smart-album evaluator yet, so the field is informational-only.
+  location: string;
+  category: string;
+  notes: string;
+  filter: string;
+  order: string;
   created_at: string;
   updated_at: string;
 }
@@ -54,7 +62,13 @@ export interface Label {
   uid: string;
   name: string;
   slug: string;
+  // description + categories were added by migration 037 / task 332a727c
+  // to preserve PhotoPrism's label_description and label_categories
+  // during the migration. notes remains on the wire as the empty string
+  // for backwards compatibility — the native labels table does not
+  // store it.
   description: string;
+  categories: string[];
   notes: string;
   photo_count: number;
   favorite: boolean;
@@ -162,9 +176,14 @@ export interface Subject {
   thumb: string;
   photo_count: number;
   favorite: boolean;
-  about?: string;
-  alias?: string;
-  bio?: string;
+  // bio / about / alias are populated from the native columns added by
+  // migration 037 / task 332a727c. They were previously optional because
+  // the PhotoPrism passthrough returned them sporadically; with the
+  // native columns in place they are always present (empty string when
+  // not set).
+  about: string;
+  alias: string;
+  bio: string;
   notes?: string;
   hidden?: boolean;
   private?: boolean;

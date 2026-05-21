@@ -54,6 +54,12 @@ func NewAlbumsHandler(
 
 // AlbumResponse represents an album in API responses. The shape mirrors the
 // previous PhotoPrism passthrough so the frontend keeps working.
+// Location / Category / Notes / Filter / Order are populated from the
+// native columns added by migration 037 (task 332a727c). Filter is the
+// raw smart-album DSL string from PhotoPrism's album_filter — it is
+// informational-only today, but exposed on the API so a future smart-
+// album feature can consume it and so the operator can audit which
+// migrated albums were originally smart-filtered.
 type AlbumResponse struct {
 	UID         string `json:"uid"`
 	Title       string `json:"title"`
@@ -62,6 +68,11 @@ type AlbumResponse struct {
 	Thumb       string `json:"thumb"`
 	Type        string `json:"type"`
 	Favorite    bool   `json:"favorite"`
+	Location    string `json:"location"`
+	Category    string `json:"category"`
+	Notes       string `json:"notes"`
+	Filter      string `json:"filter"`
+	Order       string `json:"order"`
 	CreatedAt   string `json:"created_at"`
 	UpdatedAt   string `json:"updated_at"`
 }
@@ -78,10 +89,21 @@ func albumToResponse(a database.Album) AlbumResponse {
 		Thumb:       a.CoverPhotoUID,
 		Type:        a.Type,
 		Favorite:    a.Favorite,
+		Location:    a.Location,
+		Category:    a.Category,
+		Notes:       a.Notes,
+		Filter:      a.Filter,
+		Order:       a.Order,
 		CreatedAt:   a.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:   a.UpdatedAt.UTC().Format(time.RFC3339),
 	}
 }
+
+// Validation limits for album text fields added by task 332a727c. Notes
+// is capped at 8 KiB to match the spec; the others are not bounded here
+// because the underlying TEXT column has no size restriction and
+// PhotoPrism does not impose one either.
+const albumNotesMaxBytes = 8 * 1024
 
 // requireAlbumWriter returns the configured AlbumWriter; on missing
 // configuration it writes a 503 error response and returns nil.
@@ -169,7 +191,9 @@ func (h *AlbumsHandler) Get(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, albumToResponse(*album))
 }
 
-// albumWriteRequest is the JSON body shared by Create and Update.
+// albumWriteRequest is the JSON body shared by Create and Update. The
+// Location / Category / Notes / Filter / Order fields map onto the
+// native columns added by migration 037 (task 332a727c).
 type albumWriteRequest struct {
 	Title         string  `json:"title"`
 	Description   *string `json:"description,omitempty"`
@@ -178,13 +202,27 @@ type albumWriteRequest struct {
 	Private       *bool   `json:"private,omitempty"`
 	OrderBy       *string `json:"order_by,omitempty"`
 	CoverPhotoUID *string `json:"cover_photo_uid,omitempty"`
+	Location      *string `json:"location,omitempty"`
+	Category      *string `json:"category,omitempty"`
+	Notes         *string `json:"notes,omitempty"`
+	Filter        *string `json:"filter,omitempty"`
+	Order         *string `json:"order,omitempty"`
 }
 
 // applyAlbumWriteFields copies the supplied request fields into the target
 // album. The handler uses pointers in the request struct to distinguish
 // "key omitted" from "explicit zero value"; this helper centralises that
 // switch so Create/Update stay below the cyclomatic-complexity limit.
+// Field handling is split between two helpers so each stays inside the
+// per-function complexity budget.
 func applyAlbumWriteFields(album *database.Album, req albumWriteRequest) {
+	applyAlbumCoreFields(album, req)
+	applyAlbumExtraFields(album, req)
+}
+
+// applyAlbumCoreFields copies the long-standing albums columns from the
+// request into the album record.
+func applyAlbumCoreFields(album *database.Album, req albumWriteRequest) {
 	if req.Description != nil {
 		album.Description = *req.Description
 	}
@@ -205,6 +243,36 @@ func applyAlbumWriteFields(album *database.Album, req albumWriteRequest) {
 	}
 }
 
+// applyAlbumExtraFields copies the task-332a727c gap-fix columns
+// (location/category/notes/filter/order) from the request into the
+// album record.
+func applyAlbumExtraFields(album *database.Album, req albumWriteRequest) {
+	if req.Location != nil {
+		album.Location = *req.Location
+	}
+	if req.Category != nil {
+		album.Category = *req.Category
+	}
+	if req.Notes != nil {
+		album.Notes = *req.Notes
+	}
+	if req.Filter != nil {
+		album.Filter = *req.Filter
+	}
+	if req.Order != nil {
+		album.Order = *req.Order
+	}
+}
+
+// validateAlbumWrite enforces the spec-defined cap on the new notes
+// column (task 332a727c). Returns a 400-suitable message or empty.
+func validateAlbumWrite(req albumWriteRequest) string {
+	if req.Notes != nil && len(*req.Notes) > albumNotesMaxBytes {
+		return "notes exceeds 8 KiB limit"
+	}
+	return ""
+}
+
 // Create creates a new album.
 func (h *AlbumsHandler) Create(w http.ResponseWriter, r *http.Request) {
 	if err := requireWriteRole(r); err != nil {
@@ -218,6 +286,10 @@ func (h *AlbumsHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 	if req.Title == "" {
 		respondError(w, http.StatusBadRequest, "title is required")
+		return
+	}
+	if msg := validateAlbumWrite(req); msg != "" {
+		respondError(w, http.StatusBadRequest, msg)
 		return
 	}
 	repo := h.requireAlbumWriter(w)
@@ -255,6 +327,10 @@ func (h *AlbumsHandler) Update(w http.ResponseWriter, r *http.Request) {
 	var req albumWriteRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
+		return
+	}
+	if msg := validateAlbumWrite(req); msg != "" {
+		respondError(w, http.StatusBadRequest, msg)
 		return
 	}
 	repo := h.requireAlbumWriter(w)

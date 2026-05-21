@@ -15,9 +15,10 @@ import (
 
 // SubjectResponse represents a subject (person) in API responses. The wire
 // shape mirrors the previous PhotoPrism passthrough so the frontend contract
-// stays stable. Fields that the native subjects table does not yet store
-// (Thumb, About, Alias, Bio, Hidden, Excluded) are kept on the wire for
-// backwards compatibility and always serialise as their zero value.
+// stays stable. Bio/About/Alias are populated from the native columns added
+// by migration 037 (task 332a727c). Thumb / Hidden / Excluded remain on the
+// wire as zero values for backwards compatibility — they predate the native
+// schema and are not yet wired.
 type SubjectResponse struct {
 	UID        string `json:"uid"`
 	Name       string `json:"name"`
@@ -25,9 +26,9 @@ type SubjectResponse struct {
 	Thumb      string `json:"thumb"`
 	PhotoCount int    `json:"photo_count"`
 	Favorite   bool   `json:"favorite"`
-	About      string `json:"about,omitempty"`
-	Alias      string `json:"alias,omitempty"`
-	Bio        string `json:"bio,omitempty"`
+	About      string `json:"about"`
+	Alias      string `json:"alias"`
+	Bio        string `json:"bio"`
 	Notes      string `json:"notes,omitempty"`
 	Hidden     bool   `json:"hidden"`
 	Private    bool   `json:"private"`
@@ -43,12 +44,25 @@ func subjectToResponse(s database.Subject) SubjectResponse {
 		Slug:       s.Slug,
 		PhotoCount: s.PhotoCount,
 		Favorite:   s.Favorite,
+		About:      s.About,
+		Alias:      s.Alias,
+		Bio:        s.Bio,
 		Notes:      s.Notes,
 		Private:    s.Private,
 		CreatedAt:  s.CreatedAt.UTC().Format(time.RFC3339),
 		UpdatedAt:  s.UpdatedAt.UTC().Format(time.RFC3339),
 	}
 }
+
+// Validation limits for the SubjectUpdateRequest's free-form text fields
+// (task 332a727c). The values match the spec: bio/about/notes capped at
+// 8 KiB each, alias at 256 chars.
+const (
+	subjectBioMaxBytes   = 8 * 1024
+	subjectAboutMaxBytes = 8 * 1024
+	subjectNotesMaxBytes = 8 * 1024
+	subjectAliasMaxBytes = 256
+)
 
 // requireSubjectRepo returns the configured SubjectWriter; on missing
 // configuration it writes a 503 error response and returns nil.
@@ -120,9 +134,10 @@ func (h *FacesHandler) GetSubject(w http.ResponseWriter, r *http.Request) {
 }
 
 // SubjectUpdateRequest represents the request body for updating a subject.
-// Fields that the native subjects table does not yet store (About, Alias,
-// Bio, Hidden, Excluded) are accepted on the wire for backwards
-// compatibility but silently ignored.
+// Bio/About/Alias map onto the native columns added by migration 037; the
+// rest of the optional flags (Hidden, Excluded) predate the native schema
+// and are accepted on the wire for backwards compatibility but silently
+// ignored.
 type SubjectUpdateRequest struct {
 	Name     *string `json:"name,omitempty"`
 	About    *string `json:"about,omitempty"`
@@ -146,12 +161,41 @@ func applySubjectUpdateFields(s *database.Subject, req SubjectUpdateRequest) {
 	if req.Notes != nil {
 		s.Notes = *req.Notes
 	}
+	if req.Bio != nil {
+		s.Bio = *req.Bio
+	}
+	if req.About != nil {
+		s.About = *req.About
+	}
+	if req.Alias != nil {
+		s.Alias = *req.Alias
+	}
 	if req.Favorite != nil {
 		s.Favorite = *req.Favorite
 	}
 	if req.Private != nil {
 		s.Private = *req.Private
 	}
+}
+
+// validateSubjectUpdate enforces the size caps for the free-form text
+// columns added by task 332a727c. Returns the first violation as a
+// human-readable string suitable for a 400 response, or empty when the
+// request passes.
+func validateSubjectUpdate(req SubjectUpdateRequest) string {
+	if req.Bio != nil && len(*req.Bio) > subjectBioMaxBytes {
+		return "bio exceeds 8 KiB limit"
+	}
+	if req.About != nil && len(*req.About) > subjectAboutMaxBytes {
+		return "about exceeds 8 KiB limit"
+	}
+	if req.Notes != nil && len(*req.Notes) > subjectNotesMaxBytes {
+		return "notes exceeds 8 KiB limit"
+	}
+	if req.Alias != nil && len(*req.Alias) > subjectAliasMaxBytes {
+		return "alias exceeds 256 character limit"
+	}
+	return ""
 }
 
 // UpdateSubject updates a subject.
@@ -165,6 +209,10 @@ func (h *FacesHandler) UpdateSubject(w http.ResponseWriter, r *http.Request) {
 	var req SubjectUpdateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
+		return
+	}
+	if msg := validateSubjectUpdate(req); msg != "" {
+		respondError(w, http.StatusBadRequest, msg)
 		return
 	}
 

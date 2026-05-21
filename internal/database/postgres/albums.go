@@ -49,10 +49,15 @@ const (
 
 // albumColumns is the canonical column list for SELECT statements against
 // the albums table. The order here matches scanAlbumWithCount below.
+// Location/Category/Notes/Filter/AlbumOrder were added by migration 037
+// to preserve PhotoPrism's album_location / album_category / album_notes /
+// album_filter (smart-album DSL) / album_order through migrate-from-
+// photoprism.
 const albumColumns = `a.uid, a.slug, a.title, a.description, a.type,
 	COALESCE(a.cover_photo_uid, ''),
 	a.favorite, a.private, a.order_by,
 	COALESCE(a.created_by, ''),
+	a.location, a.category, a.notes, a.filter, a.album_order,
 	a.created_at, a.updated_at,
 	COALESCE((SELECT COUNT(*) FROM album_photos ap WHERE ap.album_uid = a.uid), 0) AS photo_count`
 
@@ -283,14 +288,17 @@ func (r *AlbumRepository) CreateAlbum(ctx context.Context, a *database.Album) er
 	row := r.pool.QueryRow(ctx,
 		`INSERT INTO albums (
 			uid, slug, title, description, type,
-			cover_photo_uid, favorite, private, order_by, created_by
+			cover_photo_uid, favorite, private, order_by, created_by,
+			location, category, notes, filter, album_order
 		 ) VALUES (
 			$1, $2, $3, $4, $5,
-			$6, $7, $8, $9, $10
+			$6, $7, $8, $9, $10,
+			$11, $12, $13, $14, $15
 		 )
 		 RETURNING created_at, updated_at`,
 		a.UID, a.Slug, a.Title, a.Description, a.Type,
 		cover, a.Favorite, a.Private, a.OrderBy, createdBy,
+		a.Location, a.Category, a.Notes, a.Filter, a.Order,
 	)
 	if err := row.Scan(&a.CreatedAt, &a.UpdatedAt); err != nil {
 		return fmt.Errorf("create album: %w", err)
@@ -315,12 +323,16 @@ func (r *AlbumRepository) UpdateAlbum(ctx context.Context, a *database.Album) er
 			slug = $1, title = $2, description = $3, type = $4,
 			cover_photo_uid = $5, favorite = $6, private = $7,
 			order_by = $8, created_by = $9,
+			location = $10, category = $11, notes = $12,
+			filter = $13, album_order = $14,
 			updated_at = NOW()
-		 WHERE uid = $10
+		 WHERE uid = $15
 		 RETURNING updated_at`,
 		a.Slug, a.Title, a.Description, a.Type,
 		cover, a.Favorite, a.Private,
 		a.OrderBy, createdBy,
+		a.Location, a.Category, a.Notes,
+		a.Filter, a.Order,
 		a.UID,
 	)
 	if err := row.Scan(&a.UpdatedAt); err != nil {
@@ -485,6 +497,7 @@ func scanAlbum(s rowScanner) (*database.Album, error) {
 		&a.CoverPhotoUID,
 		&a.Favorite, &a.Private, &a.OrderBy,
 		&a.CreatedBy,
+		&a.Location, &a.Category, &a.Notes, &a.Filter, &a.Order,
 		&a.CreatedAt, &a.UpdatedAt,
 		&a.PhotoCount,
 	); err != nil {

@@ -52,8 +52,11 @@ const (
 // PhotoCount and FaceCount are computed in the same LEFT JOIN so callers
 // do not need a second round-trip per row. Invalid markers are excluded
 // from both counts so flagged false positives do not inflate the totals.
+// Bio/About/Alias were added by migration 037 to preserve PhotoPrism's
+// subj_bio / subj_about / subj_alias columns through the migrator.
 const subjectColumns = `s.uid, s.slug, s.name, s.type, s.favorite, s.private,
 	s.notes, COALESCE(s.cover_photo_uid, ''),
+	s.bio, s.about, s.alias,
 	s.created_at, s.updated_at,
 	COALESCE(c.photo_count, 0) AS photo_count,
 	COALESCE(c.face_count, 0)  AS face_count`
@@ -346,11 +349,15 @@ func (r *SubjectRepository) UpdateSubject(
 	row := tx.QueryRowContext(ctx,
 		`UPDATE subjects SET
 			slug = $1, name = $2, type = $3, favorite = $4, private = $5,
-			notes = $6, cover_photo_uid = $7, updated_at = NOW()
-		 WHERE uid = $8
+			notes = $6, cover_photo_uid = $7,
+			bio = $8, about = $9, alias = $10,
+			updated_at = NOW()
+		 WHERE uid = $11
 		 RETURNING updated_at`,
 		s.Slug, s.Name, s.Type, s.Favorite, s.Private,
-		s.Notes, cover, s.UID,
+		s.Notes, cover,
+		s.Bio, s.About, s.Alias,
+		s.UID,
 	)
 	if err := row.Scan(&s.UpdatedAt); err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
@@ -394,6 +401,7 @@ func scanSubject(s rowScanner) (*database.Subject, error) {
 	if err := s.Scan(
 		&subj.UID, &subj.Slug, &subj.Name, &subj.Type, &subj.Favorite, &subj.Private,
 		&subj.Notes, &subj.CoverPhotoUID,
+		&subj.Bio, &subj.About, &subj.Alias,
 		&subj.CreatedAt, &subj.UpdatedAt,
 		&subj.PhotoCount, &subj.FaceCount,
 	); err != nil {

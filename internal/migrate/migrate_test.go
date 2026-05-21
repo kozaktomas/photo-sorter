@@ -285,6 +285,9 @@ func seedPhotoPrismSchema(ctx context.Context, db *sql.DB) error {
 			subj_type VARBINARY(8) NULL,
 			subj_favorite TINYINT NULL,
 			subj_private TINYINT NULL,
+			subj_bio VARCHAR(2048) NULL,
+			subj_about VARCHAR(2048) NULL,
+			subj_alias VARCHAR(512) NULL,
 			deleted_at DATETIME NULL
 		)`,
 		`CREATE TABLE labels (
@@ -293,6 +296,8 @@ func seedPhotoPrismSchema(ctx context.Context, db *sql.DB) error {
 			label_slug VARBINARY(160) NULL,
 			label_priority INT NULL,
 			label_favorite TINYINT NULL,
+			label_description VARCHAR(2048) NULL,
+			label_categories VARCHAR(1024) NULL,
 			deleted_at DATETIME NULL
 		)`,
 		`CREATE TABLE photos_labels (
@@ -311,6 +316,11 @@ func seedPhotoPrismSchema(ctx context.Context, db *sql.DB) error {
 			album_type VARBINARY(8) NULL,
 			album_favorite TINYINT NULL,
 			album_private TINYINT NULL,
+			album_location VARCHAR(255) NULL,
+			album_category VARCHAR(100) NULL,
+			album_notes VARCHAR(1024) NULL,
+			album_filter VARCHAR(2048) NULL,
+			album_order VARBINARY(32) NULL,
 			deleted_at DATETIME NULL
 		)`,
 		`CREATE TABLE photos_albums (
@@ -371,24 +381,42 @@ func seedPhotoPrismRows(ctx context.Context, db *sql.DB, originalsRoot string) e
 	return nil
 }
 
-// insertSubjectsLabelsAlbums seeds the lookup tables.
+// insertSubjectsLabelsAlbums seeds the lookup tables. Subjects/labels/
+// albums each exercise the gap-fix columns added by task 332a727c so the
+// downstream assertions can verify the migrator preserved them.
 func insertSubjectsLabelsAlbums(ctx context.Context, db *sql.DB) error {
 	if _, err := db.ExecContext(ctx,
-		`INSERT INTO subjects (subj_uid, subj_name, subj_type, subj_favorite, subj_private)
-		 VALUES ('s001', 'Alice Example', 'person', 1, 0)`); err != nil {
+		`INSERT INTO subjects (subj_uid, subj_name, subj_type, subj_favorite, subj_private,
+		                       subj_bio, subj_about, subj_alias) VALUES
+			('s001', 'Alice Example', 'person', 1, 0,
+			 'Alice has been photographing landscapes since 2005.',
+			 'Landscape photographer based in Brno.',
+			 'Alice E., A. Example'),
+			('s002', 'Bob Example', 'person', 0, 0, '', '', '')`); err != nil {
 		return fmt.Errorf("insert subject: %w", err)
 	}
 	if _, err := db.ExecContext(ctx,
-		`INSERT INTO labels (id, label_name, label_slug, label_priority, label_favorite) VALUES
-			(1, 'Nature', 'nature', 5, 1),
-			(2, 'Sunset', 'sunset', 0, 0)`); err != nil {
+		`INSERT INTO labels (id, label_name, label_slug, label_priority, label_favorite,
+		                     label_description, label_categories) VALUES
+			(1, 'Nature', 'nature', 5, 1,
+			 'Outdoor scenes and natural environments.',
+			 'family, kids , travel'),
+			(2, 'Sunset', 'sunset', 0, 0, '', '')`); err != nil {
 		return fmt.Errorf("insert label: %w", err)
 	}
 	if _, err := db.ExecContext(ctx,
 		`INSERT INTO albums (id, album_uid, album_slug, album_title, album_description,
-		                     album_type, album_favorite, album_private)
-		 VALUES (1, 'a001', 'holiday-2024', 'Holiday 2024', 'Trip notes',
-		         'album', 0, 0)`); err != nil {
+		                     album_type, album_favorite, album_private,
+		                     album_location, album_category, album_notes,
+		                     album_filter, album_order) VALUES
+			(1, 'a001', 'holiday-2024', 'Holiday 2024', 'Trip notes',
+			 'album', 0, 0,
+			 'Italy, Tuscany', 'Travel', 'Pre-trip planning + photo selections',
+			 '', 'newest'),
+			(2, 'a002', 'summer-moments', 'Summer Moments', '',
+			 'moment', 0, 0,
+			 '', '', '',
+			 'public:true year:2024 month:7', 'oldest')`); err != nil {
 		return fmt.Errorf("insert album: %w", err)
 	}
 	return nil
@@ -548,6 +576,7 @@ func TestMigrationEndToEnd(t *testing.T) {
 	assertFirstRunPersisted(t, ctx, fx)
 	assertPhotoUIDsPreserved(t, ctx, fx)
 	assertGapFixFieldsPersisted(t, ctx, fx)
+	assertEntityGapFixFieldsPersisted(t, ctx, fx)
 	assertPreExistingReferencesReconnect(t, ctx, fx)
 
 	// Re-run: every stage should now report zero creations because the
@@ -558,6 +587,203 @@ func TestMigrationEndToEnd(t *testing.T) {
 	}
 	assertReRunNoNewRows(t, report2)
 	assertGapFixBackfillPreservesEdits(t, ctx, fx)
+	assertEntityGapFixBackfillPreservesEdits(t, ctx, fx)
+}
+
+// assertEntityGapFixFieldsPersisted checks that the subject/label/album
+// metadata fields added by task 332a727c are written on the first
+// migration run. Each entity in the fixture exercises non-default values
+// so this assertion covers the "first run carries everything across"
+// half of the spec.
+func assertEntityGapFixFieldsPersisted(t *testing.T, ctx context.Context, fx *testFixture) {
+	t.Helper()
+	// Subjects: bio/about/alias on Alice; empty on Bob.
+	alice, err := fx.subjects.GetSubject(ctx, "s001")
+	if err != nil {
+		t.Fatalf("get s001: %v", err)
+	}
+	if alice.Bio == "" {
+		t.Errorf("Alice bio empty — migration dropped subj_bio")
+	}
+	if alice.About != "Landscape photographer based in Brno." {
+		t.Errorf("Alice about = %q", alice.About)
+	}
+	if alice.Alias != "Alice E., A. Example" {
+		t.Errorf("Alice alias = %q (should preserve commas verbatim)", alice.Alias)
+	}
+	bob, err := fx.subjects.GetSubject(ctx, "s002")
+	if err != nil {
+		t.Fatalf("get s002: %v", err)
+	}
+	if bob.Bio != "" || bob.About != "" || bob.Alias != "" {
+		t.Errorf("Bob expected empty extras, got bio=%q about=%q alias=%q",
+			bob.Bio, bob.About, bob.Alias)
+	}
+
+	// Labels: description + categories on Nature; empty on Sunset.
+	labels, err := fx.labels.ListLabels(ctx, database.LabelQuery{Limit: 50})
+	if err != nil {
+		t.Fatalf("list labels: %v", err)
+	}
+	byName := map[string]database.Label{}
+	for _, l := range labels {
+		byName[l.Name] = l
+	}
+	nature, ok := byName["Nature"]
+	if !ok {
+		t.Fatalf("Nature label missing")
+	}
+	if nature.Description != "Outdoor scenes and natural environments." {
+		t.Errorf("Nature description = %q", nature.Description)
+	}
+	wantCats := []string{"family", "kids", "travel"}
+	if len(nature.Categories) != len(wantCats) {
+		t.Errorf("Nature categories = %v, want %v", nature.Categories, wantCats)
+	} else {
+		for i, c := range wantCats {
+			if nature.Categories[i] != c {
+				t.Errorf("Nature categories[%d] = %q, want %q",
+					i, nature.Categories[i], c)
+			}
+		}
+	}
+	sunset := byName["Sunset"]
+	if sunset.Description != "" || len(sunset.Categories) != 0 {
+		t.Errorf("Sunset expected empty extras, got desc=%q cats=%v",
+			sunset.Description, sunset.Categories)
+	}
+
+	// Albums: full set of new columns on Holiday 2024; smart-album DSL on
+	// Summer Moments (album_type=moment, album_filter non-empty).
+	holiday, err := fx.albums.GetAlbum(ctx, "a001")
+	if err != nil {
+		t.Fatalf("get a001: %v", err)
+	}
+	if holiday.Location != "Italy, Tuscany" {
+		t.Errorf("Holiday location = %q", holiday.Location)
+	}
+	if holiday.Category != "Travel" {
+		t.Errorf("Holiday category = %q", holiday.Category)
+	}
+	if holiday.Notes != "Pre-trip planning + photo selections" {
+		t.Errorf("Holiday notes = %q", holiday.Notes)
+	}
+	if holiday.Filter != "" {
+		t.Errorf("Holiday filter = %q, want empty", holiday.Filter)
+	}
+	if holiday.Order != "newest" {
+		t.Errorf("Holiday order = %q, want newest", holiday.Order)
+	}
+	summer, err := fx.albums.GetAlbum(ctx, "a002")
+	if err != nil {
+		t.Fatalf("get a002: %v", err)
+	}
+	if summer.Filter != "public:true year:2024 month:7" {
+		t.Errorf("Summer filter = %q (smart-album DSL must be preserved verbatim)",
+			summer.Filter)
+	}
+	if summer.Type != "moment" {
+		t.Errorf("Summer type = %q, want moment (smart-album type preserved)",
+			summer.Type)
+	}
+	if summer.Order != "oldest" {
+		t.Errorf("Summer order = %q, want oldest", summer.Order)
+	}
+}
+
+// assertEntityGapFixBackfillPreservesEdits exercises the re-run merge
+// semantics for the subject/label/album columns added by task 332a727c.
+// It mutates Alice's bio in the native store (simulating a user edit),
+// adds source values to a row that started empty, then re-runs the
+// migration and asserts: edits survive, blanks get backfilled.
+func assertEntityGapFixBackfillPreservesEdits(
+	t *testing.T, ctx context.Context, fx *testFixture,
+) {
+	t.Helper()
+	// Step 1: mutate Alice's bio in the native store.
+	alice, err := fx.subjects.GetSubject(ctx, "s001")
+	if err != nil {
+		t.Fatalf("get s001: %v", err)
+	}
+	alice.Bio = "Edited bio in native UI"
+	if err := fx.subjects.UpdateSubject(ctx, alice); err != nil {
+		t.Fatalf("edit s001: %v", err)
+	}
+
+	// Step 2: simulate Bob acquiring a bio + alias in PhotoPrism after
+	// the original migration.
+	if _, err := fx.maria.ExecContext(ctx,
+		`UPDATE subjects SET subj_bio = 'Late addition', subj_alias = 'B. Example'
+		 WHERE subj_uid = 's002'`); err != nil {
+		t.Fatalf("update s002 in mariadb: %v", err)
+	}
+
+	// Step 3: simulate Sunset label acquiring a description + categories
+	// in PhotoPrism.
+	if _, err := fx.maria.ExecContext(ctx,
+		`UPDATE labels SET label_description = 'Sky after dark',
+		                   label_categories = 'evening, nature'
+		 WHERE id = 2`); err != nil {
+		t.Fatalf("update Sunset label: %v", err)
+	}
+
+	// Step 4: simulate Summer Moments acquiring a notes string.
+	if _, err := fx.maria.ExecContext(ctx,
+		`UPDATE albums SET album_notes = 'Generated from smart-filter'
+		 WHERE album_uid = 'a002'`); err != nil {
+		t.Fatalf("update a002: %v", err)
+	}
+
+	// Step 5: re-run.
+	if _, err := Run(ctx, buildOptions(fx)); err != nil {
+		t.Fatalf("entity backfill migration: %v", err)
+	}
+
+	// Step 6: assert.
+	aliceAfter, err := fx.subjects.GetSubject(ctx, "s001")
+	if err != nil {
+		t.Fatalf("re-get s001: %v", err)
+	}
+	if aliceAfter.Bio != "Edited bio in native UI" {
+		t.Errorf("Alice bio clobbered on re-run = %q", aliceAfter.Bio)
+	}
+	bobAfter, err := fx.subjects.GetSubject(ctx, "s002")
+	if err != nil {
+		t.Fatalf("re-get s002: %v", err)
+	}
+	if bobAfter.Bio != "Late addition" {
+		t.Errorf("Bob bio after backfill = %q", bobAfter.Bio)
+	}
+	if bobAfter.Alias != "B. Example" {
+		t.Errorf("Bob alias after backfill = %q", bobAfter.Alias)
+	}
+
+	labels, err := fx.labels.ListLabels(ctx, database.LabelQuery{Limit: 50})
+	if err != nil {
+		t.Fatalf("list labels after backfill: %v", err)
+	}
+	sunset := database.Label{}
+	for _, l := range labels {
+		if l.Name == "Sunset" {
+			sunset = l
+		}
+	}
+	if sunset.Description != "Sky after dark" {
+		t.Errorf("Sunset description after backfill = %q", sunset.Description)
+	}
+	wantCats := []string{"evening", "nature"}
+	if len(sunset.Categories) != len(wantCats) {
+		t.Errorf("Sunset categories after backfill = %v, want %v",
+			sunset.Categories, wantCats)
+	}
+
+	summer, err := fx.albums.GetAlbum(ctx, "a002")
+	if err != nil {
+		t.Fatalf("re-get a002: %v", err)
+	}
+	if summer.Notes != "Generated from smart-filter" {
+		t.Errorf("Summer notes after backfill = %q", summer.Notes)
+	}
 }
 
 // assertGapFixFieldsPersisted checks the metadata fields added by task
@@ -869,15 +1095,17 @@ func buildOptions(fx *testFixture) *Options {
 }
 
 // assertFirstRunCounts checks that the run inserted the expected number
-// of rows in every stage.
+// of rows in every stage. Subjects, labels, and albums now each carry an
+// extra fixture row (Bob Example, Sunset, Summer Moments) so the gap-fix
+// columns can be exercised — see insertSubjectsLabelsAlbums.
 func assertFirstRunCounts(t *testing.T, report *Report) {
 	t.Helper()
 	want := map[string]int{
-		StageSubjects:  1,
+		StageSubjects:  2,
 		StagePhotos:    3,
 		StageLabels:    2,
 		"photo_labels": 3,
-		StageAlbums:    1,
+		StageAlbums:    2,
 		"album_photos": 2,
 		StageMarkers:   1,
 	}
@@ -923,8 +1151,18 @@ func assertFirstRunPersisted(t *testing.T, ctx context.Context, fx *testFixture)
 	if err != nil {
 		t.Fatalf("list subjects: %v", err)
 	}
-	if len(subjects) != 1 || subjects[0].Name != "Alice Example" {
-		t.Errorf("subjects = %+v", subjects)
+	if len(subjects) != 2 {
+		t.Errorf("subjects = %d, want 2", len(subjects))
+	}
+	subjectsByName := map[string]database.Subject{}
+	for _, s := range subjects {
+		subjectsByName[s.Name] = s
+	}
+	if _, ok := subjectsByName["Alice Example"]; !ok {
+		t.Errorf("Alice Example missing from subjects: %+v", subjects)
+	}
+	if _, ok := subjectsByName["Bob Example"]; !ok {
+		t.Errorf("Bob Example missing from subjects: %+v", subjects)
 	}
 
 	labels, err := fx.labels.ListLabels(ctx, database.LabelQuery{Limit: 50})
@@ -947,11 +1185,22 @@ func assertFirstRunPersisted(t *testing.T, ctx context.Context, fx *testFixture)
 	if err != nil {
 		t.Fatalf("list albums: %v", err)
 	}
-	if len(albums) != 1 || albums[0].Title != "Holiday 2024" {
-		t.Errorf("albums = %+v", albums)
+	if len(albums) != 2 {
+		t.Errorf("albums = %d, want 2", len(albums))
 	}
-	if albums[0].PhotoCount != 2 {
-		t.Errorf("album photo_count = %d, want 2", albums[0].PhotoCount)
+	albumsByTitle := map[string]database.Album{}
+	for _, a := range albums {
+		albumsByTitle[a.Title] = a
+	}
+	holiday, ok := albumsByTitle["Holiday 2024"]
+	if !ok {
+		t.Fatalf("Holiday 2024 missing from albums: %+v", albums)
+	}
+	if holiday.PhotoCount != 2 {
+		t.Errorf("Holiday 2024 photo_count = %d, want 2", holiday.PhotoCount)
+	}
+	if _, ok := albumsByTitle["Summer Moments"]; !ok {
+		t.Errorf("Summer Moments missing from albums: %+v", albums)
 	}
 
 	// Marker should be attached to photo p001's native UID with the

@@ -3,17 +3,24 @@ package migrate
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/kozaktomas/photo-sorter/internal/database"
 )
 
-// ppLabel is a single row of PhotoPrism's `labels` table.
+// ppLabel is a single row of PhotoPrism's `labels` table. Description /
+// Categories are pulled in by readPPLabels so the migrator can populate
+// the native columns added by migration 037 (label_description and
+// label_categories are PhotoPrism's source columns; categories arrives as
+// a comma-separated string and is unpacked into a slice).
 type ppLabel struct {
-	ID       int64
-	Name     string
-	Slug     string
-	Priority int
-	Favorite bool
+	ID          int64
+	Name        string
+	Slug        string
+	Description string
+	Categories  []string
+	Priority    int
+	Favorite    bool
 }
 
 // ppPhotoLabel is one row of `photos_labels` joined back to the PhotoPrism
@@ -72,7 +79,8 @@ func (m *migrator) upsertLabels(
 
 // processOneLabel upserts a single label and records its native UID.
 // Existing rows are reported as Skipped so re-runs converge on zero
-// new creations.
+// new creations — but description/categories are backfilled when the
+// destination value is still the column zero value (task 332a727c).
 func (m *migrator) processOneLabel(
 	ctx context.Context, l *ppLabel, idMap map[int64]string, summary *StageSummary,
 ) {
@@ -84,6 +92,7 @@ func (m *migrator) processOneLabel(
 	existing, _ := m.opts.Labels.GetLabelBySlug(ctx, l.Slug)
 	if existing != nil {
 		idMap[l.ID] = existing.UID
+		m.backfillLabelExtras(ctx, l, existing)
 		summary.Skipped++
 		return
 	}
@@ -93,11 +102,17 @@ func (m *migrator) processOneLabel(
 		summary.Failed++
 		return
 	}
-	// Persist priority/favorite when PhotoPrism had them set —
-	// EnsureLabel only writes name/slug.
-	if labelFlagsDiffer(l, native) {
+	// Persist priority/favorite/description/categories when PhotoPrism
+	// had them set — EnsureLabel only writes name/slug.
+	if labelNeedsUpdate(l, native) {
 		native.Priority = l.Priority
 		native.Favorite = l.Favorite
+		if l.Description != "" {
+			native.Description = l.Description
+		}
+		if len(l.Categories) > 0 {
+			native.Categories = append([]string(nil), l.Categories...)
+		}
 		if err := m.opts.Labels.UpdateLabel(ctx, native); err != nil {
 			fmt.Fprintf(m.out, "\nlabel %q flags: %v\n", l.Name, err)
 			summary.Failed++
@@ -108,6 +123,21 @@ func (m *migrator) processOneLabel(
 	summary.Created++
 }
 
+// labelNeedsUpdate reports whether the PhotoPrism label has flag, text,
+// or category values that the native row does not yet reflect.
+func labelNeedsUpdate(pp *ppLabel, native *database.Label) bool {
+	if labelFlagsDiffer(pp, native) {
+		return true
+	}
+	if pp.Description != "" && native.Description == "" {
+		return true
+	}
+	if len(pp.Categories) > 0 && len(native.Categories) == 0 {
+		return true
+	}
+	return false
+}
+
 // labelFlagsDiffer reports whether the PhotoPrism label has flag values
 // that the native row does not yet reflect (priority / favorite).
 func labelFlagsDiffer(pp *ppLabel, native *database.Label) bool {
@@ -115,6 +145,32 @@ func labelFlagsDiffer(pp *ppLabel, native *database.Label) bool {
 		return false
 	}
 	return native.Priority != pp.Priority || native.Favorite != pp.Favorite
+}
+
+// backfillLabelExtras fills description / categories on an existing
+// destination row when the destination value is still the column zero
+// value and the PhotoPrism source has a non-default value. The native
+// flags (priority/favorite) are left alone because the user may have
+// edited them after the original migration; the spec only asks for the
+// new TEXT/TEXT[] columns to be backfilled.
+func (m *migrator) backfillLabelExtras(
+	ctx context.Context, l *ppLabel, existing *database.Label,
+) {
+	changed := false
+	if existing.Description == "" && l.Description != "" {
+		existing.Description = l.Description
+		changed = true
+	}
+	if len(existing.Categories) == 0 && len(l.Categories) > 0 {
+		existing.Categories = append([]string(nil), l.Categories...)
+		changed = true
+	}
+	if !changed {
+		return
+	}
+	if err := m.opts.Labels.UpdateLabel(ctx, existing); err != nil {
+		fmt.Fprintf(m.out, "\nlabel %q backfill: %v\n", l.Name, err)
+	}
 }
 
 // linkPhotoLabels attaches every (photo, label) pair to its native rows
@@ -190,10 +246,15 @@ func (m *migrator) photoLabelExists(ctx context.Context, photoUID, labelUID stri
 
 // readPPLabels loads non-deleted labels with non-negative priority
 // (PhotoPrism uses negative priorities for internal/hidden labels which
-// we deliberately exclude).
+// we deliberately exclude). label_description and label_categories are
+// pulled into the projection so the migrator can populate the native
+// columns added by migration 037 (task 332a727c).
 func (m *migrator) readPPLabels(ctx context.Context) ([]ppLabel, error) {
 	rows, err := m.opts.MariaDB.QueryContext(ctx,
-		`SELECT id, label_name, label_slug, COALESCE(label_priority, 0), COALESCE(label_favorite, 0)
+		`SELECT id, label_name, label_slug,
+		        COALESCE(label_priority, 0), COALESCE(label_favorite, 0),
+		        COALESCE(label_description, ''),
+		        COALESCE(label_categories, '')
 		 FROM labels
 		 WHERE deleted_at IS NULL AND COALESCE(label_priority, 0) >= 0
 		   AND label_name <> ''
@@ -205,19 +266,51 @@ func (m *migrator) readPPLabels(ctx context.Context) ([]ppLabel, error) {
 	var out []ppLabel
 	for rows.Next() {
 		var (
-			l   ppLabel
-			fav int
+			l                          ppLabel
+			fav                        int
+			descriptionRaw, categories []byte
 		)
-		if err := rows.Scan(&l.ID, &l.Name, &l.Slug, &l.Priority, &fav); err != nil {
+		if err := rows.Scan(
+			&l.ID, &l.Name, &l.Slug, &l.Priority, &fav,
+			&descriptionRaw, &categories,
+		); err != nil {
 			return nil, fmt.Errorf("scan label: %w", err)
 		}
 		l.Favorite = fav != 0
+		l.Description = string(descriptionRaw)
+		l.Categories = splitLabelCategories(string(categories))
 		out = append(out, l)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, fmt.Errorf("iterate labels: %w", err)
 	}
 	return out, nil
+}
+
+// splitLabelCategories unpacks PhotoPrism's comma-separated
+// label_categories column into a deduplicated slice. Whitespace-padded
+// tokens are trimmed; empty tokens are dropped; the first-seen casing
+// wins on duplicate-after-trim entries. The result preserves source
+// order so the migrated value is stable across runs.
+func splitLabelCategories(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, ",")
+	out := make([]string, 0, len(parts))
+	seen := make(map[string]struct{}, len(parts))
+	for _, raw := range parts {
+		token := strings.TrimSpace(raw)
+		if token == "" {
+			continue
+		}
+		if _, dup := seen[token]; dup {
+			continue
+		}
+		seen[token] = struct{}{}
+		out = append(out, token)
+	}
+	return out
 }
 
 // readPPPhotoLabels joins `photos_labels` to `photos` so we get a

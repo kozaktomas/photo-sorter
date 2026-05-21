@@ -40,34 +40,48 @@ func NewLabelsHandler(
 
 // LabelResponse represents a label in API responses. The shape mirrors the
 // previous PhotoPrism passthrough (snake_case keys, photo_count populated)
-// so the frontend contract stays stable. Description / Notes are kept on
-// the wire so existing UI code that reads them does not break; the native
-// labels table does not yet store them, so they always serialise as the
-// empty string.
+// so the frontend contract stays stable. Description / Categories are
+// populated from the native columns added by migration 037 (task
+// 332a727c). Notes remains on the wire as the empty string for backwards
+// compatibility — the native labels table does not store it.
 type LabelResponse struct {
-	UID         string `json:"uid"`
-	Name        string `json:"name"`
-	Slug        string `json:"slug"`
-	Description string `json:"description"`
-	Notes       string `json:"notes"`
-	PhotoCount  int    `json:"photo_count"`
-	Favorite    bool   `json:"favorite"`
-	Priority    int    `json:"priority"`
-	CreatedAt   string `json:"created_at"`
+	UID         string   `json:"uid"`
+	Name        string   `json:"name"`
+	Slug        string   `json:"slug"`
+	Description string   `json:"description"`
+	Categories  []string `json:"categories"`
+	Notes       string   `json:"notes"`
+	PhotoCount  int      `json:"photo_count"`
+	Favorite    bool     `json:"favorite"`
+	Priority    int      `json:"priority"`
+	CreatedAt   string   `json:"created_at"`
 }
 
-// labelToResponse maps a native database.Label to the wire shape.
+// labelToResponse maps a native database.Label to the wire shape. The
+// Categories slice is normalised to an empty slice (never nil) so the
+// JSON encoder emits "[]" instead of "null" for labels with no
+// categories — frontend code can iterate the field unconditionally.
 func labelToResponse(l database.Label) LabelResponse {
+	categories := l.Categories
+	if categories == nil {
+		categories = []string{}
+	}
 	return LabelResponse{
-		UID:        l.UID,
-		Name:       l.Name,
-		Slug:       l.Slug,
-		PhotoCount: l.PhotoCount,
-		Favorite:   l.Favorite,
-		Priority:   l.Priority,
-		CreatedAt:  l.CreatedAt.UTC().Format(time.RFC3339),
+		UID:         l.UID,
+		Name:        l.Name,
+		Slug:        l.Slug,
+		Description: l.Description,
+		Categories:  categories,
+		PhotoCount:  l.PhotoCount,
+		Favorite:    l.Favorite,
+		Priority:    l.Priority,
+		CreatedAt:   l.CreatedAt.UTC().Format(time.RFC3339),
 	}
 }
+
+// labelCategoriesMaxLen is the upper bound on the size of the categories
+// array accepted by LabelUpdateRequest (task 332a727c).
+const labelCategoriesMaxLen = 50
 
 // requireLabelWriter returns the configured LabelWriter; on missing
 // configuration it writes a 503 error response and returns nil.
@@ -169,11 +183,14 @@ func (h *LabelsHandler) Get(w http.ResponseWriter, r *http.Request) {
 // LabelUpdateRequest represents the request body for updating a label.
 // Pointers preserve the distinction between "key omitted" and "key set to
 // an explicit zero value" so a caller can clear the favorite flag without
-// also overwriting priority.
+// also overwriting priority. Description / Categories map onto the
+// native columns added by migration 037 (task 332a727c).
 type LabelUpdateRequest struct {
-	Name     *string `json:"name,omitempty"`
-	Priority *int    `json:"priority,omitempty"`
-	Favorite *bool   `json:"favorite,omitempty"`
+	Name        *string   `json:"name,omitempty"`
+	Description *string   `json:"description,omitempty"`
+	Categories  *[]string `json:"categories,omitempty"`
+	Priority    *int      `json:"priority,omitempty"`
+	Favorite    *bool     `json:"favorite,omitempty"`
 }
 
 // applyLabelUpdateFields copies the supplied request fields into the
@@ -184,12 +201,29 @@ func applyLabelUpdateFields(label *database.Label, req LabelUpdateRequest) {
 		label.Name = *req.Name
 		label.Slug = ""
 	}
+	if req.Description != nil {
+		label.Description = *req.Description
+	}
+	if req.Categories != nil {
+		// Defensive copy so the caller's slice cannot be mutated through
+		// the stored label record.
+		label.Categories = append([]string(nil), (*req.Categories)...)
+	}
 	if req.Priority != nil {
 		label.Priority = *req.Priority
 	}
 	if req.Favorite != nil {
 		label.Favorite = *req.Favorite
 	}
+}
+
+// validateLabelUpdate enforces the spec-defined caps on the new TEXT[]
+// column (task 332a727c). Returns a 400-suitable message or empty.
+func validateLabelUpdate(req LabelUpdateRequest) string {
+	if req.Categories != nil && len(*req.Categories) > labelCategoriesMaxLen {
+		return "categories exceeds 50 entry limit"
+	}
+	return ""
 }
 
 // Update applies a partial update to a label. A name change re-slugs the
@@ -207,6 +241,10 @@ func (h *LabelsHandler) Update(w http.ResponseWriter, r *http.Request) {
 	var req LabelUpdateRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
+		return
+	}
+	if msg := validateLabelUpdate(req); msg != "" {
+		respondError(w, http.StatusBadRequest, msg)
 		return
 	}
 	repo := h.requireLabelWriter(w)
