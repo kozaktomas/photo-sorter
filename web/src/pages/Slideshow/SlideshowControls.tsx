@@ -1,4 +1,4 @@
-import { Play, Pause, X, Maximize, Minimize, Info, Wand2 } from 'lucide-react';
+import { Play, Pause, X, Maximize, Minimize, Info, Wand2, Captions, Tv, Move } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import type { SlideshowEffect } from './hooks/useSlideshow';
 
@@ -8,20 +8,27 @@ interface SlideshowControlsProps {
   currentIndex: number;
   totalPhotos: number;
   isFullscreen: boolean;
+  isTVMode: boolean;
   showInfo: boolean;
   activeEffect: SlideshowEffect;
+  kenBurnsEnabled: boolean;
+  captionsEnabled: boolean;
   onTogglePlayPause: () => void;
   onSetInterval: (ms: number) => void;
   onToggleFullscreen: () => void;
+  onToggleTVMode: () => void;
   onToggleInfo: () => void;
   onToggleEffect: () => void;
+  onToggleKenBurns: () => void;
+  onToggleCaptions: () => void;
   onExit: () => void;
 }
 
 const SPEED_OPTIONS = [
-  { label: '3s', value: 3000 },
   { label: '5s', value: 5000 },
   { label: '10s', value: 10000 },
+  { label: '20s', value: 20000 },
+  { label: '30s', value: 30000 },
 ];
 
 function formatDuration(totalSeconds: number): string {
@@ -42,13 +49,19 @@ export function SlideshowControls({
   currentIndex,
   totalPhotos,
   isFullscreen,
+  isTVMode,
   showInfo,
   activeEffect,
+  kenBurnsEnabled,
+  captionsEnabled,
   onTogglePlayPause,
   onSetInterval,
   onToggleFullscreen,
+  onToggleTVMode,
   onToggleInfo,
   onToggleEffect,
+  onToggleKenBurns,
+  onToggleCaptions,
   onExit,
 }: SlideshowControlsProps) {
   const { t } = useTranslation('common');
@@ -90,7 +103,7 @@ export function SlideshowControls({
           <span className="text-white/40 ml-2">~{formatDuration(totalSeconds)}</span>
         </div>
 
-        {/* Effect toggle + Info toggle + Fullscreen + Exit */}
+        {/* Effect toggle + KB + Captions + Info + TV + Fullscreen + Exit */}
         <div className="flex items-center space-x-2">
           <button
             onClick={onToggleEffect}
@@ -100,12 +113,38 @@ export function SlideshowControls({
                 : 'bg-white/15 text-white/50 hover:bg-white/25 hover:text-white p-2.5'
             }`}
             aria-label={t('effects.' + activeEffect)}
-            title={`${t('effects.' + activeEffect)} (K)`}
+            title={t('effects.' + activeEffect)}
           >
             <Wand2 className="h-5 w-5" />
             {activeEffect !== 'none' && (
               <span className="text-sm font-medium">{t('effects.' + activeEffect)}</span>
             )}
+          </button>
+
+          <button
+            onClick={onToggleKenBurns}
+            className={`p-2.5 rounded-full transition-colors ${
+              kenBurnsEnabled
+                ? 'bg-white/25 text-white'
+                : 'bg-white/15 text-white/50 hover:bg-white/25 hover:text-white'
+            }`}
+            aria-label={t('slideshow.toggleKenBurns')}
+            title={t('slideshow.toggleKenBurns')}
+          >
+            <Move className="h-5 w-5" />
+          </button>
+
+          <button
+            onClick={onToggleCaptions}
+            className={`p-2.5 rounded-full transition-colors ${
+              captionsEnabled
+                ? 'bg-white/25 text-white'
+                : 'bg-white/15 text-white/50 hover:bg-white/25 hover:text-white'
+            }`}
+            aria-label={t('slideshow.toggleCaptions')}
+            title={t('slideshow.toggleCaptions')}
+          >
+            <Captions className="h-5 w-5" />
           </button>
 
           <button
@@ -119,6 +158,19 @@ export function SlideshowControls({
             title={t('tooltips.toggleInfo')}
           >
             <Info className="h-5 w-5" />
+          </button>
+
+          <button
+            onClick={onToggleTVMode}
+            className={`p-2.5 rounded-full transition-colors ${
+              isTVMode
+                ? 'bg-white/25 text-white'
+                : 'bg-white/15 text-white/50 hover:bg-white/25 hover:text-white'
+            }`}
+            aria-label={isTVMode ? t('slideshow.exitTVMode') : t('slideshow.enterTVMode')}
+            title={isTVMode ? t('slideshow.exitTVMode') : t('slideshow.enterTVMode')}
+          >
+            <Tv className="h-5 w-5" />
           </button>
 
           <button

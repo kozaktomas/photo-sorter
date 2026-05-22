@@ -686,7 +686,7 @@ web/src/
 │   │   ├── TypographyTab.tsx, TextsTab.tsx, DuplicatesTab.tsx
 │   │   ├── ExportProgressModal.tsx, PhotoBrowserModal.tsx, PhotoDescriptionDialog.tsx
 │   │   └── PhotoActionOverlay.tsx, PhotoInfoOverlay.tsx
-│   ├── Slideshow/             # Photo slideshow (hooks/useSlideshow.ts, useSlideshowPhotos.ts)
+│   ├── Slideshow/             # Photo slideshow + TV presentation mode (hooks/useSlideshow.ts, useSlideshowPhotos.ts, useTVMode.ts; TVControlBar.tsx)
 │   ├── SuggestAlbums/         # Album completion
 │   ├── SmartAlbums/           # Saved photo searches (SmartAlbumsSection, SmartAlbumModal, SmartAlbumDetail)
 │   └── Upload/                # Photo upload (hooks/useUploadJob.ts, DropZone.tsx)

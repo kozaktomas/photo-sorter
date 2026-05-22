@@ -4,8 +4,10 @@ import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { getThumbnailUrl } from '../../api/client';
 import { useSlideshowPhotos } from './hooks/useSlideshowPhotos';
 import { useSlideshow } from './hooks/useSlideshow';
+import { useTVMode } from './hooks/useTVMode';
 import { SlideshowControls } from './SlideshowControls';
-import { EFFECT_CONFIGS } from './effectConfigs';
+import { TVControlBar } from './TVControlBar';
+import { EFFECT_CONFIGS, KEN_BURNS_CONFIG } from './effectConfigs';
 import type { Photo } from '../../types';
 
 function useMouseActivity(isFullscreen: boolean) {
@@ -50,19 +52,54 @@ function useMouseActivity(isFullscreen: boolean) {
 export function SlideshowPage() {
   const { t } = useTranslation('common');
   const { photos, title, isLoading, error, sourceType } = useSlideshowPhotos();
-  const slideshow = useSlideshow(photos);
+  const [toast, setToast] = useState<string | null>(null);
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showToast = useCallback((message: string) => {
+    setToast(message);
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    toastTimerRef.current = setTimeout(() => setToast(null), 4000);
+  }, []);
+
+  useEffect(() => () => {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+  }, []);
+
+  const tv = useTVMode({
+    onFullscreenDenied: useCallback(() => showToast(t('slideshow.fullscreenUnavailable')), [showToast, t]),
+  });
+
+  // The React Compiler auto-memoizes this object based on its inputs; the
+  // inner functions are stable useCallbacks from useTVMode.
+  const slideshow = useSlideshow(photos, {
+    tvMode: {
+      isActive: tv.isTVMode,
+      toggle: () => void tv.toggle(),
+      exit: () => void tv.exit(),
+    },
+  });
+
   const [imageLoaded, setImageLoaded] = useState(false);
   const [prevPhoto, setPrevPhoto] = useState<Photo | null>(null);
   const [isTransitioning, setIsTransitioning] = useState(false);
   const [outgoingEndStyle, setOutgoingEndStyle] = useState<CSSProperties | null>(null);
   const prevPhotoRef = useRef<Photo | null>(null);
   const preloadedRef = useRef<Set<string>>(new Set());
-  const { controlsVisible, onMouseMove } = useMouseActivity(slideshow.isFullscreen);
+  const { controlsVisible: nonTVControlsVisible, onMouseMove: nonTVOnMouseMove } = useMouseActivity(
+    slideshow.isFullscreen && !tv.isTVMode,
+  );
 
   const currentPhoto = photos[slideshow.currentIndex];
-  const activeConfig = slideshow.activeEffect !== 'none'
+  const transitionConfig = slideshow.activeEffect !== 'none'
     ? EFFECT_CONFIGS[slideshow.activeEffect]
     : null;
+  // Whether Ken Burns motion is currently driving the "during" animation. If
+  // KB is enabled it always wins; otherwise fall back to the transition
+  // effect's own during anim (e.g. reflections breathe).
+  const kbDuring = slideshow.kenBurnsEnabled;
+  const effectiveOverflowHidden = transitionConfig?.overflowHidden !== false || kbDuring;
+  // Total wall-clock time for the cross-fade/transition between photos.
+  const transitionDuration = transitionConfig?.transitionDuration ?? 300;
 
   // Preload upcoming photos and track readiness
   useEffect(() => {
@@ -87,22 +124,26 @@ export function SlideshowPage() {
     } else {
       setImageLoaded(true);
     }
-    if (activeConfig && prevPhotoRef.current && prevPhotoRef.current.uid !== currentPhoto?.uid) {
+    if (prevPhotoRef.current && prevPhotoRef.current.uid !== currentPhoto?.uid) {
       // Freeze the outgoing photo at its during-animation end state via static CSS
       // kenBurnsVariant still holds the OLD value here (effect hasn't updated it yet)
-      if (activeConfig.duringEndStyle) {
-        setOutgoingEndStyle(activeConfig.duringEndStyle(slideshow.kenBurnsVariant));
+      if (kbDuring) {
+        setOutgoingEndStyle(KEN_BURNS_CONFIG.duringEndStyle(slideshow.kenBurnsVariant));
+      } else if (transitionConfig?.duringEndStyle) {
+        setOutgoingEndStyle(transitionConfig.duringEndStyle(slideshow.kenBurnsVariant));
       } else {
         setOutgoingEndStyle(null);
       }
-      setPrevPhoto(prevPhotoRef.current);
-      setIsTransitioning(true);
-      const timer = setTimeout(() => {
-        setIsTransitioning(false);
-        setPrevPhoto(null);
-        setOutgoingEndStyle(null);
-      }, activeConfig.transitionDuration);
-      return () => clearTimeout(timer);
+      if (transitionConfig || kbDuring) {
+        setPrevPhoto(prevPhotoRef.current);
+        setIsTransitioning(true);
+        const timer = setTimeout(() => {
+          setIsTransitioning(false);
+          setPrevPhoto(null);
+          setOutgoingEndStyle(null);
+        }, transitionDuration);
+        return () => clearTimeout(timer);
+      }
     }
   }, [currentPhoto?.uid]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -115,7 +156,7 @@ export function SlideshowPage() {
   const hasPrev = slideshow.currentIndex > 0;
   const hasNext = slideshow.currentIndex < photos.length - 1;
 
-  // Format date for display
+  // Format date for display (top info overlay)
   const photoDate = currentPhoto?.taken_at
     ? new Date(currentPhoto.taken_at).toLocaleDateString(undefined, {
         year: 'numeric',
@@ -123,6 +164,23 @@ export function SlideshowPage() {
         day: 'numeric',
       })
     : null;
+
+  // Format date for TV-mode captions ("June 2024" — human-friendly, no day)
+  const captionDate = currentPhoto?.taken_at && currentPhoto.year > 1
+    ? new Date(currentPhoto.taken_at).toLocaleDateString(undefined, {
+        year: 'numeric',
+        month: 'long',
+      })
+    : null;
+
+  // Unified mouse-move handler: feeds both the non-TV controls timer and the TV mode timer.
+  const onMouseMove = useCallback(() => {
+    if (tv.isTVMode) {
+      tv.onMouseMove();
+    } else {
+      nonTVOnMouseMove();
+    }
+  }, [tv, nonTVOnMouseMove]);
 
   if (isLoading) {
     return (
@@ -164,15 +222,25 @@ export function SlideshowPage() {
     );
   }
 
-  // Determine overlay visibility
-  const overlayClass = slideshow.isFullscreen
-    ? `transition-opacity duration-300 ${controlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`
+  // Overlay visibility for the chrome (top info bar, bottom controls bar, side arrows).
+  // In TV mode, all chrome is hidden — replaced by the floating pill bar + captions strip.
+  // In non-TV fullscreen, chrome auto-hides on inactivity. Otherwise it's group-hover driven.
+  const overlayClass = tv.isTVMode
+    ? 'opacity-0 pointer-events-none'
+    : slideshow.isFullscreen
+    ? `transition-opacity duration-300 ${nonTVControlsVisible ? 'opacity-100' : 'opacity-0 pointer-events-none'}`
     : 'opacity-0 group-hover/slideshow:opacity-100 transition-opacity duration-300';
+
+  // Cursor hides in TV mode after 3s inactivity, and in non-TV fullscreen after 5s.
+  const cursorHidden = (tv.isTVMode && !tv.cursorVisible) || (slideshow.isFullscreen && !tv.isTVMode && !nonTVControlsVisible);
+
+  // Pause = freeze Ken Burns + transition animations on the current frame.
+  const animationPlayState: CSSProperties['animationPlayState'] = slideshow.isPlaying ? 'running' : 'paused';
 
   return (
     <div
-      className={`fixed inset-0 bg-black z-50 ${!slideshow.isFullscreen ? 'group/slideshow' : ''} ${
-        slideshow.isFullscreen && !controlsVisible ? 'cursor-none' : ''
+      className={`fixed inset-0 bg-black z-50 ${!slideshow.isFullscreen && !tv.isTVMode ? 'group/slideshow' : ''} ${
+        cursorHidden ? 'cursor-none' : ''
       }`}
       onMouseMove={onMouseMove}
     >
@@ -198,7 +266,7 @@ export function SlideshowPage() {
       )}
 
       {/* Main photo */}
-      <div className={`absolute inset-0 flex items-center justify-center ${activeConfig?.overflowHidden !== false ? 'overflow-hidden' : ''}`}>
+      <div className={`absolute inset-0 flex items-center justify-center ${effectiveOverflowHidden ? 'overflow-hidden' : ''}`}>
         {/* Current photo (underneath) */}
         {currentPhoto && (
           <img
@@ -209,37 +277,64 @@ export function SlideshowPage() {
               imageLoaded ? 'opacity-100' : 'opacity-0'
             }`}
             style={(() => {
-              if (!activeConfig || !imageLoaded) return undefined;
-              // Build animation list: during animation first (stable index), incoming on top
+              if (!imageLoaded) return undefined;
               const anims: string[] = [];
-              if (activeConfig.during) {
-                anims.push(activeConfig.during(slideshow.kenBurnsVariant, slideshow.interval));
+              if (kbDuring) {
+                anims.push(KEN_BURNS_CONFIG.during(slideshow.kenBurnsVariant, slideshow.interval));
+              } else if (transitionConfig?.during) {
+                anims.push(transitionConfig.during(slideshow.kenBurnsVariant, slideshow.interval));
               }
-              if (isTransitioning && activeConfig.incoming) {
-                anims.push(activeConfig.incoming);
+              if (isTransitioning && transitionConfig?.incoming) {
+                anims.push(transitionConfig.incoming);
               }
               if (anims.length === 0) return undefined;
-              return { animation: anims.join(', '), ...activeConfig.incomingStyle };
+              return {
+                animation: anims.join(', '),
+                animationPlayState,
+                ...transitionConfig?.incomingStyle,
+              };
             })()}
             onLoad={() => setImageLoaded(true)}
             onError={() => setImageLoaded(true)}
           />
         )}
         {/* Outgoing photo (on top, fading/animating out) */}
-        {activeConfig && isTransitioning && prevPhoto && (
+        {isTransitioning && prevPhoto && (
           <img
             key={`prev-${prevPhoto.uid}`}
             src={getThumbnailUrl(prevPhoto.uid, 'fit_1920')}
             alt=""
             className="absolute inset-0 h-full w-full object-contain"
             style={{
-              animation: activeConfig.outgoing ?? undefined,
-              ...activeConfig.outgoingStyle,
+              animation: transitionConfig?.outgoing ?? undefined,
+              animationPlayState,
+              ...transitionConfig?.outgoingStyle,
               ...outgoingEndStyle,
             }}
           />
         )}
       </div>
+
+      {/* TV-mode captions strip (bottom-left). Large font, semi-transparent dark BG. */}
+      {tv.isTVMode && slideshow.captionsEnabled && currentPhoto && (currentPhoto.title || currentPhoto.description || captionDate) && (
+        <div className="absolute bottom-10 left-10 z-20 max-w-[60vw] rounded-md px-6 py-4 backdrop-blur-sm" style={{ backgroundColor: 'rgba(0,0,0,0.6)' }}>
+          {(currentPhoto.title || currentPhoto.file_name) && (
+            <div className="text-white font-semibold leading-tight" style={{ fontSize: 'clamp(1.5rem, 2.2vw, 2.5rem)' }}>
+              {currentPhoto.title || currentPhoto.file_name}
+            </div>
+          )}
+          {currentPhoto.description && (
+            <div className="text-white/85 mt-2 leading-snug" style={{ fontSize: 'clamp(1rem, 1.4vw, 1.5rem)' }}>
+              {currentPhoto.description}
+            </div>
+          )}
+          {captionDate && (
+            <div className="text-white/70 mt-2" style={{ fontSize: 'clamp(0.95rem, 1.2vw, 1.25rem)' }}>
+              {captionDate}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Left arrow */}
       <button
@@ -250,8 +345,10 @@ export function SlideshowPage() {
             ? 'text-white hover:bg-black/70 cursor-pointer'
             : 'text-white/20 cursor-not-allowed'
         } ${
-          slideshow.isFullscreen
-            ? `${controlsVisible ? (hasPrev ? 'opacity-100' : 'opacity-30') : 'opacity-0 pointer-events-none'} transition-opacity duration-300`
+          tv.isTVMode
+            ? 'opacity-0 pointer-events-none'
+            : slideshow.isFullscreen
+            ? `${nonTVControlsVisible ? (hasPrev ? 'opacity-100' : 'opacity-30') : 'opacity-0 pointer-events-none'} transition-opacity duration-300`
             : (hasPrev ? 'opacity-0 group-hover/slideshow:opacity-100' : 'opacity-0 group-hover/slideshow:opacity-30')
         }`}
         aria-label={t('buttons.previousPhoto')}
@@ -268,8 +365,10 @@ export function SlideshowPage() {
             ? 'text-white hover:bg-black/70 cursor-pointer'
             : 'text-white/20 cursor-not-allowed'
         } ${
-          slideshow.isFullscreen
-            ? `${controlsVisible ? (hasNext ? 'opacity-100' : 'opacity-30') : 'opacity-0 pointer-events-none'} transition-opacity duration-300`
+          tv.isTVMode
+            ? 'opacity-0 pointer-events-none'
+            : slideshow.isFullscreen
+            ? `${nonTVControlsVisible ? (hasNext ? 'opacity-100' : 'opacity-30') : 'opacity-0 pointer-events-none'} transition-opacity duration-300`
             : (hasNext ? 'opacity-0 group-hover/slideshow:opacity-100' : 'opacity-0 group-hover/slideshow:opacity-30')
         }`}
         aria-label={t('buttons.nextPhoto')}
@@ -277,7 +376,7 @@ export function SlideshowPage() {
         <ChevronRight className="h-8 w-8" />
       </button>
 
-      {/* Bottom controls */}
+      {/* Bottom controls (hidden in TV mode) */}
       <div className={overlayClass}>
         <SlideshowControls
           isPlaying={slideshow.isPlaying}
@@ -285,16 +384,43 @@ export function SlideshowPage() {
           currentIndex={slideshow.currentIndex}
           totalPhotos={photos.length}
           isFullscreen={slideshow.isFullscreen}
+          isTVMode={tv.isTVMode}
           showInfo={slideshow.showInfo}
           activeEffect={slideshow.activeEffect}
+          kenBurnsEnabled={slideshow.kenBurnsEnabled}
+          captionsEnabled={slideshow.captionsEnabled}
           onTogglePlayPause={slideshow.togglePlayPause}
           onSetInterval={slideshow.setInterval}
           onToggleFullscreen={slideshow.toggleFullscreen}
+          onToggleTVMode={() => void tv.toggle()}
           onToggleInfo={slideshow.toggleInfo}
           onToggleEffect={slideshow.toggleEffect}
+          onToggleKenBurns={slideshow.toggleKenBurns}
+          onToggleCaptions={slideshow.toggleCaptions}
           onExit={slideshow.exit}
         />
       </div>
+
+      {/* TV-mode floating pill control bar */}
+      {tv.isTVMode && (
+        <TVControlBar
+          isPlaying={slideshow.isPlaying}
+          visible={tv.controlsVisible}
+          hasPrev={hasPrev}
+          hasNext={hasNext}
+          onTogglePlayPause={slideshow.togglePlayPause}
+          onPrev={slideshow.goToPrev}
+          onNext={slideshow.goToNext}
+          onExitTVMode={() => void tv.exit()}
+        />
+      )}
+
+      {/* Toast for fullscreen-denied or similar */}
+      {toast && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-40 rounded-md bg-black/85 px-4 py-2 text-white text-sm shadow-lg ring-1 ring-white/15">
+          {toast}
+        </div>
+      )}
     </div>
   );
 }

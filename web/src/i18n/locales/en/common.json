@@ -144,6 +144,13 @@
     "push": "Push",
     "origami": "Origami"
   },
+  "slideshow": {
+    "enterTVMode": "TV mode (F)",
+    "exitTVMode": "Exit TV mode (Esc)",
+    "toggleKenBurns": "Ken Burns motion (K)",
+    "toggleCaptions": "Captions (C)",
+    "fullscreenUnavailable": "Fullscreen not available — showing maximized in-page"
+  },
   "match": "{{value}}% match",
   "time": {
     "noDate": "No date"

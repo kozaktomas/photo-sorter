@@ -522,35 +522,46 @@ Fullscreen slideshow viewer for photos in an album or label.
 
 **Features:**
 - Fullscreen dark background with no navigation chrome
-- Auto-play advances photos every 5 seconds by default
+- Auto-play advances photos every 5 seconds by default; choices: 5s/10s/20s/30s, persisted in `localStorage`
 - Photo info overlay (source name, photo title, date) fades in on hover
 - Controls bar fades in on hover with play/pause, speed selection, counter, and exit
 - Preloads next 2 images for instant transitions
 - Stops at last photo (no loop); pressing play at the end restarts from the beginning
 - Transition effects with smooth crossfade animations
+- Ken Burns motion (slow pan + zoom, alternates direction per photo) — independent toggle, persisted
+- TV mode for presentation on a TV: browser fullscreen, all chrome hidden, large captions, wake lock, floating pill control bar that fades in on cursor movement
 
-**Transition Effects:**
+**TV Mode (`F` or the TV icon button):**
+- Requests browser fullscreen via the Fullscreen API; falls back to in-page maximized black overlay with a toast if denied
+- Hides every UI chrome (nav, top info, bottom controls); replaces them with a floating pill bar (prev / play-pause / next / exit) at bottom-center
+- Floating bar and mouse cursor fade out after 3s of inactivity and reappear on movement
+- Requests `navigator.wakeLock.request('screen')` to keep the display awake; silent no-op when the API is unsupported (e.g. older Safari) and released on exit
+- Optional caption overlay at bottom-left (semi-transparent, large `clamp()`-scaled font) — shows photo title, description, and a human-friendly date ("June 2024")
+- Pause instantly freezes Ken Burns motion on the current frame, not just auto-advance
+- Press `Esc` to exit TV mode and restore chrome
+
+**Transition Effects** (cycled via the wand button — Ken Burns motion is now a separate toggle, see below):
 - **No effect** - Simple opacity fade-in (default)
-- **Ken Burns** - Pan/zoom during display with fade-through-black transition
 - **Reflections** - Subtle breathing pulse during display with slide-up transition
 - **Dissolve** - Smooth cross-dissolve between photos
 - **Push** - Outgoing photo slides left, incoming slides from right
 - **Origami** - 3D fold/unfold page-turn effect
 
-Press `K` or click the wand button to cycle through effects. The active effect name is shown next to the wand icon.
+**Ken Burns Motion (`K`):** Independent toggle from the transition effect — slow CSS-keyframe pan + zoom (max 1.15× scale, max 8% pan from center, cubic-bezier ease) layered on top of any transition. Direction alternates per photo (zoom-in/out, pan left/right) so the loop doesn't feel repetitive.
 
-**Speed Options:**
-- 3 seconds
-- 5 seconds (default)
-- 10 seconds
+**Captions (`C`):** Toggles the TV-mode caption strip (bottom-left). Persisted in `localStorage`. Has no visible effect outside TV mode.
+
+**Speed Options:** 5s / 10s / 20s / 30s. Persisted in `localStorage`.
 
 **Keyboard Shortcuts:**
 - `←` / `→` - Previous / next photo
+- `↑` / `↓` - Slower / faster (cycles through speed presets, wraps around)
 - `Space` - Toggle play/pause
-- `K` - Cycle transition effect (None → Ken Burns → Reflections → Dissolve → Push → Origami)
-- `I` - Toggle info overlay
-- `F` - Toggle fullscreen
-- `Escape` - Exit slideshow (returns to previous page)
+- `K` - Toggle Ken Burns motion
+- `C` - Toggle TV-mode captions overlay
+- `I` - Toggle top info overlay
+- `F` - Toggle TV mode (full chrome-less presentation)
+- `Escape` - Exit TV mode if active; otherwise exit slideshow (returns to previous page)
 
 ### Upload (`/upload`)
 
@@ -759,11 +770,13 @@ Find photos that belong in existing albums but aren't there yet by searching the
 
 ### Slideshow
 - `←` / `→` - Previous / next photo
+- `↑` / `↓` - Slower / faster (cycles speed presets 5/10/20/30s, wraps)
 - `Space` - Toggle play/pause
-- `K` - Cycle transition effect
-- `I` - Toggle info overlay
-- `F` - Toggle fullscreen
-- `Escape` - Exit slideshow
+- `K` - Toggle Ken Burns motion
+- `C` - Toggle TV-mode captions overlay
+- `I` - Toggle top info overlay
+- `F` - Toggle TV (presentation) mode
+- `Escape` - Exit TV mode if active; otherwise exit slideshow
 
 ## API Endpoints
 
@@ -981,11 +994,13 @@ web/src/
 │   │   ├── MetadataDiff.tsx
 │   │   ├── CompareSummary.tsx
 │   │   └── index.tsx
-│   ├── Slideshow/            # Fullscreen slideshow
+│   ├── Slideshow/            # Fullscreen slideshow + TV presentation mode
 │   │   ├── hooks/useSlideshow.ts
 │   │   ├── hooks/useSlideshowPhotos.ts
-│   │   ├── effectConfigs.ts
+│   │   ├── hooks/useTVMode.ts     # Browser fullscreen, wake lock, cursor auto-hide
+│   │   ├── effectConfigs.ts       # Transition effects + Ken Burns motion config
 │   │   ├── SlideshowControls.tsx
+│   │   ├── TVControlBar.tsx       # Floating pill control bar shown in TV mode
 │   │   └── index.tsx
 │   ├── Upload/              # Photo upload
 │   │   ├── hooks/useUploadJob.ts

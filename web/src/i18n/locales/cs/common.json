@@ -152,6 +152,13 @@
     "push": "Posun",
     "origami": "Origami"
   },
+  "slideshow": {
+    "enterTVMode": "Re\u017eim TV (F)",
+    "exitTVMode": "Ukon\u010dit re\u017eim TV (Esc)",
+    "toggleKenBurns": "Pohyb Ken Burns (K)",
+    "toggleCaptions": "Popisky (C)",
+    "fullscreenUnavailable": "Cel\u00e1 obrazovka nen\u00ed k dispozici \u2014 zobrazujeme maximalizovan\u011b na str\u00e1nce"
+  },
   "match": "{{value}}% shoda",
   "time": {
     "noDate": "Bez data"
