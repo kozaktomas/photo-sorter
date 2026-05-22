@@ -28,6 +28,7 @@ import { CapturePage } from './pages/Capture/Capture';
 import { TrashPage } from './pages/Trash/Trash';
 import { SettingsPage } from './pages/Settings/Settings';
 import { LoginPage } from './pages/Login';
+import { PublicSharePage } from './pages/Share/PublicShare';
 import { AuthProvider, useAuth } from './hooks/useAuth';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -53,6 +54,7 @@ function AppRoutes() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/share/:slug" element={<PublicSharePage />} />
       <Route
         path="/"
         element={

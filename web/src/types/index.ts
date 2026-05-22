@@ -3,6 +3,49 @@
 // Re-export event types
 export * from './events';
 
+export interface ShareLink {
+  slug: string;
+  album_uid: string;
+  has_password: boolean;
+  expires_at: string | null;
+  created_at: string;
+  created_by_user_uid: string;
+  url: string;
+}
+
+export interface ShareLinksResponse {
+  links: ShareLink[];
+}
+
+export interface PublicSharePhoto {
+  uid: string;
+  title: string;
+  taken_at: string | null;
+  width: number;
+  height: number;
+  thumb_url: string;
+}
+
+export interface PublicShareAlbum {
+  title: string;
+  photo_count: number;
+  cover_thumb_url: string;
+}
+
+export interface PublicShareInfo {
+  slug: string;
+  has_password: boolean;
+  expires_at: string | null;
+  album?: PublicShareAlbum;
+}
+
+export interface PublicSharePhotosResponse {
+  photos: PublicSharePhoto[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
 export interface Album {
   uid: string;
   title: string;

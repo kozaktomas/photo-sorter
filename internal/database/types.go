@@ -575,6 +575,46 @@ type SubjectQuery struct {
 	Offset   int
 }
 
+// ErrShareLinkExpired is returned when a public share link is past its
+// expires_at timestamp. The public API translates this into HTTP 410.
+var ErrShareLinkExpired = errors.New("share link expired")
+
+// ErrShareLinkSlugTaken is returned by ShareLinkWriter.CreateShareLink when
+// the requested slug is already in use. Slug uniqueness is enforced by the
+// table's primary key; this typed error lets the handler return 409.
+var ErrShareLinkSlugTaken = errors.New("share link slug already exists")
+
+// ErrShareLinkInvalidSlug is returned when a requested slug fails the
+// `^[a-z0-9-]{3,64}$` validation. The handler returns 400.
+var ErrShareLinkInvalidSlug = errors.New("share link slug must match ^[a-z0-9-]{3,64}$")
+
+// ShareLink is a public share link for an album. PasswordHash is the
+// bcrypt-hashed password (NULL/empty when the link is unprotected). The
+// raw password is never persisted. ExpiresAt is the optional expiration
+// timestamp (NULL = no expiration).
+type ShareLink struct {
+	Slug             string
+	AlbumUID         string
+	PasswordHash     string // bcrypt hash; empty when no password
+	ExpiresAt        *time.Time
+	CreatedAt        time.Time
+	CreatedByUserUID string
+}
+
+// HasPassword returns true when the link is password-protected.
+func (l *ShareLink) HasPassword() bool {
+	return l.PasswordHash != ""
+}
+
+// IsExpired returns true when the link has a non-NULL expires_at that is
+// at or before the supplied now.
+func (l *ShareLink) IsExpired(now time.Time) bool {
+	if l.ExpiresAt == nil {
+		return false
+	}
+	return !now.Before(*l.ExpiresAt)
+}
+
 // PageFormatSlotCount returns the number of slots for a given page format.
 func PageFormatSlotCount(format string) int {
 	switch format {

@@ -35,6 +35,10 @@ import type {
   FontInfo,
   HistogramResponse,
   GeoPointsResponse,
+  ShareLink,
+  ShareLinksResponse,
+  PublicShareInfo,
+  PublicSharePhotosResponse,
 } from '../types';
 
 const API_BASE = '/api/v1';
@@ -1177,4 +1181,98 @@ export async function cancelBookExportJob(jobId: string): Promise<void> {
     method: 'DELETE',
     credentials: 'include',
   });
+}
+
+// Share Links — authenticated side ---------------------------------------
+
+export async function createShareLink(
+  albumUid: string,
+  params: { slug?: string; password?: string; expires_at?: string | null }
+): Promise<ShareLink> {
+  return request<ShareLink>(`/albums/${albumUid}/share`, {
+    method: 'POST',
+    body: JSON.stringify({
+      slug: params.slug ?? '',
+      password: params.password ?? '',
+      expires_at: params.expires_at ?? '',
+    }),
+  });
+}
+
+export async function listShareLinks(albumUid: string): Promise<ShareLink[]> {
+  const data = await request<ShareLinksResponse>(`/albums/${albumUid}/shares`);
+  return data.links ?? [];
+}
+
+export async function revokeShareLink(slug: string): Promise<void> {
+  await request<{ success: boolean }>(`/shares/${slug}`, { method: 'DELETE' });
+}
+
+// Share Links — public viewer --------------------------------------------
+
+async function publicRequest<T>(
+  endpoint: string,
+  options: RequestInit = {}
+): Promise<T> {
+  const url = `${API_BASE}${endpoint}`;
+  const headers = new Headers({ 'Content-Type': 'application/json' });
+  if (options.headers) {
+    new Headers(options.headers).forEach((value, key) => {
+      headers.set(key, value);
+    });
+  }
+  const response = await fetch(url, {
+    ...options,
+    credentials: 'include',
+    headers,
+  });
+  if (!response.ok) {
+    const errorData = (await response.json().catch(() => ({}))) as Record<string, unknown>;
+    const errorMessage = typeof errorData.error === 'string'
+      ? errorData.error
+      : `Request failed with status ${response.status}`;
+    throw new ApiError(response.status, errorMessage);
+  }
+  const text = await response.text();
+  if (!text) return {} as T;
+  return JSON.parse(text) as T;
+}
+
+export async function getPublicShare(slug: string): Promise<PublicShareInfo> {
+  return publicRequest<PublicShareInfo>(`/public/share/${slug}/`);
+}
+
+export async function verifyPublicShare(
+  slug: string,
+  password: string
+): Promise<void> {
+  await publicRequest<{ ok: boolean }>(`/public/share/${slug}/verify`, {
+    method: 'POST',
+    body: JSON.stringify({ password }),
+  });
+}
+
+export async function listPublicSharePhotos(
+  slug: string,
+  params?: { limit?: number; offset?: number }
+): Promise<PublicSharePhotosResponse> {
+  const search = new URLSearchParams();
+  if (params?.limit) search.set('limit', params.limit.toString());
+  if (params?.offset) search.set('offset', params.offset.toString());
+  const qs = search.toString();
+  return publicRequest<PublicSharePhotosResponse>(
+    `/public/share/${slug}/photos${qs ? `?${qs}` : ''}`
+  );
+}
+
+export function getPublicShareDownloadUrl(slug: string, photoUid: string): string {
+  return `${API_BASE}/public/share/${slug}/photos/${photoUid}/download`;
+}
+
+export function getPublicShareThumbUrl(
+  slug: string,
+  photoUid: string,
+  size: string
+): string {
+  return `${API_BASE}/public/share/${slug}/photos/${photoUid}/thumb/${size}`;
 }

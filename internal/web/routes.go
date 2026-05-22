@@ -90,6 +90,18 @@ func (s *Server) resolveSubjectRepo() database.SubjectWriter {
 	return r
 }
 
+// resolveShareLinkRepo best-effort-fetches the native ShareLinkWriter.
+// Returns nil (and logs) when the registration is missing — the share
+// endpoints then surface a 503 instead of blocking server startup.
+func (s *Server) resolveShareLinkRepo() database.ShareLinkWriter {
+	r, err := database.GetShareLinkWriter(context.Background())
+	if err != nil {
+		log.Printf("share-links: native repo unavailable: %v", err)
+		return nil
+	}
+	return r
+}
+
 // resolveUserRepos best-effort-fetches the native UserReader and
 // UserWriter. Returns nils (and logs) when the registration is missing —
 // the auth handler then surfaces a 500 from login until the user store is
@@ -118,6 +130,7 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 	labelRepo := s.resolveLabelRepo()
 	markerRepo := s.resolveMarkerRepo()
 	subjectRepo := s.resolveSubjectRepo()
+	shareLinkRepo := s.resolveShareLinkRepo()
 	userReader, userWriter := s.resolveUserRepos()
 
 	// Create handlers.
@@ -139,6 +152,9 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 	textHandler := handlers.NewTextHandler(s.config)
 	textVersionsHandler := handlers.NewTextVersionsHandler()
 	usersHandler := handlers.NewUsersHandler(s.config, userWriter)
+	shareHandler := handlers.NewShareHandler(
+		s.config, sessionManager, shareLinkRepo, albumRepo, photoRepo, photoStore,
+	)
 
 	// Health check (no auth required).
 	s.router.Get("/api/v1/health", handlers.HealthCheck)
@@ -149,6 +165,18 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 		r.Post("/auth/login", authHandler.Login)
 		r.Post("/auth/logout", authHandler.Logout)
 		r.Get("/auth/status", authHandler.Status)
+
+		// Public share endpoints. These intentionally live outside the
+		// RequireAuth group so anonymous recipients can hit them. The
+		// handler enforces its own (optional) per-link password and
+		// rate-limits the verify endpoint.
+		r.Route("/public/share/{slug}", func(r chi.Router) {
+			r.Get("/", shareHandler.Get)
+			r.Post("/verify", shareHandler.VerifyPassword)
+			r.Get("/photos", shareHandler.ListPhotos)
+			r.Get("/photos/{photo_uid}/thumb/{size}", shareHandler.Thumbnail)
+			r.Get("/photos/{photo_uid}/download", shareHandler.Download)
+		})
 
 		// All other routes require authentication and get a PhotoPrism client injected.
 		r.Group(func(r chi.Router) {
@@ -172,6 +200,11 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 				r.Post("/albums/{uid}/photos", albumsHandler.AddPhotos)
 				r.Delete("/albums/{uid}/photos", albumsHandler.ClearPhotos)
 				r.Delete("/albums/{uid}/photos/batch", albumsHandler.RemovePhotos)
+
+				// Album share links (auth-side).
+				r.Post("/albums/{uid}/share", shareHandler.CreateLink)
+				r.Get("/albums/{uid}/shares", shareHandler.ListLinks)
+				r.Delete("/shares/{slug}", shareHandler.RevokeLink)
 
 				// Labels.
 				r.Get("/labels", labelsHandler.List)

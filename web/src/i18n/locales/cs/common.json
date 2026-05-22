@@ -65,7 +65,8 @@
     "copyPhotoId": "Kop\u00edrovat ID fotky",
     "clear": "Vymazat",
     "play": "P\u0159ehr\u00e1t",
-    "pause": "Pozastavit"
+    "pause": "Pozastavit",
+    "close": "Zav\u0159\u00edt"
   },
   "status": {
     "loading": "Načítání...",

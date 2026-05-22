@@ -418,7 +418,7 @@ internal/database/
     └── migrations/     # SQL migrations 001-038 (embedded)
 ```
 
-**Tables:** `users` (admin/editor/viewer with bcrypt hashes), `photos`, `photo_files`, `albums` + `album_photos`, `labels` + `photo_labels`, `subjects`, `markers`, `photo_phashes`, `embeddings` (768-dim CLIP), `faces` (512-dim ResNet100 with cached marker metadata), `era_embeddings` (768-dim CLIP text centroids), `faces_processed` (tracking), `sessions` (with `user_uid` for upload support across restarts), `photo_books` (with typography settings: `body_font`, `heading_font`, `body_font_size`, `body_line_height`, `h1_font_size`, `h2_font_size`, `caption_opacity`, `caption_font_size`, `heading_color_bleed` added in migrations 021-023, plus `body_text_pad_mm` in migration 029), `book_chapters` (migration 016, with `color` column from migration 020), `book_sections` (with optional `chapter_id`), `section_photos`, `book_pages` (with `split_position`, `hide_page_number` from migration 025, `1_fullbleed` format added to the CHECK constraint in migration 027), `page_slots` (with `text_content`, `is_captions_slot` from migration 026, `is_contents_slot` from migration 030, `crop_x`/`crop_y`/`crop_scale`; photo_uid / text_content / is_captions_slot / is_contents_slot are mutually exclusive), `text_versions` (migration 017), `text_check_results` (migration 019, extended by migration 028 with a `suggestions JSONB` column).
+**Tables:** `users` (admin/editor/viewer with bcrypt hashes), `photos`, `photo_files`, `albums` + `album_photos`, `labels` + `photo_labels`, `subjects`, `markers`, `photo_phashes`, `embeddings` (768-dim CLIP), `faces` (512-dim ResNet100 with cached marker metadata), `era_embeddings` (768-dim CLIP text centroids), `faces_processed` (tracking), `sessions` (with `user_uid` for upload support across restarts), `photo_books` (with typography settings: `body_font`, `heading_font`, `body_font_size`, `body_line_height`, `h1_font_size`, `h2_font_size`, `caption_opacity`, `caption_font_size`, `heading_color_bleed` added in migrations 021-023, plus `body_text_pad_mm` in migration 029), `book_chapters` (migration 016, with `color` column from migration 020), `book_sections` (with optional `chapter_id`), `section_photos`, `book_pages` (with `split_position`, `hide_page_number` from migration 025, `1_fullbleed` format added to the CHECK constraint in migration 027), `page_slots` (with `text_content`, `is_captions_slot` from migration 026, `is_contents_slot` from migration 030, `crop_x`/`crop_y`/`crop_scale`; photo_uid / text_content / is_captions_slot / is_contents_slot are mutually exclusive), `text_versions` (migration 017), `text_check_results` (migration 019, extended by migration 028 with a `suggestions JSONB` column), `album_share_links` (migration 039 — public-share slugs keyed on `slug PRIMARY KEY`, FK to `albums(uid)` ON DELETE CASCADE, optional bcrypt `password_hash` and `expires_at`).
 
 **Face name normalization:** `GetFacesBySubjectName` normalizes names via `facematch.NormalizePersonName` (remove diacritics, lowercase, dashes→spaces) using the `unaccent` PostgreSQL extension.
 
@@ -491,6 +491,14 @@ Session cookies use `HttpOnly`, `SameSite=Strict`, and auto-detect `Secure` flag
 - `POST /api/v1/albums/{uid}/photos` - Add photos to album
 - `DELETE /api/v1/albums/{uid}/photos` - Remove photos from album
 - `DELETE /api/v1/albums/{uid}/photos/batch` - Remove specific photos from album (batch)
+- `POST /api/v1/albums/{uid}/share` - Mint a public share link (HasWriteAccess). Body: `{ slug?, password?, expires_at? (RFC3339) }`. `slug` defaults to a slugified album title with `-N` dedup suffixes (must match `^[a-z0-9-]{3,64}$`); `password` is bcrypt-hashed and the raw value is never persisted. Returns the share record (`has_password` bool, never the hash).
+- `GET /api/v1/albums/{uid}/shares` - List active share links for the album (HasWriteAccess). Envelope `{ links: [...] }`. `password_hash` is never exposed.
+- `DELETE /api/v1/shares/{slug}` - Revoke a share link (HasWriteAccess).
+- `GET /api/v1/public/share/{slug}/` - Public metadata (no auth). Returns `{ has_password, expires_at, album: { title, photo_count, cover_thumb_url } }`. 404 when unknown; 410 when expired. Album payload is hidden until the recipient verifies the password.
+- `POST /api/v1/public/share/{slug}/verify` - Public password check (no auth). Sets a 24h `share_<slug>` HttpOnly cookie on success. Rate-limited to 10 attempts per IP per 5 minutes (429 + `Retry-After`).
+- `GET /api/v1/public/share/{slug}/photos` - Paginated public photo listing (`limit` capped at 1000, default 200). Requires the share cookie when password-protected.
+- `GET /api/v1/public/share/{slug}/photos/{photo_uid}/thumb/{size}` - Public thumbnail stream (no app auth; share cookie when protected). Photo must belong to the linked album.
+- `GET /api/v1/public/share/{slug}/photos/{photo_uid}/download` - Public original download with Range support.
 - `GET /api/v1/labels` - List labels (native; query: `q`, `min_photos`, `sort` = `name`/`-name`/`count`/`-count`, `limit`/`count` alias, `offset`; envelope is the bare array, `description`/`notes` kept on the wire as empty strings for backwards compatibility)
 - `GET /api/v1/labels/{uid}` - Get single label
 - `PUT /api/v1/labels/{uid}` - Update label (`{ name?, priority?, favorite? }`; non-empty name re-slugs with collision suffix)
@@ -743,7 +751,13 @@ For the full endpoint catalogue see [`docs/API.md`](docs/API.md); the
 self-management surface lives at `/api/v1/me/*` (any role) and
 `/api/v1/users/*` (admin only). Trash is at `/api/v1/photos/trash`,
 `/api/v1/photos/batch/restore`, and `/api/v1/photos/batch/purge` (admin
-only). EXIF edits go through `PUT /api/v1/photos/{uid}/exif`.
+only). EXIF edits go through `PUT /api/v1/photos/{uid}/exif`. Public
+album share links are minted at `POST /api/v1/albums/{uid}/share`
+(HasWriteAccess) and consumed anonymously under
+`/api/v1/public/share/{slug}/*` (no session cookie). The public side
+sets a per-share `share_<slug>` HttpOnly cookie after `POST /verify`
+succeeds; `verify` is rate-limited to 10 attempts/IP/5min and returns
+429 + `Retry-After` once exceeded.
 
 ## Documentation Requirements
 

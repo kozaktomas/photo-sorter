@@ -390,6 +390,28 @@ type SubjectWriter interface {
 	DeleteSubject(ctx context.Context, uid string) error
 }
 
+// ShareLinkReader provides read-only access to album share links.
+type ShareLinkReader interface {
+	// GetShareLink returns the share link identified by slug. Returns
+	// ErrNotFound when no row exists.
+	GetShareLink(ctx context.Context, slug string) (*ShareLink, error)
+	// ListShareLinksForAlbum returns every share link pointing at the
+	// given album, ordered by created_at DESC. Used by the auth-side
+	// album detail UI.
+	ListShareLinksForAlbum(ctx context.Context, albumUID string) ([]ShareLink, error)
+}
+
+// ShareLinkWriter provides write access to album share links. CreateShareLink
+// inserts a new row and returns ErrShareLinkSlugTaken on a primary-key
+// collision. DeleteShareLink removes the row identified by slug and returns
+// ErrNotFound when nothing was deleted.
+type ShareLinkWriter interface {
+	ShareLinkReader
+
+	CreateShareLink(ctx context.Context, link *ShareLink) error
+	DeleteShareLink(ctx context.Context, slug string) error
+}
+
 // UserWriter provides write access to the native user store. CreateUser
 // generates u.UID when empty. Username uniqueness is enforced by the
 // underlying UNIQUE index and surfaced as ErrUsernameTaken; all other

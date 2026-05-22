@@ -21,6 +21,7 @@ var (
 	postgresMarkerWriter       func() MarkerWriter
 	postgresSubjectWriter      func() SubjectWriter
 	postgresPHashWriter        func() PHashWriter
+	postgresShareLinkWriter    func() ShareLinkWriter
 	postgresInitialized        bool
 )
 
@@ -41,6 +42,7 @@ func ResetForTesting() {
 	postgresMarkerWriter = nil
 	postgresSubjectWriter = nil
 	postgresPHashWriter = nil
+	postgresShareLinkWriter = nil
 	postgresInitialized = false
 }
 
@@ -415,4 +417,33 @@ func GetPHashReader(ctx context.Context) (PHashReader, error) {
 		return nil, errors.New("PostgreSQL phash reader not registered")
 	}
 	return postgresPHashWriter(), nil
+}
+
+// RegisterShareLinkWriter registers the ShareLinkWriter constructor. The
+// same value also serves ShareLinkReader, since the writer embeds the
+// reader interface.
+func RegisterShareLinkWriter(writer func() ShareLinkWriter) {
+	postgresShareLinkWriter = writer
+}
+
+// GetShareLinkWriter returns a ShareLinkWriter from the PostgreSQL backend.
+func GetShareLinkWriter(ctx context.Context) (ShareLinkWriter, error) {
+	if !postgresInitialized {
+		return nil, errors.New("PostgreSQL backend not initialized: DATABASE_URL is required")
+	}
+	if postgresShareLinkWriter == nil {
+		return nil, errors.New("PostgreSQL share link writer not registered")
+	}
+	return postgresShareLinkWriter(), nil
+}
+
+// GetShareLinkReader returns a ShareLinkReader from the PostgreSQL backend.
+func GetShareLinkReader(ctx context.Context) (ShareLinkReader, error) {
+	if !postgresInitialized {
+		return nil, errors.New("PostgreSQL backend not initialized: DATABASE_URL is required")
+	}
+	if postgresShareLinkWriter == nil {
+		return nil, errors.New("PostgreSQL share link reader not registered")
+	}
+	return postgresShareLinkWriter(), nil
 }

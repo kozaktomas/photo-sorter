@@ -77,7 +77,10 @@ func registerServeBackends(
 
 	phashRepo := postgres.NewPHashRepository(pool)
 	database.RegisterPHashWriter(func() database.PHashWriter { return phashRepo })
-	fmt.Printf("Native photo + album + label + subject + marker + phash storage enabled (PostgreSQL)\n")
+
+	shareLinkRepo := postgres.NewShareLinkRepository(pool)
+	database.RegisterShareLinkWriter(func() database.ShareLinkWriter { return shareLinkRepo })
+	fmt.Printf("Native photo + album + label + subject + marker + phash + share-link storage enabled (PostgreSQL)\n")
 
 	userRepo := postgres.NewUserRepository(pool)
 	database.RegisterUserWriter(func() database.UserWriter { return userRepo })

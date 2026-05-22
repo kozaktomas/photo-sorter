@@ -65,7 +65,8 @@
     "copyPhotoId": "Copy photo ID",
     "clear": "Clear",
     "play": "Play",
-    "pause": "Pause"
+    "pause": "Pause",
+    "close": "Close"
   },
   "status": {
     "loading": "Loading...",

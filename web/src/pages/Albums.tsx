@@ -1,13 +1,14 @@
 import { useEffect, useState, useCallback } from 'react';
 import { Link, useParams, useNavigate } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { FolderOpen, ArrowLeft, Image, Sparkles, Search, Play, CheckSquare } from 'lucide-react';
+import { FolderOpen, ArrowLeft, Image, Sparkles, Search, Play, CheckSquare, Share2 } from 'lucide-react';
 import { Card, CardContent } from '../components/Card';
 import { Button } from '../components/Button';
 import { BulkActionBar } from '../components/BulkActionBar';
 import { PageHeader } from '../components/PageHeader';
 import { PAGE_CONFIGS } from '../constants/pageConfig';
 import { PhotoGrid } from '../components/PhotoGrid';
+import { ShareModal } from '../components/ShareModal';
 import { usePhotoSelection } from '../hooks/usePhotoSelection';
 import { getAlbums, getAlbum, getAlbumPhotos, getThumbnailUrl } from '../api/client';
 import { ALBUM_PHOTOS_CACHE_KEY } from '../constants';
@@ -121,6 +122,7 @@ function AlbumDetailPage({ uid }: { uid: string }) {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [selectionMode, setSelectionMode] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const selection = usePhotoSelection();
 
   const handlePhotoClick = (photo: Photo) => {
@@ -206,6 +208,10 @@ function AlbumDetailPage({ uid }: { uid: string }) {
               {t('common:buttons.select')}
             </Button>
           )}
+          <Button variant="ghost" onClick={() => setShareOpen(true)}>
+            <Share2 className="h-4 w-4 mr-2" />
+            {t('pages:share.shareButton')}
+          </Button>
           <Link to={`/slideshow?album=${uid}`}>
             <Button variant="ghost">
               <Play className="h-4 w-4 mr-2" />
@@ -244,6 +250,13 @@ function AlbumDetailPage({ uid }: { uid: string }) {
           )}
         </CardContent>
       </Card>
+
+      <ShareModal
+        open={shareOpen}
+        albumUid={uid}
+        albumTitle={album.title}
+        onClose={() => setShareOpen(false)}
+      />
     </div>
   );
 }

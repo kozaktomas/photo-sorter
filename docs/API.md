@@ -300,6 +300,148 @@ DELETE /albums/{uid}/photos/batch
 }
 ```
 
+### Album Share Links
+
+Public share links live alongside albums; see the [Public Share Links](#public-share-links) section below for the recipient-facing endpoints. The authenticated surface lives here:
+
+#### Create Share Link
+
+```
+POST /albums/{uid}/share
+```
+
+Mint a public link for an album. `slug` defaults to a slugified copy of the album title with `-N` dedup suffixes; supply it to override (must match `^[a-z0-9-]{3,64}$`). `password` is bcrypt-hashed in the database; the raw value is never persisted. `expires_at` is RFC3339 and must be in the future; omit/empty for a permanent link.
+
+**Request body:**
+
+```json
+{
+  "slug": "summer-2025",
+  "password": "secret-phrase",
+  "expires_at": "2026-12-31T23:59:59Z"
+}
+```
+
+**Response (201):**
+
+```json
+{
+  "slug": "summer-2025",
+  "album_uid": "axxxxxxxxxxxxxxx",
+  "has_password": true,
+  "expires_at": "2026-12-31T23:59:59Z",
+  "created_at": "2026-05-22T08:00:00Z",
+  "created_by_user_uid": "uxxxxxxxxxxxxxxx",
+  "url": "/share/summer-2025"
+}
+```
+
+**Errors:** `400` for an invalid slug or expiration; `403` for viewer role; `404` when the album does not exist; `409` on slug collision.
+
+#### List Share Links
+
+```
+GET /albums/{uid}/shares
+```
+
+Returns every share link for the album. The `password_hash` field is never exposed; instead each link includes `has_password: bool`.
+
+**Response (200):**
+
+```json
+{ "links": [ { "slug": "summer-2025", "has_password": true, "expires_at": "2026-12-31T23:59:59Z", ... } ] }
+```
+
+#### Revoke Share Link
+
+```
+DELETE /shares/{slug}
+```
+
+Hard-deletes the share row. Cookies issued for the slug stay valid for the rest of their 24h life but every subsequent request returns 404.
+
+**Response (200):** `{ "success": true }`
+
+---
+
+## Public Share Links
+
+These endpoints intentionally live outside the authenticated API so anonymous recipients can hit them. They MUST NOT require a session cookie; the only state they consult is the per-share `share_<slug>` HttpOnly cookie set by `verify` after a successful password check.
+
+### Get Share Metadata
+
+```
+GET /public/share/{slug}/
+```
+
+**Response (200):**
+
+```json
+{
+  "slug": "summer-2025",
+  "has_password": false,
+  "expires_at": null,
+  "album": { "title": "Summer 2025", "photo_count": 42, "cover_thumb_url": "/api/v1/public/share/summer-2025/photos/p.../thumb/fit_720" }
+}
+```
+
+If `has_password` is true and the request lacks a valid share cookie, the `album` field is omitted (the recipient must verify the password first).
+
+**Errors:** `404` when the slug is unknown; `410` when the link has expired.
+
+### Verify Password
+
+```
+POST /public/share/{slug}/verify
+```
+
+Rate-limited to 10 attempts per IP per 5 minutes. Exceeding the limit returns `429` with a `Retry-After: <seconds>` header.
+
+**Request body:**
+
+```json
+{ "password": "secret-phrase" }
+```
+
+**Response (200):** `{ "ok": true }` — also sets `Set-Cookie: share_<slug>=<token>; HttpOnly; Path=/api/v1/public/share/<slug>; SameSite=Lax; Max-Age=86400`.
+
+**Errors:** `401` for a wrong password; `404` for an unknown slug; `410` for an expired link; `429` when rate-limited.
+
+### List Public Photos
+
+```
+GET /public/share/{slug}/photos?limit=200&offset=0
+```
+
+Requires the share cookie when the link is password-protected.
+
+**Response (200):**
+
+```json
+{
+  "photos": [ { "uid": "p...", "title": "", "taken_at": "2025-06-01T12:00:00Z", "width": 4032, "height": 3024, "thumb_url": "/api/v1/public/share/summer-2025/photos/p.../thumb/fit_720" } ],
+  "total": 42,
+  "limit": 200,
+  "offset": 0
+}
+```
+
+### Public Thumbnail
+
+```
+GET /public/share/{slug}/photos/{photo_uid}/thumb/{size}
+```
+
+Streams the cached thumbnail from disk with the same `Cache-Control: public, max-age=31536000, immutable` + `ETag` headers as the authenticated endpoint. The photo must be a member of the linked album — arbitrary UIDs return `404`.
+
+### Public Download
+
+```
+GET /public/share/{slug}/photos/{photo_uid}/download
+```
+
+Streams the primary file with `Content-Disposition: attachment` and Range support.
+
 ---
 
 ## Photos

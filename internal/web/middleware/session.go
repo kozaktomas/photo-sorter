@@ -307,6 +307,15 @@ func (sm *SessionManager) getSessionFromCookie(r *http.Request) *Session {
 	return sm.GetSession(sessionID)
 }
 
+// Secret returns the HMAC signing key configured for this manager. The
+// returned slice is the live key (not a copy), so callers must treat it
+// as immutable. Used by the share handler to sign per-share cookies
+// with the same secret as session cookies, so rotating
+// WEB_SESSION_SECRET invalidates outstanding share cookies too.
+func (sm *SessionManager) Secret() []byte {
+	return sm.secret
+}
+
 // signData creates an HMAC signature for data.
 func (sm *SessionManager) signData(data string) string {
 	h := hmac.New(sha256.New, sm.secret)

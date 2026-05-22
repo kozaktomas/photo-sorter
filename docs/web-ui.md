@@ -89,6 +89,16 @@ Browse and manage your albums (from the native `albums` table).
 - Quick access to analyze an album with AI
 - **Photo navigation context** - When clicking a photo from an album, navigation arrows and position counter are available in Photo Detail
 - **Bulk photo removal** - Enter selection mode to select photos and remove them from the album in bulk
+- **Public share links** - The album detail page has a Share button that opens a modal where the owner can mint a public share link. Each link has an auto-generated `[a-z0-9-]{3,64}` slug (editable), an optional bcrypt-hashed password, and an optional expiration date. Existing links are listed with copy-URL and revoke actions. The recipient URL is `{origin}/share/<slug>` — see [Public Share Viewer](#public-share-viewer-shareslug) below.
+
+### Public Share Viewer (`/share/:slug`)
+
+The `/share/:slug` route renders a simplified gallery for an anonymous recipient. It MUST NOT redirect to login and uses a separate page chrome (no app navigation, no "sign up" CTA).
+
+**Flow:**
+- The page calls `GET /api/v1/public/share/{slug}/` to load metadata. A 404 renders a "share not found" page; a 410 renders "this link expired".
+- If the link is password-protected and not yet verified, a centred password gate is shown. Submitting the form hits `POST /verify` which (on success) sets a per-share HttpOnly cookie (`share_<slug>`, 24h) so subsequent requests pass without re-prompting. Verifies are rate-limited to 10 per IP per 5 minutes; on `429` the gate displays a "try again later" message backed by `Retry-After`.
+- After verification (or for unprotected links), the recipient sees the album title, photo count, expiration notice (when set), and a thumbnail grid. Clicking a photo opens a lightbox with previous/next navigation and a "Download original" button which streams `GET /photos/{uid}/download` for that share. Bulk download is intentionally out of scope.
 
 ### Photos
 
