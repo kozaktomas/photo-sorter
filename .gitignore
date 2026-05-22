@@ -9,6 +9,9 @@ photo-sorter.log
 photo-sorter
 /volumes
 
+# GoReleaser build output
+/dist/
+
 # Web frontend
 web/node_modules/
 internal/web/static/dist/*

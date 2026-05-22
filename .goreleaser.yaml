@@ -1,0 +1,95 @@
+version: 2
+
+project_name: photo-sorter
+
+before:
+  hooks:
+    - go mod tidy
+    - sh -c "cd web && npm ci && npm run build"
+    - sh -c "mkdir -p dist/fonts && scripts/install-fonts.sh dist/fonts"
+
+builds:
+  - id: photo-sorter
+    main: .
+    binary: photo-sorter
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w
+      - -X github.com/kozaktomas/photo-sorter/cmd.Version={{.Version}}
+      - -X github.com/kozaktomas/photo-sorter/cmd.CommitSHA={{.ShortCommit}}
+
+archives:
+  - id: tarball
+    formats: [tar.gz]
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- .Version }}_
+      {{- .Os }}_
+      {{- .Arch }}
+    files:
+      - LICENSE
+      - README.md
+
+nfpms:
+  - id: deb
+    package_name: photo-sorter
+    vendor: Tomas Kozak
+    homepage: https://github.com/kozaktomas/photo-sorter
+    maintainer: Tomas Kozak <kozak@talko.cz>
+    description: |
+      Self-contained photo management application with AI-powered analysis,
+      face recognition, similarity search, photo books with PDF export, and
+      a built-in web UI. Backed by PostgreSQL + pgvector and an external
+      CLIP/InsightFace embeddings service.
+    license: MIT
+    section: misc
+    priority: optional
+    bindir: /usr/bin
+    formats:
+      - deb
+    file_name_template: '{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}'
+    dependencies:
+      - libimage-exiftool-perl
+      - texlive-luatex
+      - texlive-latex-recommended
+      - texlive-fonts-recommended
+      - texlive-lang-czechslovak
+      - texlive-pictures
+      - texlive-latex-extra
+      - fontconfig
+      - libheif-examples | libheif-bin
+      - dcraw
+      - postgresql-client
+      - ca-certificates
+    contents:
+      - src: deb/photo-sorter.service
+        dst: /lib/systemd/system/photo-sorter.service
+      - src: deb/photo-sorter.env
+        dst: /etc/photo-sorter/photo-sorter.env
+        type: config|noreplace
+      - src: dist/fonts/*
+        dst: /usr/local/share/fonts/photo-sorter
+        file_info:
+          mode: 0644
+    scripts:
+      postinstall: deb/postinstall.sh
+      preremove: deb/preremove.sh
+      postremove: deb/postremove.sh
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+
+release:
+  footer: |
+    ---
+    Released by [GoReleaser](https://goreleaser.com).

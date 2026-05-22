@@ -1,0 +1,18 @@
+[Unit]
+Description=Photo Sorter
+Documentation=https://github.com/kozaktomas/photo-sorter
+After=network.target
+
+[Service]
+User=photo-sorter
+Group=photo-sorter
+EnvironmentFile=/etc/photo-sorter/photo-sorter.env
+ExecStart=/usr/bin/photo-sorter serve
+ExecReload=/usr/bin/env kill -HUP $MAINPID
+Restart=always
+RestartSec=5s
+WorkingDirectory=/var/lib/photo-sorter
+TimeoutStopSec=30s
+
+[Install]
+WantedBy=multi-user.target

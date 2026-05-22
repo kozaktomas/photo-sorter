@@ -325,6 +325,43 @@ The native upload + EXIF pipelines shell out to three external binaries that mus
 
 The official Docker image bundles all three. The runtime stage installs Alpine's `libheif-tools`, `exiftool`, and `libraw-tools` packages, plus a small `scripts/dcraw-shim.sh` wrapper that emulates the `dcraw -c -w -h` invocation our Go code uses on top of LibRaw's `dcraw_emu` (Alpine dropped the upstream `dcraw` package; LibRaw is the maintained replacement). Self-builders running the binary outside Docker must install equivalents themselves. The `serve` command logs a `WARN` line on startup for each missing binary and a single `startup: external decoders OK` line when all three are present, so a broken image regresses loudly instead of silently failing at upload time.
 
+## Deployment
+
+Photo-sorter ships through two distribution channels that both rely on
+the same single Go binary (the frontend is embedded via `go:embed`):
+
+- **Docker image** at `ghcr.io/kozaktomas/photo-sorter`. Built and
+  pushed by `.github/workflows/docker-publish.yml` on every push to
+  `main` and on `v*.*.*` tags. The runtime stage bundles `exiftool`,
+  `heif-convert` (via `libheif-tools`), a `dcraw_emu` shim, all 24
+  free book-typography fonts, and the lualatex pieces needed for PDF
+  export. Configuration is fully env-driven; mount a host directory at
+  `/data` to persist originals + thumbnail cache. Most relevant env
+  vars: `DATABASE_URL`, `STORAGE_ORIGINALS_PATH=/data/originals`,
+  `STORAGE_CACHE_PATH=/data/cache`, `EMBEDDING_URL`,
+  `BOOTSTRAP_ADMIN_USERNAME`/`BOOTSTRAP_ADMIN_PASSWORD`,
+  `WEB_SESSION_SECRET`.
+- **Debian / Ubuntu `.deb` package** for `amd64` and `arm64`, built
+  by `.github/workflows/release.yml` via goreleaser + nfpm on tag
+  push. The package layout is defined in `.goreleaser.yaml` and the
+  `deb/` directory: the binary lands at `/usr/bin/photo-sorter`, the
+  systemd unit at `/lib/systemd/system/photo-sorter.service`, the
+  sample env conffile at `/etc/photo-sorter/photo-sorter.env`, and the
+  bundled fonts under `/usr/local/share/fonts/photo-sorter/`. The
+  postinstall creates a `photo-sorter` system user and the
+  `/var/lib/photo-sorter/{originals,cache}` state directories, refreshes
+  the fontconfig cache, and enables (but does not start) the unit.
+  Operators set `DATABASE_URL` + `WEB_SESSION_SECRET` in the env file
+  before `systemctl start photo-sorter`. Runtime dependencies declared
+  on the deb (`texlive-luatex`, `libimage-exiftool-perl`,
+  `libheif-examples | libheif-bin`, `dcraw`, `postgresql-client`,
+  `fontconfig`, etc.) are resolved by `apt` on install.
+
+Both channels are intentionally kept in lock-step: tagging `v1.2.3`
+fires both workflows. Updating runtime tooling (a new system binary the
+upload pipeline shells out to) means updating both the Dockerfile
+**and** the `nfpms.dependencies` list in `.goreleaser.yaml`.
+
 ## Error Handling Strategy
 
 Errors flow through the system in three distinct patterns:

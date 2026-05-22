@@ -44,7 +44,56 @@ user accounts kept in Postgres.
 - An embeddings service that exposes `POST /embed/image` and `POST /embed/text` (CLIP + InsightFace)
 - `exiftool`, `heif-convert`, and `dcraw` on `PATH` for the upload pipeline (the Docker image bundles all three)
 
-## Installation
+## Install
+
+### Docker (recommended for containerized deployments)
+
+See the [Docker section below](#docker) for the full instructions, including
+the `ghcr.io/kozaktomas/photo-sorter` image and an example `docker run`
+invocation with mounts and env vars.
+
+### Ubuntu / Debian (.deb)
+
+Each tagged release publishes prebuilt `.deb` packages for `amd64` and
+`arm64` on the [Releases](https://github.com/kozaktomas/photo-sorter/releases)
+page. The package installs a single Go binary, a systemd unit, a sample
+env file (preserved across upgrades), and all 24 bundled book-typography
+fonts.
+
+```bash
+# Download the .deb that matches your architecture and install it.
+# apt resolves the runtime dependencies (texlive, exiftool, heif-convert,
+# dcraw, postgresql-client, fontconfig) on the way in.
+sudo apt install ./photo-sorter_<version>_linux_amd64.deb
+
+# Edit /etc/photo-sorter/photo-sorter.env and set at minimum DATABASE_URL
+# and WEB_SESSION_SECRET. The CLAUDE.md in this repo lists every supported
+# env var.
+sudo $EDITOR /etc/photo-sorter/photo-sorter.env
+
+# Start (the postinstall enabled the unit but did NOT start it, so the
+# journal stays clean if DATABASE_URL is still blank).
+sudo systemctl start photo-sorter
+
+# Browse to http://<host>:8080
+```
+
+The install leaves data under `/var/lib/photo-sorter/{originals,cache}`
+owned by the `photo-sorter` system user. `apt purge photo-sorter` removes
+the binary, the env file, and the regenerable thumbnail cache but
+intentionally preserves the originals directory — delete it manually if
+you no longer need it.
+
+**Bookman Old Style** is a proprietary font and is **not bundled**. PDF
+book export still works without it; only typography presets that select
+Bookman Old Style degrade. To enable it, drop licensed
+`BOOKOS{,B,I,BI}.TTF` files into
+`/usr/local/share/fonts/photo-sorter/truetype/bookman-old-style/` and run
+`fc-cache -f` followed by `luaotfload-tool --update --force`. The header
+of [`scripts/install-fonts.sh`](scripts/install-fonts.sh) has the
+authoritative note.
+
+### From source
 
 ```bash
 # Clone the repository

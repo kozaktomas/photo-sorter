@@ -142,6 +142,12 @@ go run . db-export -o photosorter-snapshot.dump
 
 # Restore a database dump produced by db-export (skipping the prompt).
 go run . db-import -i photosorter-snapshot.dump --yes
+
+# Local snapshot build of the .deb (no publish). Produces
+# dist/photo-sorter_*_linux_{amd64,arm64}.deb and matching .tar.gz
+# archives. Requires goreleaser on PATH and internet (the fonts
+# staging step downloads from CTAN / Google Fonts / GitHub releases).
+goreleaser release --snapshot --clean --skip=publish
 ```
 
 ### Version Injection
@@ -754,6 +760,7 @@ When adding or modifying features, update the relevant documentation:
 - **`docs/API.md`** - Update when changing REST API endpoints
 - **`docs/testing-environment.md`** - Update when changing dev/test setup
 - **`docs/backup.md`** - Operator runbook for backing up and restoring a photo-sorter install
+- **`.goreleaser.yaml` + `deb/`** - The release surface: goreleaser config, systemd unit, sample env conffile, and maintainer scripts that produce the published `.deb` package. Update both when adding new runtime dependencies (e.g. a new system binary the upload pipeline shells out to needs a matching entry in `nfpms.dependencies`) or new env vars (add a commented-out line to `deb/photo-sorter.env`).
 - **`README.md`** - Update for major feature additions or architectural changes
 
 Documentation files:
