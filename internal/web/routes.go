@@ -102,6 +102,18 @@ func (s *Server) resolveShareLinkRepo() database.ShareLinkWriter {
 	return r
 }
 
+// resolveAuditLogRepo best-effort-fetches the native AuditLogWriter.
+// Returns nil (and logs) when the registration is missing — the audit
+// trail will then be disabled but the rest of the API keeps working.
+func (s *Server) resolveAuditLogRepo() database.AuditLogReader {
+	r, err := database.GetAuditLogReader(context.Background())
+	if err != nil {
+		log.Printf("audit-log: native repo unavailable: %v", err)
+		return nil
+	}
+	return r
+}
+
 // resolveSmartAlbumRepo best-effort-fetches the native SmartAlbumWriter.
 // Returns nil (and logs) when the registration is missing — the smart
 // album endpoints then surface a 503 instead of blocking server startup.
@@ -169,6 +181,8 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 		s.config, sessionManager, shareLinkRepo, albumRepo, photoRepo, photoStore,
 	)
 	smartAlbumsHandler := handlers.NewSmartAlbumsHandler(s.config, sessionManager, smartAlbumRepo, photoRepo)
+	auditLogRepo := s.resolveAuditLogRepo()
+	auditLogHandler := handlers.NewAuditLogHandler(auditLogRepo)
 
 	// Health check (no auth required).
 	s.router.Get("/api/v1/health", handlers.HealthCheck)
@@ -357,6 +371,9 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 					// Trash hard delete is admin-only: it removes the
 					// originals from disk and is irreversible.
 					r.Post("/photos/batch/purge", photosHandler.BatchPurge)
+
+					// Audit log viewer: admin-only.
+					r.Get("/audit-log", auditLogHandler.List)
 				})
 			})
 

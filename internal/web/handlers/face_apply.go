@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/kozaktomas/photo-sorter/internal/audit"
 	"github.com/kozaktomas/photo-sorter/internal/database"
 	"github.com/kozaktomas/photo-sorter/internal/fingerprint"
 	"github.com/kozaktomas/photo-sorter/internal/photoprism"
@@ -95,6 +96,7 @@ func (h *FacesHandler) applyCreateMarker(w http.ResponseWriter, r *http.Request,
 	}
 
 	h.syncFaceCache(req.PhotoUID, req.FaceIndex, marker.UID, subjectUID, req.PersonName)
+	logFaceApply(r, req, marker.UID, subjectUID)
 	respondJSON(w, http.StatusOK, ApplyResponse{Success: true, MarkerUID: marker.UID})
 }
 
@@ -125,6 +127,7 @@ func (h *FacesHandler) applyAssignPerson(w http.ResponseWriter, r *http.Request,
 	}
 
 	h.syncFaceCache(req.PhotoUID, req.FaceIndex, req.MarkerUID, subjectUID, req.PersonName)
+	logFaceApply(r, req, req.MarkerUID, subjectUID)
 	respondJSON(w, http.StatusOK, ApplyResponse{Success: true, MarkerUID: req.MarkerUID})
 }
 
@@ -145,6 +148,7 @@ func (h *FacesHandler) applyUnassignPerson(w http.ResponseWriter, r *http.Reques
 	}
 
 	h.syncFaceCache(req.PhotoUID, req.FaceIndex, req.MarkerUID, "", "")
+	logFaceApply(r, req, req.MarkerUID, "")
 	respondJSON(w, http.StatusOK, ApplyResponse{Success: true, MarkerUID: req.MarkerUID})
 }
 
@@ -171,6 +175,21 @@ func (h *FacesHandler) Apply(w http.ResponseWriter, r *http.Request) {
 	default:
 		respondError(w, http.StatusBadRequest, "invalid action")
 	}
+}
+
+// logFaceApply records a single audit row for a successful face-apply
+// action. Pulled into a helper so each apply* method can emit it after
+// the mutation lands without duplicating the metadata shape.
+func logFaceApply(r *http.Request, req ApplyRequest, markerUID, subjectUID string) {
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionFaceApply, audit.EntityPhoto, req.PhotoUID,
+		map[string]any{
+			"action":      string(req.Action),
+			"marker_uid":  markerUID,
+			"subject_uid": subjectUID,
+			"person_name": req.PersonName,
+		},
+	)
 }
 
 // syncFaceCache updates the face cache with new marker/subject data.

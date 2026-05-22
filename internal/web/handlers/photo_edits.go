@@ -10,6 +10,7 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/kozaktomas/photo-sorter/internal/audit"
 	"github.com/kozaktomas/photo-sorter/internal/database"
 	"github.com/kozaktomas/photo-sorter/internal/imgedit"
 	"github.com/kozaktomas/photo-sorter/internal/storage"
@@ -166,6 +167,9 @@ func (h *PhotosHandler) PutEdits(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to load edits")
 		return
 	}
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionPhotoEditsUpdate, audit.EntityPhoto, uid, nil,
+	)
 	respondJSON(w, http.StatusOK, photoEditsResponse{Edits: editsToPayload(fresh)})
 }
 
@@ -203,6 +207,9 @@ func (h *PhotosHandler) DeleteEdits(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.regenerateOriginalThumbs(store, photo, uid)
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionPhotoEditsClear, audit.EntityPhoto, uid, nil,
+	)
 	w.WriteHeader(http.StatusNoContent)
 }
 

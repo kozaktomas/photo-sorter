@@ -15,6 +15,7 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/kozaktomas/photo-sorter/internal/audit"
 	"github.com/kozaktomas/photo-sorter/internal/config"
 	"github.com/kozaktomas/photo-sorter/internal/database"
 	"github.com/kozaktomas/photo-sorter/internal/latex"
@@ -246,6 +247,10 @@ func (h *BooksHandler) CreateBook(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to create book")
 		return
 	}
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionBookCreate, audit.EntityBook, book.ID,
+		map[string]any{"title": book.Title},
+	)
 	respondJSON(w, http.StatusCreated, bookResponse{
 		ID:          book.ID,
 		Title:       book.Title,
@@ -504,6 +509,10 @@ func (h *BooksHandler) UpdateBook(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to update book")
 		return
 	}
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionBookUpdate, audit.EntityBook, book.ID,
+		map[string]any{"title": book.Title},
+	)
 	respondJSON(w, http.StatusOK, map[string]string{"id": book.ID})
 }
 
@@ -518,6 +527,9 @@ func (h *BooksHandler) DeleteBook(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to delete book")
 		return
 	}
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionBookDelete, audit.EntityBook, id, nil,
+	)
 	respondJSON(w, http.StatusOK, map[string]bool{"deleted": true})
 }
 

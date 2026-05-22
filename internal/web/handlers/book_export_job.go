@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/kozaktomas/photo-sorter/internal/audit"
 	"github.com/kozaktomas/photo-sorter/internal/database"
 	"github.com/kozaktomas/photo-sorter/internal/latex"
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
@@ -271,6 +272,13 @@ func (h *BooksHandler) StartExportJob(w http.ResponseWriter, r *http.Request) {
 
 	go h.runBookExportJob(job, session) //nolint:gosec // G118 - background job outlives HTTP request
 
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionBookExportPDF, audit.EntityBook, bookID,
+		map[string]any{
+			"job_id":        jobID,
+			"photo_quality": string(quality),
+		},
+	)
 	respondJSON(w, http.StatusAccepted, map[string]any{
 		"job_id":        jobID,
 		"book_id":       bookID,

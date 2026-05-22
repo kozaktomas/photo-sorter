@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/kozaktomas/photo-sorter/internal/audit"
 	"github.com/kozaktomas/photo-sorter/internal/auth"
 	"github.com/kozaktomas/photo-sorter/internal/config"
 	"github.com/kozaktomas/photo-sorter/internal/database"
@@ -98,6 +99,10 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 
 	user, ok := h.lookupAndVerify(r.Context(), req.Username, req.Password)
 	if !ok {
+		audit.FromContext(r.Context()).LogAnonymous(
+			r.Context(), audit.ActionLoginFailed, audit.EntitySession, "",
+			req.Username, nil,
+		)
 		respondJSON(w, http.StatusUnauthorized, map[string]string{"error": errInvalidCredentials})
 		return
 	}
@@ -111,6 +116,11 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	h.touchLastLogin(user.UID)
 
 	h.sessionManager.SetSessionCookie(w, r, session)
+	audit.FromContext(r.Context()).LogAs(
+		r.Context(), user.UID,
+		audit.ActionLogin, audit.EntitySession, session.ID,
+		map[string]any{"username": user.Username},
+	)
 	respondJSON(w, http.StatusOK, loginResponse{User: toUserPayload(&user.User)})
 }
 
@@ -160,6 +170,10 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 	session := h.sessionManager.GetSessionFromRequest(r)
 	if session != nil {
 		h.sessionManager.DeleteSession(session.ID)
+		audit.FromContext(r.Context()).LogAs(
+			r.Context(), session.UserUID,
+			audit.ActionLogout, audit.EntitySession, session.ID, nil,
+		)
 	}
 	h.sessionManager.ClearSessionCookie(w)
 	respondJSON(w, http.StatusOK, map[string]bool{"success": true})

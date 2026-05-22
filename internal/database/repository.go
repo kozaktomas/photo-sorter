@@ -456,6 +456,26 @@ type PhotoEditsWriter interface {
 	DeletePhotoEdits(ctx context.Context, photoUID string) error
 }
 
+// AuditLogReader provides read-only access to the audit_log table. The
+// audit log is append-only; there are no single-row lookups by UID.
+type AuditLogReader interface {
+	// ListAuditLog returns audit log entries matching the filter, ordered
+	// by created_at DESC. The second return value is the total row count
+	// matching the filter (ignoring Limit/Offset) so the UI can render
+	// pagination without a second round trip.
+	ListAuditLog(ctx context.Context, filter AuditLogFilter) ([]AuditLogEntry, int, error)
+}
+
+// AuditLogWriter provides append-only write access to the audit_log table.
+// There is intentionally no Update or Delete; the trail is forever.
+type AuditLogWriter interface {
+	AuditLogReader
+	// AppendAuditLog inserts a single audit log row. Failures must never
+	// fail the caller's underlying request: the upstream audit.Logger
+	// swallows + WARN-logs errors and returns nil up the chain.
+	AppendAuditLog(ctx context.Context, entry *AuditLogEntry) error
+}
+
 // UserWriter provides write access to the native user store. CreateUser
 // generates u.UID when empty. Username uniqueness is enforced by the
 // underlying UNIQUE index and surfaced as ErrUsernameTaken; all other

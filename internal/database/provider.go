@@ -24,6 +24,7 @@ var (
 	postgresShareLinkWriter    func() ShareLinkWriter
 	postgresSmartAlbumWriter   func() SmartAlbumWriter
 	postgresPhotoEditsWriter   func() PhotoEditsWriter
+	postgresAuditLogWriter     func() AuditLogWriter
 	postgresInitialized        bool
 )
 
@@ -47,6 +48,7 @@ func ResetForTesting() {
 	postgresShareLinkWriter = nil
 	postgresSmartAlbumWriter = nil
 	postgresPhotoEditsWriter = nil
+	postgresAuditLogWriter = nil
 	postgresInitialized = false
 }
 
@@ -508,4 +510,33 @@ func GetPhotoEditsReader(ctx context.Context) (PhotoEditsReader, error) {
 		return nil, errors.New("PostgreSQL photo edits reader not registered")
 	}
 	return postgresPhotoEditsWriter(), nil
+}
+
+// RegisterAuditLogWriter registers the AuditLogWriter constructor. The same
+// value also serves AuditLogReader, since the writer embeds the reader
+// interface.
+func RegisterAuditLogWriter(writer func() AuditLogWriter) {
+	postgresAuditLogWriter = writer
+}
+
+// GetAuditLogWriter returns an AuditLogWriter from the PostgreSQL backend.
+func GetAuditLogWriter(ctx context.Context) (AuditLogWriter, error) {
+	if !postgresInitialized {
+		return nil, errors.New("PostgreSQL backend not initialized: DATABASE_URL is required")
+	}
+	if postgresAuditLogWriter == nil {
+		return nil, errors.New("PostgreSQL audit log writer not registered")
+	}
+	return postgresAuditLogWriter(), nil
+}
+
+// GetAuditLogReader returns an AuditLogReader from the PostgreSQL backend.
+func GetAuditLogReader(ctx context.Context) (AuditLogReader, error) {
+	if !postgresInitialized {
+		return nil, errors.New("PostgreSQL backend not initialized: DATABASE_URL is required")
+	}
+	if postgresAuditLogWriter == nil {
+		return nil, errors.New("PostgreSQL audit log reader not registered")
+	}
+	return postgresAuditLogWriter(), nil
 }

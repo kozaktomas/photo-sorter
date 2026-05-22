@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/kozaktomas/photo-sorter/internal/audit"
 	"github.com/kozaktomas/photo-sorter/internal/auth"
 	"github.com/kozaktomas/photo-sorter/internal/config"
 	"github.com/kozaktomas/photo-sorter/internal/database"
@@ -190,6 +191,10 @@ func (h *UsersHandler) Create(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to create user")
 		return
 	}
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionUserCreate, audit.EntityUser, user.UID,
+		map[string]any{"username": user.Username, "role": user.Role},
+	)
 	respondJSON(w, http.StatusCreated, toUserResponse(user.User))
 }
 
@@ -267,6 +272,10 @@ func (h *UsersHandler) Update(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to update user")
 		return
 	}
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionUserUpdate, audit.EntityUser, user.UID,
+		map[string]any{"username": user.Username, "role": user.Role},
+	)
 	respondJSON(w, http.StatusOK, toUserResponse(*user))
 }
 
@@ -310,6 +319,9 @@ func (h *UsersHandler) SetPassword(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to set password")
 		return
 	}
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionUserPasswordReset, audit.EntityUser, uid, nil,
+	)
 	respondJSON(w, http.StatusOK, map[string]bool{"success": true})
 }
 
@@ -343,6 +355,13 @@ func (h *UsersHandler) SetDisabled(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to set disabled")
 		return
 	}
+	action := audit.ActionUserEnable
+	if req.Disabled {
+		action = audit.ActionUserDisable
+	}
+	audit.FromContext(r.Context()).Log(
+		r.Context(), action, audit.EntityUser, uid, nil,
+	)
 	respondJSON(w, http.StatusOK, map[string]bool{"success": true})
 }
 
@@ -416,6 +435,10 @@ func (h *UsersHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to delete user")
 		return
 	}
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionUserDelete, audit.EntityUser, uid,
+		map[string]any{"username": target.Username},
+	)
 	respondJSON(w, http.StatusOK, map[string]bool{"success": true})
 }
 
@@ -514,5 +537,8 @@ func (h *UsersHandler) ChangeMyPassword(w http.ResponseWriter, r *http.Request) 
 		respondError(w, http.StatusInternalServerError, "failed to set password")
 		return
 	}
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionPasswordChange, audit.EntityUser, info.UserUID, nil,
+	)
 	respondJSON(w, http.StatusOK, map[string]bool{"success": true})
 }

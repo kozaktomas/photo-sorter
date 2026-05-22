@@ -659,6 +659,40 @@ type PhotoEditsCrop struct {
 	H float64
 }
 
+// AuditLogEntry is one row from the audit_log table. UserUID is empty
+// when the action was performed anonymously (e.g. a failed login attempt)
+// or when the original actor has since been deleted (ON DELETE SET NULL).
+// EntityType/EntityUID identify the affected object when applicable —
+// they may both be empty (e.g. an account-level password change). Metadata
+// is opaque action-specific JSON; the handler decodes it for display.
+type AuditLogEntry struct {
+	ID         int64
+	UserUID    string
+	Username   string
+	Action     string
+	EntityType string
+	EntityUID  string
+	Metadata   map[string]any
+	IP         string
+	UserAgent  string
+	CreatedAt  time.Time
+}
+
+// AuditLogFilter captures the query parameters accepted by the
+// GET /api/v1/audit-log endpoint. Empty/zero values mean "no filter on
+// this dimension"; Limit/Offset are mandatory and validated by the
+// handler before being passed in.
+type AuditLogFilter struct {
+	UserUID    string
+	Action     string
+	EntityType string
+	EntityUID  string
+	Since      *time.Time
+	Until      *time.Time
+	Limit      int
+	Offset     int
+}
+
 // PageFormatSlotCount returns the number of slots for a given page format.
 func PageFormatSlotCount(format string) int {
 	switch format {

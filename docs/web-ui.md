@@ -616,7 +616,7 @@ and restore; the irreversible "Empty trash" hard-delete is admin-only.
 
 ### Settings (`/settings`)
 
-Two-tab page for account and user management.
+Three-tab page for account, user, and audit-trail management.
 
 - **Profile** (any role) — Shows the signed-in user's username / display name / role and lets them change their own password (`POST /api/v1/me/password`, current + new). Wrong current password → `401`; new password under 8 characters → `400`.
 - **Users** (admin only) — Lists all users from `GET /api/v1/users` with role and disabled status. The dialog supports:
@@ -625,6 +625,7 @@ Two-tab page for account and user management.
   - Reset another user's password — `POST /api/v1/users/{uid}/password`.
   - Disable / re-enable an account — `POST /api/v1/users/{uid}/disable` with `{ disabled: bool }`.
   - Delete user — `DELETE /api/v1/users/{uid}`. The last remaining admin cannot be deleted (`409`).
+- **Audit log** (admin only; deep-linkable at `/settings/audit-log`) — Read-only viewer over every mutating action and security-sensitive event recorded in the `audit_log` table (`GET /api/v1/audit-log`). The toolbar exposes filters for **user** (dropdown loaded from `/api/v1/users`), **action** (grouped dropdown by category: auth / photo / album / label / subject / face / user / book / share_link / smart_album / process), **entity type**, **since** / **until** datetime pickers, and a **per-page** size selector (50 / 100 / 200; backend caps at 200). The table renders timestamp (local time), user (with `<deleted user>` / `anonymous` fallbacks), action (human-readable label from the i18n `auditLog.actions` map), entity (type label + monospace UID), client IP, and a collapsed metadata cell that expands to a pretty-printed JSON view of the row's metadata + User-Agent. Pagination shows `Page X of Y` and `Showing M / Total entries`; an **Export CSV** button dumps the currently visible page as RFC4180-escaped CSV (id, timestamp, user_uid, user_username, action, entity_type, entity_uid, ip, user_agent, metadata) so it can be archived or post-processed. Non-admin sessions never see the tab, and the `/audit-log` API path is gated by `RequireRole(RoleAdmin)`.
 
 ### Photo Book (`/books`)
 

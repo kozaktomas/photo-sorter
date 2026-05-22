@@ -327,6 +327,16 @@ function AppRoutes() {
         }
       />
       <Route
+        path="/settings/audit-log"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <SettingsPage initialTab="auditLog" />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
         path="/slideshow"
         element={
           <ProtectedRoute>

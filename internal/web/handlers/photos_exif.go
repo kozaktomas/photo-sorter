@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/kozaktomas/photo-sorter/internal/audit"
 	"github.com/kozaktomas/photo-sorter/internal/database"
 	"github.com/kozaktomas/photo-sorter/internal/exif"
 )
@@ -108,6 +109,9 @@ func (h *PhotosHandler) EditExif(w http.ResponseWriter, r *http.Request) {
 
 	h.writeExifSidecar(r, photo, fields)
 
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionPhotoExifEdit, audit.EntityPhoto, uid, nil,
+	)
 	respondJSON(w, http.StatusOK, nativePhotoToResponse(*photo))
 }
 

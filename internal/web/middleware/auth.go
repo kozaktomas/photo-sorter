@@ -3,6 +3,8 @@ package middleware
 import (
 	"context"
 	"net/http"
+
+	"github.com/kozaktomas/photo-sorter/internal/audit"
 )
 
 type contextKey string
@@ -26,6 +28,15 @@ func RequireAuth(sm *SessionManager) func(http.Handler) http.Handler {
 			ctx = SetAuthInfoInContext(ctx, &AuthInfo{
 				UserUID: session.UserUID,
 				Role:    session.Role,
+			})
+			// Refresh the audit request context so audit.Logger.Log
+			// records the authenticated user_uid. The global audit
+			// middleware ran before us and stamped only IP/UA; now
+			// that we know who the caller is, replace the RC.
+			ctx = audit.WithRequestContext(ctx, audit.RequestContext{
+				UserUID:   session.UserUID,
+				IP:        clientIP(r),
+				UserAgent: r.UserAgent(),
 			})
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})

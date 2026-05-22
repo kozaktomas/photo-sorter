@@ -9,7 +9,9 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	chiMiddleware "github.com/go-chi/chi/v5/middleware"
+	"github.com/kozaktomas/photo-sorter/internal/audit"
 	"github.com/kozaktomas/photo-sorter/internal/config"
+	"github.com/kozaktomas/photo-sorter/internal/database"
 	"github.com/kozaktomas/photo-sorter/internal/web/handlers"
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
@@ -21,6 +23,7 @@ type Server struct {
 	httpServer     *http.Server
 	jobManager     *handlers.JobManager
 	sessionManager *middleware.SessionManager
+	auditLogger    *audit.Logger
 	mcpHandler     http.Handler // nil if MCP not enabled
 	booksHandler   *handlers.BooksHandler
 }
@@ -40,11 +43,24 @@ func NewServer(
 	// Create session manager with optional persistence.
 	sessionManager := middleware.NewSessionManager(sessionSecret, sessionRepo)
 
+	// Resolve the audit writer once at server boot. When the writer is
+	// not yet registered (e.g. very early in startup or in tests that
+	// only wire a subset of repositories) the audit logger silently
+	// degrades to a no-op via audit.NewLogger(nil).
+	var auditWriter database.AuditLogWriter
+	if w, err := database.GetAuditLogWriter(context.Background()); err == nil {
+		auditWriter = w
+	} else {
+		log.Printf("audit: writer unavailable: %v (audit trail disabled)", err)
+	}
+	auditLogger := audit.NewLogger(auditWriter)
+
 	s := &Server{
 		config:         cfg,
 		router:         r,
 		jobManager:     jobManager,
 		sessionManager: sessionManager,
+		auditLogger:    auditLogger,
 		mcpHandler:     mcpHandler,
 	}
 
@@ -61,6 +77,13 @@ func NewServer(
 	r.Use(chiMiddleware.Recoverer)
 	r.Use(middleware.CORS())
 	r.Use(middleware.SecurityHeaders())
+	// Audit middleware: attaches the Logger to every request context so
+	// handlers can call audit.FromContext(ctx).Log(...) after a
+	// successful mutation. Runs before RequireAuth: for routes that
+	// don't yet have an AuthInfo (e.g. /auth/login), the Logger records
+	// rows with an empty user_uid + actor hint, which the login flow
+	// then upgrades via LogAs once the credentials are verified.
+	r.Use(middleware.WithAuditLogger(s.auditLogger))
 
 	// Set up routes.
 	s.setupRoutes(sessionManager)

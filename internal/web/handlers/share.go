@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/kozaktomas/photo-sorter/internal/audit"
 	"github.com/kozaktomas/photo-sorter/internal/auth"
 	"github.com/kozaktomas/photo-sorter/internal/config"
 	"github.com/kozaktomas/photo-sorter/internal/database"
@@ -198,7 +199,25 @@ func (h *ShareHandler) CreateLink(w http.ResponseWriter, r *http.Request) {
 		h.respondCreateError(w, link.Slug, err)
 		return
 	}
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionShareLinkCreate, audit.EntityShareLink, link.Slug,
+		map[string]any{
+			"album_uid":    link.AlbumUID,
+			"has_password": link.PasswordHash != "",
+			"expires_at":   formatNullableTime(link.ExpiresAt),
+		},
+	)
 	respondJSON(w, http.StatusCreated, shareLinkToResponse(*link, ""))
+}
+
+// formatNullableTime returns the RFC3339 representation of t, or empty
+// string when t is nil. Used to record optional timestamps in audit
+// metadata without exploding the column with "null" strings.
+func formatNullableTime(t *time.Time) string {
+	if t == nil {
+		return ""
+	}
+	return t.UTC().Format(time.RFC3339)
 }
 
 // createLinkDeps bundles the dependencies CreateLink needs after every
@@ -462,6 +481,9 @@ func (h *ShareHandler) RevokeLink(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to revoke share link")
 		return
 	}
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionShareLinkRevoke, audit.EntityShareLink, slug, nil,
+	)
 	respondJSON(w, http.StatusOK, map[string]bool{"success": true})
 }
 
@@ -568,11 +590,21 @@ func (h *ShareHandler) VerifyPassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !auth.CheckPassword(req.Password, link.PasswordHash) {
+		audit.FromContext(r.Context()).LogAnonymous(
+			r.Context(), audit.ActionShareLinkPasswordFailed,
+			audit.EntityShareLink, link.Slug, "",
+			map[string]any{"album_uid": link.AlbumUID},
+		)
 		respondJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid password"})
 		return
 	}
 
 	h.setShareCookie(w, r, link.Slug)
+	audit.FromContext(r.Context()).LogAnonymous(
+		r.Context(), audit.ActionShareLinkPasswordVerify,
+		audit.EntityShareLink, link.Slug, "",
+		map[string]any{"album_uid": link.AlbumUID},
+	)
 	respondJSON(w, http.StatusOK, map[string]bool{"ok": true})
 }
 

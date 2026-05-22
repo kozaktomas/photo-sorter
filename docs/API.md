@@ -2199,6 +2199,90 @@ admin returns `409`.
 
 ---
 
+## Audit Log (Admin)
+
+The audit log records every successful mutating action plus a small set of
+explicit security events (`login_failed`, `share_link_password_failed`).
+Read-only GETs are never logged. Each row carries the symbolic action,
+the authenticated user_uid (NULL for anonymous events or deleted users),
+optional entity type+UID, action-specific JSON metadata, client IP, and
+User-Agent. Writes are append-only; the table grows unbounded for v1
+(future task adds a retention policy).
+
+### List Audit Log
+
+```
+GET /audit-log
+```
+
+**Auth:** Admin only.
+
+**Query Parameters:**
+
+| Name          | Description                                                      |
+| ------------- | ---------------------------------------------------------------- |
+| `user_uid`    | Filter by actor user UID.                                        |
+| `action`      | Filter by action name (e.g. `album_delete`).                     |
+| `entity_type` | Filter by affected entity type (e.g. `photo`, `album`).          |
+| `entity_uid`  | Filter by affected entity UID.                                   |
+| `since`       | RFC3339 timestamp — only rows created at or after this point.    |
+| `until`       | RFC3339 timestamp — only rows created at or before this point.   |
+| `limit`       | Page size, default 50, max 200 (silently clamped).               |
+| `offset`      | Offset for pagination.                                            |
+
+**Response:**
+
+```json
+{
+  "entries": [
+    {
+      "id": 12345,
+      "user_uid": "u123abc",
+      "user_username": "alice",
+      "action": "album_delete",
+      "entity_type": "album",
+      "entity_uid": "alvw…",
+      "metadata": { "title": "Old vacation" },
+      "ip": "10.0.0.42",
+      "user_agent": "Mozilla/5.0 …",
+      "created_at": "2026-05-22T08:14:00Z"
+    }
+  ],
+  "total": 4827,
+  "limit": 50,
+  "offset": 0
+}
+```
+
+`user_username` is `""` when the actor was anonymous (e.g. `login_failed`)
+or when the original user has since been deleted (FK is `ON DELETE SET NULL`).
+
+### Tracked Actions
+
+- **auth**: `login`, `logout`, `login_failed`, `password_change`
+- **photo**: `photo_upload`, `photo_update`, `photo_exif_edit`,
+  `photo_archive`, `photo_restore`, `photo_purge`, `photo_batch_edit`,
+  `photo_batch_label`, `photo_edits_update`, `photo_edits_clear`
+- **album**: `album_create`, `album_update`, `album_delete`,
+  `album_photos_add`, `album_photos_remove`
+- **label**: `label_update`, `label_delete`
+- **subject**: `subject_update`
+- **face**: `face_apply`
+- **user**: `user_create`, `user_update`, `user_disable`, `user_enable`,
+  `user_delete`, `user_password_reset`
+- **book**: `book_create`, `book_update`, `book_delete`, `book_export_pdf`
+- **share_link**: `share_link_create`, `share_link_revoke`,
+  `share_link_password_verify`, `share_link_password_failed`
+- **smart_album**: `smart_album_create`, `smart_album_update`,
+  `smart_album_delete`
+- **process**: `process_job_start`, `process_job_cancel`,
+  `sort_job_start`, `sort_job_cancel`
+
+Batch operations record a single row with `metadata.count`, not one row
+per item, so a 10 000-photo bulk archive does not blow up the table.
+
+---
+
 ## Configuration
 
 ### Get Configuration

@@ -10,8 +10,9 @@ import { LoadingState } from '../../components/LoadingState';
 import { changeOwnPassword, getMe } from '../../api/client';
 import type { UserAccount } from '../../api/client';
 import { UsersTab } from './Users';
+import { AuditLogTab } from './AuditLog';
 
-type TabId = 'users' | 'profile';
+type TabId = 'users' | 'profile' | 'auditLog';
 
 function ProfileTab({ user }: { user: UserAccount }) {
   const { t } = useTranslation(['pages']);
@@ -125,7 +126,11 @@ function ProfileTab({ user }: { user: UserAccount }) {
   );
 }
 
-export function SettingsPage() {
+interface SettingsPageProps {
+  initialTab?: TabId;
+}
+
+export function SettingsPage({ initialTab }: SettingsPageProps = {}) {
   const { t } = useTranslation(['pages']);
   const [me, setMe] = useState<UserAccount | null>(null);
   const [loading, setLoading] = useState(true);
@@ -136,12 +141,13 @@ export function SettingsPage() {
     const list: { id: TabId; label: string }[] = [];
     if (isAdmin) {
       list.push({ id: 'users', label: t('pages:settings.tabs.users') });
+      list.push({ id: 'auditLog', label: t('pages:settings.tabs.auditLog') });
     }
     list.push({ id: 'profile', label: t('pages:settings.tabs.profile') });
     return list;
   }, [isAdmin, t]);
 
-  const [activeTab, setActiveTab] = useState<TabId>('profile');
+  const [activeTab, setActiveTab] = useState<TabId>(initialTab ?? 'profile');
 
   useEffect(() => {
     let cancelled = false;
@@ -150,7 +156,11 @@ export function SettingsPage() {
         const data = await getMe();
         if (cancelled) return;
         setMe(data);
-        setActiveTab(data.role === 'admin' ? 'users' : 'profile');
+        if (initialTab) {
+          setActiveTab(initialTab);
+        } else {
+          setActiveTab(data.role === 'admin' ? 'users' : 'profile');
+        }
       } catch (err) {
         if (cancelled) return;
         setError(err instanceof Error ? err.message : t('pages:settings.profile.loadFailed'));
@@ -161,7 +171,7 @@ export function SettingsPage() {
     return () => {
       cancelled = true;
     };
-  }, [t]);
+  }, [t, initialTab]);
 
   return (
     <div>
@@ -201,6 +211,7 @@ export function SettingsPage() {
             )}
 
             {activeTab === 'users' && isAdmin && <UsersTab />}
+            {activeTab === 'auditLog' && isAdmin && <AuditLogTab />}
             {activeTab === 'profile' && <ProfileTab user={me} />}
           </>
         )}

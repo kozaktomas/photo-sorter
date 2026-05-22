@@ -18,6 +18,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/kozaktomas/photo-sorter/internal/ai"
+	"github.com/kozaktomas/photo-sorter/internal/audit"
 	"github.com/kozaktomas/photo-sorter/internal/config"
 	"github.com/kozaktomas/photo-sorter/internal/constants"
 	"github.com/kozaktomas/photo-sorter/internal/database"
@@ -730,6 +731,9 @@ func (h *PhotosHandler) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionPhotoUpdate, audit.EntityPhoto, uid, nil,
+	)
 	respondJSON(w, http.StatusOK, nativePhotoToResponse(*photo))
 }
 
@@ -995,6 +999,12 @@ func (h *PhotosHandler) BatchAddLabels(w http.ResponseWriter, r *http.Request) {
 		updated++
 	}
 
+	if updated > 0 {
+		audit.FromContext(r.Context()).Log(
+			r.Context(), audit.ActionPhotoBatchLabel, audit.EntityLabel, ensured.UID,
+			map[string]any{"count": updated, "label": ensured.Name},
+		)
+	}
 	respondJSON(w, http.StatusOK, BatchAddLabelsResponse{
 		Updated: updated,
 		Errors:  errors,
@@ -1023,17 +1033,19 @@ type BatchResponse struct {
 // BatchArchive archives (soft-deletes) multiple photos via the native
 // PhotoWriter. Per-photo errors are reported but do not abort the batch.
 func (h *PhotosHandler) BatchArchive(w http.ResponseWriter, r *http.Request) {
-	h.runBatchUIDOp(w, r, "archive", func(ctx context.Context, writer database.PhotoWriter, uid string) error {
-		return writer.ArchivePhoto(ctx, uid)
-	})
+	h.runBatchUIDOp(w, r, "archive", audit.ActionPhotoArchive,
+		func(ctx context.Context, writer database.PhotoWriter, uid string) error {
+			return writer.ArchivePhoto(ctx, uid)
+		})
 }
 
 // BatchRestore clears archived_at for multiple photos. Mirror of
 // BatchArchive with identical response shape.
 func (h *PhotosHandler) BatchRestore(w http.ResponseWriter, r *http.Request) {
-	h.runBatchUIDOp(w, r, "restore", func(ctx context.Context, writer database.PhotoWriter, uid string) error {
-		return writer.RestorePhoto(ctx, uid)
-	})
+	h.runBatchUIDOp(w, r, "restore", audit.ActionPhotoRestore,
+		func(ctx context.Context, writer database.PhotoWriter, uid string) error {
+			return writer.RestorePhoto(ctx, uid)
+		})
 }
 
 // ListTrash returns the archived photos page (the "trash" view). It shares
@@ -1124,15 +1136,23 @@ func (h *PhotosHandler) BatchPurge(w http.ResponseWriter, r *http.Request) {
 		}
 		purged++
 	}
+	if purged > 0 {
+		audit.FromContext(r.Context()).Log(
+			r.Context(), audit.ActionPhotoPurge, audit.EntityPhoto, "",
+			map[string]any{"count": purged},
+		)
+	}
 	respondJSON(w, http.StatusOK, BatchPurgeResponse{Purged: purged, Errors: batchErrors})
 }
 
 // runBatchUIDOp decodes the standard {photo_uids:[...]} payload, enforces
 // auth + non-empty list, and dispatches op once per UID. Per-photo errors
 // (including database.ErrNotFound) are collected into the response rather
-// than aborting the batch.
+// than aborting the batch. auditAction is logged once per successful
+// batch (count = number of UIDs that succeeded); pass empty string to
+// skip audit logging.
 func (h *PhotosHandler) runBatchUIDOp(
-	w http.ResponseWriter, r *http.Request, label string,
+	w http.ResponseWriter, r *http.Request, label, auditAction string,
 	op func(ctx context.Context, writer database.PhotoWriter, uid string) error,
 ) {
 	if err := requireWriteRole(r); err != nil {
@@ -1162,6 +1182,12 @@ func (h *PhotosHandler) runBatchUIDOp(
 			continue
 		}
 		updated++
+	}
+	if auditAction != "" && updated > 0 {
+		audit.FromContext(r.Context()).Log(
+			r.Context(), auditAction, audit.EntityPhoto, "",
+			map[string]any{"count": updated},
+		)
 	}
 	respondJSON(w, http.StatusOK, BatchResponse{Updated: updated, Errors: batchErrors})
 }
@@ -1706,7 +1732,27 @@ func (h *PhotosHandler) BatchEdit(w http.ResponseWriter, r *http.Request) {
 		}
 		updated++
 	}
+	if updated > 0 {
+		audit.FromContext(r.Context()).Log(
+			r.Context(), audit.ActionPhotoBatchEdit, audit.EntityPhoto, "",
+			batchEditAuditMeta(updated, req.Favorite, req.Private),
+		)
+	}
 	respondJSON(w, http.StatusOK, BatchResponse{Updated: updated, Errors: batchErrors})
+}
+
+// batchEditAuditMeta builds the audit metadata blob for a BatchEdit row,
+// dropping the favorite/private keys when they were not actually mutated
+// so the trail only records intentional flips.
+func batchEditAuditMeta(count int, favorite, private *bool) map[string]any {
+	meta := map[string]any{"count": count}
+	if favorite != nil {
+		meta["favorite"] = *favorite
+	}
+	if private != nil {
+		meta["private"] = *private
+	}
+	return meta
 }
 
 // applyBatchEdit applies favorite/private flips for one photo and writes

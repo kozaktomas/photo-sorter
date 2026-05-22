@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/kozaktomas/photo-sorter/internal/audit"
 	"github.com/kozaktomas/photo-sorter/internal/config"
 	"github.com/kozaktomas/photo-sorter/internal/database"
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
@@ -271,6 +272,10 @@ func (h *LabelsHandler) Update(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to update label")
 		return
 	}
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionLabelUpdate, audit.EntityLabel, label.UID,
+		map[string]any{"name": label.Name},
+	)
 	respondJSON(w, http.StatusOK, labelToResponse(*label))
 }
 
@@ -305,6 +310,12 @@ func (h *LabelsHandler) BatchDelete(w http.ResponseWriter, r *http.Request) {
 		log.Printf("labels batch delete: %v", err)
 		respondError(w, http.StatusInternalServerError, "failed to delete labels")
 		return
+	}
+	if deleted > 0 {
+		audit.FromContext(r.Context()).Log(
+			r.Context(), audit.ActionLabelDelete, audit.EntityLabel, "",
+			map[string]any{"count": deleted},
+		)
 	}
 	respondJSON(w, http.StatusOK, map[string]int{"deleted": deleted})
 }

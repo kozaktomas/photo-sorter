@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/kozaktomas/photo-sorter/internal/audit"
 	"github.com/kozaktomas/photo-sorter/internal/constants"
 	"github.com/kozaktomas/photo-sorter/internal/database"
 )
@@ -244,5 +245,9 @@ func (h *FacesHandler) UpdateSubject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionSubjectUpdate, audit.EntitySubject, uid,
+		map[string]any{"name": subject.Name},
+	)
 	respondJSON(w, http.StatusOK, subjectToResponse(*subject))
 }

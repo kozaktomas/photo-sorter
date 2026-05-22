@@ -13,6 +13,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 	"github.com/kozaktomas/photo-sorter/internal/ai"
+	"github.com/kozaktomas/photo-sorter/internal/audit"
 	"github.com/kozaktomas/photo-sorter/internal/config"
 	"github.com/kozaktomas/photo-sorter/internal/constants"
 	"github.com/kozaktomas/photo-sorter/internal/database"
@@ -111,6 +112,14 @@ func (h *SortHandler) Start(w http.ResponseWriter, r *http.Request) {
 	// Start job in background (intentionally outlives request).
 	go h.runSortJob(job, session) //nolint:gosec // G118 - background job outlives HTTP request
 
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionSortJobStart, audit.EntitySortJob, jobID,
+		map[string]any{
+			"album_uid": req.AlbumUID,
+			"provider":  req.Provider,
+			"dry_run":   req.DryRun,
+		},
+	)
 	respondJSON(w, http.StatusAccepted, map[string]string{
 		"job_id":      jobID,
 		"album_uid":   req.AlbumUID,
@@ -167,6 +176,9 @@ func (h *SortHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	job.Cancel()
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionSortJobCancel, audit.EntitySortJob, jobID, nil,
+	)
 	respondJSON(w, http.StatusOK, map[string]bool{"cancelled": true})
 }
 

@@ -11,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/kozaktomas/photo-sorter/internal/audit"
 	"github.com/kozaktomas/photo-sorter/internal/config"
 	"github.com/kozaktomas/photo-sorter/internal/constants"
 	"github.com/kozaktomas/photo-sorter/internal/database"
@@ -225,6 +226,15 @@ func (h *ProcessHandler) Start(w http.ResponseWriter, r *http.Request) {
 	// Launch processing goroutine (intentionally outlives request).
 	go h.runProcessJob(job, session) //nolint:gosec // G118 - background job outlives HTTP request
 
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionProcessJobStart, audit.EntityProcessJob, jobID,
+		map[string]any{
+			"concurrency":   req.Concurrency,
+			"limit":         req.Limit,
+			"no_faces":      req.NoFaces,
+			"no_embeddings": req.NoEmbeddings,
+		},
+	)
 	respondJSON(w, http.StatusAccepted, map[string]string{
 		"job_id": jobID,
 		"status": string(JobStatusPending),
@@ -262,6 +272,9 @@ func (h *ProcessHandler) Cancel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	job.Cancel()
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionProcessJobCancel, audit.EntityProcessJob, jobID, nil,
+	)
 	respondJSON(w, http.StatusOK, map[string]bool{"cancelled": true})
 }
 

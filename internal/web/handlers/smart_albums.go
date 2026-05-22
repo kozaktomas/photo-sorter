@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/kozaktomas/photo-sorter/internal/audit"
 	"github.com/kozaktomas/photo-sorter/internal/config"
 	"github.com/kozaktomas/photo-sorter/internal/constants"
 	"github.com/kozaktomas/photo-sorter/internal/database"
@@ -262,6 +263,10 @@ func (h *SmartAlbumsHandler) Create(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to create smart album")
 		return
 	}
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionSmartAlbumCreate, audit.EntitySmartAlbum, album.UID,
+		map[string]any{"name": album.Name},
+	)
 	respondJSON(w, http.StatusCreated, smartAlbumToResponse(*album, 0))
 }
 
@@ -309,10 +314,16 @@ func (h *SmartAlbumsHandler) Update(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to update smart album")
 		return
 	}
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionSmartAlbumUpdate, audit.EntitySmartAlbum, album.UID,
+		map[string]any{"name": album.Name},
+	)
 	respondJSON(w, http.StatusOK, smartAlbumToResponse(*album, 0))
 }
 
 // Delete removes a smart album. Requires write access.
+//
+//nolint:dupl // intentionally mirrors AlbumsHandler.Delete shape; merging would mix unrelated repos
 func (h *SmartAlbumsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	if err := requireWriteRole(r); err != nil {
 		respondError(w, http.StatusForbidden, "forbidden")
@@ -336,6 +347,9 @@ func (h *SmartAlbumsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to delete smart album")
 		return
 	}
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionSmartAlbumDelete, audit.EntitySmartAlbum, uid, nil,
+	)
 	respondJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 

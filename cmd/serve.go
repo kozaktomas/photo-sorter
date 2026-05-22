@@ -60,6 +60,27 @@ func registerServeBackends(
 	database.RegisterBookWriter(func() database.BookWriter { return bookRepo })
 	fmt.Printf("Photo book storage enabled (PostgreSQL)\n")
 
+	registerServeNativeRepos(pool)
+
+	userRepo := postgres.NewUserRepository(pool)
+	database.RegisterUserWriter(func() database.UserWriter { return userRepo })
+	fmt.Printf("Native user storage enabled (PostgreSQL)\n")
+
+	tvRepo := postgres.NewTextVersionRepository(pool)
+	database.RegisterTextVersionStore(func() database.TextVersionStore { return tvRepo })
+
+	tcRepo := postgres.NewTextCheckRepository(pool)
+	database.RegisterTextCheckStore(func() database.TextCheckStore { return tcRepo })
+
+	sessionRepo := postgres.NewSessionRepository(pool)
+	fmt.Printf("Session persistence enabled (PostgreSQL)\n")
+	return sessionRepo
+}
+
+// registerServeNativeRepos registers the native-storage repositories that
+// back the photo/album/label/marker/audit endpoints. Split out of
+// registerServeBackends so the latter stays within the funlen budget.
+func registerServeNativeRepos(pool *postgres.Pool) {
 	photoRepo := postgres.NewPhotoRepository(pool)
 	database.RegisterPhotoWriter(func() database.PhotoWriter { return photoRepo })
 
@@ -86,22 +107,11 @@ func registerServeBackends(
 
 	photoEditsRepo := postgres.NewPhotoEditsRepository(pool)
 	database.RegisterPhotoEditsWriter(func() database.PhotoEditsWriter { return photoEditsRepo })
+
+	auditLogRepo := postgres.NewAuditLogRepository(pool)
+	database.RegisterAuditLogWriter(func() database.AuditLogWriter { return auditLogRepo })
 	fmt.Printf("Native photo + album + label + subject + marker + phash + " +
-		"share-link + smart-album + photo-edits storage enabled (PostgreSQL)\n")
-
-	userRepo := postgres.NewUserRepository(pool)
-	database.RegisterUserWriter(func() database.UserWriter { return userRepo })
-	fmt.Printf("Native user storage enabled (PostgreSQL)\n")
-
-	tvRepo := postgres.NewTextVersionRepository(pool)
-	database.RegisterTextVersionStore(func() database.TextVersionStore { return tvRepo })
-
-	tcRepo := postgres.NewTextCheckRepository(pool)
-	database.RegisterTextCheckStore(func() database.TextCheckStore { return tcRepo })
-
-	sessionRepo := postgres.NewSessionRepository(pool)
-	fmt.Printf("Session persistence enabled (PostgreSQL)\n")
-	return sessionRepo
+		"share-link + smart-album + photo-edits + audit-log storage enabled (PostgreSQL)\n")
 }
 
 // resolveServeHostPort resolves port and host from flags and environment variables.

@@ -95,6 +95,7 @@ flowchart TB
 | `cmd/` | Cobra CLI commands (sort, albums, labels, upload, move, photo, cache, serve, backup, migrate-from-photoprism, migrate-verify, migrate-remap-references, etc.) | Root command, subcommands |
 | `internal/ai/` | AI provider interface and implementations (OpenAI, Gemini, Ollama, llama.cpp) | `Provider`, `PhotoAnalysis`, `BatchPhotoRequest`, `Usage` |
 | `internal/ai/prompts/` | Embedded prompt templates (photo analysis, date estimation, CLIP translation, text check, text rewrite, text consistency) | Embedded text files |
+| `internal/audit/` | Append-only audit trail for every successful mutating request. `Logger` wraps the `database.AuditLogWriter` and pulls `user_uid` / IP / User-Agent from a per-request `RequestContext` injected by the audit middleware; handlers just call `audit.FromContext(ctx).Log(action, entityType, entityUID, metadata)` after a successful mutation. Failures to persist are WARN-logged and never propagated so the underlying request still succeeds. Authentication-side events use `LogAs` (explicit user_uid for the `login` row) and `LogAnonymous` (no user_uid, plus an `actor` hint in metadata for `login_failed` / `share_link_password_failed`). | `Logger`, `RequestContext`, `WithRequestContext`, `WithLogger`, `FromContext`, action / entity constants |
 | `internal/auth/` | Bcrypt password hashing, role constants (`admin`/`editor`/`viewer`), bootstrap-admin creation from env vars | `HashPassword`, `CheckPassword`, `BootstrapAdmin`, `RoleAdmin`, ... |
 | `internal/config/` | Environment-based configuration loader and pricing data | `Config`, `StorageConfig`, `DuplicateConfig`, `prices.yaml` (embedded) |
 | `internal/constants/` | Shared constants for page sizes, thresholds, concurrency limits, upload limits | Constants |
@@ -116,7 +117,7 @@ flowchart TB
 | `internal/trash/` | Soft-delete trash store and the hourly auto-purge daemon that hard-deletes archived photos older than `TRASH_RETENTION_DAYS` | `Store`, `Purge`, `RunDaemon` |
 | `internal/verify/` | Cell-by-cell comparator used by `migrate-verify` (PhotoPrism rows vs native rows, with tolerance bands) | `Verify`, `Report`, `FieldDiff` |
 | `internal/web/` | Web server setup and route registration | `Server` |
-| `internal/web/middleware/` | HTTP middleware: auth (session cookie), role gating, CORS, session management | `SessionManager`, `RequireAuth`, `RequireRole` |
+| `internal/web/middleware/` | HTTP middleware: auth (session cookie), role gating, CORS, session management, audit logger injection | `SessionManager`, `RequireAuth`, `RequireRole`, `WithAuditLogger` |
 | `internal/web/handlers/` | REST API handlers for all endpoints (albums, photos, faces, books, text AI, text versions, sort jobs, SSE) | `FacesHandler`, `BooksHandler`, `TextHandler`, `TextVersionsHandler`, `UsersHandler`, `PhotosHandler`, `AlbumsHandler`, `LabelsHandler`, ... |
 | `web/` | React + TypeScript + TailwindCSS frontend (Vite build, i18n with Czech + English) | Pages, components, hooks, typed API client |
 

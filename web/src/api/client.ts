@@ -1110,6 +1110,50 @@ export async function changeOwnPassword(
   });
 }
 
+// Audit log
+
+export interface AuditLogEntry {
+  id: number;
+  user_uid: string;
+  user_username: string;
+  action: string;
+  entity_type: string;
+  entity_uid: string;
+  metadata: Record<string, unknown>;
+  ip: string;
+  user_agent: string;
+  created_at: string;
+}
+
+export interface AuditLogPage {
+  entries: AuditLogEntry[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface AuditLogFilter {
+  user_uid?: string;
+  action?: string;
+  entity_type?: string;
+  entity_uid?: string;
+  since?: string;
+  until?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export async function listAuditLog(filter: AuditLogFilter): Promise<AuditLogPage> {
+  const params = new URLSearchParams();
+  for (const [key, val] of Object.entries(filter)) {
+    if (val === undefined || val === null || val === '') continue;
+    params.set(key, String(val));
+  }
+  const query = params.toString();
+  const path = query ? `/audit-log?${query}` : '/audit-log';
+  return request<AuditLogPage>(path);
+}
+
 // PDF Export
 export async function exportBookPDF(bookId: string): Promise<void> {
   const response = await fetch(`${API_BASE}/books/${bookId}/export-pdf`, {

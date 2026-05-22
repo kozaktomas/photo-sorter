@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/kozaktomas/photo-sorter/internal/audit"
 	"github.com/kozaktomas/photo-sorter/internal/config"
 	"github.com/kozaktomas/photo-sorter/internal/constants"
 	"github.com/kozaktomas/photo-sorter/internal/database"
@@ -308,6 +309,10 @@ func (h *AlbumsHandler) Create(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to create album")
 		return
 	}
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionAlbumCreate, audit.EntityAlbum, album.UID,
+		map[string]any{"title": album.Title},
+	)
 	respondJSON(w, http.StatusCreated, albumToResponse(*album))
 }
 
@@ -361,10 +366,16 @@ func (h *AlbumsHandler) Update(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to update album")
 		return
 	}
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionAlbumUpdate, audit.EntityAlbum, album.UID,
+		map[string]any{"title": album.Title},
+	)
 	respondJSON(w, http.StatusOK, albumToResponse(*album))
 }
 
 // Delete hard-deletes an album.
+//
+//nolint:dupl // intentionally mirrors SmartAlbumsHandler.Delete shape; merging would mix unrelated repos
 func (h *AlbumsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 	if err := requireWriteRole(r); err != nil {
 		respondError(w, http.StatusForbidden, "forbidden")
@@ -388,6 +399,9 @@ func (h *AlbumsHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to delete album")
 		return
 	}
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionAlbumDelete, audit.EntityAlbum, uid, nil,
+	)
 	respondJSON(w, http.StatusOK, map[string]string{"status": "deleted"})
 }
 
@@ -470,6 +484,10 @@ func (h *AlbumsHandler) AddPhotos(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to add photos to album")
 		return
 	}
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionAlbumPhotosAdd, audit.EntityAlbum, uid,
+		map[string]any{"count": len(photoUIDs)},
+	)
 	respondJSON(w, http.StatusOK, map[string]int{"added": len(photoUIDs)})
 }
 
@@ -520,6 +538,10 @@ func (h *AlbumsHandler) ClearPhotos(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to remove photos from album")
 		return
 	}
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionAlbumPhotosRemove, audit.EntityAlbum, uid,
+		map[string]any{"count": len(uids)},
+	)
 	respondJSON(w, http.StatusOK, map[string]int{"removed": len(uids)})
 }
 
@@ -534,6 +556,10 @@ func (h *AlbumsHandler) RemovePhotos(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to remove photos from album")
 		return
 	}
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionAlbumPhotosRemove, audit.EntityAlbum, uid,
+		map[string]any{"count": len(photoUIDs)},
+	)
 	respondJSON(w, http.StatusOK, map[string]int{"removed": len(photoUIDs)})
 }
 

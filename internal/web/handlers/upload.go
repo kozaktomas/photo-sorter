@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/kozaktomas/photo-sorter/internal/audit"
 	"github.com/kozaktomas/photo-sorter/internal/config"
 	"github.com/kozaktomas/photo-sorter/internal/constants"
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
@@ -118,6 +119,10 @@ func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionPhotoUpload, audit.EntityAlbum, albumUID,
+		map[string]any{"count": len(filePaths)},
+	)
 	respondJSON(w, http.StatusOK, map[string]any{
 		"uploaded": len(filePaths),
 		"album":    albumUID,
@@ -204,6 +209,13 @@ func (h *UploadHandler) StartJob(w http.ResponseWriter, r *http.Request) {
 	h.jobManager.SetActiveJob(job)
 	go h.runUploadJob(job, session, tempDir) //nolint:gosec // G118 - background job outlives HTTP request
 
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionPhotoUpload, audit.EntityProcessJob, jobID,
+		map[string]any{
+			"file_count": opts.FileCount,
+			"album_uids": opts.AlbumUIDs,
+		},
+	)
 	respondJSON(w, http.StatusAccepted, map[string]string{
 		"job_id": jobID,
 		"status": string(JobStatusPending),
