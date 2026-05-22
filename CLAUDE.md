@@ -19,6 +19,18 @@ where `<hash>` is the photo's SHA256 and `<aa>/<bb>/<cc>` are the first
 three byte-pair shards of the hash. The thumbnail cache is regenerable
 from the originals via `cache build-thumbs`; backups intentionally skip it.
 
+### Backup & disaster recovery
+
+**Backup CLI: partially delivered.** The DB side is covered by
+`photo-sorter db-export` / `photo-sorter db-import` (this command pair
+dumps and restores the entire `photosorter` Postgres database via
+`pg_dump` / `pg_restore`). Archival of the originals tree is left to the
+operator — use `rsync`, `borg`, or the higher-level `photo-sorter
+backup` command (which bundles both into a timestamped directory). After
+a `db-import` on a new host, restart the server and re-run
+`cache build-thumbs` to regenerate any missing thumbnail sizes from the
+synced originals.
+
 ### Users + bootstrap
 
 Users authenticate against the local `users` table (bcrypt-hashed
@@ -124,6 +136,12 @@ go run . <command>
 
 # Start the web server
 go run . serve
+
+# Dump the Postgres database to a single file (originals tree NOT included).
+go run . db-export -o photosorter-snapshot.dump
+
+# Restore a database dump produced by db-export (skipping the prompt).
+go run . db-import -i photosorter-snapshot.dump --yes
 ```
 
 ### Version Injection

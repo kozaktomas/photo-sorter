@@ -536,6 +536,111 @@ The timer triggers `photo-sorter-backup.service` every day at 03:00 (with a 10-m
 
 ---
 
+### DB Commands
+
+The `db-export` / `db-import` pair covers the metadata side of disaster
+recovery: embeddings, faces, books, users, sessions, era_embeddings,
+photos, albums, labels, markers, subjects — everything that lives in the
+`photosorter` database. Photos themselves (the originals tree on disk)
+are NOT part of these commands; back those up separately via
+rsync/borg/etc. or the higher-level `backup` command above.
+
+Both commands read `DATABASE_URL` from the environment and shell out to
+the system `pg_dump` / `pg_restore` / `psql` binaries (install
+`postgresql-client`).
+
+#### db-export
+
+Dump the photo-sorter PostgreSQL database to a single file.
+
+```bash
+photo-sorter db-export [flags]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--output`, `-o` | string | `photosorter-<UTC timestamp>.<ext>` | Destination file path. Extension matches the format. |
+| `--format` | string | `custom` | Dump format: `custom` (pg_dump's compressed binary) or `plain` (SQL). |
+| `--no-compress` | bool | false | For `plain` format, skip gzipping the output. Ignored for `custom` (already compressed). |
+| `--force` | bool | false | Overwrite the output file if it already exists. |
+
+The `custom` format is recommended: it is what `pg_restore` expects, and
+it supports selective restores. Use `plain` only if you need a
+human-readable SQL file.
+
+On success the command prints the output path, final size, and elapsed
+wall time. If `pg_dump` exits non-zero, the partial output file is
+removed automatically.
+
+**Examples:**
+
+```bash
+# Default: custom-format dump to the current directory with an auto-timestamped name.
+photo-sorter db-export
+
+# Plain SQL, gzipped, named explicitly.
+photo-sorter db-export --format plain -o sorter.sql.gz
+
+# Uncompressed plain SQL (useful for diffing).
+photo-sorter db-export --format plain --no-compress -o sorter.sql
+```
+
+#### db-import
+
+Restore a photo-sorter PostgreSQL database from a dump file produced by
+`db-export` (or any equivalent `pg_dump` output).
+
+```bash
+photo-sorter db-import [flags]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--input`, `-i` | string | (required) | Source dump file. |
+| `--yes`, `-y` | bool | false | Skip the interactive confirmation prompt. |
+| `--drop-existing` | bool | false | `DROP SCHEMA public CASCADE; CREATE SCHEMA public;` before restoring (clean slate). |
+
+The dump format is auto-detected from the file header — `PGDMP` magic
+bytes for `pg_restore`, anything that looks like SQL for `psql`. Gzipped
+files are decompressed transparently. For `custom` format dumps that are
+also gzipped, the import gunzips to a temp file first (pg_restore needs
+a seekable file) and removes it afterward.
+
+If the target database already contains data (the `embeddings` table has
+rows), `db-import` refuses to overwrite it without `--yes`. The
+interactive prompt requires the literal token `yes`.
+
+For `custom` format dumps, `db-import` invokes `pg_restore --clean
+--if-exists` unless `--drop-existing` is set; for `plain` format dumps,
+the SQL statements emitted by `pg_dump` (or by `db-export --format
+plain`) handle the drop/create ordering themselves.
+
+**Examples:**
+
+```bash
+# Restore a custom-format dump (auto-detected).
+photo-sorter db-import -i sorter.dump --yes
+
+# Restore a plain SQL gzipped dump.
+photo-sorter db-import -i sorter.sql.gz --yes
+
+# Force a clean slate first (drops public schema).
+photo-sorter db-import -i sorter.dump --yes --drop-existing
+```
+
+**Next steps after a successful import:**
+
+1. Restart the photo-sorter server (HNSW indexes load at startup).
+2. If the imported DB came from a host with a different originals tree,
+   verify `STORAGE_ORIGINALS_PATH` and re-run `photo-sorter cache
+   build-thumbs` to regenerate thumbnails for any missing sizes.
+3. If face-search results look off, hit `POST
+   /api/v1/process/rebuild-index` (Rebuild Index button in the UI) to
+   rebuild the in-memory HNSW indexes from the freshly imported
+   embeddings.
+
+---
+
 ### migrate-from-photoprism
 
 One-shot import of an existing PhotoPrism instance into photo-sorter's
