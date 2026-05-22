@@ -274,6 +274,16 @@ sudo systemctl enable --now photo-sorter-backup.timer
 
 The timer fires the oneshot service nightly at 03:00 (with a 10-minute random jitter, persistent across reboots).
 
+#### Backup & Restore runbook
+
+For the full end-to-end procedure — what to back up, what to skip,
+restore steps, and disaster-recovery checklist — see
+[`docs/backup.md`](docs/backup.md). The TL;DR is: archive the originals
+tree (rsync/borg) and dump Postgres (`photo-sorter db-export`); on
+restore, `db-import` the dump, point `STORAGE_ORIGINALS_PATH` at the
+restored tree, and let `cache build-thumbs` regenerate the thumbnail
+cache on demand.
+
 ### Migrating from PhotoPrism
 
 If you are coming from an existing PhotoPrism install, photo-sorter can
@@ -383,6 +393,7 @@ photo-sorter/
 - [Era Estimation](docs/era-estimation.md) - Era estimation using CLIP embeddings
 - [Photo Books](docs/photo-book.md) - Photo book planning tool
 - [Migration from PhotoPrism](docs/migration-from-photoprism.md) - One-shot import runbook
+- [Backup & Restore](docs/backup.md) - Operator runbook for backing up and restoring a photo-sorter install
 - [Testing Environment](docs/testing-environment.md) - Dev/test environment setup
 
 ## Development

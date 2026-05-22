@@ -753,6 +753,7 @@ When adding or modifying features, update the relevant documentation:
 - **`docs/photo-book.md`** - Update when changing photo book feature (formats, schema, UI)
 - **`docs/API.md`** - Update when changing REST API endpoints
 - **`docs/testing-environment.md`** - Update when changing dev/test setup
+- **`docs/backup.md`** - Operator runbook for backing up and restoring a photo-sorter install
 - **`README.md`** - Update for major feature additions or architectural changes
 
 Documentation files:
@@ -760,6 +761,7 @@ Documentation files:
 docs/
 ├── API.md                       # REST API documentation
 ├── architecture.md              # System design, package structure, and data flow
+├── backup.md                    # Operator runbook for backing up and restoring a photo-sorter install
 ├── cli-reference.md             # Complete CLI command reference
 ├── era-estimation.md            # Era estimation: centroids, API, and UI
 ├── similarity-search.md         # pgvector cosine search: indexes, ef_search, maintenance

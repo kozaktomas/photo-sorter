@@ -4,6 +4,8 @@
 
 Photo Sorter is a self-contained photo management application — one Go binary, one Postgres database (with pgvector), and an external CLIP/InsightFace embeddings service. PostgreSQL is the single source of truth for photos, albums, labels, subjects, markers, faces, photo books, sessions, and user accounts. Originals live on disk under `STORAGE_ORIGINALS_PATH` in `YYYY/MM/<filename>` (same shape PhotoPrism uses, so an existing PhotoPrism tree can be migrated in place without renaming); thumbnails live under `STORAGE_CACHE_PATH/thumb/<aa>/<bb>/<cc>/<hash>_<size>.jpg`. The backend is written in Go (Cobra CLI, Chi HTTP router, pgvector for vector storage) and the frontend is a React + TypeScript + TailwindCSS single-page application embedded into the Go binary at compile time.
 
+> Backup and restore: see [`docs/backup.md`](backup.md) for the operator runbook covering what to back up (originals + Postgres), what to skip (thumbnail cache, build artefacts), and the disaster-recovery procedure.
+
 ## System Diagram
 
 ```mermaid
