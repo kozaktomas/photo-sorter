@@ -12,6 +12,7 @@ import { ShareModal } from '../components/ShareModal';
 import { usePhotoSelection } from '../hooks/usePhotoSelection';
 import { getAlbums, getAlbum, getAlbumPhotos, getThumbnailUrl } from '../api/client';
 import { ALBUM_PHOTOS_CACHE_KEY } from '../constants';
+import { SmartAlbumsSection } from './SmartAlbums/SmartAlbumsSection';
 import type { Album, Photo } from '../types';
 
 export function AlbumsPage() {
@@ -60,16 +61,26 @@ function AlbumListPage() {
         category="browse"
       />
 
-      {/* Search */}
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
-        <input
-          type="text"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder={t('pages:albums.searchPlaceholder')}
-          className="w-full pl-10 pr-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-        />
+      {/* Smart albums section (saved searches) sits above the regular grid
+          so users see live, expression-based collections first. */}
+      <SmartAlbumsSection />
+
+      <div className="border-t border-slate-700 pt-6">
+        <h2 className="text-xl font-semibold text-white mb-3">
+          {t('pages:smartAlbums.regularSectionTitle')}
+        </h2>
+
+        {/* Search */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-400" />
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder={t('pages:albums.searchPlaceholder')}
+            className="w-full pl-10 pr-4 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+          />
+        </div>
       </div>
 
       {/* Album grid */}

@@ -46,6 +46,35 @@ export interface PublicSharePhotosResponse {
   offset: number;
 }
 
+// SmartAlbumFilters is the saved filter blob persisted in
+// smart_albums.filters. The shape mirrors the GET /api/v1/photos query
+// params (label_uids, subject_uids, favorite, taken_from/to, geo bbox, q,
+// sort). Every key is optional: an empty object is a valid "all photos"
+// smart album.
+export interface SmartAlbumFilters {
+  label_uids?: string[];
+  subject_uids?: string[];
+  favorite?: boolean;
+  taken_from?: string;
+  taken_to?: string;
+  min_lat?: number;
+  min_lng?: number;
+  max_lat?: number;
+  max_lng?: number;
+  q?: string;
+  sort?: string;
+}
+
+export interface SmartAlbum {
+  uid: string;
+  name: string;
+  filters: SmartAlbumFilters;
+  photo_count: number;
+  created_at: string;
+  updated_at: string;
+  created_by_user_uid: string;
+}
+
 export interface Album {
   uid: string;
   title: string;

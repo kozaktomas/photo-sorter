@@ -102,6 +102,18 @@ func (s *Server) resolveShareLinkRepo() database.ShareLinkWriter {
 	return r
 }
 
+// resolveSmartAlbumRepo best-effort-fetches the native SmartAlbumWriter.
+// Returns nil (and logs) when the registration is missing — the smart
+// album endpoints then surface a 503 instead of blocking server startup.
+func (s *Server) resolveSmartAlbumRepo() database.SmartAlbumWriter {
+	r, err := database.GetSmartAlbumWriter(context.Background())
+	if err != nil {
+		log.Printf("smart-albums: native repo unavailable: %v", err)
+		return nil
+	}
+	return r
+}
+
 // resolveUserRepos best-effort-fetches the native UserReader and
 // UserWriter. Returns nils (and logs) when the registration is missing —
 // the auth handler then surfaces a 500 from login until the user store is
@@ -131,6 +143,7 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 	markerRepo := s.resolveMarkerRepo()
 	subjectRepo := s.resolveSubjectRepo()
 	shareLinkRepo := s.resolveShareLinkRepo()
+	smartAlbumRepo := s.resolveSmartAlbumRepo()
 	userReader, userWriter := s.resolveUserRepos()
 
 	// Create handlers.
@@ -155,6 +168,7 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 	shareHandler := handlers.NewShareHandler(
 		s.config, sessionManager, shareLinkRepo, albumRepo, photoRepo, photoStore,
 	)
+	smartAlbumsHandler := handlers.NewSmartAlbumsHandler(s.config, sessionManager, smartAlbumRepo, photoRepo)
 
 	// Health check (no auth required).
 	s.router.Get("/api/v1/health", handlers.HealthCheck)
@@ -205,6 +219,14 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 				r.Post("/albums/{uid}/share", shareHandler.CreateLink)
 				r.Get("/albums/{uid}/shares", shareHandler.ListLinks)
 				r.Delete("/shares/{slug}", shareHandler.RevokeLink)
+
+				// Smart albums (saved photo searches).
+				r.Get("/smart-albums", smartAlbumsHandler.List)
+				r.Post("/smart-albums", smartAlbumsHandler.Create)
+				r.Get("/smart-albums/{uid}", smartAlbumsHandler.Get)
+				r.Put("/smart-albums/{uid}", smartAlbumsHandler.Update)
+				r.Delete("/smart-albums/{uid}", smartAlbumsHandler.Delete)
+				r.Get("/smart-albums/{uid}/photos", smartAlbumsHandler.GetPhotos)
 
 				// Labels.
 				r.Get("/labels", labelsHandler.List)

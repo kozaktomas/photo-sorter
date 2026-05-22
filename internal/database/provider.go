@@ -22,6 +22,7 @@ var (
 	postgresSubjectWriter      func() SubjectWriter
 	postgresPHashWriter        func() PHashWriter
 	postgresShareLinkWriter    func() ShareLinkWriter
+	postgresSmartAlbumWriter   func() SmartAlbumWriter
 	postgresInitialized        bool
 )
 
@@ -43,6 +44,7 @@ func ResetForTesting() {
 	postgresSubjectWriter = nil
 	postgresPHashWriter = nil
 	postgresShareLinkWriter = nil
+	postgresSmartAlbumWriter = nil
 	postgresInitialized = false
 }
 
@@ -446,4 +448,33 @@ func GetShareLinkReader(ctx context.Context) (ShareLinkReader, error) {
 		return nil, errors.New("PostgreSQL share link reader not registered")
 	}
 	return postgresShareLinkWriter(), nil
+}
+
+// RegisterSmartAlbumWriter registers the SmartAlbumWriter constructor. The
+// same value also serves SmartAlbumReader, since the writer embeds the
+// reader interface.
+func RegisterSmartAlbumWriter(writer func() SmartAlbumWriter) {
+	postgresSmartAlbumWriter = writer
+}
+
+// GetSmartAlbumWriter returns a SmartAlbumWriter from the PostgreSQL backend.
+func GetSmartAlbumWriter(ctx context.Context) (SmartAlbumWriter, error) {
+	if !postgresInitialized {
+		return nil, errors.New("PostgreSQL backend not initialized: DATABASE_URL is required")
+	}
+	if postgresSmartAlbumWriter == nil {
+		return nil, errors.New("PostgreSQL smart album writer not registered")
+	}
+	return postgresSmartAlbumWriter(), nil
+}
+
+// GetSmartAlbumReader returns a SmartAlbumReader from the PostgreSQL backend.
+func GetSmartAlbumReader(ctx context.Context) (SmartAlbumReader, error) {
+	if !postgresInitialized {
+		return nil, errors.New("PostgreSQL backend not initialized: DATABASE_URL is required")
+	}
+	if postgresSmartAlbumWriter == nil {
+		return nil, errors.New("PostgreSQL smart album reader not registered")
+	}
+	return postgresSmartAlbumWriter(), nil
 }

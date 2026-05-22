@@ -364,6 +364,124 @@ Hard-deletes the share row. Cookies issued for the slug stay valid for the rest 
 
 ---
 
+## Smart Albums (Saved Photo Searches)
+
+Smart albums are named, saved photo queries that re-evaluate live whenever
+opened. They store a JSONB filter blob shaped like the `GET /api/v1/photos`
+query string (label_uids, subject_uids, favorite, taken_from/to, geo bbox,
+q, sort). Photos are never duplicated into the smart album — the listing
+endpoint runs the saved filters through the same code path as
+`/photos`, so filter terms referencing deleted entities silently drop out.
+
+All endpoints below require authentication. Mutating endpoints additionally
+require `editor` or `admin` (HasWriteAccess).
+
+### List Smart Albums
+
+```
+GET /smart-albums
+```
+
+Returns every smart album. `photo_count` is computed by re-running the
+saved filter as a count query against the photos table at request time.
+
+**Response (200):**
+
+```json
+[
+  {
+    "uid": "sabcdefghijklmnop",
+    "name": "Veselice 2024",
+    "filters": {
+      "label_uids": ["lxxxx", "lyyyy"],
+      "favorite": true,
+      "taken_from": "2024-01-01T00:00:00Z",
+      "taken_to": "2024-12-31T23:59:59Z"
+    },
+    "photo_count": 142,
+    "created_at": "2026-05-22T08:00:00Z",
+    "updated_at": "2026-05-22T08:00:00Z",
+    "created_by_user_uid": "uxxxxxxxxxxxxxxx"
+  }
+]
+```
+
+### Create Smart Album
+
+```
+POST /smart-albums
+```
+
+**Request body:**
+
+```json
+{
+  "name": "Veselice 2024",
+  "filters": {
+    "label_uids": ["lxxxx"],
+    "favorite": true
+  }
+}
+```
+
+`name` is required; an empty filter object is valid (it produces a custom-
+named "all photos" view). Unknown filter keys are rejected with `400`.
+
+**Errors:** `400` for missing name / unknown filter keys; `403` for the
+viewer role.
+
+### Get Smart Album
+
+```
+GET /smart-albums/{uid}
+```
+
+Returns one smart album with its filter blob and computed photo count.
+
+**Errors:** `404` when the smart album does not exist.
+
+### Update Smart Album
+
+```
+PUT /smart-albums/{uid}
+```
+
+Replaces `name` and `filters`. The UID is immutable, so renaming preserves
+bookmarks.
+
+### Delete Smart Album
+
+```
+DELETE /smart-albums/{uid}
+```
+
+**Response (200):** `{ "status": "deleted" }`
+
+### Get Photos in a Smart Album
+
+```
+GET /smart-albums/{uid}/photos
+```
+
+Resolves the saved filter against the photos table and returns the
+paginated result with the same envelope as `GET /photos`. Supports
+`limit`, `offset`, and `sort` query overrides — these win over any
+matching saved keys so the detail page can page through results without
+mutating the stored filter.
+
+**Response (200):**
+
+```json
+{
+  "photos": [...],
+  "total": 142,
+  "limit": 100,
+  "offset": 0
+}
+```
+
+---
+
 ## Public Share Links
 
 These endpoints intentionally live outside the authenticated API so anonymous recipients can hit them. They MUST NOT require a session cookie; the only state they consult is the per-share `share_<slug>` HttpOnly cookie set by `verify` after a successful password check.

@@ -90,6 +90,7 @@ Browse and manage your albums (from the native `albums` table).
 - **Photo navigation context** - When clicking a photo from an album, navigation arrows and position counter are available in Photo Detail
 - **Bulk photo removal** - Enter selection mode to select photos and remove them from the album in bulk
 - **Public share links** - The album detail page has a Share button that opens a modal where the owner can mint a public share link. Each link has an auto-generated `[a-z0-9-]{3,64}` slug (editable), an optional bcrypt-hashed password, and an optional expiration date. Existing links are listed with copy-URL and revoke actions. The recipient URL is `{origin}/share/<slug>` — see [Public Share Viewer](#public-share-viewer-shareslug) below.
+- **Smart albums** - A dedicated section above the regular album grid lists *smart albums* (saved photo searches). Each card shows the saved name, computed photo count, and edit/delete icons. The "Create smart album" button opens a modal with name + the same filter controls as the Photos page (label combobox, subject combobox, favorite toggle, date pickers, GPS bbox, search string, sort). Clicking a smart album card navigates to `/smart-albums/:uid`, which fetches a fresh, live photo list against the saved filter — renames preserve the UID so bookmarks survive. Filters referencing deleted entities silently drop out at query time.
 
 ### Public Share Viewer (`/share/:slug`)
 

@@ -39,6 +39,8 @@ import type {
   ShareLinksResponse,
   PublicShareInfo,
   PublicSharePhotosResponse,
+  SmartAlbum,
+  SmartAlbumFilters,
 } from '../types';
 
 const API_BASE = '/api/v1';
@@ -1275,4 +1277,60 @@ export function getPublicShareThumbUrl(
   size: string
 ): string {
   return `${API_BASE}/public/share/${slug}/photos/${photoUid}/thumb/${size}`;
+}
+
+// Smart albums (saved photo searches) ------------------------------------
+
+export async function listSmartAlbums(): Promise<SmartAlbum[]> {
+  return request<SmartAlbum[]>(`/smart-albums`);
+}
+
+export async function getSmartAlbum(uid: string): Promise<SmartAlbum> {
+  return request<SmartAlbum>(`/smart-albums/${uid}`);
+}
+
+export async function createSmartAlbum(
+  name: string,
+  filters: SmartAlbumFilters
+): Promise<SmartAlbum> {
+  return request<SmartAlbum>(`/smart-albums`, {
+    method: 'POST',
+    body: JSON.stringify({ name, filters }),
+  });
+}
+
+export async function updateSmartAlbum(
+  uid: string,
+  name: string,
+  filters: SmartAlbumFilters
+): Promise<SmartAlbum> {
+  return request<SmartAlbum>(`/smart-albums/${uid}`, {
+    method: 'PUT',
+    body: JSON.stringify({ name, filters }),
+  });
+}
+
+export async function deleteSmartAlbum(uid: string): Promise<void> {
+  await request<{ status: string }>(`/smart-albums/${uid}`, { method: 'DELETE' });
+}
+
+export interface SmartAlbumPhotosResponse {
+  photos: Photo[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export async function getSmartAlbumPhotos(
+  uid: string,
+  params?: { limit?: number; offset?: number; sort?: string }
+): Promise<SmartAlbumPhotosResponse> {
+  const sp = new URLSearchParams();
+  if (params?.limit !== undefined) sp.set('limit', params.limit.toString());
+  if (params?.offset !== undefined) sp.set('offset', params.offset.toString());
+  if (params?.sort) sp.set('sort', params.sort);
+  const qs = sp.toString();
+  return request<SmartAlbumPhotosResponse>(
+    `/smart-albums/${uid}/photos${qs ? `?${qs}` : ''}`
+  );
 }

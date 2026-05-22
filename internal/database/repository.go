@@ -412,6 +412,32 @@ type ShareLinkWriter interface {
 	DeleteShareLink(ctx context.Context, slug string) error
 }
 
+// SmartAlbumReader provides read-only access to saved photo searches
+// ("smart albums"). The actual photo evaluation against a smart album's
+// filters runs through PhotoReader.ListPhotos — these methods only manage
+// the stored definition, never the resolved photo list.
+type SmartAlbumReader interface {
+	// GetSmartAlbum returns the smart album identified by uid. Returns
+	// ErrNotFound when no row exists.
+	GetSmartAlbum(ctx context.Context, uid string) (*SmartAlbum, error)
+	// ListSmartAlbums returns every smart album, ordered by created_at DESC.
+	// We intentionally do not paginate: smart albums are a per-user concept
+	// with a small cardinality (manual creations).
+	ListSmartAlbums(ctx context.Context) ([]SmartAlbum, error)
+}
+
+// SmartAlbumWriter extends SmartAlbumReader with the mutating endpoints
+// needed by `POST /api/v1/smart-albums`, the update flow, and delete.
+// CreateSmartAlbum generates album.UID via the postgres helper when it is
+// empty.
+type SmartAlbumWriter interface {
+	SmartAlbumReader
+
+	CreateSmartAlbum(ctx context.Context, album *SmartAlbum) error
+	UpdateSmartAlbum(ctx context.Context, album *SmartAlbum) error
+	DeleteSmartAlbum(ctx context.Context, uid string) error
+}
+
 // UserWriter provides write access to the native user store. CreateUser
 // generates u.UID when empty. Username uniqueness is enforced by the
 // underlying UNIQUE index and surfaced as ErrUsernameTaken; all other

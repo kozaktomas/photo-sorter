@@ -615,6 +615,22 @@ func (l *ShareLink) IsExpired(now time.Time) bool {
 	return !now.Before(*l.ExpiresAt)
 }
 
+// SmartAlbum is a saved photo search. The Filters map carries the same
+// query-param grammar accepted by `GET /api/v1/photos` (label_uids,
+// subject_uids, favorite, taken_from, taken_to, the geo bbox, q, sort) as a
+// JSONB blob — the web/MCP handler validates the shape on write and re-
+// evaluates the query live on read, so a smart album always reflects the
+// current library state. The repository serialises Filters via
+// encoding/json before INSERTing the row.
+type SmartAlbum struct {
+	UID              string
+	Name             string
+	Filters          map[string]any
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	CreatedByUserUID string
+}
+
 // PageFormatSlotCount returns the number of slots for a given page format.
 func PageFormatSlotCount(format string) int {
 	switch format {

@@ -415,10 +415,10 @@ internal/database/
     ├── sessions.go     # Session persistence for web auth
     ├── text_versions.go   # TextVersionStore implementation
     ├── text_checks.go     # TextCheckStore implementation
-    └── migrations/     # SQL migrations 001-038 (embedded)
+    └── migrations/     # SQL migrations 001-040 (embedded)
 ```
 
-**Tables:** `users` (admin/editor/viewer with bcrypt hashes), `photos`, `photo_files`, `albums` + `album_photos`, `labels` + `photo_labels`, `subjects`, `markers`, `photo_phashes`, `embeddings` (768-dim CLIP), `faces` (512-dim ResNet100 with cached marker metadata), `era_embeddings` (768-dim CLIP text centroids), `faces_processed` (tracking), `sessions` (with `user_uid` for upload support across restarts), `photo_books` (with typography settings: `body_font`, `heading_font`, `body_font_size`, `body_line_height`, `h1_font_size`, `h2_font_size`, `caption_opacity`, `caption_font_size`, `heading_color_bleed` added in migrations 021-023, plus `body_text_pad_mm` in migration 029), `book_chapters` (migration 016, with `color` column from migration 020), `book_sections` (with optional `chapter_id`), `section_photos`, `book_pages` (with `split_position`, `hide_page_number` from migration 025, `1_fullbleed` format added to the CHECK constraint in migration 027), `page_slots` (with `text_content`, `is_captions_slot` from migration 026, `is_contents_slot` from migration 030, `crop_x`/`crop_y`/`crop_scale`; photo_uid / text_content / is_captions_slot / is_contents_slot are mutually exclusive), `text_versions` (migration 017), `text_check_results` (migration 019, extended by migration 028 with a `suggestions JSONB` column), `album_share_links` (migration 039 — public-share slugs keyed on `slug PRIMARY KEY`, FK to `albums(uid)` ON DELETE CASCADE, optional bcrypt `password_hash` and `expires_at`).
+**Tables:** `users` (admin/editor/viewer with bcrypt hashes), `photos`, `photo_files`, `albums` + `album_photos`, `labels` + `photo_labels`, `subjects`, `markers`, `photo_phashes`, `embeddings` (768-dim CLIP), `faces` (512-dim ResNet100 with cached marker metadata), `era_embeddings` (768-dim CLIP text centroids), `faces_processed` (tracking), `sessions` (with `user_uid` for upload support across restarts), `photo_books` (with typography settings: `body_font`, `heading_font`, `body_font_size`, `body_line_height`, `h1_font_size`, `h2_font_size`, `caption_opacity`, `caption_font_size`, `heading_color_bleed` added in migrations 021-023, plus `body_text_pad_mm` in migration 029), `book_chapters` (migration 016, with `color` column from migration 020), `book_sections` (with optional `chapter_id`), `section_photos`, `book_pages` (with `split_position`, `hide_page_number` from migration 025, `1_fullbleed` format added to the CHECK constraint in migration 027), `page_slots` (with `text_content`, `is_captions_slot` from migration 026, `is_contents_slot` from migration 030, `crop_x`/`crop_y`/`crop_scale`; photo_uid / text_content / is_captions_slot / is_contents_slot are mutually exclusive), `text_versions` (migration 017), `text_check_results` (migration 019, extended by migration 028 with a `suggestions JSONB` column), `album_share_links` (migration 039 — public-share slugs keyed on `slug PRIMARY KEY`, FK to `albums(uid)` ON DELETE CASCADE, optional bcrypt `password_hash` and `expires_at`), `smart_albums` (migration 040 — saved photo searches keyed on `uid VARCHAR(32) PRIMARY KEY`, `name TEXT`, `filters JSONB` shaped like the `GET /photos` query params, `created_by_user_uid` FK → `users(uid)` non-cascading so renames/deletes of the author do not drop saved searches).
 
 **Face name normalization:** `GetFacesBySubjectName` normalizes names via `facematch.NormalizePersonName` (remove diacritics, lowercase, dashes→spaces) using the `unaccent` PostgreSQL extension.
 
@@ -499,6 +499,12 @@ Session cookies use `HttpOnly`, `SameSite=Strict`, and auto-detect `Secure` flag
 - `GET /api/v1/public/share/{slug}/photos` - Paginated public photo listing (`limit` capped at 1000, default 200). Requires the share cookie when password-protected.
 - `GET /api/v1/public/share/{slug}/photos/{photo_uid}/thumb/{size}` - Public thumbnail stream (no app auth; share cookie when protected). Photo must belong to the linked album.
 - `GET /api/v1/public/share/{slug}/photos/{photo_uid}/download` - Public original download with Range support.
+- `GET /api/v1/smart-albums` - List smart albums (saved photo searches). Returns each album's saved filter blob and a computed `photo_count` derived by re-running the filter as a count query at request time. Any authenticated role.
+- `POST /api/v1/smart-albums` - Create a smart album. Body: `{ name, filters }`. `filters` accepts the same keys as `GET /photos` (`label_uids`, `subject_uids`, `favorite`, `taken_from`, `taken_to`, `min_lat`/`min_lng`/`max_lat`/`max_lng`, `q`, `sort`); unknown keys are rejected with 400. HasWriteAccess required.
+- `GET /api/v1/smart-albums/{uid}` - Get a single smart album with its filter blob and computed photo count.
+- `PUT /api/v1/smart-albums/{uid}` - Update name and filters. UID is immutable so bookmarks survive renames. HasWriteAccess required.
+- `DELETE /api/v1/smart-albums/{uid}` - Delete a smart album. HasWriteAccess required.
+- `GET /api/v1/smart-albums/{uid}/photos` - Apply the saved filters and return paginated photos (same envelope as `/photos`). `limit`/`offset`/`sort` query overrides win over any matching saved keys so the detail page can page without mutating the stored filter. Filters referencing deleted entities silently drop out at query time.
 - `GET /api/v1/labels` - List labels (native; query: `q`, `min_photos`, `sort` = `name`/`-name`/`count`/`-count`, `limit`/`count` alias, `offset`; envelope is the bare array, `description`/`notes` kept on the wire as empty strings for backwards compatibility)
 - `GET /api/v1/labels/{uid}` - Get single label
 - `PUT /api/v1/labels/{uid}` - Update label (`{ name?, priority?, favorite? }`; non-empty name re-slugs with collision suffix)
@@ -678,6 +684,7 @@ web/src/
 │   │   └── PhotoActionOverlay.tsx, PhotoInfoOverlay.tsx
 │   ├── Slideshow/             # Photo slideshow (hooks/useSlideshow.ts, useSlideshowPhotos.ts)
 │   ├── SuggestAlbums/         # Album completion
+│   ├── SmartAlbums/           # Saved photo searches (SmartAlbumsSection, SmartAlbumModal, SmartAlbumDetail)
 │   └── Upload/                # Photo upload (hooks/useUploadJob.ts, DropZone.tsx)
 └── types/
     ├── events.ts              # Typed SSE events (discriminated unions)

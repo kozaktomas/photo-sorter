@@ -3,6 +3,7 @@ import { ErrorBoundary } from './components/ErrorBoundary';
 import { Layout } from './components/Layout';
 import { DashboardPage } from './pages/Dashboard';
 import { AlbumsPage } from './pages/Albums';
+import { SmartAlbumDetailPage } from './pages/SmartAlbums/SmartAlbumDetail';
 import { PhotosPage } from './pages/Photos/index';
 import { PhotoDetailPage } from './pages/PhotoDetail';
 import { LabelsPage } from './pages/Labels';
@@ -81,6 +82,16 @@ function AppRoutes() {
           <ProtectedRoute>
             <Layout>
               <AlbumsPage />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/smart-albums/:uid"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <SmartAlbumDetailPage />
             </Layout>
           </ProtectedRoute>
         }
