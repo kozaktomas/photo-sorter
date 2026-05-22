@@ -1,5 +1,35 @@
 @import "tailwindcss";
 
+/* Leaflet (map) — must be imported before any map renders so the tile
+   layer has correct sizing and the default marker icon resolves. */
+@import "leaflet/dist/leaflet.css";
+@import "react-leaflet-cluster/dist/assets/MarkerCluster.css";
+@import "react-leaflet-cluster/dist/assets/MarkerCluster.Default.css";
+
+/* Browse page: dark-friendly map container + cluster pill styling. */
+.browse-map {
+  background: #0f172a; /* slate-900, hides tile loading flash */
+}
+.browse-map .leaflet-control-attribution {
+  background: rgba(15, 23, 42, 0.72);
+  color: #cbd5e1;
+}
+.browse-map .leaflet-control-attribution a {
+  color: #93c5fd;
+}
+.browse-cluster {
+  background: rgba(20, 184, 166, 0.92); /* teal-500 */
+  color: #ffffff;
+  border-radius: 9999px;
+  font-weight: 600;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px solid rgba(15, 23, 42, 0.6);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+}
+
 /* Custom theme colors */
 @theme {
   --color-primary: #3b82f6;

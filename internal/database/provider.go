@@ -226,6 +226,26 @@ func GetPhotoReader(ctx context.Context) (PhotoReader, error) {
 	return postgresPhotoWriter(), nil
 }
 
+// GetPhotoBrowseReader returns a PhotoBrowseReader from the PostgreSQL
+// backend. The same registered PhotoWriter constructor is reused — every
+// PhotoWriter implementation in this repo also implements
+// PhotoBrowseReader, so a separate registration would be dead weight. The
+// type assertion guards against future implementations that forget to
+// expose the browse methods.
+func GetPhotoBrowseReader(ctx context.Context) (PhotoBrowseReader, error) {
+	if !postgresInitialized {
+		return nil, errors.New("PostgreSQL backend not initialized: DATABASE_URL is required")
+	}
+	if postgresPhotoWriter == nil {
+		return nil, errors.New("PostgreSQL photo reader not registered")
+	}
+	browse, ok := postgresPhotoWriter().(PhotoBrowseReader)
+	if !ok {
+		return nil, errors.New("registered PhotoWriter does not implement PhotoBrowseReader")
+	}
+	return browse, nil
+}
+
 // RegisterAlbumWriter registers the AlbumWriter constructor. The same value
 // also serves AlbumReader, since the writer embeds the reader interface.
 func RegisterAlbumWriter(writer func() AlbumWriter) {

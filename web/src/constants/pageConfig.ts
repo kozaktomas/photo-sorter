@@ -2,7 +2,7 @@ import type { ComponentType } from 'react';
 import {
   Home, FolderOpen, Camera, Tags, Sparkles, Type,
   Users, ShieldCheck, AlertTriangle, Images, Maximize2,
-  Copy, FolderSearch, Cpu, Play, BookOpen, Upload, Trash2,
+  Copy, FolderSearch, Cpu, Play, BookOpen, Upload, Trash2, Globe,
 } from 'lucide-react';
 
 export type AccentColor =
@@ -23,6 +23,7 @@ export const PAGE_CONFIGS: Record<string, PageConfig> = {
   dashboard:      { color: 'sky',     icon: Home,           category: 'browse' },
   albums:         { color: 'blue',    icon: FolderOpen,     category: 'browse' },
   photos:         { color: 'indigo',  icon: Camera,         category: 'browse' },
+  browse:         { color: 'teal',    icon: Globe,          category: 'browse' },
   labels:         { color: 'cyan',    icon: Tags,           category: 'browse' },
   analyze:        { color: 'violet',  icon: Sparkles,       category: 'ai' },
   textSearch:     { color: 'purple',  icon: Type,           category: 'ai' },
@@ -251,6 +252,7 @@ export const PATH_TO_PAGE: Record<string, string> = {
   '/': 'dashboard',
   '/albums': 'albums',
   '/photos': 'photos',
+  '/browse': 'browse',
   '/labels': 'labels',
   '/analyze': 'analyze',
   '/text-search': 'textSearch',

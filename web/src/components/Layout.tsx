@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { FolderOpen, Tags, Sparkles, Home, Users, Images, Camera, Maximize2, AlertTriangle, Type, ShieldCheck, Cpu, ChevronDown, LogOut, Copy, FolderSearch, BookOpen, Upload, Trash2, Settings } from 'lucide-react';
+import { FolderOpen, Tags, Sparkles, Home, Users, Images, Camera, Maximize2, AlertTriangle, Type, ShieldCheck, Cpu, ChevronDown, LogOut, Copy, FolderSearch, BookOpen, Upload, Trash2, Settings, Globe } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { getPageConfigForPath, colorMap } from '../constants/pageConfig';
@@ -145,6 +145,7 @@ export function Layout({ children }: LayoutProps) {
     { path: '/', icon: Home, label: t('nav.dashboard') },
     { path: '/albums', icon: FolderOpen, label: t('nav.albums') },
     { path: '/photos', icon: Camera, label: t('nav.photos') },
+    { path: '/browse', icon: Globe, label: t('nav.browse') },
     { path: '/labels', icon: Tags, label: t('nav.labels') },
   ];
 

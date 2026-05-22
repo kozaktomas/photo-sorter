@@ -375,6 +375,80 @@ GET /photos/{uid}
 }
 ```
 
+### Date Histogram
+
+```
+GET /photos/histogram
+```
+
+Returns the date-bucketed photo count distribution across the matching set,
+powering the timeline scrubber on the `/browse` page. All photo filter
+parameters accepted by `GET /photos` are honoured (label_uid, subject_uid,
+favorite, taken_from, taken_to, geo bbox, q). Pagination params are
+accepted but ignored — the histogram always reflects the full matching
+set.
+
+**Query Parameters:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `bucket` | string | `month` | `month` or `year` |
+| ...      | -      | -       | Plus every filter from `GET /photos` |
+
+**Response (200):**
+```json
+{
+  "bucket": "month",
+  "buckets": [
+    { "start": "2024-01-01T00:00:00Z", "end": "2024-02-01T00:00:00Z", "count": 42 }
+  ],
+  "total": 1234,
+  "no_date_count": 12,
+  "no_gps_count": 89
+}
+```
+
+- `buckets[].start` is the inclusive lower bound (UTC, RFC3339).
+- `buckets[].end` is the exclusive upper bound — adjacent buckets tile
+  consecutively with no gap or overlap.
+- Photos with `taken_at IS NULL` are excluded from `buckets` but counted
+  in `no_date_count` (they still pass every other filter).
+- Photos with `lat/lng IS NULL` are still counted in `total` and the
+  buckets; `no_gps_count` reports how many of the matching photos lack
+  coordinates so the Browse page can render the "No location" chip.
+
+**Response (400):** `bucket must be 'month' or 'year'`.
+
+### Geo Points (Map Markers)
+
+```
+GET /photos/geo-points
+```
+
+Returns `{uid, lat, lng}` triples for every photo that passes the supplied
+filter AND has non-NULL coordinates. Used by the Browse page for
+client-side clustering on the map; the frontend feeds the points to
+Leaflet's marker cluster layer.
+
+**Query Parameters:** Same as `GET /photos`.
+
+**Response (200):**
+```json
+{
+  "points": [
+    { "uid": "p1a2b3c4d5e6f708", "lat": 49.27, "lng": 16.61 }
+  ],
+  "total": 4321,
+  "truncated": false,
+  "cap": 50000
+}
+```
+
+- The server caps the result at 50,000 points. When the cap kicks in,
+  `truncated` is `true` and `total` equals `cap`; the UI shows a
+  warning advising the user to zoom in or narrow the date range.
+- Photos with NULL `lat` or `lng` are silently excluded — use the
+  histogram endpoint's `no_gps_count` to learn how many were skipped.
+
 ### Update Photo
 
 ```

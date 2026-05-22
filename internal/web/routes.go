@@ -181,6 +181,8 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 
 				// Photos.
 				r.Get("/photos", photosHandler.List)
+				r.Get("/photos/histogram", photosHandler.Histogram)
+				r.Get("/photos/geo-points", photosHandler.GeoPoints)
 				r.Get("/photos/{uid}", photosHandler.Get)
 				r.Put("/photos/{uid}", photosHandler.Update)
 				r.Put("/photos/{uid}/exif", photosHandler.EditExif)

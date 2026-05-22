@@ -236,6 +236,26 @@ type PhotoReader interface {
 	ListArchivedBefore(ctx context.Context, cutoff time.Time) ([]string, error)
 }
 
+// PhotoBrowseReader provides read-only access to the aggregate views that
+// power the Browse page: a date histogram and a list of (uid, lat, lng)
+// tuples for every photo with non-NULL coordinates. Both honour the full
+// PhotoFilter contract (geo bbox, label/subject/favorite/q, taken-range),
+// minus pagination which the histogram/geo endpoints do not expose.
+//
+// Kept separate from PhotoReader so the existing in-memory test mocks for
+// ListPhotos / GetPhoto do not need to grow to satisfy these new methods.
+type PhotoBrowseReader interface {
+	// Histogram returns the photo-count distribution across time. bucket
+	// must be either "month" or "year"; any other value returns an error.
+	Histogram(ctx context.Context, filter PhotoFilter, bucket string) (HistogramResult, error)
+
+	// ListGeoPoints returns one row per photo that matches the filter and
+	// has non-NULL lat/lng. The result is capped at maxPoints (0 disables
+	// the cap); the second return is true when the cap kicked in so the
+	// caller can surface a "truncated" warning to the UI.
+	ListGeoPoints(ctx context.Context, filter PhotoFilter, maxPoints int) ([]GeoPoint, bool, error)
+}
+
 // PhotoWriter provides write access to native photos and their physical
 // files. Archive/Restore toggle the archived_at column; DeletePhoto is a
 // hard delete that cascades to photo_files.

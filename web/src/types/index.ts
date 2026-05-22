@@ -603,4 +603,32 @@ export interface PreflightResponse {
   summary: PreflightSummary;
 }
 
+// Browse page: histogram + geo-points
+export interface HistogramBucket {
+  start: string; // RFC3339 UTC, inclusive
+  end: string;   // RFC3339 UTC, exclusive
+  count: number;
+}
+
+export interface HistogramResponse {
+  bucket: 'month' | 'year';
+  buckets: HistogramBucket[];
+  total: number;
+  no_date_count: number;
+  no_gps_count: number;
+}
+
+export interface GeoPoint {
+  uid: string;
+  lat: number;
+  lng: number;
+}
+
+export interface GeoPointsResponse {
+  points: GeoPoint[];
+  total: number;
+  truncated: boolean;
+  cap: number;
+}
+
 export { pageFormatSlotCount, pageFormatLabelKey } from '../utils/pageFormats';

@@ -792,6 +792,7 @@ func IsUniqueViolation(err error) bool {
 
 // Verify interface compliance.
 var (
-	_ database.PhotoReader = (*PhotoRepository)(nil)
-	_ database.PhotoWriter = (*PhotoRepository)(nil)
+	_ database.PhotoReader       = (*PhotoRepository)(nil)
+	_ database.PhotoWriter       = (*PhotoRepository)(nil)
+	_ database.PhotoBrowseReader = (*PhotoRepository)(nil)
 )

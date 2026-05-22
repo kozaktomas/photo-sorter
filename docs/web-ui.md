@@ -57,7 +57,7 @@ Czech uses proper plural forms (one/few/many) for natural language display.
 
 The header navigation groups items to reduce clutter:
 
-- **Primary** (always visible): Dashboard, Albums, Photos, Labels
+- **Primary** (always visible): Dashboard, Albums, Photos, Browse, Labels
 - **AI** dropdown: Analyze, Text Search
 - **Faces** dropdown: Faces, Recognition, Outliers
 - **Tools** dropdown: Similar, Expand, Duplicates, Album Completion, Photo Book, Upload, Process, Trash
@@ -165,6 +165,56 @@ When accessing a photo from an album, label, or the Photos page, navigation cont
 - Color-coded bounding boxes indicate assignment status (red=unassigned, yellow=needs assignment, green=assigned, orange=outlier)
 - **Reassign** - For already-assigned faces, click "Reassign" to change the person. Shows suggestions (excluding the current person) and manual input. Cancel to return to the assigned view
 - **Unassign** - For already-assigned faces, click "Unassign" to remove the person assignment. The face reverts to unassigned status with suggestions available for re-assignment
+
+### Browse (`/browse`)
+
+Explore the library on a map and a timeline simultaneously. The map shows
+photos with GPS coordinates as clustered markers; the timeline shows a
+photo-count histogram with a draggable range selector ("brush"). The two
+views are bidirectionally synced:
+
+- Panning or zooming the map updates `min_lat` / `min_lng` / `max_lat` /
+  `max_lng`, which constrains both the markers fetched AND the
+  histogram bars (so the timeline reflects only photos visible on the
+  map).
+- Dragging the timeline brush updates `taken_from` / `taken_to`, which
+  narrows the markers shown on the map. The histogram itself is NOT
+  filtered by the date range — keeping the chart shape stable while the
+  brush moves makes the date-picking gesture feel direct.
+
+**Features:**
+- **Clustered map** — Leaflet + OpenStreetMap tiles with the
+  `react-leaflet-cluster` marker cluster layer (`leaflet.markercluster`).
+  Click a cluster to see its photos in the side panel; click a single
+  marker to see one photo there. Cluster pills are sized by member
+  count.
+- **Auto bucketing** — the timeline picks `month` buckets by default and
+  switches to `year` when the matching photo set spans more than 5
+  years.
+- **No-location chip** — photos without GPS are reported via a "No
+  location (N photos)" chip; clicking it opens the regular Photos page
+  filtered by the active date range so the user can still find those
+  photos.
+- **No-date chip** — photos with no `taken_at` are surfaced as a
+  separate chip so the user knows they're not represented in the
+  histogram.
+- **Truncation warning** — when the geo-points endpoint hits its 50,000
+  point cap (the server-side cap), the UI shows a banner asking the
+  user to zoom in or narrow the date range.
+- **URL state** — `min_lat` / `min_lng` / `max_lat` / `max_lng` /
+  `taken_from` / `taken_to` are mirrored to the URL so back/forward
+  navigation and link sharing work.
+- **Empty states** — when the library has no photos at all, an "upload
+  some photos" nudge is shown. When the library has photos but none
+  carry GPS coordinates, the map is replaced with a "No photos have
+  GPS coordinates yet" placeholder; the timeline keeps working so the
+  user can still browse by date.
+- **Mobile** — the map and timeline stack vertically on mobile (below
+  the `md` breakpoint).
+
+**Endpoints:** `GET /api/v1/photos/histogram` and
+`GET /api/v1/photos/geo-points`. See `docs/API.md` for the full
+contract.
 
 ### Labels
 
@@ -712,6 +762,8 @@ The Web UI communicates with these backend endpoints:
 | GET | `/api/v1/albums` | List albums |
 | GET | `/api/v1/albums/:uid/photos` | Get photos in album |
 | GET | `/api/v1/photos` | List/search photos |
+| GET | `/api/v1/photos/histogram` | Date histogram for the Browse page (month / year buckets) |
+| GET | `/api/v1/photos/geo-points` | Per-photo (uid, lat, lng) triples for the Browse map |
 | GET | `/api/v1/photos/:uid` | Get single photo details |
 | GET | `/api/v1/labels` | List labels |
 | GET | `/api/v1/labels/:uid` | Get single label |
@@ -871,6 +923,12 @@ web/src/
 │   │   ├── AnalyzeForm.tsx
 │   │   ├── AnalyzeResults.tsx
 │   │   ├── AnalyzeStatus.tsx
+│   │   └── index.tsx
+│   ├── Browse/             # Map + timeline scrubber page
+│   │   ├── BrowseMap.tsx       # react-leaflet wrapper with clustering
+│   │   ├── BrowseTimeline.tsx  # recharts BarChart + Brush
+│   │   ├── BrowseSidePanel.tsx # Side panel for cluster/marker click
+│   │   ├── leafletSetup.ts     # Default marker icon fix for Vite
 │   │   └── index.tsx
 │   ├── Faces/              # Split into components
 │   │   ├── hooks/useFaceSearch.ts

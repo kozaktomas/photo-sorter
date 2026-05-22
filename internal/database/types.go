@@ -369,6 +369,37 @@ type BBox struct {
 	MaxLng float64
 }
 
+// HistogramBucket is a single bin in a photo-count histogram. Start is the
+// inclusive lower bound and End is the exclusive upper bound of the bucket
+// (so consecutive buckets tile the date range with no gap or overlap).
+type HistogramBucket struct {
+	Start time.Time
+	End   time.Time
+	Count int
+}
+
+// HistogramResult is the response shape for date-histogram queries. Buckets
+// only span months/years that contain at least one matching photo (empty
+// months in the middle of the range are filled by the caller if needed).
+// NoDateCount counts photos that pass every other filter but have a NULL
+// taken_at; NoGPSCount is the same for photos with NULL lat/lng. These two
+// counts power the "No date / No location" chips on the Browse page.
+type HistogramResult struct {
+	Buckets     []HistogramBucket
+	Total       int
+	NoDateCount int
+	NoGPSCount  int
+}
+
+// GeoPoint is a single photo's coordinates as returned by ListGeoPoints.
+// Only photos with non-NULL lat/lng are returned, so the Lat/Lng fields are
+// always concrete float64s.
+type GeoPoint struct {
+	PhotoUID string
+	Lat      float64
+	Lng      float64
+}
+
 // PhotoFilter holds optional filter and pagination criteria for ListPhotos.
 // All fields are optional; the zero value lists non-archived photos sorted
 // by newest first with the default page size.

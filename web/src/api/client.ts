@@ -33,6 +33,8 @@ import type {
   PreflightResponse,
   TextVersion,
   FontInfo,
+  HistogramResponse,
+  GeoPointsResponse,
 } from '../types';
 
 const API_BASE = '/api/v1';
@@ -260,6 +262,54 @@ export async function batchAddLabels(
 
 export function getThumbnailUrl(uid: string, size: string): string {
   return `${API_BASE}/photos/${uid}/thumb/${size}`;
+}
+
+// BrowseFilters is the shared filter shape for the /browse page's histogram
+// and geo-points endpoints. It mirrors a subset of getPhotos params — both
+// endpoints honor the same filter set on the server.
+export interface BrowseFilters {
+  label_uid?: string;
+  subject_uid?: string;
+  favorite?: boolean;
+  taken_from?: string;
+  taken_to?: string;
+  min_lat?: number;
+  min_lng?: number;
+  max_lat?: number;
+  max_lng?: number;
+  q?: string;
+}
+
+function appendBrowseFilters(p: URLSearchParams, f: BrowseFilters): void {
+  if (f.label_uid) p.set('label_uid', f.label_uid);
+  if (f.subject_uid) p.set('subject_uid', f.subject_uid);
+  if (f.favorite !== undefined) p.set('favorite', String(f.favorite));
+  if (f.taken_from) p.set('taken_from', f.taken_from);
+  if (f.taken_to) p.set('taken_to', f.taken_to);
+  if (f.min_lat !== undefined) p.set('min_lat', String(f.min_lat));
+  if (f.min_lng !== undefined) p.set('min_lng', String(f.min_lng));
+  if (f.max_lat !== undefined) p.set('max_lat', String(f.max_lat));
+  if (f.max_lng !== undefined) p.set('max_lng', String(f.max_lng));
+  if (f.q) p.set('q', f.q);
+}
+
+export async function getHistogram(
+  params: BrowseFilters & { bucket?: 'month' | 'year' },
+): Promise<HistogramResponse> {
+  const sp = new URLSearchParams();
+  if (params.bucket) sp.set('bucket', params.bucket);
+  appendBrowseFilters(sp, params);
+  const query = sp.toString();
+  return request<HistogramResponse>(`/photos/histogram${query ? `?${query}` : ''}`);
+}
+
+export async function getGeoPoints(
+  params: BrowseFilters,
+): Promise<GeoPointsResponse> {
+  const sp = new URLSearchParams();
+  appendBrowseFilters(sp, params);
+  const query = sp.toString();
+  return request<GeoPointsResponse>(`/photos/geo-points${query ? `?${query}` : ''}`);
 }
 
 export function getDownloadUrl(uid: string): string {

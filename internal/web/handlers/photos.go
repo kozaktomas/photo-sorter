@@ -42,6 +42,12 @@ type PhotosHandler struct {
 	sessionManager  *middleware.SessionManager
 	embeddingReader database.EmbeddingReader
 
+	// browseReader powers the /photos/histogram + /photos/geo-points
+	// endpoints. Resolved lazily from the registered PhotoWriter on first
+	// use. Tests can pre-populate it via test_util helpers to exercise the
+	// browse handlers without standing up Postgres.
+	browseReader database.PhotoBrowseReader
+
 	// repo serves the native photos table for both GET and write endpoints.
 	// May be nil in tests that do not exercise the native paths.
 	repo database.PhotoWriter

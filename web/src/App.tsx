@@ -23,6 +23,7 @@ import { SubjectDetailPage } from './pages/SubjectDetail';
 import { BooksPage } from './pages/Books/index';
 import { BookEditorPage } from './pages/BookEditor/index';
 import { UploadPage } from './pages/Upload/index';
+import { BrowsePage } from './pages/Browse/index';
 import { CapturePage } from './pages/Capture/Capture';
 import { TrashPage } from './pages/Trash/Trash';
 import { SettingsPage } from './pages/Settings/Settings';
@@ -98,6 +99,16 @@ function AppRoutes() {
           <ProtectedRoute>
             <Layout>
               <PhotoDetailPage />
+            </Layout>
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/browse"
+        element={
+          <ProtectedRoute>
+            <Layout>
+              <BrowsePage />
             </Layout>
           </ProtectedRoute>
         }
