@@ -46,20 +46,20 @@ function AlbumCheckboxList({
         onChange={e => onFilterChange(e.target.value)}
         placeholder={placeholder}
         disabled={disabled}
-        className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+        className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 min-h-[44px] sm:min-h-0 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
       />
-      <div className="max-h-40 overflow-y-auto space-y-1">
+      <div className="max-h-48 sm:max-h-40 overflow-y-auto space-y-1">
         {filtered.map(album => (
           <label
             key={album.uid}
-            className="flex items-center space-x-2 px-2 py-1.5 rounded hover:bg-slate-700/50 cursor-pointer"
+            className="flex items-center space-x-2 px-2 py-2 sm:py-1.5 min-h-[44px] sm:min-h-0 rounded hover:bg-slate-700/50 cursor-pointer"
           >
             <input
               type="checkbox"
               checked={selected.has(album.uid)}
               onChange={() => onToggle(album.uid)}
               disabled={disabled}
-              className="rounded bg-slate-700 border-slate-600 text-emerald-500 focus-visible:ring-emerald-500"
+              className="h-4 w-4 rounded bg-slate-700 border-slate-600 text-emerald-500 focus-visible:ring-emerald-500"
             />
             <span className="text-sm text-slate-300 truncate">{album.title}</span>
             <span className="text-xs text-slate-500 ml-auto shrink-0">{album.photo_count}</span>
@@ -119,7 +119,11 @@ function LabelTagInput({
             >
               {name}
               {!disabled && (
-                <button onClick={() => onRemove(name)} className="ml-1 hover:text-emerald-200">
+                <button
+                  onClick={() => onRemove(name)}
+                  className="ml-1 px-1 -mr-1 text-base leading-none hover:text-emerald-200"
+                  aria-label={`Remove ${name}`}
+                >
                   &times;
                 </button>
               )}
@@ -135,7 +139,7 @@ function LabelTagInput({
           onKeyDown={handleKeyDown}
           disabled={disabled}
           placeholder={t('forms:placeholders.addLabels')}
-          className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          className="w-full bg-slate-800 border border-slate-600 rounded-lg px-3 py-2 min-h-[44px] sm:min-h-0 text-sm text-white placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-emerald-500"
         />
         {suggestions.length > 0 && (
           <ul className="absolute left-0 right-0 top-full mt-1 max-h-40 overflow-y-auto bg-slate-800 border border-slate-600 rounded-lg shadow-xl z-50">
@@ -258,7 +262,7 @@ export function UploadPage() {
   const bookSections: BookSection[] = bookDetail?.sections ?? [];
 
   const progressPercent = progress && progress.total > 0
-    ? Math.round((progress.current / progress.total) * 100)
+    ? Math.min(100, Math.round((progress.current / progress.total) * 100))
     : 0;
 
   const phaseLabel = PHASE_LABELS[phase];
@@ -329,7 +333,7 @@ export function UploadPage() {
               <label className="block text-sm font-medium text-slate-300 mb-2">
                 {t('pages:upload.bookSection')}
               </label>
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <Combobox
                   value={selectedBookId}
                   onChange={v => {
@@ -360,8 +364,9 @@ export function UploadPage() {
               disabled={isRunning}
             />
 
-            {/* Upload button */}
-            <div className="flex space-x-3">
+            {/* Upload button — full-width with a ≥44px tap target on mobile,
+                inline-auto on ≥sm to preserve the existing desktop layout. */}
+            <div className="flex flex-col sm:flex-row gap-3">
               {!isRunning && !isDone && (
                 <Button
                   variant="accent"
@@ -369,19 +374,28 @@ export function UploadPage() {
                   onClick={handleUpload}
                   disabled={!canUpload}
                   isLoading={isStarting}
+                  className="w-full sm:w-auto min-h-[44px] sm:min-h-0"
                 >
                   <Play className="h-4 w-4 mr-2" />
                   {t('pages:upload.startUpload')}
                 </Button>
               )}
               {isRunning && (
-                <Button variant="danger" onClick={cancelUpload}>
+                <Button
+                  variant="danger"
+                  onClick={cancelUpload}
+                  className="w-full sm:w-auto min-h-[44px] sm:min-h-0"
+                >
                   <Square className="h-4 w-4 mr-2" />
                   {t('common:buttons.cancel')}
                 </Button>
               )}
               {isDone && (
-                <Button variant="secondary" onClick={handleReset}>
+                <Button
+                  variant="secondary"
+                  onClick={handleReset}
+                  className="w-full sm:w-auto min-h-[44px] sm:min-h-0"
+                >
                   <RotateCcw className="h-4 w-4 mr-2" />
                   {t('common:buttons.startNew')}
                 </Button>

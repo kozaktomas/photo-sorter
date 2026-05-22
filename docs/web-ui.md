@@ -556,11 +556,13 @@ Press `K` or click the wand button to cycle through effects. The active effect n
 Upload photos with optional labels, multi-album assignment, book section placement, and auto-processing. Files are ingested via the native `internal/photopipe` pipeline (hash + format detect → exact-duplicate skip → HEIC/RAW decode → EXIF → near-duplicate scan → write to `STORAGE_ORIGINALS_PATH/YYYY/MM/` → `photos` + `photo_files` rows → `internal/thumb.GenerateSizes`).
 
 **Configuration (left card):**
-- **Drag & Drop Zone** - Drag files or click to browse. Supports JPG, PNG, GIF, HEIC, WebP, TIFF, RAW formats. Files are validated by MIME type and extension, deduplicated by name+size
+- **Drag & Drop Zone** - Drag files or click to browse. Supports JPG, PNG, GIF, HEIC, WebP, TIFF, RAW formats. Files are validated by MIME type and extension, deduplicated by name+size. On mobile (< 768px viewport) the zone is compact and the "drag and drop" hint is replaced by a tap-to-choose hint
+- **Take photo / Choose files (mobile only)** - Below 768px viewport, two explicit full-width buttons render under the drop zone. "Take photo" opens the device camera directly via `<input type="file" accept="image/*" capture="environment">` and uploads a single shot through the existing job flow as a 1-file batch. "Choose files" opens the gallery picker (multi-select). On desktop both buttons are hidden — the drop zone itself is the file picker affordance. iOS Safari may treat `capture="environment"` as a hint rather than a hard switch; that's accepted as a browser quirk
 - **Album Selection** - Checkbox list with search filter. At least one album required. First album is the primary upload target; additional albums receive the photos after upload
 - **Labels** - Tag input with autocomplete from existing labels. Press Enter to add custom labels
-- **Book Section** - Optional cascading dropdowns: select a book, then a section. Photos are added to the section after upload
+- **Book Section** - Optional cascading dropdowns: select a book, then a section. The two combos stack vertically below 640px to keep each control wide enough on phones. Photos are added to the section after upload
 - **Auto-process** - Checkbox (default: on). When enabled, computes CLIP embeddings and detects faces for uploaded photos
+- **Mobile layout (< 768px)** - The whole left card stacks vertically (already true via the global single-column grid). Album rows, the album filter, the label input, and the action button all hit a minimum 44px touch target. The file list and album checklist scroll internally to keep the page short. Bulk upload still uses the existing `POST /api/v1/upload/job` flow — no backend changes
 
 **Progress (right card):**
 - Real-time progress via SSE with phase indicators:

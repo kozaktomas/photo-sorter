@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Upload, X } from 'lucide-react';
+import { Camera, FolderOpen, Upload, X } from 'lucide-react';
 
 const ACCEPTED_TYPES = new Set([
   'image/jpeg', 'image/png', 'image/gif', 'image/heic', 'image/heif',
@@ -36,7 +36,8 @@ export function DropZone({ files, onFilesChange, disabled }: DropZoneProps) {
   const [isDragOver, setIsDragOver] = useState(false);
   const dragCounter = useRef(0);
   const dropZoneRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const galleryInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   // Use native event listeners for reliable cross-browser drag-and-drop.
   // React synthetic drag events + Firefox have known interop issues.
@@ -114,13 +115,19 @@ export function DropZone({ files, onFilesChange, disabled }: DropZoneProps) {
   const addFilesRef = useRef(addFiles);
   addFilesRef.current = addFiles;
 
-  const handleClick = () => {
-    if (!disabled) inputRef.current?.click();
+  const openGalleryPicker = () => {
+    if (!disabled) galleryInputRef.current?.click();
+  };
+
+  const openCameraPicker = () => {
+    if (!disabled) cameraInputRef.current?.click();
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       addFiles(e.target.files);
+      // Reset so the same file can be picked twice in a row (relevant for
+      // capture mode where the user typically returns a single file).
       e.target.value = '';
     }
   };
@@ -136,8 +143,8 @@ export function DropZone({ files, onFilesChange, disabled }: DropZoneProps) {
       {/* Drop area */}
       <div
         ref={dropZoneRef}
-        onClick={handleClick}
-        className={`border-2 border-dashed rounded-lg p-8 text-center cursor-pointer transition-colors ${
+        onClick={openGalleryPicker}
+        className={`border-2 border-dashed rounded-lg p-4 md:p-8 text-center cursor-pointer transition-colors min-h-[44px] ${
           disabled
             ? 'border-slate-700 bg-slate-800/50 cursor-not-allowed opacity-50'
             : isDragOver
@@ -145,18 +152,55 @@ export function DropZone({ files, onFilesChange, disabled }: DropZoneProps) {
               : 'border-slate-600 hover:border-slate-500 hover:bg-slate-800/50'
         }`}
       >
-        <Upload className={`h-10 w-10 mx-auto mb-3 ${isDragOver ? 'text-emerald-400' : 'text-slate-500'}`} />
-        <p className={`text-sm ${isDragOver ? 'text-emerald-400' : 'text-slate-400'}`}>
+        <Upload className={`h-8 w-8 md:h-10 md:w-10 mx-auto mb-2 md:mb-3 ${isDragOver ? 'text-emerald-400' : 'text-slate-500'}`} />
+        {/* Drag-and-drop hint is hidden on small viewports — touch devices
+            cannot drag files, so the text is misleading there. */}
+        <p className={`hidden md:block text-sm ${isDragOver ? 'text-emerald-400' : 'text-slate-400'}`}>
           {isDragOver ? t('upload.dropZoneActive') : t('upload.dropZone')}
+        </p>
+        <p className="md:hidden text-sm text-slate-400">
+          {t('upload.dropZoneMobileHint')}
         </p>
         <p className="text-xs text-slate-500 mt-1">{t('upload.supportedFormats')}</p>
       </div>
 
+      {/* Explicit action buttons — visible only on mobile. On desktop the
+          drop zone itself doubles as the "choose files" affordance and the
+          camera capture is identical to a regular file picker. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 md:hidden">
+        <button
+          type="button"
+          onClick={openCameraPicker}
+          disabled={disabled}
+          className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-lg bg-emerald-600 text-white font-medium hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400"
+        >
+          <Camera className="h-5 w-5" />
+          {t('upload.takePhoto')}
+        </button>
+        <button
+          type="button"
+          onClick={openGalleryPicker}
+          disabled={disabled}
+          className="inline-flex items-center justify-center gap-2 min-h-[44px] px-4 py-2 rounded-lg bg-slate-700 text-white font-medium hover:bg-slate-600 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-400"
+        >
+          <FolderOpen className="h-5 w-5" />
+          {t('upload.chooseFiles')}
+        </button>
+      </div>
+
       <input
-        ref={inputRef}
+        ref={galleryInputRef}
         type="file"
         multiple
         accept="image/*,.heic,.heif,.raw,.cr2,.nef,.arw,.dng"
+        onChange={handleInputChange}
+        className="hidden"
+      />
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
         onChange={handleInputChange}
         className="hidden"
       />
@@ -176,14 +220,18 @@ export function DropZone({ files, onFilesChange, disabled }: DropZoneProps) {
               {t('upload.clearFiles')}
             </button>
           </div>
-          <div className="max-h-40 overflow-y-auto space-y-1">
+          <div className="max-h-48 sm:max-h-40 overflow-y-auto space-y-1">
             {files.map((file, index) => (
-              <div key={`${file.name}-${file.size}`} className="flex items-center justify-between text-sm bg-slate-800 rounded px-3 py-1.5">
+              <div key={`${file.name}-${file.size}`} className="flex items-center justify-between text-sm bg-slate-800 rounded px-3 py-2">
                 <span className="text-slate-300 truncate mr-2">{file.name}</span>
                 <div className="flex items-center space-x-2 shrink-0">
                   <span className="text-slate-500 text-xs">{formatSize(file.size)}</span>
                   {!disabled && (
-                    <button onClick={() => removeFile(index)} className="text-slate-500 hover:text-red-400">
+                    <button
+                      onClick={() => removeFile(index)}
+                      className="text-slate-500 hover:text-red-400 p-1.5 -m-1 rounded"
+                      aria-label={t('upload.removeFile')}
+                    >
                       <X className="h-3.5 w-3.5" />
                     </button>
                   )}
