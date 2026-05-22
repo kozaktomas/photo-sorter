@@ -41,6 +41,8 @@ import type {
   PublicSharePhotosResponse,
   SmartAlbum,
   SmartAlbumFilters,
+  PhotoEdits,
+  PhotoEditsResponse,
 } from '../types';
 
 const API_BASE = '/api/v1';
@@ -268,6 +270,32 @@ export async function batchAddLabels(
 
 export function getThumbnailUrl(uid: string, size: string): string {
   return `${API_BASE}/photos/${uid}/thumb/${size}`;
+}
+
+// getPhotoEdits returns the stored non-destructive edits for a photo, or
+// null when no edits exist.
+export async function getPhotoEdits(uid: string): Promise<PhotoEdits | null> {
+  const res = await request<PhotoEditsResponse>(`/photos/${uid}/edits`);
+  return res.edits;
+}
+
+// savePhotoEdits upserts the photo edits row. Coordinates are 0..1.
+export async function savePhotoEdits(
+  uid: string,
+  edits: Omit<PhotoEdits, 'updated_at'>,
+): Promise<PhotoEdits | null> {
+  const res = await request<PhotoEditsResponse>(`/photos/${uid}/edits`, {
+    method: 'PUT',
+    body: JSON.stringify(edits),
+  });
+  return res.edits;
+}
+
+// deletePhotoEdits reverts the photo to its original (idempotent).
+export async function deletePhotoEdits(uid: string): Promise<void> {
+  await request<unknown>(`/photos/${uid}/edits`, {
+    method: 'DELETE',
+  });
 }
 
 // BrowseFilters is the shared filter shape for the /browse page's histogram

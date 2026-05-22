@@ -23,6 +23,7 @@ var (
 	postgresPHashWriter        func() PHashWriter
 	postgresShareLinkWriter    func() ShareLinkWriter
 	postgresSmartAlbumWriter   func() SmartAlbumWriter
+	postgresPhotoEditsWriter   func() PhotoEditsWriter
 	postgresInitialized        bool
 )
 
@@ -45,6 +46,7 @@ func ResetForTesting() {
 	postgresPHashWriter = nil
 	postgresShareLinkWriter = nil
 	postgresSmartAlbumWriter = nil
+	postgresPhotoEditsWriter = nil
 	postgresInitialized = false
 }
 
@@ -477,4 +479,33 @@ func GetSmartAlbumReader(ctx context.Context) (SmartAlbumReader, error) {
 		return nil, errors.New("PostgreSQL smart album reader not registered")
 	}
 	return postgresSmartAlbumWriter(), nil
+}
+
+// RegisterPhotoEditsWriter registers the PhotoEditsWriter constructor. The
+// same value also serves PhotoEditsReader, since the writer embeds the
+// reader interface.
+func RegisterPhotoEditsWriter(writer func() PhotoEditsWriter) {
+	postgresPhotoEditsWriter = writer
+}
+
+// GetPhotoEditsWriter returns a PhotoEditsWriter from the PostgreSQL backend.
+func GetPhotoEditsWriter(ctx context.Context) (PhotoEditsWriter, error) {
+	if !postgresInitialized {
+		return nil, errors.New("PostgreSQL backend not initialized: DATABASE_URL is required")
+	}
+	if postgresPhotoEditsWriter == nil {
+		return nil, errors.New("PostgreSQL photo edits writer not registered")
+	}
+	return postgresPhotoEditsWriter(), nil
+}
+
+// GetPhotoEditsReader returns a PhotoEditsReader from the PostgreSQL backend.
+func GetPhotoEditsReader(ctx context.Context) (PhotoEditsReader, error) {
+	if !postgresInitialized {
+		return nil, errors.New("PostgreSQL backend not initialized: DATABASE_URL is required")
+	}
+	if postgresPhotoEditsWriter == nil {
+		return nil, errors.New("PostgreSQL photo edits reader not registered")
+	}
+	return postgresPhotoEditsWriter(), nil
 }

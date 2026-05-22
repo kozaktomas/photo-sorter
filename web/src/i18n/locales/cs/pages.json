@@ -416,7 +416,28 @@
     "addedToSection": "Přidáno do \"{{section}}\"",
     "failedToAdd": "Nepodařilo se přidat",
     "failedToLoadBooks": "Nepodařilo se načíst knihy",
-    "failedToLoadSections": "Nepodařilo se načíst sekce"
+    "failedToLoadSections": "Nepodařilo se načíst sekce",
+    "edit": "Upravit",
+    "editedBadge": "Upraveno"
+  },
+  "edit": {
+    "title": "Upravit fotku",
+    "subtitle": "Nedestruktivní úpravy — originál se nikdy nezmění.",
+    "crop": "Ořez",
+    "rotation": "Otočení",
+    "rotateLeft": "Otočit doleva",
+    "rotateRight": "Otočit doprava",
+    "brightness": "Jas",
+    "contrast": "Kontrast",
+    "save": "Uložit",
+    "saving": "Ukládání…",
+    "cancel": "Zrušit",
+    "restoreOriginal": "Obnovit originál",
+    "restoreConfirm": "Zahodit všechny úpravy a vrátit se k původní fotce? Originální soubor na disku zůstane nedotčen.",
+    "loading": "Načítání…",
+    "saveFailed": "Nepodařilo se uložit úpravy",
+    "restoreFailed": "Nepodařilo se obnovit originál",
+    "minCropWarning": "Ořez musí být alespoň 100×100 px"
   },
   "duplicates": {
     "title": "Detekce duplikátů",

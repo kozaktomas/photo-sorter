@@ -83,8 +83,11 @@ func registerServeBackends(
 
 	smartAlbumRepo := postgres.NewSmartAlbumRepository(pool)
 	database.RegisterSmartAlbumWriter(func() database.SmartAlbumWriter { return smartAlbumRepo })
+
+	photoEditsRepo := postgres.NewPhotoEditsRepository(pool)
+	database.RegisterPhotoEditsWriter(func() database.PhotoEditsWriter { return photoEditsRepo })
 	fmt.Printf("Native photo + album + label + subject + marker + phash + " +
-		"share-link + smart-album storage enabled (PostgreSQL)\n")
+		"share-link + smart-album + photo-edits storage enabled (PostgreSQL)\n")
 
 	userRepo := postgres.NewUserRepository(pool)
 	database.RegisterUserWriter(func() database.UserWriter { return userRepo })

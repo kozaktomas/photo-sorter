@@ -410,7 +410,28 @@
     "addedToSection": "Added to \"{{section}}\"",
     "failedToAdd": "Failed to add",
     "failedToLoadBooks": "Failed to load books",
-    "failedToLoadSections": "Failed to load sections"
+    "failedToLoadSections": "Failed to load sections",
+    "edit": "Edit",
+    "editedBadge": "Edited"
+  },
+  "edit": {
+    "title": "Edit photo",
+    "subtitle": "Non-destructive edits — the original is never modified.",
+    "crop": "Crop",
+    "rotation": "Rotation",
+    "rotateLeft": "Rotate left",
+    "rotateRight": "Rotate right",
+    "brightness": "Brightness",
+    "contrast": "Contrast",
+    "save": "Save",
+    "saving": "Saving…",
+    "cancel": "Cancel",
+    "restoreOriginal": "Restore original",
+    "restoreConfirm": "Discard all edits and revert to the original photo? The original file is untouched on disk.",
+    "loading": "Loading…",
+    "saveFailed": "Failed to save edits",
+    "restoreFailed": "Failed to restore original",
+    "minCropWarning": "Crop must be at least 100×100 px"
   },
   "subjectDetail": {
     "backToSubjects": "Back to Subjects",

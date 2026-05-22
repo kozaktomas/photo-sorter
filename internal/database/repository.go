@@ -438,6 +438,24 @@ type SmartAlbumWriter interface {
 	DeleteSmartAlbum(ctx context.Context, uid string) error
 }
 
+// PhotoEditsReader provides read-only access to the photo_edits table.
+// GetPhotoEdits returns ErrNotFound when no row exists for the photo (i.e.
+// no non-destructive edits have been applied).
+type PhotoEditsReader interface {
+	GetPhotoEdits(ctx context.Context, photoUID string) (*PhotoEdits, error)
+}
+
+// PhotoEditsWriter provides write access to the photo_edits table. Save
+// is an upsert keyed by photo_uid so concurrent edits from the UI cannot
+// produce duplicate rows.  Delete returns nil even when no row was
+// present (idempotent revert-to-original).
+type PhotoEditsWriter interface {
+	PhotoEditsReader
+
+	SavePhotoEdits(ctx context.Context, edits *PhotoEdits) error
+	DeletePhotoEdits(ctx context.Context, photoUID string) error
+}
+
 // UserWriter provides write access to the native user store. CreateUser
 // generates u.UID when empty. Username uniqueness is enforced by the
 // underlying UNIQUE index and surfaced as ErrUsernameTaken; all other

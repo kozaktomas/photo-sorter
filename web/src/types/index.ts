@@ -128,6 +128,38 @@ export interface Photo {
   exif_copyright: string;
   exif_license: string;
   exif_software: string;
+  // True when the photo has non-destructive edits stored in photo_edits.
+  // Only populated by GET /photos/{uid}; list endpoints omit it. Treat
+  // missing values as false.
+  edited?: boolean;
+}
+
+// PhotoEditsCrop is the crop sub-object of PhotoEdits — all four fields
+// are 0.0..1.0 relative coordinates against the rotated (display)
+// image.
+export interface PhotoEditsCrop {
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+// PhotoEdits is the wire shape returned by GET /photos/{uid}/edits and
+// expected by PUT. crop is null when no crop is applied. rotation is
+// always one of 0/90/180/270.  brightness/contrast are floats in
+// [-1, 1].
+export interface PhotoEdits {
+  crop: PhotoEditsCrop | null;
+  rotation: 0 | 90 | 180 | 270;
+  brightness: number;
+  contrast: number;
+  updated_at?: string;
+}
+
+// PhotoEditsResponse is the envelope returned by GET /photos/{uid}/edits
+// — edits is null when no row exists for the photo.
+export interface PhotoEditsResponse {
+  edits: PhotoEdits | null;
 }
 
 export interface Label {

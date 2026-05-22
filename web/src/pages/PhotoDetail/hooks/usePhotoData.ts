@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { getPhoto, getPhotoFaces } from '../../../api/client';
 import type { Photo } from '../../../types';
 
@@ -42,11 +42,22 @@ export function usePhotoData(uid: string | undefined) {
     setEmbeddingsStatus(status);
   };
 
+  const refresh = useCallback(async () => {
+    if (!uid) return;
+    try {
+      const next = await getPhoto(uid);
+      setPhoto(next);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Unknown error');
+    }
+  }, [uid]);
+
   return {
     photo,
     loading,
     error,
     embeddingsStatus,
     updateEmbeddingsStatus,
+    refresh,
   };
 }

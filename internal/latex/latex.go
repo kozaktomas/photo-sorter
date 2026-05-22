@@ -29,6 +29,7 @@ import (
 	_ "golang.org/x/image/webp"
 
 	"github.com/kozaktomas/photo-sorter/internal/database"
+	"github.com/kozaktomas/photo-sorter/internal/imgedit"
 	"github.com/kozaktomas/photo-sorter/internal/photoprism"
 )
 
@@ -392,38 +393,58 @@ func GeneratePDFWithOptions(
 // opts.OnProgress if non-nil. Phases: downloading_photos, compiling_pass1,
 // compiling_pass2.
 //
-//nolint:cyclop // Orchestration function that fetches multiple resources.
+// bookExportInputs bundles the book resources fetched at the start of
+// GeneratePDFWithCallbacks so the orchestration function stays under the
+// funlen budget.
+type bookExportInputs struct {
+	book     *database.PhotoBook
+	sections []database.BookSection
+	chapters []database.BookChapter
+	pages    []database.BookPage
+}
+
+// loadBookExportInputs fetches the book + sections + chapters + pages in
+// one place so GeneratePDFWithCallbacks can focus on assembly.
+func loadBookExportInputs(
+	ctx context.Context, br database.BookReader, bookID string,
+) (*bookExportInputs, error) {
+	book, err := br.GetBook(ctx, bookID)
+	if err != nil || book == nil {
+		return nil, fmt.Errorf("book not found: %s", bookID)
+	}
+	sections, err := br.GetSections(ctx, bookID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get sections: %w", err)
+	}
+	chapters, err := br.GetChapters(ctx, bookID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get chapters: %w", err)
+	}
+	pages, err := br.GetPages(ctx, bookID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get pages: %w", err)
+	}
+	if len(pages) == 0 {
+		return nil, errors.New("book has no pages")
+	}
+	return &bookExportInputs{book: book, sections: sections, chapters: chapters, pages: pages}, nil
+}
+
+// GeneratePDFWithCallbacks renders a photo book to PDF, emitting progress
+// via opts.OnProgress if non-nil. Phases: downloading_photos,
+// compiling_pass1, compiling_pass2.
 func GeneratePDFWithCallbacks(
 	ctx context.Context, pp *photoprism.PhotoPrism,
 	br database.BookReader, bookID string, opts ExportOptions,
 ) ([]byte, *ExportReport, error) {
-	book, err := br.GetBook(ctx, bookID)
-	if err != nil || book == nil {
-		return nil, nil, fmt.Errorf("book not found: %s", bookID)
-	}
-
-	sections, err := br.GetSections(ctx, bookID)
+	inputs, err := loadBookExportInputs(ctx, br, bookID)
 	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get sections: %w", err)
+		return nil, nil, err
 	}
 
-	chapters, err := br.GetChapters(ctx, bookID)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get chapters: %w", err)
-	}
-
-	pages, err := br.GetPages(ctx, bookID)
-	if err != nil {
-		return nil, nil, fmt.Errorf("failed to get pages: %w", err)
-	}
-
-	if len(pages) == 0 {
-		return nil, nil, errors.New("book has no pages")
-	}
-
-	SortPagesBySectionOrder(pages, sections)
-	captions := buildCaptionMap(ctx, br, sections)
-	uidSet := collectPhotoUIDs(pages)
+	SortPagesBySectionOrder(inputs.pages, inputs.sections)
+	captions := buildCaptionMap(ctx, br, inputs.sections)
+	uidSet := collectPhotoUIDs(inputs.pages)
 
 	tmpDir, err := os.MkdirTemp("", "book-pdf-*")
 	if err != nil {
@@ -431,10 +452,18 @@ func GeneratePDFWithCallbacks(
 	}
 	defer os.RemoveAll(tmpDir)
 
-	photos := downloadPhotosWithProgress(ctx, pp, uidSet, tmpDir, opts.OnProgress, normalizeQuality(opts.PhotoQuality))
-	groups := groupPagesBySection(pages, sections, chapters)
+	// Best-effort lookup of the photo edits reader. When the registration
+	// is missing (older deployments / tests) we silently fall through —
+	// the book export then reflects the original pixel data, matching
+	// previous behaviour.
+	editsReader, _ := database.GetPhotoEditsReader(ctx)
+	photos := downloadPhotosWithProgress(
+		ctx, pp, editsReader, uidSet, tmpDir, opts.OnProgress,
+		normalizeQuality(opts.PhotoQuality),
+	)
+	groups := groupPagesBySection(inputs.pages, inputs.sections, inputs.chapters)
 	config := DefaultLayoutConfig()
-	data, report := buildTemplateData(groups, photos, captions, config, book)
+	data, report := buildTemplateData(groups, photos, captions, config, inputs.book)
 
 	if opts.Debug {
 		applyDebugOverlay(&data, config)
@@ -1631,15 +1660,19 @@ func downloadPhotos(
 	ctx context.Context, pp *photoprism.PhotoPrism,
 	uids map[string]bool, tmpDir string,
 ) map[string]photoImage {
-	return downloadPhotosWithProgress(ctx, pp, uids, tmpDir, nil, QualityMedium)
+	return downloadPhotosWithProgress(ctx, pp, nil, uids, tmpDir, nil, QualityMedium)
 }
 
 // downloadPhotosWithProgress fetches photos concurrently, reporting progress
 // via onProgress after each photo (whether it succeeded or failed) so the
 // progress bar reaches 100% even if some photos fail. onProgress may be nil.
-// quality selects the resolution tier (see PhotoQuality).
+// quality selects the resolution tier (see PhotoQuality). editsReader is
+// optional; when non-nil each downloaded photo is checked for stored
+// non-destructive edits and the local file is re-rendered in place before
+// being handed to the LaTeX renderer.
 func downloadPhotosWithProgress(
 	ctx context.Context, pp *photoprism.PhotoPrism,
+	editsReader database.PhotoEditsReader,
 	uids map[string]bool, tmpDir string,
 	onProgress func(ProgressInfo),
 	quality PhotoQuality,
@@ -1665,7 +1698,7 @@ func downloadPhotosWithProgress(
 			if ctx.Err() != nil {
 				return
 			}
-			downloadOnePhoto(pp, uid, tmpDir, result, &mu, quality)
+			downloadOnePhoto(ctx, pp, editsReader, uid, tmpDir, result, &mu, quality)
 			if onProgress != nil {
 				onProgress(ProgressInfo{
 					Phase:    "downloading_photos",
@@ -1689,8 +1722,13 @@ func downloadPhotosWithProgress(
 
 // downloadOnePhoto runs a single photo fetch under the shared result lock.
 // Failures are logged and counted as completed so the progress bar advances.
+// When the photo has stored non-destructive edits, the downloaded file is
+// re-rendered in place so the embedded image reflects the edits.
 func downloadOnePhoto(
-	pp *photoprism.PhotoPrism, uid, tmpDir string,
+	ctx context.Context,
+	pp *photoprism.PhotoPrism,
+	editsReader database.PhotoEditsReader,
+	uid, tmpDir string,
 	result map[string]photoImage, mu *sync.Mutex,
 	quality PhotoQuality,
 ) {
@@ -1699,9 +1737,76 @@ func downloadOnePhoto(
 		log.Printf("WARNING: failed to download photo %s: %v", uid, err)
 		return
 	}
+	if editsReader != nil {
+		updated, applyErr := applyEditsToDownloadedPhoto(ctx, editsReader, uid, img)
+		switch {
+		case errors.Is(applyErr, database.ErrNotFound):
+			// Photo has no stored edits — keep the original download.
+		case applyErr != nil:
+			log.Printf("WARNING: failed to apply edits to photo %s: %v", uid, applyErr)
+		default:
+			img = updated
+		}
+	}
 	mu.Lock()
 	result[uid] = *img
 	mu.Unlock()
+}
+
+// applyEditsToDownloadedPhoto looks up stored edits for uid and, when
+// present, decodes the downloaded file, applies the edits, re-encodes the
+// result as JPEG (quality 92), and overwrites the file in place. The
+// returned photoImage carries the post-edit dimensions; nil is returned
+// when the photo has no stored edits and the input file should be used
+// unchanged.
+//
+// The downloaded file already has EXIF orientation baked in (PhotoPrism
+// thumbnails are pre-oriented; the originals path goes through the same
+// re-encode), so orientation=1 is forwarded to imgedit.DecodeAndApply to
+// avoid double-rotating.
+func applyEditsToDownloadedPhoto(
+	ctx context.Context, editsReader database.PhotoEditsReader,
+	uid string, current *photoImage,
+) (*photoImage, error) {
+	edits, err := editsReader.GetPhotoEdits(ctx, uid)
+	if err != nil {
+		// database.ErrNotFound is propagated so the caller can distinguish
+		// "no edits" from a real lookup failure.
+		return nil, err //nolint:wrapcheck
+	}
+	rendered, err := imgedit.DecodeAndApply(ctx, current.path, 1, latexEditsToImgedit(edits))
+	if err != nil {
+		return nil, fmt.Errorf("apply edits: %w", err)
+	}
+	data, err := imgedit.EncodeJPEG(rendered, originalJPEGQuality)
+	if err != nil {
+		return nil, fmt.Errorf("encode edited photo: %w", err)
+	}
+	if writeErr := os.WriteFile(current.path, data, 0600); writeErr != nil {
+		return nil, fmt.Errorf("write edited photo: %w", writeErr)
+	}
+	b := rendered.Bounds()
+	return &photoImage{path: current.path, width: b.Dx(), height: b.Dy()}, nil
+}
+
+// latexEditsToImgedit converts the database domain struct to the imgedit
+// parameter struct. Kept local to the latex package so the package does
+// not need to depend on internal/web/handlers.
+func latexEditsToImgedit(e *database.PhotoEdits) imgedit.PhotoEdits {
+	if e == nil {
+		return imgedit.PhotoEdits{}
+	}
+	out := imgedit.PhotoEdits{
+		Rotation:   e.Rotation,
+		Brightness: e.Brightness,
+		Contrast:   e.Contrast,
+	}
+	if e.Crop != nil {
+		out.Crop = &imgedit.CropRect{
+			X: e.Crop.X, Y: e.Crop.Y, W: e.Crop.W, H: e.Crop.H,
+		}
+	}
+	return out
 }
 
 // downloadPhoto fetches a single photo at the requested quality tier and

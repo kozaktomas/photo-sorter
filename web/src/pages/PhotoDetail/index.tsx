@@ -1,11 +1,12 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Loader2, AlertCircle, Images, ScanFace, Copy, User, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Loader2, AlertCircle, Images, ScanFace, Copy, User, RefreshCw, Sliders } from 'lucide-react';
 import { AddToBookDropdown } from './AddToBookDropdown';
 import { Button } from '../../components/Button';
 import { colorMap } from '../../constants/pageConfig';
 import { copyToClipboard } from '../../utils/clipboard';
+import { useAuth } from '../../hooks/useAuth';
 import { usePhotoData } from './hooks/usePhotoData';
 import { useFacesData } from './hooks/useFacesData';
 import { useFaceAssignment } from './hooks/useFaceAssignment';
@@ -17,6 +18,7 @@ import { BookMembership } from './BookMembership';
 import { PhotoDisplay } from './PhotoDisplay';
 import { FacesList } from './FacesList';
 import { FaceAssignmentPanel } from './FaceAssignmentPanel';
+import { PhotoEditModal } from './PhotoEditModal';
 
 export function PhotoDetailPage() {
   const { t } = useTranslation(['pages', 'common']);
@@ -45,6 +47,7 @@ export function PhotoDetailPage() {
     error: photoError,
     embeddingsStatus,
     updateEmbeddingsStatus,
+    refresh: refreshPhoto,
   } = usePhotoData(uid);
 
   const {
@@ -96,6 +99,9 @@ export function PhotoDetailPage() {
   const handleBookAdded = useCallback(() => setBookRefreshKey((k) => k + 1), []);
   const [markingsVisible, setMarkingsVisible] = useState(true);
   const [fullscreen, setFullscreen] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false);
+  const { user } = useAuth();
+  const hasWriteAccess = user?.role === 'admin' || user?.role === 'editor';
 
   // Keyboard navigation
   useEffect(() => {
@@ -185,7 +191,17 @@ export function PhotoDetailPage() {
             {t('pages:photoDetail.back')}
           </Button>
           <div>
-            <h1 className="text-xl font-semibold text-white">{photo.title || photo.file_name}</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-semibold text-white">{photo.title || photo.file_name}</h1>
+              {photo.edited && (
+                <span
+                  className="text-xs uppercase tracking-wide px-2 py-0.5 rounded bg-amber-700/40 text-amber-200 border border-amber-600/50"
+                  title={t('pages:photoDetail.editedBadge')}
+                >
+                  {t('pages:photoDetail.editedBadge')}
+                </span>
+              )}
+            </div>
             <p className="text-sm text-slate-400">
               {photo.taken_at ? new Date(photo.taken_at).toLocaleDateString() : t('common:time.noDate')}
               {photo.width && photo.height && ` - ${photo.width}x${photo.height}`}
@@ -202,6 +218,17 @@ export function PhotoDetailPage() {
             {t('pages:photoDetail.similar')}
           </Button>
           <AddToBookDropdown photoUid={uid!} onAdded={handleBookAdded} />
+          {hasWriteAccess && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setEditorOpen(true)}
+              title={t('pages:photoDetail.edit')}
+            >
+              <Sliders className="h-4 w-4 mr-1" />
+              {t('pages:photoDetail.edit')}
+            </Button>
+          )}
           <Button
             variant={facesLoaded ? 'primary' : 'ghost'}
             size="sm"
@@ -361,6 +388,16 @@ export function PhotoDetailPage() {
           )}
         </div>}
       </div>
+
+      {editorOpen && photo && (
+        <PhotoEditModal
+          photo={photo}
+          onClose={() => setEditorOpen(false)}
+          onSaved={() => {
+            void refreshPhoto();
+          }}
+        />
+      )}
     </div>
   );
 }

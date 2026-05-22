@@ -821,14 +821,90 @@ the form `"sha:<hash>:<size>"`.
 
 ```
 GET /photos/{uid}/download
+GET /photos/{uid}/download?original=true
 ```
 
-Streams the original primary file for the photo as an attachment. Supports
-HTTP Range requests (responds with `206 Partial Content` when a `Range`
-header is provided).
+Streams the photo as an attachment. Supports HTTP Range requests
+(responds with `206 Partial Content` when a `Range` header is provided).
 
-**Response:** Binary file with `Content-Type` from the photo's `file_mime`,
+When the photo has non-destructive edits stored in `photo_edits`, the
+default response is a freshly-rendered JPEG (decode original → apply
+crop/rotation/brightness/contrast → encode at quality 92). The filename
+keeps the original basename. Pass `?original=true` to short-circuit the
+rendering and always serve the pristine original file.
+
+**Response:** Binary file with `Content-Type` from the photo's
+`file_mime` (or `image/jpeg` for an edited photo),
 `Content-Disposition: attachment; filename="<file_name>"`.
+
+### Get Photo Edits
+
+```
+GET /photos/{uid}/edits
+```
+
+Returns the stored non-destructive edit parameters for a photo. The
+envelope is `{ "edits": <payload> }` where the payload is `null` when no
+edits row exists for the photo.
+
+**Response (200):**
+```json
+{
+  "edits": {
+    "crop": { "x": 0.1, "y": 0.05, "w": 0.8, "h": 0.9 },
+    "rotation": 90,
+    "brightness": 0.15,
+    "contrast": -0.1,
+    "updated_at": "2026-05-22T12:34:56Z"
+  }
+}
+```
+
+### Put Photo Edits
+
+```
+PUT /photos/{uid}/edits
+```
+
+Upserts the non-destructive edit row for a photo and synchronously
+invalidates + regenerates every cached thumbnail size from the post-edit
+pixel data. **Requires write access.**
+
+**Request:**
+```json
+{
+  "crop": { "x": 0.1, "y": 0.05, "w": 0.8, "h": 0.9 },
+  "rotation": 90,
+  "brightness": 0.15,
+  "contrast": -0.1
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `crop` | object\|null | yes | `{x, y, w, h}` in 0.0..1.0 relative coordinates against the rotated image, or `null` for no crop. |
+| `rotation` | int | yes | One of `0`, `90`, `180`, `270` (degrees clockwise). |
+| `brightness` | number | yes | `-1.0` to `1.0`. `0` = no change. |
+| `contrast` | number | yes | `-1.0` to `1.0`. `0` = no change. |
+
+**Validation:**
+- Out-of-range values → 400.
+- Cropped output below 100×100 px → 400.
+- HEIC/RAW originals without `heif-convert`/`dcraw` on the server → 503.
+
+**Response (200):** the stored edits in the same envelope as `GET`.
+
+### Delete Photo Edits
+
+```
+DELETE /photos/{uid}/edits
+```
+
+Clears the edits row and rebuilds the thumbnail cache from the
+un-edited original (revert-to-original). Idempotent: returns 204 even
+when no edits row existed. **Requires write access.**
+
+**Response:** `204 No Content`.
 
 ### Get Photo Album Memberships
 

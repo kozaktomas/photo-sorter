@@ -631,6 +631,34 @@ type SmartAlbum struct {
 	CreatedByUserUID string
 }
 
+// PhotoEdits holds the non-destructive edit parameters stored in the
+// photo_edits table. A row exists only when at least one field is at a
+// non-default value; the row is deleted when the user reverts the photo
+// to its original. Crop is nil when no crop is applied; the four crop
+// floats are forwarded to/from the database as a single NULL group via
+// the CHECK constraint added in migration 041.
+//
+// Coordinates are 0.0–1.0 relative to the rotated (display-oriented)
+// image. Rotation is restricted to multiples of 90°.  Brightness and
+// contrast are in [-1.0, 1.0] with 0 = no change.
+type PhotoEdits struct {
+	PhotoUID   string
+	Crop       *PhotoEditsCrop
+	Rotation   int
+	Brightness float64
+	Contrast   float64
+	UpdatedAt  time.Time
+}
+
+// PhotoEditsCrop is the crop sub-struct of PhotoEdits. All four fields
+// are required when present and live in [0.0, 1.0].
+type PhotoEditsCrop struct {
+	X float64
+	Y float64
+	W float64
+	H float64
+}
+
 // PageFormatSlotCount returns the number of slots for a given page format.
 func PageFormatSlotCount(format string) int {
 	switch format {

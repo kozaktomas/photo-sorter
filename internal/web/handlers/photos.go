@@ -174,6 +174,7 @@ type PhotoResponse struct {
 	ExifCopyright string   `json:"exif_copyright"`
 	ExifLicense   string   `json:"exif_license"`
 	ExifSoftware  string   `json:"exif_software"`
+	Edited        bool     `json:"edited"`
 }
 
 // PhotoListResponse is the envelope returned by List.
@@ -488,7 +489,21 @@ func (h *PhotosHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	respondJSON(w, http.StatusOK, nativePhotoToResponse(*photo))
+	response := nativePhotoToResponse(*photo)
+	response.Edited = h.photoHasEdits(r.Context(), uid)
+	respondJSON(w, http.StatusOK, response)
+}
+
+// photoHasEdits checks whether a photo has stored non-destructive edits.
+// Failures (incl. missing edits store) return false so the badge silently
+// disappears rather than 500-ing the detail page.
+func (h *PhotosHandler) photoHasEdits(ctx context.Context, uid string) bool {
+	editsRepo, err := database.GetPhotoEditsReader(ctx)
+	if err != nil {
+		return false
+	}
+	_, err = editsRepo.GetPhotoEdits(ctx, uid)
+	return err == nil
 }
 
 // photoUpdateFields holds the parsed + validated update payload. Only the
@@ -807,7 +822,13 @@ func serveThumb(
 	http.ServeContent(w, r, "", stat.ModTime(), f)
 }
 
-// Download streams the original primary file for a photo with Range support.
+// Download streams the original primary file for a photo with Range
+// support. When the photo has non-destructive edits stored in
+// photo_edits and the caller did not pass ?original=true, the stream is
+// instead a freshly-rendered JPEG (decode original → apply edits →
+// encode JPEG @ quality 92) keyed off the same basename so existing
+// links still resolve. ?original=true short-circuits the rendering and
+// always serves the pristine file.
 func (h *PhotosHandler) Download(w http.ResponseWriter, r *http.Request) {
 	uid := chi.URLParam(r, "uid")
 	if uid == "" {
@@ -835,6 +856,11 @@ func (h *PhotosHandler) Download(w http.ResponseWriter, r *http.Request) {
 	if rel == "" {
 		respondError(w, http.StatusNotFound, "primary file not found")
 		return
+	}
+	if r.URL.Query().Get("original") != "true" {
+		if h.tryServeEditedDownload(w, r, store, photo, rel, fileName) {
+			return
+		}
 	}
 	serveOriginal(w, r, store, rel, fileName, mime)
 }

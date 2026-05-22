@@ -131,6 +131,39 @@ func GenerateAll(src Source, store *storage.Storage, fileHash string) (map[strin
 	return GenerateSizes(src, sizeOrder, store, fileHash)
 }
 
+// GenerateSizesFromImage is the in-memory variant of GenerateSizes used by
+// the non-destructive edit pipeline: the caller has already produced the
+// post-edit image (decode original → EXIF orient → crop/rotate/colour),
+// and the registry simply resizes/encodes it for every requested size.
+//
+// Unlike GenerateSizes, this function does NOT skip existing thumbnails —
+// the edit handler invalidates them on disk before calling and expects a
+// fresh write for every requested size.
+func GenerateSizesFromImage(
+	img image.Image, sizeNames []string,
+	store *storage.Storage, fileHash string,
+) (map[string]string, error) {
+	if len(sizeNames) == 0 {
+		return map[string]string{}, nil
+	}
+	result := make(map[string]string, len(sizeNames))
+	for _, name := range sizeNames {
+		spec, ok := sizes[name]
+		if !ok {
+			return nil, fmt.Errorf("thumb: unknown size %q", name)
+		}
+		rel, err := storage.ThumbRelPath(fileHash, name)
+		if err != nil {
+			return nil, fmt.Errorf("thumb: build path for %s: %w", name, err)
+		}
+		if _, err := writeThumb(img, spec, name, rel, store); err != nil {
+			return nil, err
+		}
+		result[name] = rel
+	}
+	return result, nil
+}
+
 // GenerateSizes generates the named subset of thumbnails for src. Sizes
 // that already exist in store are skipped; missing sizes are generated
 // after decoding the source image exactly once.
