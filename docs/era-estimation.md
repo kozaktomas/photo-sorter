@@ -24,16 +24,31 @@ go run . cache compute-eras --dry-run
 
 ### 2. Photo Embedding
 
-Each photo needs a CLIP image embedding (768-dim) computed via the processing pipeline. This happens during `POST /api/v1/process` or `go run . cache sync`.
+Each photo needs a CLIP image embedding (768-dim) in the `embeddings`
+table. The native pipelines that populate it are
+`POST /api/v1/process` (bulk job) and
+`POST /api/v1/photos/{uid}/faces/compute` (single-photo, runs the
+embedding pass as a best-effort side effect). Photos still on the
+legacy PhotoPrism pipeline can be backfilled with
+`go run . cache sync`, retained only for that pre-migration scenario.
 
 ### 3. Similarity Comparison
 
 When a user views a photo, the `GET /api/v1/photos/:uid/estimate-era` endpoint:
 
 1. Fetches the photo's 768-dim CLIP image embedding from PostgreSQL
-2. Loads all era centroids from the `era_embeddings` table
-3. Computes cosine similarity between the photo embedding and each era centroid
-4. Returns all eras sorted by similarity (highest first)
+   via `EmbeddingReader.Get`. Returns 404 if the row is missing.
+2. Loads all era centroids from the `era_embeddings` table via
+   `EraEmbeddingReader.GetAllEras` (ordered by `representative_date`).
+3. Computes cosine similarity between the photo embedding and each
+   era centroid using `fingerprint.CosineSimilarity` —
+   **Go-side**, not pgvector. The era set is tiny (12 rows), so a
+   full sequential scan in Go is cheaper than an HNSW lookup and
+   keeps the path simple. See
+   [`similarity-search.md`](similarity-search.md) for why
+   `era_embeddings` carries no HNSW index.
+4. Sorts the matches by similarity (highest first) and returns
+   `best_match` plus the full ranked list as `top_matches`.
 
 ## Eras
 
@@ -56,12 +71,14 @@ Eras up to 2000 use 10-year ranges. 2000-2004 is a separate era for early digita
 
 ## Database Schema
 
+Schema from `007_create_era_embeddings.sql`:
+
 ```sql
 CREATE TABLE era_embeddings (
     era_slug VARCHAR(64) PRIMARY KEY,
     era_name VARCHAR(255) NOT NULL,
     representative_date DATE NOT NULL,
-    prompt_count INTEGER NOT NULL DEFAULT 30,
+    prompt_count INTEGER NOT NULL DEFAULT 20,
     embedding VECTOR(768) NOT NULL,
     model VARCHAR(64) NOT NULL,
     pretrained VARCHAR(64) NOT NULL,
@@ -69,6 +86,12 @@ CREATE TABLE era_embeddings (
     created_at TIMESTAMPTZ DEFAULT NOW()
 );
 ```
+
+The DDL default for `prompt_count` is 20, but
+`cmd/cache_compute_eras.go` stores `promptsPerEra = 30` whenever it
+writes a row, so the value is effectively 30 for live data. There is
+no HNSW index on `embedding` — the table is fixed-size, so a
+sequential scan in `GetAllEras` is fastest.
 
 ## API
 

@@ -20,8 +20,10 @@ fixed set and does a plain sequential scan — no index needed.
 
 ## Query shape
 
-Every cosine query wraps a single transaction that sets `ef_search` then
-issues an `ORDER BY embedding <=> $vec` SELECT:
+Every cosine query in the app — both image (`EmbeddingRepository.FindSimilar`
+/ `FindSimilarWithDistance`) and face (`FaceRepository.FindSimilar` /
+`FindSimilarWithDistance`) — opens a small read-only transaction,
+sets `ef_search`, and issues an `ORDER BY embedding <=> $vec` SELECT:
 
 ```sql
 BEGIN READ ONLY;
@@ -34,11 +36,17 @@ SELECT photo_uid, embedding, …
 COMMIT;
 ```
 
-`100` is the hard-coded value of `hnswEfSearch` in
-`internal/database/postgres/embeddings.go` — increasing it trades query
+`100` is the hard-coded value of the package-level `hnswEfSearch`
+constant in `internal/database/postgres/embeddings.go`; the face
+repository imports the same constant. Increasing it trades query
 latency for recall. The schema-level build parameters
 (`m=16, ef_construction=64`) are the pgvector defaults and live in the
-migration.
+migration. The application never sets these per-query — there is no
+env-var knob for `ef_search` either, on purpose.
+
+The "no distance cap" form (`FindSimilar`) is identical except it drops
+the `WHERE embedding <=> $1::vector < $maxDistance` predicate and
+returns the top-`$limit` neighbours regardless of distance.
 
 ## Maintenance
 
@@ -63,10 +71,18 @@ window.
 
 The album-suggestion endpoint
 (`POST /api/v1/photos/suggest-albums`) computes the album centroid in
-SQL via `SELECT AVG(embedding) FROM embeddings WHERE photo_uid = ANY(…)`
-and then runs a single ranking query against the index. Look at
-`EmbeddingRepository.GetCentroid` and `processAlbumForSuggestions` for
-the wire-up.
+SQL via `EmbeddingRepository.GetCentroid`, which issues
+`SELECT AVG(embedding)::vector FROM embeddings WHERE photo_uid = ANY($1)`
+and lets pgvector do the element-wise average in one round trip. The
+ranking query is then a standard `FindSimilar*` call against the HNSW
+index. See `processAlbumForSuggestions` for the wire-up.
+
+Face-outlier detection (`POST /api/v1/faces/outliers`) does **not** use
+`GetCentroid` — it pages a person's face rows into Go and averages
+embeddings element-wise on the application side
+(`computeFaceCentroid` in `internal/web/handlers/face_outliers.go`).
+That's because outlier ranking also needs each face's individual
+distance to the centroid, which the SQL aggregate would throw away.
 
 ## What was removed
 
