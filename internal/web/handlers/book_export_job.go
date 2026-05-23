@@ -427,6 +427,7 @@ func (h *BooksHandler) runBookExportJob(job *BookExportJob, session *middleware.
 	job.mu.Lock()
 	job.Status = JobStatusRunning
 	job.mu.Unlock()
+	recordJobStarted(JobKindBookExport)
 	job.SendEvent(JobEvent{Type: "started", Message: "Book export started"})
 
 	pdfData, ok := h.generateBookPDF(ctx, job, session)
@@ -536,6 +537,7 @@ func (h *BooksHandler) finalizeBookExport(job *BookExportJob, tmpPath string, pd
 	job.expiresAt = now.Add(bookExportUnconsumedTTL)
 	job.mu.Unlock()
 
+	recordJobCompleted(JobKindBookExport)
 	job.SendEvent(JobEvent{
 		Type: "completed",
 		Data: map[string]any{
@@ -577,6 +579,7 @@ func (h *BooksHandler) failBookExportJob(job *BookExportJob, message string) {
 	job.CompletedAt = &now
 	job.expiresAt = now.Add(bookExportTerminalTTL)
 	job.mu.Unlock()
+	recordJobFailed(JobKindBookExport)
 	job.SendEvent(JobEvent{Type: "job_error", Message: message})
 }
 
@@ -587,6 +590,7 @@ func (h *BooksHandler) cancelBookExportJob(job *BookExportJob) {
 	job.CompletedAt = &now
 	job.expiresAt = now.Add(bookExportTerminalTTL)
 	job.mu.Unlock()
+	recordJobCancelled(JobKindBookExport)
 	job.SendEvent(JobEvent{Type: "cancelled", Message: "Job was cancelled"})
 }
 

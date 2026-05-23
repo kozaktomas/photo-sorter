@@ -186,6 +186,7 @@ func (h *ProcessHandler) runBuildThumbsJob(job *ProcessJob, photoUID string) {
 	job.mu.Lock()
 	job.Status = JobStatusRunning
 	job.mu.Unlock()
+	recordJobStarted(JobKindProcess)
 	job.SendEvent(JobEvent{Type: "started", Message: "Thumbnail backfill started"})
 
 	reader, err := database.GetPhotoReader(ctx)
@@ -490,6 +491,7 @@ func (h *ProcessHandler) completeBuildThumbsJob(job *ProcessJob, result *BuildTh
 	job.BuildResult = result
 	job.mu.Unlock()
 
+	recordJobCompleted(JobKindProcess)
 	job.SendEvent(JobEvent{Type: "summary", Data: result})
 	job.SendEvent(JobEvent{Type: "completed", Data: result})
 }

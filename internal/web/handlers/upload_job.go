@@ -164,6 +164,7 @@ func (h *UploadHandler) runUploadJob(
 	job.mu.Lock()
 	job.Status = JobStatusRunning
 	job.mu.Unlock()
+	recordJobStarted(JobKindUpload)
 	job.SendEvent(JobEvent{Type: "started", Message: "Upload job started"})
 
 	pp, err := getPhotoPrismClient(h.config, session)
@@ -626,6 +627,7 @@ func (h *UploadHandler) failUploadJob(job *UploadJob, message string) {
 	job.Error = message
 	job.CompletedAt = &now
 	job.mu.Unlock()
+	recordJobFailed(JobKindUpload)
 	job.SendEvent(JobEvent{Type: "job_error", Message: message})
 }
 
@@ -635,6 +637,7 @@ func (h *UploadHandler) cancelUploadJob(job *UploadJob) {
 	job.Status = JobStatusCancelled
 	job.CompletedAt = &now
 	job.mu.Unlock()
+	recordJobCancelled(JobKindUpload)
 	job.SendEvent(JobEvent{Type: "cancelled", Message: "Job cancelled"})
 }
 
@@ -647,5 +650,6 @@ func (h *UploadHandler) completeUploadJob(
 	job.CompletedAt = &now
 	job.Result = result
 	job.mu.Unlock()
+	recordJobCompleted(JobKindUpload)
 	job.SendEvent(JobEvent{Type: "completed", Data: result})
 }

@@ -187,6 +187,14 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 	// Health check (no auth required).
 	s.router.Get("/api/v1/health", handlers.HealthCheck)
 
+	// Prometheus metrics (no auth — the port is LAN/Tailscale-only and
+	// scrapers need unauthenticated access). The middleware deliberately
+	// excludes this path from the http_requests_total counter to keep the
+	// scrape from polluting its own series.
+	if s.metrics != nil {
+		s.router.Handle("/metrics", s.metrics.Handler())
+	}
+
 	// API routes.
 	s.router.Route("/api/v1", func(r chi.Router) {
 		// Auth routes (no PhotoPrism client needed for login).

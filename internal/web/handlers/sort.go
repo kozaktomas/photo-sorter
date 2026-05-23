@@ -252,6 +252,7 @@ func (h *SortHandler) runSortJob(job *SortJob, session *middleware.Session) {
 	job.mu.Lock()
 	job.Status = JobStatusRunning
 	job.mu.Unlock()
+	recordJobStarted(JobKindSort)
 	job.SendEvent(JobEvent{Type: "started", Message: "Sort job started"})
 
 	pp, aiProvider, err := h.initSortJobDeps(job, session)
@@ -283,6 +284,7 @@ func (h *SortHandler) runSortJob(job *SortJob, session *middleware.Session) {
 			job.mu.Lock()
 			job.Status = JobStatusCancelled
 			job.mu.Unlock()
+			recordJobCancelled(JobKindSort)
 			job.SendEvent(JobEvent{Type: "cancelled", Message: "Job was cancelled"})
 			return
 		}
@@ -324,6 +326,7 @@ func (h *SortHandler) completeSortJob(job *SortJob, result *sorter.SortResult, a
 	job.Result = jobResult
 	job.mu.Unlock()
 
+	recordJobCompleted(JobKindSort)
 	job.SendEvent(JobEvent{Type: "completed", Data: jobResult})
 }
 
@@ -334,6 +337,7 @@ func (h *SortHandler) failJob(job *SortJob, message string) {
 	job.Error = message
 	job.CompletedAt = &now
 	job.mu.Unlock()
+	recordJobFailed(JobKindSort)
 	job.SendEvent(JobEvent{Type: "job_error", Message: message})
 }
 

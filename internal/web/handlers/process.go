@@ -605,6 +605,7 @@ func (h *ProcessHandler) runProcessJob(job *ProcessJob, session *middleware.Sess
 	job.mu.Lock()
 	job.Status = JobStatusRunning
 	job.mu.Unlock()
+	recordJobStarted(JobKindProcess)
 	job.SendEvent(JobEvent{Type: "started", Message: "Process job started"})
 
 	repos, err := initProcessJobRepos(ctx, job.Options)
@@ -669,6 +670,7 @@ func (h *ProcessHandler) failJob(job *ProcessJob, message string) {
 	job.Error = message
 	job.CompletedAt = &now
 	job.mu.Unlock()
+	recordJobFailed(JobKindProcess)
 	job.SendEvent(JobEvent{Type: "job_error", Message: message})
 }
 
@@ -678,6 +680,7 @@ func (h *ProcessHandler) cancelJob(job *ProcessJob) {
 	job.Status = JobStatusCancelled
 	job.CompletedAt = &now
 	job.mu.Unlock()
+	recordJobCancelled(JobKindProcess)
 	job.SendEvent(JobEvent{Type: "cancelled", Message: "Job cancelled"})
 }
 
@@ -721,6 +724,7 @@ func (h *ProcessHandler) completeJob(job *ProcessJob, embRepo database.Embedding
 	job.Result = result
 	job.mu.Unlock()
 
+	recordJobCompleted(JobKindProcess)
 	job.SendEvent(JobEvent{Type: "completed", Data: result})
 }
 

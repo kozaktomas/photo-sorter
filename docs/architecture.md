@@ -304,6 +304,14 @@ Two background goroutines run without an HTTP entry point:
 
 - **Trash auto-purge** (`cmd/serve.go` → `internal/trash.RunDaemon`). Wakes hourly, deletes photos whose `archived_at` is older than `TRASH_RETENTION_DAYS` (default 30), and cascades to phashes / markers / files / album_photos / photo_labels / embeddings / faces / on-disk originals / cached thumbnails.
 - **Book export TTL sweeper** (`handlers.BookExportJobManager.sweepLoop`). Drops finished export jobs + their temp PDFs after a fixed TTL.
+- **Embedding-service health probe** (`internal/metrics.Registry.StartEmbeddingProbe`). Every 30 s while `EMBEDDING_URL` is set, fires a 5 s-timeout GET against the embedding service and updates `photo_sorter_embedding_service_up`. State transitions are logged once each (suppressed otherwise).
+- **Backup freshness watcher** (`internal/metrics.Registry.StartBackupWatcher`). Every 10 min, scans `METRICS_BACKUP_DIR` (defaults to `/mnt/nas-botka/backups/photo-sorter`) for the newest `metadata.json` and publishes its `created_at` as `photo_sorter_last_backup_timestamp_seconds`. Drives the `PhotoSorterBackupStale` alert.
+
+## Metrics & alerting
+
+`internal/metrics/` exposes a Prometheus registry on `GET /metrics` (no auth — assumed LAN/Tailscale only). The `serve` command constructs a `metrics.Registry`, installs a middleware on the chi router (HTTP request totals, duration histogram, in-flight gauge), wires a `sql.DB.Stats()` collector for the pgvector pool, and kicks off the embedding probe + backup watcher described above. Job lifecycle counters (`photo_sorter_jobs_{started,completed,failed,cancelled}_total{kind=...}`) are incremented from the four job managers (`upload`, `sort`, `process`, `book_export`).
+
+The scrape config and alert rules live in the [`rpi`](../../rpi/) repo: `mimir/config/alloy.config.alloy` adds a `photo-sorter` scrape job pointed at `localhost:5112/metrics`, and `mimir/rules/photo-sorter.yaml` defines the five alerts (`PhotoSorterDown`, `PhotoSorterHigh5xxRate`, `PhotoSorterDBPoolSaturated`, `PhotoSorterBackupStale`, `PhotoSorterEmbeddingServiceDown`). Host-level disk-fill is already covered by `HostOutOfDiskSpace` in `node-exporter.yaml`.
 
 ## MCP Server
 

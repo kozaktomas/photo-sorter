@@ -767,6 +767,45 @@ When rendering bounding boxes as absolute-positioned overlays on images, the par
 **Common Pitfall - Subject/Album Thumbnail Hashes:**
 The `Thumb` field on `Subject` and `Album` structs is a **file hash**, not a photo UID. It cannot be used with `getThumbnailUrl(uid, size)` which expects a photo UID. Use a fallback icon instead.
 
+### Metrics & alerting
+
+`GET /metrics` (no auth — assumed LAN/Tailscale only) returns the standard
+Prometheus exposition format. Series live under the `photo_sorter_*`
+namespace. The metrics package is `internal/metrics/`; the `serve` command
+wires it in alongside the chi router.
+
+Exposed families:
+- `photo_sorter_http_requests_total{method,route,status}` +
+  `photo_sorter_http_request_duration_seconds{method,route}` +
+  `photo_sorter_http_inflight_requests` — middleware on the chi router
+  (skips `/metrics` itself; uses the matched chi RoutePattern as the
+  `route` label so cardinality stays bounded).
+- `photo_sorter_db_pool_{open,in_use,idle,max_open}` (gauges) and
+  `photo_sorter_db_pool_wait_count_total` /
+  `photo_sorter_db_pool_wait_duration_seconds_total` (counters) —
+  pulled from `sql.DB.Stats()` on every scrape via a collector.
+- `photo_sorter_jobs_{started,completed,failed,cancelled}_total{kind=...}`
+  with `kind ∈ {upload, sort, process, book_export}` — incremented from
+  the corresponding job manager's lifecycle hooks.
+- `photo_sorter_embedding_service_up` — 1/0 gauge driven by a background
+  probe (`EMBEDDING_URL` GET every 30s). Always registered when the env
+  var is set; left absent when it is not.
+- `photo_sorter_last_backup_timestamp_seconds` — Unix timestamp of the
+  newest `metadata.json` found under `METRICS_BACKUP_DIR` (default
+  `/mnt/nas-botka/backups/photo-sorter`). Re-scanned every 10 min.
+
+Env knobs that change the metrics surface: `EMBEDDING_URL` (enables the
+probe), `METRICS_BACKUP_DIR` (override the backup scan root), and
+`DATABASE_MAX_OPEN_CONNS` (raises the denominator in the pool saturation
+alert).
+
+Alertmanager rules live in `rpi/mimir/rules/photo-sorter.yaml` and are
+deployed via `rules/deploy.sh`. Current alert names: `PhotoSorterDown`,
+`PhotoSorterHigh5xxRate`, `PhotoSorterDBPoolSaturated`,
+`PhotoSorterBackupStale`, `PhotoSorterEmbeddingServiceDown`. Host-level
+disk-fill is already covered by `HostOutOfDiskSpace` in
+`node-exporter.yaml` (no duplicate rule).
+
 ### Photo Faces API
 
 The `GET /api/v1/photos/:uid/faces` endpoint combines faces from the embeddings database (InsightFace) and rows in the native `markers` table, matched via IoU (threshold >= 0.1) in display coordinate space.

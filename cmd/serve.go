@@ -17,6 +17,7 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/database"
 	"github.com/kozaktomas/photo-sorter/internal/database/postgres"
 	mcpserver "github.com/kozaktomas/photo-sorter/internal/mcp"
+	"github.com/kozaktomas/photo-sorter/internal/metrics"
 	"github.com/kozaktomas/photo-sorter/internal/photoprism"
 	"github.com/kozaktomas/photo-sorter/internal/storage"
 	"github.com/kozaktomas/photo-sorter/internal/trash"
@@ -130,6 +131,36 @@ func resolveServeHostPort(cmd *cobra.Command) (int, string, string) {
 		host = envHost
 	}
 	return port, host, sessionSecret
+}
+
+// initMetrics constructs the process-wide Prometheus registry, wires the
+// DB pool collector, and kicks off the background embedding probe + backup
+// freshness watcher. Returns the registry and a cancel func that stops the
+// background goroutines on graceful shutdown.
+//
+// METRICS_BACKUP_DIR defaults to the systemd timer's destination on this
+// Pi install (/mnt/nas-botka/backups/photo-sorter); operators on a
+// different layout can override it. An empty value disables the watcher
+// entirely, which is the desired behaviour for dev environments with no
+// backups configured.
+func initMetrics(ctx context.Context, cfg *config.Config, pool *postgres.Pool) (*metrics.Registry, context.CancelFunc) {
+	reg := metrics.Default()
+	if pool != nil {
+		reg.RegisterDBPool(pool.DB())
+	}
+
+	probeCtx, cancel := context.WithCancel(ctx)
+	if cfg.Embedding.URL != "" {
+		reg.StartEmbeddingProbe(probeCtx, cfg.Embedding.URL, metrics.EmbeddingProbeInterval)
+	}
+
+	backupDir := os.Getenv("METRICS_BACKUP_DIR")
+	if backupDir == "" {
+		backupDir = "/mnt/nas-botka/backups/photo-sorter"
+	}
+	reg.StartBackupWatcher(probeCtx, backupDir, metrics.BackupScanInterval)
+
+	return reg, cancel
 }
 
 // initMCPHandler initialises the MCP HTTP handler when MCP_API_TOKEN is set
@@ -283,10 +314,6 @@ func runServe(cmd *cobra.Command, args []string) error {
 
 	port, host, sessionSecret := resolveServeHostPort(cmd)
 
-	if cfg.PhotoPrism.URL == "" {
-		return errors.New("PHOTOPRISM_URL environment variable is required")
-	}
-
 	handlers.SetVersionInfo(Version, CommitSHA)
 
 	mcpHandler, err := initMCPHandler(ctx, cfg)
@@ -294,7 +321,11 @@ func runServe(cmd *cobra.Command, args []string) error {
 		return err
 	}
 
-	server := web.NewServer(cfg, port, host, sessionSecret, sessionRepo, mcpHandler)
+	metricsReg, stopMetrics := initMetrics(ctx, cfg, pool)
+	defer stopMetrics()
+	handlers.SetMetricsRegistry(metricsReg)
+
+	server := web.NewServer(cfg, port, host, sessionSecret, sessionRepo, mcpHandler, metricsReg)
 
 	// Auto-purge daemon for trash retention. Started after the photo +
 	// embedding + face writers are registered. The returned cancel is

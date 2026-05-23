@@ -12,6 +12,7 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/audit"
 	"github.com/kozaktomas/photo-sorter/internal/config"
 	"github.com/kozaktomas/photo-sorter/internal/database"
+	"github.com/kozaktomas/photo-sorter/internal/metrics"
 	"github.com/kozaktomas/photo-sorter/internal/web/handlers"
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
@@ -26,14 +27,17 @@ type Server struct {
 	auditLogger    *audit.Logger
 	mcpHandler     http.Handler // nil if MCP not enabled
 	booksHandler   *handlers.BooksHandler
+	metrics        *metrics.Registry
 }
 
 // NewServer creates a new web server.
 // mcpHandler is optional — pass nil to disable MCP endpoints.
+// metricsReg is optional — pass nil to skip /metrics + HTTP instrumentation
+// (tests and one-off CLI use cases).
 func NewServer(
 	cfg *config.Config, port int, host string,
 	sessionSecret string, sessionRepo middleware.SessionRepository,
-	mcpHandler http.Handler,
+	mcpHandler http.Handler, metricsReg *metrics.Registry,
 ) *Server {
 	r := chi.NewRouter()
 
@@ -62,6 +66,7 @@ func NewServer(
 		sessionManager: sessionManager,
 		auditLogger:    auditLogger,
 		mcpHandler:     mcpHandler,
+		metrics:        metricsReg,
 	}
 
 	// Middleware stack. chiMiddleware.Timeout is deliberately NOT applied
@@ -75,6 +80,20 @@ func NewServer(
 	r.Use(chiMiddleware.RealIP)
 	r.Use(chiMiddleware.Logger)
 	r.Use(chiMiddleware.Recoverer)
+	if metricsReg != nil {
+		// chi only fills RoutePattern after the route has been matched, so
+		// pull it from the RouteContext inside the closure rather than once
+		// up front. Falls back to the request path when no route was
+		// matched (e.g. 404s) so cardinality stays bounded.
+		r.Use(metricsReg.Middleware(func(req *http.Request) string {
+			if rctx := chi.RouteContext(req.Context()); rctx != nil {
+				if pat := rctx.RoutePattern(); pat != "" {
+					return pat
+				}
+			}
+			return req.URL.Path
+		}))
+	}
 	r.Use(middleware.CORS())
 	r.Use(middleware.SecurityHeaders())
 	// Audit middleware: attaches the Logger to every request context so
