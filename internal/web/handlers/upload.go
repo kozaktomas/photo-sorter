@@ -185,7 +185,7 @@ func parseUploadJobOptions(r *http.Request) (*UploadJobOptions, error) {
 
 // StartJob starts a background upload job.
 //
-//nolint:funlen // straight-line validation + multipart parse + job dispatch + audit.
+//nolint:funlen,cyclop // straight-line validation + multipart parse + job dispatch + audit.
 func (h *UploadHandler) StartJob(w http.ResponseWriter, r *http.Request) {
 	if err := requireWriteRole(r); err != nil {
 		respondError(w, http.StatusForbidden, "forbidden")
@@ -238,8 +238,23 @@ func (h *UploadHandler) StartJob(w http.ResponseWriter, r *http.Request) {
 		Options:   *opts,
 	}
 
-	h.jobManager.SetActiveJob(job)
-	go h.runUploadJob(job, session, tempDir) //nolint:gosec // G118 - background job outlives HTTP request
+	// Atomic claim of the single active-job slot. The earlier GetActiveJob
+	// check is best-effort (it lets us short-circuit before parsing the
+	// multipart body); StartIfIdle is what actually guarantees only one
+	// upload job runs at a time — two concurrent requests can both pass the
+	// early check, but only one wins StartIfIdle.
+	if ok, existing := h.jobManager.StartIfIdle(job); !ok {
+		os.RemoveAll(tempDir)
+		respondJSON(w, http.StatusConflict, map[string]any{
+			"error":  "an upload job is already running",
+			"job_id": existing.ID,
+			"status": existing.Status,
+		})
+		return
+	}
+	// runUploadJob's cancellation context was initialised by StartIfIdle so
+	// a DELETE arriving before the goroutine is scheduled still propagates.
+	go h.runUploadJob(job, session, tempDir)
 
 	audit.FromContext(r.Context()).Log(
 		r.Context(), audit.ActionPhotoUpload, audit.EntityProcessJob, jobID,

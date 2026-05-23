@@ -253,15 +253,29 @@ func RunDaemon(
 			log.Println("trash: auto-purge daemon stopped")
 			return
 		case now := <-ticker.C:
-			cutoff := now.Add(-retention)
-			purged, errs := AutoPurge(ctx, cutoff, s)
-			if purged > 0 {
-				log.Printf("trash: auto-purge removed %d photo(s) archived before %s",
-					purged, cutoff.UTC().Format(time.RFC3339))
-			}
-			for _, err := range errs {
-				log.Printf("trash: auto-purge: %v", err)
-			}
+			runPurgeTick(ctx, now, retention, s)
 		}
+	}
+}
+
+// runPurgeTick performs one auto-purge cycle with panic recovery. A panic
+// inside AutoPurge (e.g. a nil-pointer deref in a writer implementation
+// during a partial outage) must not kill the daemon — otherwise the
+// background goroutine stops silently and trash accumulates until the next
+// server restart. We recover, log, and let the ticker fire the next cycle.
+func runPurgeTick(ctx context.Context, now time.Time, retention time.Duration, s *Store) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("trash: auto-purge tick panicked: %v", r)
+		}
+	}()
+	cutoff := now.Add(-retention)
+	purged, errs := AutoPurge(ctx, cutoff, s)
+	if purged > 0 {
+		log.Printf("trash: auto-purge removed %d photo(s) archived before %s",
+			purged, cutoff.UTC().Format(time.RFC3339))
+	}
+	for _, err := range errs {
+		log.Printf("trash: auto-purge: %v", err)
 	}
 }

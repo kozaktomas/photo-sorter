@@ -145,6 +145,7 @@ func (m *BookExportJobManager) CreateJob(
 		Debug:        debug,
 		PhotoQuality: quality,
 	}
+	job.InitContext(context.Background())
 	m.jobs[id] = job
 	return job, nil, nil
 }
@@ -228,6 +229,8 @@ func (m *BookExportJobManager) sweep() {
 // StartExportJob handles POST /api/v1/books/{id}/export-pdf/job.
 // It validates the request, creates a background job, and returns 202 with
 // the job ID. The job runs in a goroutine and reports progress via SSE.
+//
+//nolint:funlen // straight-line validation + audit + job dispatch.
 func (h *BooksHandler) StartExportJob(w http.ResponseWriter, r *http.Request) {
 	if err := requireWriteRole(r); err != nil {
 		respondError(w, http.StatusForbidden, "forbidden")
@@ -274,7 +277,11 @@ func (h *BooksHandler) StartExportJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	go h.runBookExportJob(job, session) //nolint:gosec // G118 - background job outlives HTTP request
+	// runBookExportJob's cancellation context was initialised by
+	// BookExportJobManager.CreateJob so a DELETE arriving before the
+	// goroutine is scheduled still propagates (and a SIGKILL to lualatex
+	// fires the moment the user cancels).
+	go h.runBookExportJob(job, session)
 
 	audit.FromContext(r.Context()).Log(
 		r.Context(), audit.ActionBookExportPDF, audit.EntityBook, bookID,
@@ -408,11 +415,14 @@ func (h *BooksHandler) CancelExportJob(w http.ResponseWriter, r *http.Request) {
 // export. It instantiates its own PhotoPrism client from the session (the
 // request context is gone by the time this runs), calls latex with a
 // progress translator, writes the PDF to a temp file, and emits the
-// terminal SSE event.
+// terminal SSE event. The job's cancellation context has been initialised
+// by BookExportJobManager.CreateJob, so a DELETE arriving before this
+// goroutine is scheduled still propagates here — and a SIGKILL to lualatex
+// fires the moment the user clicks cancel, even if the worker has not yet
+// reached the latex invocation.
 func (h *BooksHandler) runBookExportJob(job *BookExportJob, session *middleware.Session) {
-	ctx, cancel := context.WithCancel(context.Background())
-	job.cancel = cancel
-	defer cancel()
+	ctx := job.Context()
+	defer job.Release()
 
 	job.mu.Lock()
 	job.Status = JobStatusRunning

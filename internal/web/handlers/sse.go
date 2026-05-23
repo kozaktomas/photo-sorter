@@ -71,6 +71,15 @@ func streamSSEEvents(
 
 	sendSSEEvent(w, flusher, "status", getInitialData(job))
 
+	// If the job already finished before this subscriber attached (e.g. a
+	// reconnect after the worker emitted "completed" and exited), no more
+	// events will ever land on eventCh and the loop below would idle on
+	// heartbeats forever. Return now so the client sees the final state
+	// and the connection closes cleanly instead of hanging.
+	if isJobTerminal(job.GetStatus()) {
+		return
+	}
+
 	heartbeat := time.NewTicker(sseHeartbeatInterval)
 	defer heartbeat.Stop()
 

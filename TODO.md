@@ -106,3 +106,51 @@ explicit product / ops decision rather than an in-line guess.
   characters that downstream tools see when they shell out) could still
   produce surprising filenames in `/tmp`. Defense-in-depth: clamp to
   alphanumeric + dot + max-8-chars before composing the pattern.
+
+## Jobs / SSE hardening sweep — 2026-05-23
+
+Deferred from [task-ec16a386](docs/specs/task-ec16a386-946b-4f07-b4a5-685250ae54f7.md).
+The sweep fixed the unambiguous bugs (cancel-before-goroutine no-op,
+EventBroadcaster data race on the cancel func, TOCTOU on the upload /
+process active-job slot, missing panic recovery in the trash daemon,
+SSE hang when subscribing to an already-terminal job). The items below
+were flagged during the audit but the right answer needs an explicit
+product / ops decision rather than an in-line guess.
+
+- [ ] **Job state across server restart.** Sort, process, build-thumbs,
+  upload, and book-export jobs all live in process-local maps. After a
+  restart, in-flight job IDs become 404 — clients holding a job ID get
+  "job not found" with no hint that a previous instance was running.
+  The book-export manager already TTL-sweeps its own map but starts
+  empty on boot. Decide whether to (a) persist job state in Postgres so
+  the SPA can resume polling after a restart, (b) emit a banner / log
+  line on startup that any prior jobs are abandoned, or (c) keep
+  everything in-memory and rely on the SSE final-state events to be
+  the only durable signal. Today's behaviour is (c) and SSE clients
+  that reconnect to a non-existent ID now correctly get 404 instead of
+  hanging (fixed in [`sse.go`](internal/web/handlers/sse.go) terminal
+  short-circuit).
+- [ ] **PhotoPrism client is not context-aware.** The upload + process
+  pipelines pass `ctx` into worker pools, but the PhotoPrism REST
+  client methods (`UploadFile`, `ProcessUpload`, `GetPhotoDownload`,
+  `GetPhotosWithQuery`, …) take no context. A cancel propagates to the
+  *next* per-photo iteration but does not abort the in-flight HTTP
+  call. Since PhotoPrism is being phased out per the migration plan,
+  the right fix is probably to finish the native ingest path rather
+  than retrofit ctx on the legacy client; revisit when the migration
+  burn-down has progressed.
+- [ ] **Sort / process / upload job maps grow without bound.** Sort
+  jobs accumulate in `JobManager.jobs` (no TTL sweep); process and
+  upload only keep one active slot but the previous job stays in
+  `activeJob` until a new one displaces it. With many users running
+  many sorts, memory grows. Decide on a sweep cadence (the book-export
+  manager's `bookExportTerminalTTL` is a reasonable model) or move the
+  job index to Postgres.
+- [ ] **Cancellation is best-effort during long DB / disk operations.**
+  `processPhotosWorkerPool` checks `ctx.Err()` between photos but a
+  single photo's `processOnePhoto` does not propagate ctx into every
+  internal call — e.g. `enrichFacesWithMarkerData` re-creates
+  `context.Background()` for its writes. Decide whether to thread the
+  job ctx all the way down (preferred — current behaviour means a
+  cancel can take up to 30s on a slow photo) or document the
+  best-effort guarantee.

@@ -134,6 +134,28 @@ func (m *ProcessJobManager) SetActiveJob(job *ProcessJob) {
 	m.activeJob = job
 }
 
+// StartIfIdle atomically rejects the new job when an existing one is still
+// pending or running, or installs it as the active job otherwise. Returns
+// (true, nil) on success and (false, existing) when the manager already
+// has an active job — callers respond 409 with the existing job's status.
+// The new job's cancellation context is initialised under the same lock
+// so a Cancel arriving before the worker goroutine starts is observable.
+// Process + build-thumbs share this slot, so this enforces the documented
+// "one of {embeddings, build-thumbs} at a time" invariant.
+func (m *ProcessJobManager) StartIfIdle(job *ProcessJob) (bool, *ProcessJob) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.activeJob != nil {
+		status := m.activeJob.Status
+		if status == JobStatusRunning || status == JobStatusPending {
+			return false, m.activeJob
+		}
+	}
+	job.InitContext(context.Background())
+	m.activeJob = job
+	return true, nil
+}
+
 // ClearActiveJob clears the active job.
 func (m *ProcessJobManager) ClearActiveJob() {
 	m.mu.Lock()
@@ -176,7 +198,7 @@ type ProcessStartRequest struct {
 
 // Start starts a new processing job.
 //
-//nolint:funlen // straight-line orchestration of validation + audit + job dispatch.
+//nolint:funlen,cyclop // straight-line orchestration of validation + audit + job dispatch.
 func (h *ProcessHandler) Start(w http.ResponseWriter, r *http.Request) {
 	if err := requireWriteRole(r); err != nil {
 		respondError(w, http.StatusForbidden, "forbidden")
@@ -188,7 +210,8 @@ func (h *ProcessHandler) Start(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Check no job already running.
+	// Best-effort early reject (avoids parsing the body on the obvious case).
+	// StartIfIdle below provides the actual mutual exclusion.
 	if active := h.jobManager.GetActiveJob(); active != nil {
 		if active.Status == JobStatusRunning || active.Status == JobStatusPending {
 			respondError(w, http.StatusConflict, "a process job is already running")
@@ -227,10 +250,19 @@ func (h *ProcessHandler) Start(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
-	h.jobManager.SetActiveJob(job)
+	if ok, existing := h.jobManager.StartIfIdle(job); !ok {
+		respondJSON(w, http.StatusConflict, map[string]any{
+			"error":  "a process job is already running",
+			"job_id": existing.ID,
+			"status": existing.Status,
+		})
+		return
+	}
 
-	// Launch processing goroutine (intentionally outlives request).
-	go h.runProcessJob(job, session) //nolint:gosec // G118 - background job outlives HTTP request
+	// Launch processing goroutine (intentionally outlives request; the job's
+	// cancellation context was set up by StartIfIdle so a DELETE arriving
+	// before the goroutine is scheduled still propagates).
+	go h.runProcessJob(job, session)
 
 	audit.FromContext(r.Context()).Log(
 		r.Context(), audit.ActionProcessJobStart, audit.EntityProcessJob, jobID,
@@ -562,11 +594,13 @@ func (h *ProcessHandler) fetchAndFilterPhotos(
 	return photosToProcess, nil
 }
 
-// runProcessJob executes the process job in the background.
+// runProcessJob executes the process job in the background. The job's
+// cancellation context is initialised by the Start handler before the
+// goroutine is spawned, so DELETE arriving in the scheduling gap still
+// propagates here.
 func (h *ProcessHandler) runProcessJob(job *ProcessJob, session *middleware.Session) {
-	ctx, cancel := context.WithCancel(context.Background())
-	job.cancel = cancel
-	defer cancel()
+	ctx := job.Context()
+	defer job.Release()
 
 	job.mu.Lock()
 	job.Status = JobStatusRunning

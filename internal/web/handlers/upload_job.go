@@ -123,6 +123,26 @@ func (m *UploadJobManager) SetActiveJob(job *UploadJob) {
 	m.activeJob = job
 }
 
+// StartIfIdle atomically rejects the new job when an existing one is still
+// pending or running, or installs it as the active job otherwise. Returns
+// (true, nil) on success and (false, existing) when the manager already
+// has an active job — callers respond 409 with the existing job's status.
+// The new job's cancellation context is initialised under the same lock
+// so a Cancel arriving before the worker goroutine starts is observable.
+func (m *UploadJobManager) StartIfIdle(job *UploadJob) (bool, *UploadJob) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.activeJob != nil {
+		status := m.activeJob.Status
+		if status == JobStatusRunning || status == JobStatusPending {
+			return false, m.activeJob
+		}
+	}
+	job.InitContext(context.Background())
+	m.activeJob = job
+	return true, nil
+}
+
 // needsBeforeSnapshot returns true if we need to snapshot album UIDs before upload.
 func needsBeforeSnapshot(opts UploadJobOptions) bool {
 	return len(opts.Labels) > 0 ||
@@ -131,13 +151,14 @@ func needsBeforeSnapshot(opts UploadJobOptions) bool {
 		opts.AutoProcess
 }
 
-// runUploadJob executes the upload job in the background.
+// runUploadJob executes the upload job in the background. The job's
+// cancellation context has been initialised by the StartJob handler so a
+// DELETE that races with goroutine scheduling still propagates here.
 func (h *UploadHandler) runUploadJob(
 	job *UploadJob, session *middleware.Session, tempDir string,
 ) {
-	ctx, cancel := context.WithCancel(context.Background())
-	job.cancel = cancel
-	defer cancel()
+	ctx := job.Context()
+	defer job.Release()
 	defer os.RemoveAll(tempDir)
 
 	job.mu.Lock()

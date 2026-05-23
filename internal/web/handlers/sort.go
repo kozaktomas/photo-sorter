@@ -115,8 +115,10 @@ func (h *SortHandler) Start(w http.ResponseWriter, r *http.Request) {
 	}
 	job := h.jobManager.CreateJob(jobID, req.AlbumUID, album.Title, options)
 
-	// Start job in background (intentionally outlives request).
-	go h.runSortJob(job, session) //nolint:gosec // G118 - background job outlives HTTP request
+	// Start job in background (intentionally outlives request; the job's
+	// cancellation context was set up by JobManager.CreateJob so a DELETE
+	// arriving before the goroutine is scheduled still propagates).
+	go h.runSortJob(job, session)
 
 	audit.FromContext(r.Context()).Log(
 		r.Context(), audit.ActionSortJobStart, audit.EntitySortJob, jobID,
@@ -240,11 +242,12 @@ func (job *SortJob) buildSortOptions() sorter.SortOptions {
 	}
 }
 
-// runSortJob runs the sort job in the background.
+// runSortJob runs the sort job in the background. The job's cancellation
+// context has been initialised by JobManager.CreateJob, so a DELETE
+// arriving before this goroutine is scheduled still propagates here.
 func (h *SortHandler) runSortJob(job *SortJob, session *middleware.Session) {
-	ctx, cancel := context.WithCancel(context.Background())
-	job.cancel = cancel
-	defer cancel()
+	ctx := job.Context()
+	defer job.Release()
 
 	job.mu.Lock()
 	job.Status = JobStatusRunning

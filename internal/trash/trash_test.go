@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -558,5 +559,80 @@ func TestRunDaemon_StopsOnCancel(t *testing.T) {
 	case <-done:
 	case <-time.After(time.Second):
 		t.Fatal("RunDaemon did not return after context cancel")
+	}
+}
+
+// panickyPhotoWriter wraps fakePhotoWriter and panics on the next N calls
+// to ListArchivedBefore. After the budget is exhausted it delegates to the
+// underlying fake. This lets a test inject a controlled crash into the
+// auto-purge tick.
+type panickyPhotoWriter struct {
+	*fakePhotoWriter
+	panicsLeft atomic.Int32
+	callCount  atomic.Int32
+}
+
+func (p *panickyPhotoWriter) ListArchivedBefore(
+	ctx context.Context, cutoff time.Time,
+) ([]string, error) {
+	p.callCount.Add(1)
+	if p.panicsLeft.Load() > 0 {
+		p.panicsLeft.Add(-1)
+		panic("synthetic auto-purge tick crash")
+	}
+	return p.fakePhotoWriter.ListArchivedBefore(ctx, cutoff)
+}
+
+// TestRunDaemon_RecoversFromPanic verifies that a panic inside one
+// AutoPurge tick does not kill the daemon. The first tick panics, the
+// recover logs and the loop continues; the second tick must succeed and
+// purge the archived fixture. Without recover, the daemon goroutine
+// would die silently and trash would accumulate until the next server
+// restart — exactly the failure mode this sweep is meant to prevent.
+func TestRunDaemon_RecoversFromPanic(t *testing.T) {
+	t.Parallel()
+	store, photos, _, _, fs := newTestStore(t)
+
+	// Wrap the photo writer so the first ListArchivedBefore call panics.
+	wrapped := &panickyPhotoWriter{fakePhotoWriter: photos}
+	wrapped.panicsLeft.Store(1)
+	store.Photos = wrapped
+
+	old := time.Now().Add(-31 * 24 * time.Hour)
+	photos.addPhoto("old", "ababab111111", "2024/05/old.jpg", old)
+	writeFixtureOriginal(t, fs, "2024/05/old.jpg")
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan struct{})
+	go func() {
+		RunDaemon(ctx, 20*time.Millisecond, 30*24*time.Hour, store)
+		close(done)
+	}()
+
+	// Wait for the daemon to have run enough ticks that the second
+	// (non-panicking) one purged the archived photo.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		if !photos.hasPhoto("old") {
+			break
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("daemon did not return after cancel")
+	}
+
+	if photos.hasPhoto("old") {
+		t.Fatal("daemon survived the panic but did not purge old photo in subsequent tick")
+	}
+	if wrapped.callCount.Load() < 2 {
+		t.Fatalf("expected at least 2 ListArchivedBefore calls (panic + recovery), got %d",
+			wrapped.callCount.Load())
 	}
 }

@@ -92,12 +92,66 @@ type JobEvent struct {
 	Data    any    `json:"data,omitempty"`
 }
 
-// EventBroadcaster provides listener management and event broadcasting for async jobs.
-// Embed this in job structs to get AddListener, RemoveListener, and SendEvent methods.
+// EventBroadcaster provides listener management and event broadcasting for
+// async jobs. Embed this in job structs to get AddListener, RemoveListener,
+// SendEvent, and a job-scoped cancellation context.
+//
+// Lifecycle: the HTTP handler that creates a job calls InitContext BEFORE
+// spawning the worker goroutine, so DELETE /jobs/{id} arriving between
+// CreateJob and the goroutine actually starting is still observable by the
+// worker via ctx cancellation. The worker reads the context via Context()
+// (or its passed-in ctx) and calls Release on exit so the parent context's
+// goroutine does not leak.
 type EventBroadcaster struct {
+	ctx       context.Context //nolint:containedctx // job-scoped cancellation
 	cancel    context.CancelFunc
 	listeners []chan JobEvent
 	mu        sync.RWMutex
+}
+
+// InitContext initialises the job's cancellation context. Idempotent: a
+// second call returns the previously-stored context. Always call this
+// BEFORE launching the worker goroutine so that a Cancel() arriving while
+// the goroutine is still scheduling will actually short-circuit the work.
+//
+// Returns the child context the worker should pass into downstream calls
+// (DB, HTTP, subprocess). The cancel func is held inside the broadcaster
+// and invoked by Cancel() or Release().
+func (b *EventBroadcaster) InitContext(parent context.Context) context.Context {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.ctx != nil {
+		return b.ctx
+	}
+	if parent == nil {
+		parent = context.Background()
+	}
+	b.ctx, b.cancel = context.WithCancel(parent)
+	return b.ctx
+}
+
+// Context returns the job context, or context.Background if InitContext was
+// never called (the latter is a programmer error but is tolerated so callers
+// constructed in tests without going through CreateJob still work).
+func (b *EventBroadcaster) Context() context.Context {
+	b.mu.RLock()
+	defer b.mu.RUnlock()
+	if b.ctx == nil {
+		return context.Background()
+	}
+	return b.ctx
+}
+
+// Release cancels the job context without emitting a "cancelled" SSE event.
+// Use it as a `defer` in the worker so the parent's WithCancel goroutine
+// terminates when the worker returns normally. Safe to call multiple times.
+func (b *EventBroadcaster) Release() {
+	b.mu.Lock()
+	cancel := b.cancel
+	b.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
 }
 
 // AddListener adds an event listener.
@@ -135,10 +189,17 @@ func (b *EventBroadcaster) SendEvent(event JobEvent) {
 	}
 }
 
-// Cancel cancels the job via context and sends a cancelled event.
+// Cancel cancels the job via context and sends a cancelled event. Safe to
+// call multiple times and safe to call before InitContext (no-ops the
+// cancel). The cancel/listeners reads happen under b.mu so concurrent
+// InitContext from the worker goroutine cannot race with Cancel from the
+// HTTP handler.
 func (b *EventBroadcaster) Cancel() {
-	if b.cancel != nil {
-		b.cancel()
+	b.mu.Lock()
+	cancel := b.cancel
+	b.mu.Unlock()
+	if cancel != nil {
+		cancel()
 	}
 	b.SendEvent(JobEvent{Type: "cancelled", Message: "Job cancelled by user"})
 }
@@ -163,7 +224,9 @@ func NewJobManager() *JobManager {
 	}
 }
 
-// CreateJob creates a new sort job.
+// CreateJob creates a new sort job. The job's cancellation context is
+// initialised before the job is returned so a DELETE arriving between
+// CreateJob and the worker goroutine actually starting is honoured.
 func (m *JobManager) CreateJob(id, albumUID, albumTitle string, options SortJobOptions) *SortJob {
 	job := &SortJob{
 		ID:         id,
@@ -174,6 +237,7 @@ func (m *JobManager) CreateJob(id, albumUID, albumTitle string, options SortJobO
 		Options:    options,
 		events:     make(chan JobEvent, 100),
 	}
+	job.InitContext(context.Background())
 
 	m.mu.Lock()
 	m.jobs[id] = job

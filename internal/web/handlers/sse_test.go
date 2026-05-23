@@ -73,6 +73,52 @@ func requestWithJobID(jobID string) *http.Request {
 	return req.WithContext(context.WithValue(req.Context(), chi.RouteCtxKey, rctx))
 }
 
+// TestStreamSSEEvents_TerminalJobReturnsImmediately verifies that a client
+// subscribing to a job that has ALREADY finished (status = completed /
+// failed / cancelled) receives the final status event and the handler
+// returns instead of idling on heartbeats forever. Without this guard,
+// a reconnect after the worker emitted "completed" left the SSE handler
+// blocked on eventCh — the worker had exited and no further events would
+// arrive, so the client hung until its request timeout.
+func TestStreamSSEEvents_TerminalJobReturnsImmediately(t *testing.T) {
+	prev := sseHeartbeatInterval
+	sseHeartbeatInterval = 30 * time.Millisecond
+	t.Cleanup(func() { sseHeartbeatInterval = prev })
+
+	job := newFakeSSEJob()
+	job.mu.Lock()
+	job.status = JobStatusCompleted
+	job.mu.Unlock()
+
+	req := requestWithJobID("job-final")
+	rec := newFlushRecorder()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		streamSSEEvents(rec, req,
+			func(_ string) SSEJob { return job },
+			func(_ SSEJob) any { return map[string]string{"hello": "world"} },
+		)
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("streamSSEEvents did not return for a terminal job")
+	}
+
+	body := rec.Body()
+	if !strings.Contains(body, "event: status") {
+		t.Fatalf("expected initial status event, got %q", body)
+	}
+	// No heartbeat should have been written — the handler returned before
+	// the ticker would have fired even once.
+	if strings.Contains(body, ": keepalive") {
+		t.Fatalf("did not expect a heartbeat for a terminal job, got %q", body)
+	}
+}
+
 // TestStreamSSEEvents_SendsHeartbeat verifies that streamSSEEvents writes a
 // comment frame (heartbeat) at the configured interval when no events are
 // flowing. This is what keeps reverse-proxy idle timeouts from killing a

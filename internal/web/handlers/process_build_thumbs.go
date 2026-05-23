@@ -37,9 +37,10 @@ type BuildThumbsRequest struct {
 }
 
 // BuildThumbs starts a background build-thumbs job. Returns 409 if a job
-// is already running on the shared ProcessJobManager, 400 if the request
-// body is malformed or references an unknown size, 500 on storage / DB
-// initialisation failures, and 202 with `{job_id}` on success.
+// is already running on the shared ProcessJobManager (embeddings + build-
+// thumbs share the same slot — only one runs at a time), 400 if the
+// request body is malformed or references an unknown size, 500 on storage
+// / DB initialisation failures, and 202 with `{job_id}` on success.
 func (h *ProcessHandler) BuildThumbs(w http.ResponseWriter, r *http.Request) {
 	if !database.IsInitialized() {
 		respondError(w, http.StatusBadRequest, "DATABASE_URL is not configured")
@@ -61,9 +62,18 @@ func (h *ProcessHandler) BuildThumbs(w http.ResponseWriter, r *http.Request) {
 	}
 
 	job := newBuildThumbsJob(req, sizes)
-	h.jobManager.SetActiveJob(job)
+	if startedOK, existing := h.jobManager.StartIfIdle(job); !startedOK {
+		respondJSON(w, http.StatusConflict, map[string]any{
+			"error":  "a process job is already running",
+			"job_id": existing.ID,
+			"status": existing.Status,
+		})
+		return
+	}
 
-	//nolint:gosec // G118 - background job outlives HTTP request; runBuildThumbsJob owns its own context.
+	// runBuildThumbsJob's cancellation context was initialised by
+	// StartIfIdle so a DELETE arriving before the goroutine is scheduled
+	// still propagates.
 	go h.runBuildThumbsJob(job, req.PhotoUID)
 
 	auditMeta := map[string]any{
@@ -166,12 +176,12 @@ func validateThumbSizes(raw []string) ([]string, error) {
 }
 
 // runBuildThumbsJob executes the build-thumbs pipeline in the background.
-// It owns the job context, transitions the job through the lifecycle
-// statuses, and broadcasts SSE events as it goes.
+// The job's cancellation context is initialised by the BuildThumbs handler
+// before the goroutine is spawned, so DELETE arriving in the scheduling
+// gap still propagates here.
 func (h *ProcessHandler) runBuildThumbsJob(job *ProcessJob, photoUID string) {
-	ctx, cancel := context.WithCancel(context.Background())
-	job.cancel = cancel
-	defer cancel()
+	ctx := job.Context()
+	defer job.Release()
 
 	job.mu.Lock()
 	job.Status = JobStatusRunning
