@@ -11,6 +11,7 @@ photo-sorter
 
 # GoReleaser build output
 /dist/
+/.fonts-stage/
 
 # Web frontend
 web/node_modules/

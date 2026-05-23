@@ -6,7 +6,7 @@ before:
   hooks:
     - go mod tidy
     - sh -c "cd web && npm ci && npm run build"
-    - sh -c "mkdir -p dist/fonts && scripts/install-fonts.sh dist/fonts"
+    - sh -c "mkdir -p .fonts-stage && scripts/install-fonts.sh .fonts-stage"
 
 builds:
   - id: photo-sorter
@@ -73,7 +73,7 @@ nfpms:
       - src: deb/photo-sorter.env
         dst: /etc/photo-sorter/photo-sorter.env
         type: config|noreplace
-      - src: dist/fonts/*
+      - src: .fonts-stage/*
         dst: /usr/local/share/fonts/photo-sorter
         file_info:
           mode: 0644
