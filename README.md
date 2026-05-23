@@ -536,6 +536,25 @@ make web-lint
 make clean
 ```
 
+### Deploying to the production host
+
+If you run photo-sorter from the bundled `.deb` (systemd unit at
+`/etc/systemd/system/photo-sorter.service`, binary at
+`/usr/bin/photo-sorter`), you can rebuild + redeploy in one shot from a
+checkout on the same host:
+
+```bash
+make deploy
+```
+
+This builds the frontend and Go binary with `VERSION` defaulted to
+`git describe --tags --always --dirty`, installs the binary to
+`/usr/bin/photo-sorter` (`sudo install -m 0755`), restarts
+`photo-sorter.service`, and polls `http://localhost:${WEB_PORT:-8080}/api/v1/health`
+for up to 15 seconds. The target exits non-zero if the service fails to
+come up, so it can be chained from other scripts. Pass `VERSION=<tag>`
+to override the derived version (e.g. `make deploy VERSION=v1.4.0`).
+
 ## Troubleshooting
 
 ### Frontend build fails with "Cannot find module @rollup/rollup-..."

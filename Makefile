@@ -1,8 +1,11 @@
-.PHONY: build build-web build-go clean dev serve test lint lint-fix fmt vet check install-fonts
+.PHONY: build build-web build-go clean dev serve test lint lint-fix fmt vet check install-fonts deploy
 
 VERSION ?= dev
 COMMIT_SHA ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo unknown)
-LDFLAGS := -X github.com/kozaktomas/photo-sorter/cmd.Version=$(VERSION) -X github.com/kozaktomas/photo-sorter/cmd.CommitSHA=$(COMMIT_SHA)
+# Recursive (=) so target-specific overrides of VERSION (e.g. from the
+# deploy target) propagate into the build-go recipe instead of being
+# baked in at parse time.
+LDFLAGS = -X github.com/kozaktomas/photo-sorter/cmd.Version=$(VERSION) -X github.com/kozaktomas/photo-sorter/cmd.CommitSHA=$(COMMIT_SHA)
 
 ## build: Build everything (frontend + Go binary)
 build: build-web build-go
@@ -103,3 +106,26 @@ install-fonts:
 	echo "Refreshing fontconfig cache..." && \
 	sudo fc-cache -f "$$FONT_DEST" && \
 	echo "Done. Verify with: fc-list : family | grep -E 'Raleway|Montserrat|Lato'"
+
+## deploy: Build, install /usr/bin/photo-sorter, restart photo-sorter.service, and verify health.
+##         VERSION defaults to `git describe --tags --always --dirty` unless caller passed VERSION=.
+##         Honours WEB_PORT for the health check (default 8080). Intended to run locally on the host.
+deploy: VERSION := $(if $(filter file default,$(origin VERSION)),$(shell git describe --tags --always --dirty 2>/dev/null || echo dev),$(VERSION))
+deploy: build
+	@echo "Installing photo-sorter $(VERSION) to /usr/bin/photo-sorter ..."
+	sudo install -m 0755 ./photo-sorter /usr/bin/photo-sorter
+	@echo "Restarting photo-sorter.service ..."
+	sudo systemctl restart photo-sorter.service
+	@PORT="$${WEB_PORT:-8080}"; \
+	echo "Polling http://localhost:$$PORT/api/v1/health (up to 15 attempts, 1s apart) ..."; \
+	for i in $$(seq 1 15); do \
+	  if curl -fs -o /dev/null "http://localhost:$$PORT/api/v1/health"; then \
+	    STATUS="$$(systemctl is-active photo-sorter.service)"; \
+	    echo "Deployed photo-sorter $(VERSION) — service: $$STATUS"; \
+	    exit 0; \
+	  fi; \
+	  sleep 1; \
+	done; \
+	echo "ERROR: photo-sorter.service did not respond on /api/v1/health within 15s" >&2; \
+	echo "       service status: $$(systemctl is-active photo-sorter.service)" >&2; \
+	exit 1
