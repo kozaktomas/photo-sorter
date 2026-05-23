@@ -99,8 +99,10 @@ flowchart TB
 | `internal/auth/` | Bcrypt password hashing, role constants (`admin`/`editor`/`viewer`), bootstrap-admin creation from env vars | `HashPassword`, `CheckPassword`, `BootstrapAdmin`, `RoleAdmin`, ... |
 | `internal/config/` | Environment-based configuration loader and pricing data | `Config`, `StorageConfig`, `DuplicateConfig`, `prices.yaml` (embedded) |
 | `internal/constants/` | Shared constants for page sizes, thresholds, concurrency limits, upload limits | Constants |
-| `internal/database/` | Repository interfaces, cosine distance helper, text check/version stores. Similarity search runs against pgvector (`vector_cosine_ops` HNSW indexes); see [`similarity-search.md`](similarity-search.md). | `FaceReader`, `FaceWriter`, `EmbeddingReader`, `BookReader`/`BookWriter`, `PhotoReader`/`PhotoWriter`, `AlbumReader`/`AlbumWriter`, `LabelReader`/`LabelWriter`, `SubjectReader`/`SubjectWriter`, `MarkerReader`/`MarkerWriter`, `UserReader`/`UserWriter`, `PHashReader`/`PHashWriter` |
-| `internal/database/postgres/` | PostgreSQL backend with pgvector, migrations, session persistence | `EmbeddingRepository`, `FaceRepository`, `BookRepository`, `PhotoRepository`, `AlbumRepository`, `LabelRepository`, `SubjectRepository`, `MarkerRepository`, `UserRepository`, `SessionStore` |
+| `internal/database/` | Repository interfaces, cosine distance helper, text check/version stores. Similarity search runs against pgvector (`vector_cosine_ops` HNSW indexes); see [`similarity-search.md`](similarity-search.md). | `FaceReader`, `FaceWriter`, `EmbeddingReader`, `BookReader`/`BookWriter`, `PhotoReader`/`PhotoWriter`, `AlbumReader`/`AlbumWriter`, `LabelReader`/`LabelWriter`, `SubjectReader`/`SubjectWriter`, `MarkerReader`/`MarkerWriter`, `UserReader`/`UserWriter`, `PHashReader`/`PHashWriter`, `ShareLinkReader`/`ShareLinkWriter`, `SmartAlbumReader`/`SmartAlbumWriter`, `PhotoEditsReader`/`PhotoEditsWriter`, `AuditLogReader`/`AuditLogWriter` |
+| `internal/database/postgres/` | PostgreSQL backend with pgvector, auto-applied migrations (`migrations/*.sql` embedded at compile time), session persistence, audit-log writer, share/smart-album/photo-edit repositories, full-text-search query builder | `EmbeddingRepository`, `FaceRepository`, `BookRepository`, `PhotoRepository`, `AlbumRepository`, `LabelRepository`, `SubjectRepository`, `MarkerRepository`, `UserRepository`, `SessionStore`, `ShareLinkRepository`, `SmartAlbumRepository`, `PhotoEditsRepository`, `AuditLogRepository` |
+| `internal/database/mariadb/` | Legacy MariaDB pool used only by the PhotoPrism-era `cache push-embeddings` CLI command. No runtime code path opens it. | `Pool` |
+| `internal/database/mock/` | In-memory mocks of every repository interface, used exclusively by handler and storage tests. | `MockEmbeddingReader`, `MockFaceReader`, ... |
 | `internal/exif/` | EXIF reader (`exiftool` subprocess + pure-Go fallback) and XMP sidecar writer used by `PUT /photos/{uid}/exif` | `Read`, `WriteSidecar` |
 | `internal/facematch/` | Face matching utilities: IoU computation, bounding box conversion, name normalization | `NormalizePersonName`, IoU functions |
 | `internal/fingerprint/` | Perceptual hash computation (pHash, dHash) and embeddings HTTP client | `Fingerprint`, embedding client |
@@ -116,9 +118,10 @@ flowchart TB
 | `internal/thumb/` | Thumbnail registry (`fit_720`, `fit_1280`, `fit_1920`, ..., `tile_50`, ...) + `GenerateSizes` (decode once, resize many) | `Source`, `Size`, `GenerateSizes`, `SizeNames`, `IsValidSize` |
 | `internal/trash/` | Soft-delete trash store and the hourly auto-purge daemon that hard-deletes archived photos older than `TRASH_RETENTION_DAYS` | `Store`, `Purge`, `RunDaemon` |
 | `internal/verify/` | Cell-by-cell comparator used by `migrate-verify` (PhotoPrism rows vs native rows, with tolerance bands) | `Verify`, `Report`, `FieldDiff` |
-| `internal/web/` | Web server setup and route registration | `Server` |
-| `internal/web/middleware/` | HTTP middleware: auth (session cookie), role gating, CORS, session management, audit logger injection | `SessionManager`, `RequireAuth`, `RequireRole`, `WithAuditLogger` |
-| `internal/web/handlers/` | REST API handlers for all endpoints (albums, photos, faces, books, text AI, text versions, sort jobs, SSE) | `FacesHandler`, `BooksHandler`, `TextHandler`, `TextVersionsHandler`, `UsersHandler`, `PhotosHandler`, `AlbumsHandler`, `LabelsHandler`, ... |
+| `internal/web/` | Web server setup, route registration, in-process timeout middleware. Mounts the MCP handler at `/mcp/*` when present and the embedded React SPA at `/*` for everything that does not match an API route. | `Server` |
+| `internal/web/static/` | Holds the embedded SPA build — `//go:embed all:dist/*` wraps the Vite output and `GetFileSystem` / `HasDist` expose it to the router. `make build` populates `dist/` from `web/` before the Go build runs. | `GetFileSystem`, `HasDist` |
+| `internal/web/middleware/` | HTTP middleware: session cookie + role auth, CORS allowlist, security headers (CSP / X-Frame-Options / X-Content-Type-Options), audit logger injection, per-request opt-out from the server-level write deadline (for SSE / large PDF / upload), legacy PhotoPrism proxy guard | `SessionManager`, `RequireAuth`, `RequireRole`, `WithAuditLogger`, `CORS`, `SecurityHeaders`, `NoWriteDeadline` |
+| `internal/web/handlers/` | REST API handlers and in-memory job managers for every endpoint group — albums, photos (incl. browse histogram + geo + EXIF + edits), labels, faces, subjects, books (incl. PDF export job manager + TTL sweeper), text AI, text versions, sort jobs, upload jobs, process jobs (embeddings/faces and build-thumbs reuse the same manager), share links + public share endpoints, smart albums, users + self, audit log, stats, config, SSE | `FacesHandler`, `BooksHandler`, `TextHandler`, `TextVersionsHandler`, `UsersHandler`, `PhotosHandler`, `AlbumsHandler`, `LabelsHandler`, `ShareHandler`, `SmartAlbumsHandler`, `AuditLogHandler`, `BookExportJobManager`, `UploadJobManager`, `ProcessJobManager`, `JobManager` |
 | `web/` | React + TypeScript + TailwindCSS frontend (Vite build, i18n with Czech + English) | Pages, components, hooks, typed API client |
 
 ## Data Flow
@@ -209,6 +212,7 @@ Chi Router
     v
 For /api/v1/* routes:
     +-- RequireAuth middleware (validates session cookie, adds AuthInfo to context)
+    +-- WithAuditLogger middleware (installs audit.Logger + RequestContext)
     +-- RequireRole gate (admin / editor / viewer) for write paths
     |
     v
@@ -242,6 +246,68 @@ Hourly internal/trash daemon (launched by cmd/serve.go):
 ```
 
 The same logic is exposed admin-only at `POST /api/v1/photos/batch/purge` so an operator can force a purge before the timer fires.
+
+### 6. Audit log
+
+Every successful mutating handler appends a row to `audit_log` via the `audit.Logger` carried on the request context. The `WithAuditLogger` middleware installs the logger plus a `RequestContext` (user UID, IP, User-Agent) for every request, so a handler that finishes a write just calls `audit.FromContext(ctx).Log(action, entityType, entityUID, metadata)` — no further plumbing. Authentication paths use `LogAs` (explicit user UID for `login`) and `LogAnonymous` (with an `actor` metadata hint for `login_failed` / `share_link_password_failed`). Batch operations record a single row with `metadata.count`, so bulk endpoints do not flood the table. Persistence failures WARN-log and never abort the request. Reads are admin-only via `GET /api/v1/audit-log` with filters for user, action, entity, and time range.
+
+### 7. Non-destructive photo edits
+
+`PUT /api/v1/photos/{uid}/edits` upserts a row in `photo_edits` (crop, rotation, brightness, contrast). The original file on disk is never touched. On save the handler synchronously rebuilds every registered thumbnail size from the post-edit pixels via `internal/imgedit.DecodeAndApply` + `internal/thumb.GenerateSizesFromImage`; on HEIC/RAW originals without a matching decoder the row is rolled back and the request returns 503. Downloads default to a freshly-rendered JPEG (`?original=true` bypasses to the pristine file), and the LaTeX book export pulls photos through the same `DecodeAndApply` path so prints respect the saved edits. `DELETE /photo_edits` is idempotent and rebuilds thumbnails from the un-edited pixels.
+
+## Database Schema
+
+Auto-applied migrations live in `internal/database/postgres/migrations/` (embedded at compile time via `//go:embed`). They run in numeric order on startup against the connection in `DATABASE_URL`. The current schema covers:
+
+| Table | Migration | Purpose |
+|-------|-----------|---------|
+| `users` | 032 | Native auth: bcrypt hash, role (`admin`/`editor`/`viewer`), disabled flag, last login. Source of every actor UID referenced elsewhere. |
+| `sessions` | 006, extended by 018 (`user_uid`) and 033 (`role`) | Server-side session store for the web cookie. Survives restarts. |
+| `photos` | 032 (+ 035 FTS column, 036 extra metadata) | Photo metadata, EXIF blob, location, archived_at, uploader. Czech-aware FTS lives in a generated `tsvector` column with a GIN index (migration 035). |
+| `photo_files` | 032 | Physical files per photo (RAW/JPEG/edited). Exactly one `is_primary`. |
+| `photo_phashes` | 034 | pHash / dHash per photo for near-duplicate scans. |
+| `albums` + `album_photos` | 032 (+ 037 extra metadata) | User-curated and auto-generated groupings + their join table. |
+| `labels` + `photo_labels` | 032 (+ 037 extra metadata) | AI / user labels and the join to photos. |
+| `subjects` | 032 (+ 037 extra metadata) | People referenced by markers + the face-recognition flow. |
+| `markers` | 032 | Native face/object markers (display-space bbox, optional subject). |
+| `embeddings` | 001, HNSW index from 038 | 768-dim CLIP vectors. One row per photo. |
+| `faces` | 002, HNSW index from 038 | 512-dim InsightFace embeddings with cached marker metadata. |
+| `faces_processed` | 003 | Tracks which photos have been through face detection. |
+| `era_embeddings` | 007 | 768-dim CLIP centroids for era estimation. |
+| `photo_books` | 008, typography columns from 021–024, 029 | Photo books with title, description, typography settings (fonts, sizes, line height, caption opacity, heading bleed, caption badge size, body text padding). |
+| `book_chapters` | 016, `color` from 020, `hide_from_toc` from 031 | Optional grouping above sections. |
+| `book_sections` + `section_photos` | 008 | Sections + their photo pool. |
+| `book_pages` | 008, formats 009/011/027, `style` 013, `split_position` 014, `hide_page_number` 025 | Pages with format, optional split position, per-page folio suppression. |
+| `page_slots` | 008, text content 012, crop 014/015, captions slot 026, contents slot 030 | Holds a photo, text, captions-aggregator, or contents-aggregator (mutually exclusive). |
+| `text_versions` | 017 | Append-only history for book text fields with restore support. |
+| `text_check_results` | 019, `suggestions JSONB` from 028 | Cached AI text-check results keyed on `(source_type, source_id, field, content_hash)`. |
+| `album_share_links` | 039, `created_by_user_uid` FK relaxed by 043 | Public share slugs with optional bcrypt password + expiry; deleting the minter `SET NULL`s the FK. |
+| `smart_albums` | 040, `created_by_user_uid` FK relaxed by 043 | Saved photo searches (filter JSON re-played at request time). |
+| `photo_edits` | 041 | Non-destructive crop / rotate / brightness / contrast per photo. Row exists only when at least one parameter is non-default. |
+| `audit_log` | 042, `user_uid` FK `SET NULL` from 043 | Append-only audit trail for every mutating action plus auth-failure events. |
+
+Cross-cutting bits: `unaccent` (migration 005) powers diacritic-folded searches; the 038 HNSW indexes are `vector_cosine_ops` and queries `SET LOCAL hnsw.ef_search = 100` (see [`similarity-search.md`](similarity-search.md)); migration 043 relaxes every `user_uid` FK to `ON DELETE SET NULL` so deleting a user preserves history.
+
+## Background Jobs and Daemons
+
+Long-running work runs in goroutines owned by the `serve` process and surfaces progress through Server-Sent Events. Each job kind has a small in-memory manager (no persistence across restarts); a client reconnects by polling the status endpoint after a transient drop.
+
+| Job kind | Manager | Concurrency | Routes |
+|----------|---------|-------------|--------|
+| Sort (AI label/description/date) | `handlers.JobManager` | Multiple jobs in flight | `POST /api/v1/sort`, `GET /api/v1/sort/{jobId}`, `GET /api/v1/sort/{jobId}/events`, `DELETE /api/v1/sort/{jobId}` |
+| Upload (multipart background) | `handlers.UploadJobManager` | One at a time | `POST /api/v1/upload/job`, `GET /api/v1/upload/{jobId}/events`, `DELETE /api/v1/upload/{jobId}` |
+| Process (embeddings + face detection) | `handlers.ProcessJobManager` | One at a time | `POST /api/v1/process`, `GET /api/v1/process/{jobId}/events`, `DELETE /api/v1/process/{jobId}` |
+| Build thumbs (admin backfill) | Shared with `ProcessJobManager` | One at a time | `POST /api/v1/process/build-thumbs` (events stream via `/process/{jobId}/events`) |
+| Book PDF export | `handlers.BookExportJobManager` | One per book; TTL sweeper | `POST /api/v1/books/{id}/export-pdf/job`, `GET /api/v1/book-export/{jobId}/events`, `GET /api/v1/book-export/{jobId}/download`, `DELETE /api/v1/book-export/{jobId}` |
+
+Two background goroutines run without an HTTP entry point:
+
+- **Trash auto-purge** (`cmd/serve.go` → `internal/trash.RunDaemon`). Wakes hourly, deletes photos whose `archived_at` is older than `TRASH_RETENTION_DAYS` (default 30), and cascades to phashes / markers / files / album_photos / photo_labels / embeddings / faces / on-disk originals / cached thumbnails.
+- **Book export TTL sweeper** (`handlers.BookExportJobManager.sweepLoop`). Drops finished export jobs + their temp PDFs after a fixed TTL.
+
+## MCP Server
+
+When `MCP_API_TOKEN` is set, `cmd/serve.go` mounts a Model Context Protocol server on the same HTTP listener at `/mcp/*` (the registered subroutes are `/mcp/sse` for the event stream and `/mcp/message` for client posts). Authentication is `Authorization: Bearer <MCP_API_TOKEN>` enforced by `mcp.BearerAuthMiddleware`. The handler exposes ~52 tools across photo books, photo / album / label / subject operations, and AI text tools — implementations live in one file per surface (`internal/mcp/books.go`, `sections.go`, `pages.go`, `photos.go`, `albums.go`, `labels.go`, `text.go`). The book-side surface is at parity with the web book API for everything except heavy ops (auto-layout, preflight, and the PDF export job flow remain web-only). With the env var unset, no MCP routes are registered and the rest of the server is unaffected.
 
 ## Key Design Decisions
 
