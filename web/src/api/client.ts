@@ -144,6 +144,29 @@ export async function createAlbum(title: string): Promise<Album> {
   });
 }
 
+export async function updateAlbum(
+  uid: string,
+  updates: {
+    title?: string;
+    description?: string;
+    type?: string;
+    favorite?: boolean;
+    private?: boolean;
+    order_by?: string;
+    cover_photo_uid?: string;
+    location?: string;
+    category?: string;
+    notes?: string;
+    filter?: string;
+    order?: string;
+  }
+): Promise<Album> {
+  return request<Album>(`/albums/${uid}`, {
+    method: 'PUT',
+    body: JSON.stringify(updates),
+  });
+}
+
 export async function getAlbumPhotos(
   uid: string,
   params?: { count?: number; offset?: number }

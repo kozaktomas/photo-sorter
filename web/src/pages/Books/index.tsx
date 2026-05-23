@@ -2,9 +2,10 @@ import { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { BookOpen, Plus, Trash2, Layers, FileText, Image } from 'lucide-react';
-import { getBooks, createBook, deleteBook } from '../../api/client';
+import { getBooks, createBook, deleteBook, updateBook } from '../../api/client';
 import { LoadingState } from '../../components/LoadingState';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { InlineEditableText } from '../../components/InlineEditableText';
 import type { PhotoBook } from '../../types';
 
 export function BooksPage() {
@@ -95,26 +96,41 @@ export function BooksPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {books.map((book) => (
             <div key={book.id} className="bg-slate-800 border border-slate-700 rounded-lg overflow-hidden hover:border-rose-500/50 transition-colors">
-              <Link to={`/books/${book.id}`} className="block p-4">
-                <h3 className="text-lg font-semibold text-white truncate">{book.title}</h3>
-                {book.description && (
-                  <p className="text-slate-400 text-sm mt-1 line-clamp-2">{book.description}</p>
-                )}
-                <div className="flex gap-4 mt-3 text-sm text-slate-500">
-                  <span className="flex items-center gap-1">
-                    <Layers className="h-3.5 w-3.5" />
-                    {book.section_count} {t('books.sections')}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <FileText className="h-3.5 w-3.5" />
-                    {book.page_count} {t('books.pages')}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Image className="h-3.5 w-3.5" />
-                    {book.photo_count} {t('books.photos')}
-                  </span>
-                </div>
-              </Link>
+              <div className="p-4">
+                <h3 className="text-lg font-semibold text-white truncate">
+                  <InlineEditableText
+                    value={book.title}
+                    ariaLabel={t('books.renameAria', { defaultValue: 'Rename book' })}
+                    textClassName="inline-block truncate"
+                    inputClassName="w-full bg-slate-900 border border-slate-600 rounded px-1 py-0.5 text-white text-lg font-semibold focus:outline-none focus-visible:ring-1 focus-visible:ring-rose-500"
+                    onSave={async (title) => {
+                      await updateBook(book.id, { title });
+                      setBooks((prev) =>
+                        prev.map((b) => (b.id === book.id ? { ...b, title } : b)),
+                      );
+                    }}
+                  />
+                </h3>
+                <Link to={`/books/${book.id}`} className="block">
+                  {book.description && (
+                    <p className="text-slate-400 text-sm mt-1 line-clamp-2">{book.description}</p>
+                  )}
+                  <div className="flex gap-4 mt-3 text-sm text-slate-500">
+                    <span className="flex items-center gap-1">
+                      <Layers className="h-3.5 w-3.5" />
+                      {book.section_count} {t('books.sections')}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <FileText className="h-3.5 w-3.5" />
+                      {book.page_count} {t('books.pages')}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Image className="h-3.5 w-3.5" />
+                      {book.photo_count} {t('books.photos')}
+                    </span>
+                  </div>
+                </Link>
+              </div>
               <div className="px-4 pb-3 flex justify-end">
                 <button
                   onClick={(e) => { e.preventDefault(); handleDelete(book.id); }}

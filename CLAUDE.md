@@ -638,6 +638,7 @@ web/src/
 │   ├── FormCheckbox.tsx       # Styled checkbox with label
 │   ├── FormInput.tsx          # Styled text/number input with label
 │   ├── FormSelect.tsx         # Styled select dropdown with label
+│   ├── InlineEditableText.tsx # Double-click (F2) to inline-rename a title; Enter/blur commits, Esc cancels. Optimistic update + rollback toast. Edit affordance is gated on HasWriteAccess — viewers see static text. Used by album/label/book/smart-album titles
 │   ├── LanguageSwitcher.tsx   # Czech/English language toggle
 │   ├── LazyImage.tsx
 │   ├── Layout.tsx

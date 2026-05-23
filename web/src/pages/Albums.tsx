@@ -9,9 +9,10 @@ import { PageHeader } from '../components/PageHeader';
 import { PAGE_CONFIGS } from '../constants/pageConfig';
 import { PhotoGrid } from '../components/PhotoGrid';
 import { ShareModal } from '../components/ShareModal';
+import { InlineEditableText } from '../components/InlineEditableText';
 import { usePhotoSelection } from '../hooks/usePhotoSelection';
 import { useSelectionShortcuts } from '../hooks/useSelectionShortcuts';
-import { getAlbums, getAlbum, getAlbumPhotos, getThumbnailUrl } from '../api/client';
+import { getAlbums, getAlbum, getAlbumPhotos, getThumbnailUrl, updateAlbum } from '../api/client';
 import { ALBUM_PHOTOS_CACHE_KEY } from '../constants';
 import { SmartAlbumsSection } from './SmartAlbums/SmartAlbumsSection';
 import type { Album, Photo } from '../types';
@@ -90,9 +91,9 @@ function AlbumListPage() {
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {filteredAlbums.map((album) => (
-            <Link key={album.uid} to={`/albums/${album.uid}`}>
-              <Card className="hover:border-blue-500 transition-colors cursor-pointer overflow-hidden">
-                <div className="aspect-video bg-slate-700 relative">
+            <Card key={album.uid} className="hover:border-blue-500 transition-colors overflow-hidden">
+              <Link to={`/albums/${album.uid}`} className="block">
+                <div className="aspect-video bg-slate-700 relative cursor-pointer">
                   {album.thumb ? (
                     <img
                       src={getThumbnailUrl(album.thumb, 'tile_500')}
@@ -105,15 +106,33 @@ function AlbumListPage() {
                     </div>
                   )}
                 </div>
-                <CardContent>
-                  <h3 className="font-semibold text-white truncate">{album.title}</h3>
-                  <div className="flex items-center text-sm text-slate-400 mt-1">
+              </Link>
+              <CardContent>
+                {/* The title is inline-editable; the rest of the card still
+                    navigates on click. Use a flex layout that lets the title
+                    truncate while the photo-count meta row stays put. */}
+                <div className="font-semibold text-white truncate">
+                  <InlineEditableText
+                    value={album.title}
+                    ariaLabel={t('pages:albums.renameAria', { defaultValue: 'Rename album' })}
+                    textClassName="block truncate"
+                    inputClassName="w-full bg-slate-800 border border-slate-600 rounded px-1 py-0.5 text-white font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                    onSave={async (title) => {
+                      const updated = await updateAlbum(album.uid, { title });
+                      setAlbums((prev) =>
+                        prev.map((a) => (a.uid === album.uid ? { ...a, title: updated.title } : a)),
+                      );
+                    }}
+                  />
+                </div>
+                <Link to={`/albums/${album.uid}`} className="block">
+                  <div className="flex items-center text-sm text-slate-400 mt-1 cursor-pointer">
                     <Image className="h-4 w-4 mr-1" />
                     {t('common:units.photo', { count: album.photo_count })}
                   </div>
-                </CardContent>
-              </Card>
-            </Link>
+                </Link>
+              </CardContent>
+            </Card>
           ))}
         </div>
       )}
@@ -213,7 +232,18 @@ function AlbumDetailPage({ uid }: { uid: string }) {
 
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-3xl font-bold text-white">{album.title}</h1>
+          <h1 className="text-3xl font-bold text-white">
+            <InlineEditableText
+              value={album.title}
+              ariaLabel={t('pages:albums.renameAria', { defaultValue: 'Rename album' })}
+              textClassName="inline-block"
+              inputClassName="bg-slate-800 border border-slate-600 rounded px-2 py-0.5 text-white text-3xl font-bold focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              onSave={async (title) => {
+                const updated = await updateAlbum(uid, { title });
+                setAlbum((prev) => (prev ? { ...prev, title: updated.title } : prev));
+              }}
+            />
+          </h1>
           {album.description && (
             <p className="text-slate-400 mt-1">{album.description}</p>
           )}

@@ -1,14 +1,15 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { Tags, Trash2, Search, ChevronUp, ChevronDown } from 'lucide-react';
+import { Tags, Trash2, Search, ChevronUp, ChevronDown, ChevronRight } from 'lucide-react';
 import { Card, CardContent } from '../components/Card';
 import { Button } from '../components/Button';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { Alert } from '../components/Alert';
 import { PageHeader } from '../components/PageHeader';
+import { InlineEditableText } from '../components/InlineEditableText';
 import { PAGE_CONFIGS } from '../constants/pageConfig';
-import { getLabels, deleteLabels } from '../api/client';
+import { getLabels, deleteLabels, updateLabel } from '../api/client';
 import type { Label } from '../types';
 
 type SortField = 'name' | 'photo_count';
@@ -196,11 +197,29 @@ export function LabelsPage() {
                     <td className="px-4 py-3">
                       <div className="flex items-center space-x-2">
                         <Tags className="h-4 w-4 text-slate-500" />
+                        <InlineEditableText
+                          value={label.name}
+                          ariaLabel={t('pages:labels.renameAria', { defaultValue: 'Rename label' })}
+                          textClassName="text-white hover:text-blue-400 transition-colors"
+                          inputClassName="bg-slate-800 border border-slate-600 rounded px-1 py-0.5 text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+                          onSave={async (name) => {
+                            const updated = await updateLabel(label.uid, { name });
+                            setLabels((prev) =>
+                              prev.map((l) =>
+                                l.uid === label.uid
+                                  ? { ...l, name: updated.name, slug: updated.slug }
+                                  : l,
+                              ),
+                            );
+                          }}
+                        />
                         <Link
                           to={`/labels/${label.uid}`}
-                          className="text-white hover:text-blue-400 transition-colors"
+                          className="text-slate-500 hover:text-blue-400 transition-colors p-1"
+                          aria-label={t('pages:labels.viewDetails', { defaultValue: 'View details' })}
+                          title={t('pages:labels.viewDetails', { defaultValue: 'View details' })}
                         >
-                          {label.name}
+                          <ChevronRight className="h-4 w-4" />
                         </Link>
                       </div>
                     </td>

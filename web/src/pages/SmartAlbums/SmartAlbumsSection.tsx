@@ -5,6 +5,7 @@ import { Filter, Plus, Pencil, Trash2, Image as ImageIcon } from 'lucide-react';
 import { Card, CardContent } from '../../components/Card';
 import { Button } from '../../components/Button';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { InlineEditableText } from '../../components/InlineEditableText';
 import { SmartAlbumModal } from './SmartAlbumModal';
 import {
   listSmartAlbums,
@@ -123,13 +124,28 @@ export function SmartAlbumsSection() {
               </Link>
               <CardContent>
                 <div className="flex items-start justify-between gap-2">
-                  <Link to={`/smart-albums/${album.uid}`} className="min-w-0 flex-1">
-                    <h3 className="font-semibold text-white truncate">{album.name}</h3>
-                    <div className="flex items-center text-sm text-slate-400 mt-1">
-                      <ImageIcon className="h-4 w-4 mr-1" />
-                      {t('common:units.photo', { count: album.photo_count })}
-                    </div>
-                  </Link>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="font-semibold text-white truncate">
+                      <InlineEditableText
+                        value={album.name}
+                        ariaLabel={t('pages:smartAlbums.renameAria', { defaultValue: 'Rename smart album' })}
+                        textClassName="inline-block truncate"
+                        inputClassName="w-full bg-slate-900 border border-slate-600 rounded px-1 py-0.5 text-white font-semibold focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+                        onSave={async (name) => {
+                          await updateSmartAlbum(album.uid, name, album.filters);
+                          setItems((prev) =>
+                            prev.map((a) => (a.uid === album.uid ? { ...a, name } : a)),
+                          );
+                        }}
+                      />
+                    </h3>
+                    <Link to={`/smart-albums/${album.uid}`} className="block">
+                      <div className="flex items-center text-sm text-slate-400 mt-1">
+                        <ImageIcon className="h-4 w-4 mr-1" />
+                        {t('common:units.photo', { count: album.photo_count })}
+                      </div>
+                    </Link>
+                  </div>
                   <div className="flex gap-1">
                     <button
                       type="button"

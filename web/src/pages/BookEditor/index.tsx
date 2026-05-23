@@ -1,13 +1,14 @@
 import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { BookOpen, ArrowLeft, Pencil, Trash2, Check, X, Download, BarChart3 } from 'lucide-react';
+import { BookOpen, ArrowLeft, Trash2, Download, BarChart3 } from 'lucide-react';
 import { updateBook, deleteBook, preflightBook, getFonts, type PhotoQuality } from '../../api/client';
 import type { PreflightResponse } from '../../types';
 import { LoadingState } from '../../components/LoadingState';
 import { setFontRegistry, getBookTypographyCSSVars } from '../../constants/bookTypography';
 import { loadFontByInfo } from '../../utils/fontLoader';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { InlineEditableText } from '../../components/InlineEditableText';
 import { useBookData } from './hooks/useBookData';
 import { useBookExportJob } from './hooks/useBookExportJob';
 import { BookStatsPanel } from './BookStatsPanel';
@@ -110,8 +111,6 @@ export function BookEditorPage() {
     [book],
   );
 
-  const [editing, setEditing] = useState(false);
-  const [editTitle, setEditTitle] = useState('');
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const exportJob = useBookExportJob();
   const exporting = exportJob.isActive;
@@ -130,22 +129,6 @@ export function BookEditorPage() {
       return next;
     });
   }, [id]);
-
-  const handleStartEdit = () => {
-    if (book) {
-      setEditTitle(book.title);
-      setEditing(true);
-    }
-  };
-
-  const handleSaveTitle = async () => {
-    if (!book || !editTitle.trim()) return;
-    try {
-      await updateBook(book.id, { title: editTitle.trim() });
-      setEditing(false);
-      void refresh();
-    } catch (e) { console.error('Failed to save title:', e); }
-  };
 
   const handleDelete = () => {
     if (!book) return;
@@ -264,50 +247,35 @@ export function BookEditorPage() {
             <div className="flex items-center justify-between mb-6">
               <div className="flex items-center gap-3">
                 <BookOpen className="h-6 w-6 text-rose-400" />
-                {editing ? (
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="text"
-                      value={editTitle}
-                      onChange={(e) => setEditTitle(e.target.value)}
-                      onKeyDown={(e) => { if (e.key === 'Enter') void handleSaveTitle(); }}
-                      className="px-2 py-1 bg-slate-800 border border-slate-600 rounded text-white text-xl font-bold focus:outline-none focus-visible:ring-1 focus-visible:ring-rose-500"
-                      autoFocus
-                    />
-                    <button onClick={() => void handleSaveTitle()} className="text-green-400 hover:text-green-300">
-                      <Check className="h-5 w-5" />
-                    </button>
-                    <button onClick={() => setEditing(false)} className="text-slate-400 hover:text-white">
-                      <X className="h-5 w-5" />
-                    </button>
-                  </div>
-                ) : (
-                  <h1 className="text-2xl font-bold text-white">{book.title}</h1>
-                )}
+                <h1 className="text-2xl font-bold text-white">
+                  <InlineEditableText
+                    value={book.title}
+                    ariaLabel={t('books.renameAria', { defaultValue: 'Rename book' })}
+                    textClassName="inline-block"
+                    inputClassName="px-2 py-1 bg-slate-800 border border-slate-600 rounded text-white text-2xl font-bold focus:outline-none focus-visible:ring-1 focus-visible:ring-rose-500"
+                    onSave={async (title) => {
+                      await updateBook(book.id, { title });
+                      setBook({ ...book, title });
+                    }}
+                  />
+                </h1>
               </div>
               <div className="flex items-center gap-2">
-                {!editing && (
-                  <>
-                    <button
-                      onClick={toggleStats}
-                      className={`p-1 transition-colors ${showStats ? 'text-rose-400' : 'text-slate-400 hover:text-white'}`}
-                      title={t('books.editor.statsToggle')}
-                    >
-                      <BarChart3 className="h-4 w-4" />
-                    </button>
-                    <button
-                      onClick={() => void handleExportPDF()}
-                      disabled={exporting || !book.pages?.length}
-                      className="text-slate-400 hover:text-white p-1 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                      title={exporting ? t('books.editor.exporting') : t('books.editor.exportPDF')}
-                    >
-                      <Download className={`h-4 w-4 ${exporting ? 'animate-pulse' : ''}`} />
-                    </button>
-                    <button onClick={handleStartEdit} className="text-slate-400 hover:text-white p-1 transition-colors">
-                      <Pencil className="h-4 w-4" />
-                    </button>
-                  </>
-                )}
+                <button
+                  onClick={toggleStats}
+                  className={`p-1 transition-colors ${showStats ? 'text-rose-400' : 'text-slate-400 hover:text-white'}`}
+                  title={t('books.editor.statsToggle')}
+                >
+                  <BarChart3 className="h-4 w-4" />
+                </button>
+                <button
+                  onClick={() => void handleExportPDF()}
+                  disabled={exporting || !book.pages?.length}
+                  className="text-slate-400 hover:text-white p-1 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  title={exporting ? t('books.editor.exporting') : t('books.editor.exportPDF')}
+                >
+                  <Download className={`h-4 w-4 ${exporting ? 'animate-pulse' : ''}`} />
+                </button>
                 <button onClick={handleDelete} className="text-slate-400 hover:text-red-400 p-1 transition-colors">
                   <Trash2 className="h-4 w-4" />
                 </button>

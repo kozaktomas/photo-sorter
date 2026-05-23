@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Pencil, Check, X, Tags, Star, Play } from 'lucide-react';
+import { ArrowLeft, Tags, Star, Play } from 'lucide-react';
 import { Card, CardContent } from '../components/Card';
 import { Button } from '../components/Button';
+import { InlineEditableText } from '../components/InlineEditableText';
 import { colorMap } from '../constants/pageConfig';
 import { getLabel, updateLabel, getPhotos, getThumbnailUrl } from '../api/client';
 import { LABEL_PHOTOS_CACHE_KEY } from '../constants';
@@ -18,11 +19,6 @@ export function LabelDetailPage() {
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-
-  // Rename state
-  const [isEditing, setIsEditing] = useState(false);
-  const [editName, setEditName] = useState('');
-  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (!uid) return;
@@ -40,7 +36,6 @@ export function LabelDetailPage() {
     try {
       const data = await getLabel(uid!);
       setLabel(data);
-      setEditName(data.name);
     } catch (err) {
       setError('Failed to load label');
       console.error(err);
@@ -57,25 +52,6 @@ export function LabelDetailPage() {
     } catch (err) {
       console.error('Failed to load photos:', err);
     }
-  }
-
-  async function handleSave() {
-    if (!uid || !editName.trim()) return;
-    setIsSaving(true);
-    try {
-      const updated = await updateLabel(uid, { name: editName.trim() });
-      setLabel(updated);
-      setIsEditing(false);
-    } catch (err) {
-      console.error('Failed to update label:', err);
-    } finally {
-      setIsSaving(false);
-    }
-  }
-
-  function handleCancel() {
-    setEditName(label?.name || '');
-    setIsEditing(false);
   }
 
   function handlePhotoClick(photo: Photo) {
@@ -119,37 +95,18 @@ export function LabelDetailPage() {
         </Button>
         <div className="flex items-center space-x-3 flex-1 min-w-0">
           <Tags className="h-6 w-6 text-cyan-400 flex-shrink-0" />
-          {isEditing ? (
-            <div className="flex items-center space-x-2">
-              <input
-                type="text"
-                value={editName}
-                onChange={(e) => setEditName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') void handleSave();
-                  if (e.key === 'Escape') handleCancel();
-                }}
-                autoFocus
-                className="bg-slate-800 border border-slate-600 rounded px-3 py-1 text-white text-2xl font-bold focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-              />
-              <Button variant="primary" size="sm" onClick={handleSave} isLoading={isSaving}>
-                <Check className="h-4 w-4" />
-              </Button>
-              <Button variant="ghost" size="sm" onClick={handleCancel}>
-                <X className="h-4 w-4" />
-              </Button>
-            </div>
-          ) : (
-            <div className="flex items-center space-x-2">
-              <h1 className="text-3xl font-bold text-white">{label.name}</h1>
-              <button
-                onClick={() => setIsEditing(true)}
-                className="text-slate-500 hover:text-slate-300 p-1"
-              >
-                <Pencil className="h-4 w-4" />
-              </button>
-            </div>
-          )}
+          <h1 className="text-3xl font-bold text-white">
+            <InlineEditableText
+              value={label.name}
+              ariaLabel={t('pages:labels.renameAria', { defaultValue: 'Rename label' })}
+              textClassName="inline-block"
+              inputClassName="bg-slate-800 border border-slate-600 rounded px-2 py-0.5 text-white text-3xl font-bold focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              onSave={async (name) => {
+                const updated = await updateLabel(uid!, { name });
+                setLabel(updated);
+              }}
+            />
+          </h1>
         </div>
         {uid && photos.length > 0 && (
           <Link to={`/slideshow?label=${uid}`}>

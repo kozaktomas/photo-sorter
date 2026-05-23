@@ -172,6 +172,11 @@
   "quickActions": {
     "addedTo": "Přidáno do {{name}}"
   },
+  "inlineEdit": {
+    "doubleClickToEdit": "Přejmenovat dvojklikem",
+    "emptyNotAllowed": "Název nesmí být prázdný",
+    "saveFailed": "Uložení se nezdařilo"
+  },
   "toasts": {
     "clipboard": {
       "copied": "Zkopírováno do schránky",

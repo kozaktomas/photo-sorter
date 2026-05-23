@@ -7,6 +7,7 @@ import { Button } from '../../components/Button';
 import { BulkActionBar } from '../../components/BulkActionBar';
 import { PhotoGrid } from '../../components/PhotoGrid';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { InlineEditableText } from '../../components/InlineEditableText';
 import { SmartAlbumModal } from './SmartAlbumModal';
 import {
   getSmartAlbum,
@@ -139,7 +140,16 @@ export function SmartAlbumDetailPage() {
         <div className="min-w-0">
           <h1 className="text-3xl font-bold text-white flex items-center gap-2">
             <Filter className="h-7 w-7 text-purple-400 shrink-0" />
-            <span className="truncate">{album.name}</span>
+            <InlineEditableText
+              value={album.name}
+              ariaLabel={t('pages:smartAlbums.renameAria', { defaultValue: 'Rename smart album' })}
+              textClassName="truncate inline-block"
+              inputClassName="bg-slate-800 border border-slate-600 rounded px-2 py-0.5 text-white text-3xl font-bold focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500"
+              onSave={async (name) => {
+                await updateSmartAlbum(album.uid, name, album.filters);
+                setAlbum((prev) => (prev ? { ...prev, name } : prev));
+              }}
+            />
           </h1>
           <p className="text-slate-500 mt-2">{t('common:units.photo', { count: total })}</p>
         </div>

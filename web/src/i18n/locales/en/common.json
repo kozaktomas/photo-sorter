@@ -164,6 +164,11 @@
   "quickActions": {
     "addedTo": "Added to {{name}}"
   },
+  "inlineEdit": {
+    "doubleClickToEdit": "Double-click to rename",
+    "emptyNotAllowed": "Name cannot be empty",
+    "saveFailed": "Failed to save"
+  },
   "toasts": {
     "clipboard": {
       "copied": "Copied to clipboard",
