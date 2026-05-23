@@ -13,13 +13,14 @@ import { findSimilarPhotos, getThumbnailUrl } from '../api/client';
 import { percentToDistance } from '../constants';
 import { usePhotoSelection } from '../hooks/usePhotoSelection';
 import { useSelectionShortcuts } from '../hooks/useSelectionShortcuts';
-import { copyToClipboard } from '../utils/clipboard';
+import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import type { SimilarPhotosResponse } from '../types';
 
 export function SimilarPhotosPage() {
   const { t } = useTranslation(['pages', 'common']);
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const copy = useCopyToClipboard();
   const hasAutoSearched = useRef(false);
 
   // Form state
@@ -88,7 +89,7 @@ export function SimilarPhotosPage() {
   };
 
   const handleCopyUID = (uid: string) => {
-    void copyToClipboard(uid);
+    void copy(uid);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

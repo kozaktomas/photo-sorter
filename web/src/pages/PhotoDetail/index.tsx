@@ -6,7 +6,7 @@ import { AddToBookDropdown } from './AddToBookDropdown';
 import { Button } from '../../components/Button';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { colorMap } from '../../constants/pageConfig';
-import { copyToClipboard } from '../../utils/clipboard';
+import { useCopyToClipboard } from '../../hooks/useCopyToClipboard';
 import { useAuth } from '../../hooks/useAuth';
 import { useRegisterShortcut } from '../../shortcuts';
 import { archivePhotos, updatePhoto } from '../../api/client';
@@ -28,6 +28,7 @@ export function PhotoDetailPage() {
   const { uid } = useParams<{ uid: string }>();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+  const copy = useCopyToClipboard();
 
   const handleBack = useCallback(() => {
     const source = searchParams.get('source');
@@ -225,7 +226,7 @@ export function PhotoDetailPage() {
   };
 
   const handleCopyUid = () => {
-    if (uid) void copyToClipboard(uid);
+    if (uid) void copy(uid);
   };
 
   const selectedFace = selectedFaceIndex !== null ? facesData?.faces[selectedFaceIndex] : null;

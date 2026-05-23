@@ -1,6 +1,8 @@
 import { useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { startSort, getSortJobStatus, cancelSortJob } from '../../../api/client';
 import { useSSE } from '../../../hooks/useSSE';
+import { useToast } from '../../../components/Toast';
 import { parseSortJobEvent } from '../../../types/events';
 import type { SortJob, SortJobOptions } from '../../../types';
 
@@ -18,6 +20,8 @@ export interface UseSortJobReturn {
 }
 
 export function useSortJob(): UseSortJobReturn {
+  const { t } = useTranslation('common');
+  const toast = useToast();
   const [currentJob, setCurrentJob] = useState<SortJob | null>(null);
   const [isStarting, setIsStarting] = useState(false);
 
@@ -35,6 +39,7 @@ export function useSortJob(): UseSortJobReturn {
         break;
       case 'started':
         setCurrentJob((prev) => prev ? { ...prev, status: 'running' } : null);
+        toast.info(t('toasts.jobs.sortStarted'));
         break;
       case 'photos_counted':
         setCurrentJob((prev) => prev ? { ...prev, total_photos: parsed.data.total } : null);
@@ -49,15 +54,18 @@ export function useSortJob(): UseSortJobReturn {
         break;
       case 'completed':
         setCurrentJob((prev) => prev ? { ...prev, status: 'completed', result: parsed.data } : null);
+        toast.success(t('toasts.jobs.sortCompleted'));
         break;
       case 'job_error':
         setCurrentJob((prev) => prev ? { ...prev, status: 'failed', error: parsed.message } : null);
+        toast.error(t('toasts.jobs.sortFailed', { message: parsed.message }));
         break;
       case 'cancelled':
         setCurrentJob((prev) => prev ? { ...prev, status: 'cancelled' } : null);
+        toast.info(t('toasts.jobs.sortCancelled'));
         break;
     }
-  }, []);
+  }, [toast, t]);
 
   useSSE(sseUrl, { onMessage: handleSSEMessage });
 

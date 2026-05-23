@@ -2,6 +2,9 @@ import { useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Copy, Trash2, Lock, Clock, Link as LinkIcon, X } from 'lucide-react';
 import { Button } from './Button';
+import { ConfirmDialog } from './ConfirmDialog';
+import { useToast } from './Toast';
+import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import {
   createShareLink,
   listShareLinks,
@@ -41,11 +44,13 @@ function formatExpiration(iso: string | null, locale: string): string {
 
 export function ShareModal({ open, albumUid, albumTitle, onClose }: ShareModalProps) {
   const { t, i18n } = useTranslation(['pages', 'common']);
+  const toast = useToast();
+  const copy = useCopyToClipboard();
   const [links, setLinks] = useState<ShareLink[]>([]);
   const [loading, setLoading] = useState(false);
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [copied, setCopied] = useState<string | null>(null);
+  const [pendingRevoke, setPendingRevoke] = useState<string | null>(null);
 
   const [slug, setSlug] = useState('');
   const [password, setPassword] = useState('');
@@ -58,7 +63,6 @@ export function ShareModal({ open, albumUid, albumTitle, onClose }: ShareModalPr
     setExpiresAt('');
     setUseExpiration(false);
     setError(null);
-    setCopied(null);
   }, [albumTitle]);
 
   const load = useCallback(async () => {
@@ -101,34 +105,36 @@ export function ShareModal({ open, albumUid, albumTitle, onClose }: ShareModalPr
         password: password || undefined,
         expires_at: expiresIso || undefined,
       });
+      toast.success(t('common:toasts.share.minted'));
       reset();
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      const msg = err instanceof Error ? err.message : String(err);
+      // Form-level errors that block creation stay inline — toasts are for
+      // results, not validation feedback.
+      setError(msg);
+      toast.error(t('common:toasts.share.mintFailed'));
     } finally {
       setCreating(false);
     }
   };
 
-  const handleRevoke = async (s: string) => {
-    if (!window.confirm(t('pages:share.confirmRevoke'))) return;
+  const confirmRevoke = async () => {
+    const slug = pendingRevoke;
+    setPendingRevoke(null);
+    if (!slug) return;
     try {
-      await revokeShareLink(s);
+      await revokeShareLink(slug);
+      toast.success(t('common:toasts.share.revoked'));
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      toast.error(err instanceof Error ? err.message : t('common:toasts.share.revokeFailed'));
     }
   };
 
-  const handleCopy = async (link: ShareLink) => {
+  const handleCopy = (link: ShareLink) => {
     const url = buildAbsoluteUrl(link.slug);
-    try {
-      await navigator.clipboard.writeText(url);
-      setCopied(link.slug);
-      window.setTimeout(() => setCopied(null), 2000);
-    } catch {
-      setError(t('pages:share.copyFailed'));
-    }
+    void copy(url, t('common:toasts.share.urlCopied'));
   };
 
   if (!open) return null;
@@ -195,14 +201,14 @@ export function ShareModal({ open, albumUid, albumTitle, onClose }: ShareModalPr
                       </div>
                       <div className="flex items-center gap-1">
                         <button
-                          onClick={() => void handleCopy(link)}
+                          onClick={() => handleCopy(link)}
                           className="text-slate-400 hover:text-white p-1 rounded"
                           title={t('pages:share.copyUrl')}
                         >
                           <Copy className="h-4 w-4" />
                         </button>
                         <button
-                          onClick={() => void handleRevoke(link.slug)}
+                          onClick={() => setPendingRevoke(link.slug)}
                           className="text-red-400 hover:text-red-300 p-1 rounded"
                           title={t('pages:share.revoke')}
                         >
@@ -228,9 +234,6 @@ export function ShareModal({ open, albumUid, albumTitle, onClose }: ShareModalPr
                         <span className="inline-flex items-center gap-1">
                           <Clock className="h-3 w-3" /> {t('pages:share.noExpiration')}
                         </span>
-                      )}
-                      {copied === link.slug && (
-                        <span className="text-green-400">{t('pages:share.copied')}</span>
                       )}
                     </div>
                   </li>
@@ -304,6 +307,17 @@ export function ShareModal({ open, albumUid, albumTitle, onClose }: ShareModalPr
           </div>
         </form>
       </div>
+
+      <ConfirmDialog
+        open={pendingRevoke !== null}
+        title={t('pages:share.revoke')}
+        message={t('pages:share.confirmRevoke')}
+        confirmLabel={t('pages:share.revoke')}
+        cancelLabel={t('common:buttons.cancel')}
+        variant="danger"
+        onConfirm={() => void confirmRevoke()}
+        onCancel={() => setPendingRevoke(null)}
+      />
     </div>
   );
 }

@@ -6,6 +6,7 @@ import { MAX_ALBUMS_FETCH } from '../constants';
 import { useAuth } from '../hooks/useAuth';
 import { Combobox } from './Combobox';
 import { ConfirmDialog } from './ConfirmDialog';
+import { useToast } from './Toast';
 import type { Album } from '../types';
 
 interface PhotoQuickActionsProps {
@@ -26,6 +27,7 @@ export function PhotoQuickActions({
 }: PhotoQuickActionsProps) {
   const { t } = useTranslation(['common', 'pages']);
   const { user } = useAuth();
+  const toast = useToast();
   const hasWriteAccess = user?.role === 'admin' || user?.role === 'editor';
 
   // Mirror the favorite prop so the star can update optimistically without
@@ -44,7 +46,6 @@ export function PhotoQuickActions({
   const [albumsLoaded, setAlbumsLoaded] = useState(false);
   const [selectedAlbum, setSelectedAlbum] = useState('');
   const [adding, setAdding] = useState(false);
-  const [addedMsg, setAddedMsg] = useState<string | null>(null);
 
   // Close the popover on Escape (matches the Combobox + ConfirmDialog UX).
   useEffect(() => {
@@ -53,7 +54,6 @@ export function PhotoQuickActions({
       if (e.key === 'Escape') {
         setAlbumPopoverOpen(false);
         setSelectedAlbum('');
-        setAddedMsg(null);
       }
     };
     document.addEventListener('keydown', handleKeyDown);
@@ -88,10 +88,12 @@ export function PhotoQuickActions({
       // Match BulkActionBar — use the batch edit endpoint with a single UID
       // so the success/error path stays consistent with bulk actions.
       await batchEditPhotos([photoUid], { favorite: next });
+      toast.success(t(next ? 'common:toasts.photo.favoriteOn' : 'common:toasts.photo.favoriteOff'));
       onFavoriteChanged?.(photoUid, next);
     } catch (err) {
       console.error('Failed to toggle favorite:', err);
       setIsFavorite(!next);
+      toast.error(err instanceof Error ? err.message : t('common:toasts.photo.favoriteFailed'));
     } finally {
       setFavPending(false);
     }
@@ -108,9 +110,11 @@ export function PhotoQuickActions({
     try {
       await archivePhotos([photoUid]);
       setConfirmOpen(false);
+      toast.success(t('common:toasts.photo.archived'));
       onArchived?.(photoUid);
     } catch (err) {
       console.error('Failed to archive photo:', err);
+      toast.error(err instanceof Error ? err.message : t('common:toasts.photo.archiveFailed'));
     } finally {
       setArchivePending(false);
     }
@@ -119,14 +123,12 @@ export function PhotoQuickActions({
   const handleOpenAlbumPopover = (e: React.MouseEvent) => {
     stop(e);
     setAlbumPopoverOpen(true);
-    setAddedMsg(null);
     void ensureAlbumsLoaded();
   };
 
   const handleCloseAlbumPopover = () => {
     setAlbumPopoverOpen(false);
     setSelectedAlbum('');
-    setAddedMsg(null);
   };
 
   const handleAddToAlbum = async () => {
@@ -135,12 +137,12 @@ export function PhotoQuickActions({
     try {
       await addPhotosToAlbum(selectedAlbum, [photoUid]);
       const album = albums.find((a) => a.uid === selectedAlbum);
-      setAddedMsg(t('common:quickActions.addedTo', { name: album?.title ?? '' }));
+      toast.success(t('common:toasts.photo.addedToAlbum', { name: album?.title ?? '' }));
       setSelectedAlbum('');
-      setTimeout(handleCloseAlbumPopover, 1000);
+      handleCloseAlbumPopover();
     } catch (err) {
       console.error('Failed to add to album:', err);
-      setAddedMsg(t('common:errors.failedToApply'));
+      toast.error(err instanceof Error ? err.message : t('common:toasts.photo.addToAlbumFailed'));
     } finally {
       setAdding(false);
     }
@@ -228,9 +230,6 @@ export function PhotoQuickActions({
             placeholder={t('pages:similar.selectAlbum')}
             size="sm"
           />
-          {addedMsg && (
-            <div className="text-xs text-green-400">{addedMsg}</div>
-          )}
           <div className="mt-auto flex justify-end gap-2">
             <button
               type="button"

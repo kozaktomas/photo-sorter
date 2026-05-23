@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { getAlbums, getConfig } from '../../api/client';
+import { useToast } from '../../components/Toast';
 import { PageHeader } from '../../components/PageHeader';
 import { PAGE_CONFIGS } from '../../constants/pageConfig';
 import { useSortJob } from './hooks/useSortJob';
@@ -14,6 +15,7 @@ import type { Album, Config } from '../../types';
 
 export function AnalyzePage() {
   const { t } = useTranslation(['pages', 'common']);
+  const toast = useToast();
   const [searchParams] = useSearchParams();
   const preselectedAlbum = searchParams.get('album');
 
@@ -79,8 +81,8 @@ export function AnalyzePage() {
         force_date: forceDate,
         concurrency,
       });
-    } catch {
-      alert(t('common:errors.somethingWentWrong'));
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t('common:toasts.jobs.sortStartFailed'));
     }
   };
 

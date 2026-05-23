@@ -163,5 +163,89 @@
   },
   "quickActions": {
     "addedTo": "Added to {{name}}"
+  },
+  "toasts": {
+    "clipboard": {
+      "copied": "Copied to clipboard",
+      "copyFailed": "Failed to copy to clipboard"
+    },
+    "bulk": {
+      "addedToAlbum_one": "Added {{count}} photo to album",
+      "addedToAlbum_other": "Added {{count}} photos to album",
+      "addLabelDone_one": "Added label to {{count}} photo",
+      "addLabelDone_other": "Added label to {{count}} photos",
+      "addLabelPartial_one": "Updated {{count}} photo, {{errors}} error",
+      "addLabelPartial_other": "Updated {{count}} photos, {{errors}} errors",
+      "addToSectionDone_one": "Added {{count}} photo to section \"{{section}}\"",
+      "addToSectionDone_other": "Added {{count}} photos to section \"{{section}}\"",
+      "favoriteDone_one": "Updated {{count}} photo",
+      "favoriteDone_other": "Updated {{count}} photos",
+      "favoritePartial_one": "Updated {{count}} photo, {{errors}} error",
+      "favoritePartial_other": "Updated {{count}} photos, {{errors}} errors",
+      "removedFromAlbum_one": "Removed {{count}} photo from album",
+      "removedFromAlbum_other": "Removed {{count}} photos from album",
+      "addToAlbumFailed": "Failed to add to album",
+      "addLabelFailed": "Failed to add label",
+      "updateFailed": "Failed to update photos",
+      "removeFromAlbumFailed": "Failed to remove from album",
+      "addToSectionFailed": "Failed to add to section"
+    },
+    "trash": {
+      "restored_one": "Restored {{count}} photo",
+      "restored_other": "Restored {{count}} photos",
+      "restoredWithErrors_one": "Restored {{count}} photo, {{errors}} error",
+      "restoredWithErrors_other": "Restored {{count}} photos, {{errors}} errors",
+      "purged_one": "Permanently deleted {{count}} photo",
+      "purged_other": "Permanently deleted {{count}} photos",
+      "purgedWithErrors_one": "Deleted {{count}} photo, {{errors}} error",
+      "purgedWithErrors_other": "Deleted {{count}} photos, {{errors}} errors",
+      "restoreFailed": "Failed to restore",
+      "purgeFailed": "Failed to delete"
+    },
+    "share": {
+      "minted": "Share link created",
+      "revoked": "Share link revoked",
+      "mintFailed": "Failed to create share link",
+      "revokeFailed": "Failed to revoke share link",
+      "urlCopied": "Share URL copied"
+    },
+    "smartAlbums": {
+      "created": "Smart album \"{{name}}\" created",
+      "updated": "Smart album \"{{name}}\" updated",
+      "deleted": "Smart album deleted",
+      "createFailed": "Failed to create smart album",
+      "updateFailed": "Failed to update smart album",
+      "deleteFailed": "Failed to delete smart album"
+    },
+    "jobs": {
+      "sortStarted": "Analysis started",
+      "sortCompleted": "Analysis complete",
+      "sortFailed": "Analysis failed: {{message}}",
+      "sortCancelled": "Analysis cancelled",
+      "sortStartFailed": "Failed to start analysis",
+      "uploadStarted_one": "Uploading {{count}} file…",
+      "uploadStarted_other": "Uploading {{count}} files…",
+      "uploadCompleted_one": "Uploaded {{count}} photo",
+      "uploadCompleted_other": "Uploaded {{count}} photos",
+      "uploadFailed": "Upload failed: {{message}}",
+      "uploadCancelled": "Upload cancelled",
+      "processStarted": "Processing started",
+      "processCompleted": "Processing complete",
+      "processFailed": "Processing failed: {{message}}",
+      "processCancelled": "Processing cancelled",
+      "processStartFailed": "Failed to start processing",
+      "syncCacheDone": "Cache synced",
+      "syncCacheFailed": "Cache sync failed"
+    },
+    "photo": {
+      "editsCleared": "Edits cleared",
+      "archived": "Photo moved to trash",
+      "archiveFailed": "Failed to archive photo",
+      "favoriteOn": "Added to favorites",
+      "favoriteOff": "Removed from favorites",
+      "favoriteFailed": "Failed to update favorite",
+      "addedToAlbum": "Added to album \"{{name}}\"",
+      "addToAlbumFailed": "Failed to add to album"
+    }
   }
 }

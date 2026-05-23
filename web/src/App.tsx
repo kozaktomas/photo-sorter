@@ -31,6 +31,7 @@ import { SettingsPage } from './pages/Settings/Settings';
 import { LoginPage } from './pages/Login';
 import { PublicSharePage } from './pages/Share/PublicShare';
 import { AuthProvider, useAuth } from './hooks/useAuth';
+import { ToastProvider } from './components/Toast';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
@@ -354,7 +355,9 @@ export default function App() {
     <ErrorBoundary>
       <BrowserRouter>
         <AuthProvider>
-          <AppRoutes />
+          <ToastProvider>
+            <AppRoutes />
+          </ToastProvider>
         </AuthProvider>
       </BrowserRouter>
     </ErrorBoundary>

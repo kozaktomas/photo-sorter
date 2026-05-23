@@ -1,13 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { addPhotosToAlbum, batchAddLabels, batchEditPhotos, removePhotosFromAlbum, getAlbums, getLabels, getBooks, getBook, addSectionPhotos } from '../api/client';
 import { MAX_ALBUMS_FETCH, MAX_LABELS_FETCH } from '../constants';
 import type { Album, Label, PhotoBook, BookSection, BookChapter } from '../types';
 import { useGridSelection, type SelectionClickEvent } from './useGridSelection';
-
-export interface ActionMessage {
-  type: 'success' | 'error';
-  text: string;
-}
+import { useToast } from '../components/Toast';
 
 export interface UsePhotoSelectionReturn {
   selectedPhotos: Set<string>;
@@ -30,8 +27,6 @@ export interface UsePhotoSelectionReturn {
   isAddingLabel: boolean;
   isBatchEditing: boolean;
   isRemovingFromAlbum: boolean;
-  actionMessage: ActionMessage | null;
-  setActionMessage: (msg: ActionMessage | null) => void;
   handleAddToAlbum: () => Promise<void>;
   handleAddLabel: () => Promise<void>;
   handleBatchEdit: (updates: { favorite?: boolean; private?: boolean }) => Promise<void>;
@@ -49,6 +44,8 @@ export interface UsePhotoSelectionReturn {
 }
 
 export function usePhotoSelection(): UsePhotoSelectionReturn {
+  const { t } = useTranslation('common');
+  const toast = useToast();
   const grid = useGridSelection();
   const [albums, setAlbums] = useState<Album[]>([]);
   const [labels, setLabels] = useState<Label[]>([]);
@@ -58,7 +55,6 @@ export function usePhotoSelection(): UsePhotoSelectionReturn {
   const [isAddingLabel, setIsAddingLabel] = useState(false);
   const [isBatchEditing, setIsBatchEditing] = useState(false);
   const [isRemovingFromAlbum, setIsRemovingFromAlbum] = useState(false);
-  const [actionMessage, setActionMessage] = useState<ActionMessage | null>(null);
   const [dataLoaded, setDataLoaded] = useState(false);
   const [books, setBooks] = useState<PhotoBook[]>([]);
   const [selectedBookId, setSelectedBookIdRaw] = useState('');
@@ -98,57 +94,60 @@ export function usePhotoSelection(): UsePhotoSelectionReturn {
   const handleAddToAlbum = useCallback(async () => {
     if (!selectedAlbum || grid.selectedPhotos.size === 0) return;
     setIsAddingToAlbum(true);
-    setActionMessage(null);
     try {
       const result = await addPhotosToAlbum(selectedAlbum, Array.from(grid.selectedPhotos));
-      setActionMessage({ type: 'success', text: `Added ${result.added} photos to album` });
+      toast.success(t('toasts.bulk.addedToAlbum', { count: result.added }));
       grid.deselectAll();
       setSelectedAlbum('');
     } catch (err) {
-      setActionMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to add to album' });
+      toast.error(err instanceof Error ? err.message : t('toasts.bulk.addToAlbumFailed'));
     } finally {
       setIsAddingToAlbum(false);
     }
-  }, [selectedAlbum, grid]);
+  }, [selectedAlbum, grid, toast, t]);
 
   const handleAddLabel = useCallback(async () => {
     if (!labelInput.trim() || grid.selectedPhotos.size === 0) return;
     setIsAddingLabel(true);
-    setActionMessage(null);
     try {
       const result = await batchAddLabels(Array.from(grid.selectedPhotos), labelInput.trim());
       if (result.errors && result.errors.length > 0) {
-        setActionMessage({ type: 'error', text: `Updated ${result.updated} photos, ${result.errors.length} errors` });
+        toast.error(t('toasts.bulk.addLabelPartial', {
+          count: result.updated,
+          errors: result.errors.length,
+        }));
       } else {
-        setActionMessage({ type: 'success', text: `Added label to ${result.updated} photos` });
+        toast.success(t('toasts.bulk.addLabelDone', { count: result.updated }));
       }
       grid.deselectAll();
       setLabelInput('');
     } catch (err) {
-      setActionMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to add label' });
+      toast.error(err instanceof Error ? err.message : t('toasts.bulk.addLabelFailed'));
     } finally {
       setIsAddingLabel(false);
     }
-  }, [labelInput, grid]);
+  }, [labelInput, grid, toast, t]);
 
   const handleBatchEdit = useCallback(async (updates: { favorite?: boolean; private?: boolean }) => {
     if (grid.selectedPhotos.size === 0) return;
     setIsBatchEditing(true);
-    setActionMessage(null);
     try {
       const result = await batchEditPhotos(Array.from(grid.selectedPhotos), updates);
       if (result.errors && result.errors.length > 0) {
-        setActionMessage({ type: 'error', text: `Updated ${result.updated} photos, ${result.errors.length} errors` });
+        toast.error(t('toasts.bulk.favoritePartial', {
+          count: result.updated,
+          errors: result.errors.length,
+        }));
       } else {
-        setActionMessage({ type: 'success', text: `Updated ${result.updated} photos` });
+        toast.success(t('toasts.bulk.favoriteDone', { count: result.updated }));
       }
       grid.deselectAll();
     } catch (err) {
-      setActionMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to update photos' });
+      toast.error(err instanceof Error ? err.message : t('toasts.bulk.updateFailed'));
     } finally {
       setIsBatchEditing(false);
     }
-  }, [grid]);
+  }, [grid, toast, t]);
 
   const setSelectedBookId = useCallback(async (bookId: string) => {
     setSelectedBookIdRaw(bookId);
@@ -171,40 +170,39 @@ export function usePhotoSelection(): UsePhotoSelectionReturn {
   const handleAddToBookSection = useCallback(async () => {
     if (!selectedSectionId || grid.selectedPhotos.size === 0) return;
     setIsAddingToSection(true);
-    setActionMessage(null);
+    const count = grid.selectedPhotos.size;
     try {
       await addSectionPhotos(selectedSectionId, Array.from(grid.selectedPhotos));
       const section = bookSections.find(s => s.id === selectedSectionId);
-      setActionMessage({
-        type: 'success',
-        text: `Added ${grid.selectedPhotos.size} photos to section ${section?.title ?? selectedSectionId}`,
-      });
+      toast.success(t('toasts.bulk.addToSectionDone', {
+        count,
+        section: section?.title ?? selectedSectionId,
+      }));
       grid.deselectAll();
       setSelectedBookIdRaw('');
       setSelectedSectionId('');
       setBookSections([]);
       setBookChapters([]);
     } catch (err) {
-      setActionMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to add to section' });
+      toast.error(err instanceof Error ? err.message : t('toasts.bulk.addToSectionFailed'));
     } finally {
       setIsAddingToSection(false);
     }
-  }, [selectedSectionId, grid, bookSections]);
+  }, [selectedSectionId, grid, bookSections, toast, t]);
 
   const handleRemoveFromAlbum = useCallback(async (albumUid: string) => {
     if (grid.selectedPhotos.size === 0) return;
     setIsRemovingFromAlbum(true);
-    setActionMessage(null);
     try {
       const result = await removePhotosFromAlbum(albumUid, Array.from(grid.selectedPhotos));
-      setActionMessage({ type: 'success', text: `Removed ${result.removed} photos from album` });
+      toast.success(t('toasts.bulk.removedFromAlbum', { count: result.removed }));
       grid.deselectAll();
     } catch (err) {
-      setActionMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to remove from album' });
+      toast.error(err instanceof Error ? err.message : t('toasts.bulk.removeFromAlbumFailed'));
     } finally {
       setIsRemovingFromAlbum(false);
     }
-  }, [grid]);
+  }, [grid, toast, t]);
 
   return {
     selectedPhotos: grid.selectedPhotos,
@@ -223,8 +221,6 @@ export function usePhotoSelection(): UsePhotoSelectionReturn {
     isAddingLabel,
     isBatchEditing,
     isRemovingFromAlbum,
-    actionMessage,
-    setActionMessage,
     handleAddToAlbum,
     handleAddLabel,
     handleBatchEdit,

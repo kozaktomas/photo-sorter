@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNavigate } from 'react-router-dom';
 import { Eye, Search, Copy, Check } from 'lucide-react';
-import { copyToClipboard } from '../../utils/clipboard';
+import { useCopyToClipboard } from '../../hooks/useCopyToClipboard';
 
 interface Props {
   photoUid: string;
@@ -11,6 +11,7 @@ interface Props {
 export function PhotoActionOverlay({ photoUid }: Props) {
   const { t } = useTranslation('common');
   const navigate = useNavigate();
+  const copy = useCopyToClipboard();
   const [copied, setCopied] = useState(false);
 
   const handleOpenDetail = (e: React.MouseEvent) => {
@@ -36,7 +37,7 @@ export function PhotoActionOverlay({ photoUid }: Props) {
   const handleCopyId = (e: React.MouseEvent) => {
     e.stopPropagation();
     e.preventDefault();
-    void copyToClipboard(photoUid);
+    void copy(photoUid);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };

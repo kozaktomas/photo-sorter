@@ -12,6 +12,7 @@ import {
   updateSmartAlbum,
   deleteSmartAlbum,
 } from '../../api/client';
+import { useToast } from '../../components/Toast';
 import type { SmartAlbum, SmartAlbumFilters } from '../../types';
 
 /**
@@ -21,6 +22,7 @@ import type { SmartAlbum, SmartAlbumFilters } from '../../types';
  */
 export function SmartAlbumsSection() {
   const { t } = useTranslation(['pages', 'common']);
+  const toast = useToast();
   const [items, setItems] = useState<SmartAlbum[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
@@ -55,10 +57,13 @@ export function SmartAlbumsSection() {
   };
 
   const handleSubmit = async (name: string, filters: SmartAlbumFilters) => {
+    // Awaited so the modal can react to thrown errors with inline validation.
     if (editing) {
       await updateSmartAlbum(editing.uid, name, filters);
+      toast.success(t('common:toasts.smartAlbums.updated', { name }));
     } else {
       await createSmartAlbum(name, filters);
+      toast.success(t('common:toasts.smartAlbums.created', { name }));
     }
     await load();
   };
@@ -69,9 +74,10 @@ export function SmartAlbumsSection() {
     setConfirmDelete(null);
     try {
       await deleteSmartAlbum(uid);
+      toast.success(t('common:toasts.smartAlbums.deleted'));
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      toast.error(err instanceof Error ? err.message : t('common:toasts.smartAlbums.deleteFailed'));
     }
   };
 

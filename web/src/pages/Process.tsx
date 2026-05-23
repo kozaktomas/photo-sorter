@@ -8,12 +8,14 @@ import { PageHeader } from '../components/PageHeader';
 import { PAGE_CONFIGS } from '../constants/pageConfig';
 import { FormInput } from '../components/FormInput';
 import { FormCheckbox } from '../components/FormCheckbox';
+import { useToast } from '../components/Toast';
 import { getConfig, startProcess, cancelProcessJob, syncCache } from '../api/client';
 import { useSSE } from '../hooks/useSSE';
 import type { Config, ProcessJob, ProcessJobResult, SyncCacheResponse } from '../types';
 
 export function ProcessPage() {
   const { t } = useTranslation(['pages', 'common']);
+  const toast = useToast();
   const [config, setConfig] = useState<Config | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -42,6 +44,7 @@ export function ProcessPage() {
       if (eventData) setCurrentJob(eventData as unknown as ProcessJob);
     } else if (event.type === 'started') {
       setCurrentJob((prev) => prev ? { ...prev, status: 'running' } : null);
+      toast.info(t('common:toasts.jobs.processStarted'));
     } else if (event.type === 'photos_counted') {
       const total = (eventData?.data as { total?: number })?.total ?? 0;
       setCurrentJob((prev) => prev ? { ...prev, total_photos: total } : null);
@@ -67,13 +70,16 @@ export function ProcessPage() {
     } else if (event.type === 'completed') {
       const result = eventData?.data as ProcessJobResult | undefined;
       setCurrentJob((prev) => prev ? { ...prev, status: 'completed', result } : null);
+      toast.success(t('common:toasts.jobs.processCompleted'));
     } else if (event.type === 'job_error') {
       const message = (eventData?.message as string) || 'Unknown error';
       setCurrentJob((prev) => prev ? { ...prev, status: 'failed', error: message } : null);
+      toast.error(t('common:toasts.jobs.processFailed', { message }));
     } else if (event.type === 'cancelled') {
       setCurrentJob((prev) => prev ? { ...prev, status: 'cancelled' } : null);
+      toast.info(t('common:toasts.jobs.processCancelled'));
     }
-  }, []);
+  }, [toast, t]);
 
   useSSE(sseUrl, {
     onMessage: handleSSEMessage,
@@ -114,7 +120,7 @@ export function ProcessPage() {
       });
     } catch (err) {
       console.error('Failed to start processing:', err);
-      alert(err instanceof Error ? err.message : 'Failed to start processing');
+      toast.error(err instanceof Error ? err.message : t('common:toasts.jobs.processStartFailed'));
     } finally {
       setIsStarting(false);
     }
@@ -140,9 +146,12 @@ export function ProcessPage() {
     try {
       const result = await syncCache();
       setSyncResult(result);
+      toast.success(t('common:toasts.jobs.syncCacheDone'));
     } catch (err) {
       console.error('Failed to sync cache:', err);
-      setSyncError(err instanceof Error ? err.message : 'Failed to sync cache');
+      const message = err instanceof Error ? err.message : 'Failed to sync cache';
+      setSyncError(message);
+      toast.error(t('common:toasts.jobs.syncCacheFailed'));
     } finally {
       setIsSyncing(false);
     }

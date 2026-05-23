@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Link } from 'react-router-dom';
 import { Copy, Search, Check, Loader2, X, Eye, Star } from 'lucide-react';
 import { getThumbnailUrl } from '../api/client';
-import { copyToClipboard } from '../utils/clipboard';
+import { useCopyToClipboard } from '../hooks/useCopyToClipboard';
 import { LazyImage } from './LazyImage';
 import { PhotoQuickActions } from './PhotoQuickActions';
 import { ACTION_LABELS, ACTION_BORDER_COLORS, ACTION_BG_COLORS } from '../constants/actions';
@@ -68,12 +68,13 @@ export function PhotoCard({
   onFavoriteChanged,
 }: PhotoCardProps) {
   const { t } = useTranslation('common');
+  const copy = useCopyToClipboard();
   const [isApproving, setIsApproving] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const handleCopyId = (e: React.MouseEvent) => {
     e.stopPropagation();
-    void copyToClipboard(photoUid);
+    void copy(photoUid);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
@@ -287,12 +288,13 @@ export function PhotoCardLink({
   favorite?: boolean;
 }) {
   const { t } = useTranslation('common');
+  const copy = useCopyToClipboard();
   const [copied, setCopied] = useState(false);
 
   const handleCopyId = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    void copyToClipboard(photoUid);
+    void copy(photoUid);
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };

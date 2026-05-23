@@ -4,6 +4,8 @@ import { RotateCcw, RotateCw, Save, X } from 'lucide-react';
 import Cropper from 'react-easy-crop';
 import type { Area, Point } from 'react-easy-crop';
 import { Button } from '../../components/Button';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { useToast } from '../../components/Toast';
 import {
   deletePhotoEdits,
   getPhotoEdits,
@@ -48,6 +50,7 @@ function areaToRelativeCrop(area: Area, mediaW: number, mediaH: number): PhotoEd
 
 export function PhotoEditModal({ photo, onClose, onSaved }: PhotoEditModalProps) {
   const { t } = useTranslation(['pages', 'common']);
+  const toast = useToast();
 
   // react-easy-crop state
   const [crop, setCrop] = useState<Point>({ x: 0, y: 0 });
@@ -64,6 +67,7 @@ export function PhotoEditModal({ photo, onClose, onSaved }: PhotoEditModalProps)
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
+  const [confirmRestore, setConfirmRestore] = useState(false);
 
   // Display size — post-rotation. The crop coordinates the API stores
   // are 0..1 against the rotated image, which is also what
@@ -192,11 +196,12 @@ export function PhotoEditModal({ photo, onClose, onSaved }: PhotoEditModalProps)
   };
 
   const handleRestore = async () => {
-    if (!window.confirm(t('pages:edit.restoreConfirm'))) return;
+    setConfirmRestore(false);
     setError(null);
     setSaving(true);
     try {
       await deletePhotoEdits(photo.uid);
+      toast.success(t('common:toasts.photo.editsCleared'));
       onSaved();
       onClose();
     } catch (err) {
@@ -367,7 +372,7 @@ export function PhotoEditModal({ photo, onClose, onSaved }: PhotoEditModalProps)
               <Button
                 variant="danger"
                 size="sm"
-                onClick={() => void handleRestore()}
+                onClick={() => setConfirmRestore(true)}
                 disabled={loading || saving}
               >
                 {t('pages:edit.restoreOriginal')}
@@ -379,6 +384,17 @@ export function PhotoEditModal({ photo, onClose, onSaved }: PhotoEditModalProps)
           </div>
         </div>
       </div>
+
+      <ConfirmDialog
+        open={confirmRestore}
+        title={t('pages:edit.restoreOriginal')}
+        message={t('pages:edit.restoreConfirm')}
+        confirmLabel={t('pages:edit.restoreOriginal')}
+        cancelLabel={t('common:buttons.cancel')}
+        variant="danger"
+        onConfirm={() => void handleRestore()}
+        onCancel={() => setConfirmRestore(false)}
+      />
     </div>
   );
 }

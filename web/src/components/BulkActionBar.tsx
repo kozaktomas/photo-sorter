@@ -1,7 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { X, FolderPlus, Tag, Star, FolderMinus, BookOpen } from 'lucide-react';
 import { Button } from './Button';
-import type { ActionMessage, UsePhotoSelectionReturn } from '../hooks/usePhotoSelection';
+import type { UsePhotoSelectionReturn } from '../hooks/usePhotoSelection';
 
 interface BulkActionBarProps {
   selection: UsePhotoSelectionReturn;
@@ -189,23 +189,6 @@ export function BulkActionBar({
           <X className="h-4 w-4" />
         </button>
       </div>
-
-      {/* Action message */}
-      {selection.actionMessage && (
-        <ActionMessageDisplay message={selection.actionMessage} />
-      )}
-    </div>
-  );
-}
-
-function ActionMessageDisplay({ message }: { message: ActionMessage }) {
-  return (
-    <div
-      className={`mt-3 text-sm ${
-        message.type === 'success' ? 'text-green-400' : 'text-red-400'
-      }`}
-    >
-      {message.text}
     </div>
   );
 }

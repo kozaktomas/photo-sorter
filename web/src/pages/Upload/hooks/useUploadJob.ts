@@ -1,6 +1,8 @@
 import { useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { startUploadJob, cancelUploadJob } from '../../../api/client';
 import { useSSE } from '../../../hooks/useSSE';
+import { useToast } from '../../../components/Toast';
 import type { NearDuplicatesEvent, UploadJobResult } from '../../../types';
 
 type UploadPhase =
@@ -33,6 +35,8 @@ interface UploadJobState {
 }
 
 export function useUploadJob() {
+  const { t } = useTranslation('common');
+  const toast = useToast();
   const [state, setState] = useState<UploadJobState>({
     jobId: null,
     phase: 'idle',
@@ -140,6 +144,8 @@ export function useUploadJob() {
           result: result ?? null,
           progress: null,
         }));
+        const count = result?.uploaded ?? 0;
+        toast.success(t('toasts.jobs.uploadCompleted', { count }));
         break;
       }
 
@@ -151,14 +157,16 @@ export function useUploadJob() {
           error: message,
           progress: null,
         }));
+        toast.error(t('toasts.jobs.uploadFailed', { message }));
         break;
       }
 
       case 'cancelled':
         setState(prev => ({ ...prev, phase: 'cancelled', progress: null }));
+        toast.info(t('toasts.jobs.uploadCancelled'));
         break;
     }
-  }, []);
+  }, [toast, t]);
 
   useSSE(sseUrl, { onMessage: handleSSEMessage });
 
@@ -183,15 +191,18 @@ export function useUploadJob() {
         isStarting: false,
         nearDuplicates: [],
       });
+      toast.info(t('toasts.jobs.uploadStarted', { count: files.length }));
     } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to start upload';
       setState(prev => ({
         ...prev,
         isStarting: false,
         phase: 'failed',
-        error: err instanceof Error ? err.message : 'Failed to start upload',
+        error: message,
       }));
+      toast.error(t('toasts.jobs.uploadFailed', { message }));
     }
-  }, []);
+  }, [toast, t]);
 
   const cancelUpload = useCallback(async () => {
     if (state.jobId) {

@@ -171,5 +171,102 @@
   },
   "quickActions": {
     "addedTo": "Přidáno do {{name}}"
+  },
+  "toasts": {
+    "clipboard": {
+      "copied": "Zkopírováno do schránky",
+      "copyFailed": "Kopírování do schránky selhalo"
+    },
+    "bulk": {
+      "addedToAlbum_one": "Přidána {{count}} fotka do alba",
+      "addedToAlbum_few": "Přidány {{count}} fotky do alba",
+      "addedToAlbum_many": "Přidáno {{count}} fotek do alba",
+      "addLabelDone_one": "Štítek přidán k {{count}} fotce",
+      "addLabelDone_few": "Štítek přidán k {{count}} fotkám",
+      "addLabelDone_many": "Štítek přidán k {{count}} fotkám",
+      "addLabelPartial_one": "Aktualizována {{count}} fotka, {{errors}} chyba",
+      "addLabelPartial_few": "Aktualizovány {{count}} fotky, {{errors}} chyby",
+      "addLabelPartial_many": "Aktualizováno {{count}} fotek, {{errors}} chyb",
+      "addToSectionDone_one": "Přidána {{count}} fotka do sekce \"{{section}}\"",
+      "addToSectionDone_few": "Přidány {{count}} fotky do sekce \"{{section}}\"",
+      "addToSectionDone_many": "Přidáno {{count}} fotek do sekce \"{{section}}\"",
+      "favoriteDone_one": "Aktualizována {{count}} fotka",
+      "favoriteDone_few": "Aktualizovány {{count}} fotky",
+      "favoriteDone_many": "Aktualizováno {{count}} fotek",
+      "favoritePartial_one": "Aktualizována {{count}} fotka, {{errors}} chyba",
+      "favoritePartial_few": "Aktualizovány {{count}} fotky, {{errors}} chyby",
+      "favoritePartial_many": "Aktualizováno {{count}} fotek, {{errors}} chyb",
+      "removedFromAlbum_one": "Odebrána {{count}} fotka z alba",
+      "removedFromAlbum_few": "Odebrány {{count}} fotky z alba",
+      "removedFromAlbum_many": "Odebráno {{count}} fotek z alba",
+      "addToAlbumFailed": "Přidání do alba selhalo",
+      "addLabelFailed": "Přidání štítku selhalo",
+      "updateFailed": "Aktualizace fotek selhala",
+      "removeFromAlbumFailed": "Odebrání z alba selhalo",
+      "addToSectionFailed": "Přidání do sekce selhalo"
+    },
+    "trash": {
+      "restored_one": "Obnovena {{count}} fotka",
+      "restored_few": "Obnoveny {{count}} fotky",
+      "restored_many": "Obnoveno {{count}} fotek",
+      "restoredWithErrors_one": "Obnovena {{count}} fotka, {{errors}} chyba",
+      "restoredWithErrors_few": "Obnoveny {{count}} fotky, {{errors}} chyby",
+      "restoredWithErrors_many": "Obnoveno {{count}} fotek, {{errors}} chyb",
+      "purged_one": "Trvale smazána {{count}} fotka",
+      "purged_few": "Trvale smazány {{count}} fotky",
+      "purged_many": "Trvale smazáno {{count}} fotek",
+      "purgedWithErrors_one": "Smazána {{count}} fotka, {{errors}} chyba",
+      "purgedWithErrors_few": "Smazány {{count}} fotky, {{errors}} chyby",
+      "purgedWithErrors_many": "Smazáno {{count}} fotek, {{errors}} chyb",
+      "restoreFailed": "Obnovení selhalo",
+      "purgeFailed": "Smazání selhalo"
+    },
+    "share": {
+      "minted": "Sdílecí odkaz vytvořen",
+      "revoked": "Sdílecí odkaz zrušen",
+      "mintFailed": "Vytvoření sdílecího odkazu selhalo",
+      "revokeFailed": "Zrušení sdílecího odkazu selhalo",
+      "urlCopied": "Sdílecí URL zkopírována"
+    },
+    "smartAlbums": {
+      "created": "Chytré album \"{{name}}\" vytvořeno",
+      "updated": "Chytré album \"{{name}}\" upraveno",
+      "deleted": "Chytré album smazáno",
+      "createFailed": "Vytvoření chytrého alba selhalo",
+      "updateFailed": "Úprava chytrého alba selhala",
+      "deleteFailed": "Smazání chytrého alba selhalo"
+    },
+    "jobs": {
+      "sortStarted": "Analýza spuštěna",
+      "sortCompleted": "Analýza dokončena",
+      "sortFailed": "Analýza selhala: {{message}}",
+      "sortCancelled": "Analýza zrušena",
+      "sortStartFailed": "Spuštění analýzy selhalo",
+      "uploadStarted_one": "Nahrávám {{count}} soubor…",
+      "uploadStarted_few": "Nahrávám {{count}} soubory…",
+      "uploadStarted_many": "Nahrávám {{count}} souborů…",
+      "uploadCompleted_one": "Nahrána {{count}} fotka",
+      "uploadCompleted_few": "Nahrány {{count}} fotky",
+      "uploadCompleted_many": "Nahráno {{count}} fotek",
+      "uploadFailed": "Nahrávání selhalo: {{message}}",
+      "uploadCancelled": "Nahrávání zrušeno",
+      "processStarted": "Zpracování spuštěno",
+      "processCompleted": "Zpracování dokončeno",
+      "processFailed": "Zpracování selhalo: {{message}}",
+      "processCancelled": "Zpracování zrušeno",
+      "processStartFailed": "Spuštění zpracování selhalo",
+      "syncCacheDone": "Cache synchronizována",
+      "syncCacheFailed": "Synchronizace cache selhala"
+    },
+    "photo": {
+      "editsCleared": "Úpravy zrušeny",
+      "archived": "Fotka přesunuta do koše",
+      "archiveFailed": "Přesun do koše selhal",
+      "favoriteOn": "Přidáno k oblíbeným",
+      "favoriteOff": "Odebráno z oblíbených",
+      "favoriteFailed": "Změna oblíbeného stavu selhala",
+      "addedToAlbum": "Přidáno do alba \"{{name}}\"",
+      "addToAlbumFailed": "Přidání do alba selhalo"
+    }
   }
 }

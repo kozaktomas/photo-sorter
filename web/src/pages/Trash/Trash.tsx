@@ -7,6 +7,7 @@ import { Card, CardContent } from '../../components/Card';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { PageHeader } from '../../components/PageHeader';
 import { PhotoGrid } from '../../components/PhotoGrid';
+import { useToast } from '../../components/Toast';
 import { PAGE_CONFIGS } from '../../constants/pageConfig';
 import { useAuth } from '../../hooks/useAuth';
 import { useGridSelection } from '../../hooks/useGridSelection';
@@ -16,12 +17,10 @@ import type { Photo } from '../../types';
 
 const PAGE_SIZE = 100;
 
-// Bulk-action message banner displayed below the page header.
-interface ActionMessage { type: 'success' | 'error'; text: string }
-
 export function TrashPage() {
   const { t } = useTranslation(['pages', 'common']);
   const { user } = useAuth();
+  const toast = useToast();
 
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [total, setTotal] = useState(0);
@@ -29,7 +28,6 @@ export function TrashPage() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const gridSelection = useGridSelection();
   const selected = gridSelection.selectedPhotos;
-  const [actionMessage, setActionMessage] = useState<ActionMessage | null>(null);
   const [isRestoring, setIsRestoring] = useState(false);
   const [isPurging, setIsPurging] = useState(false);
   const [confirmPurge, setConfirmPurge] = useState(false);
@@ -70,19 +68,18 @@ export function TrashPage() {
   const handleRestore = async () => {
     if (selected.size === 0) return;
     setIsRestoring(true);
-    setActionMessage(null);
     try {
       const result = await restorePhotos(Array.from(selected));
       const errCount = result.errors?.length ?? 0;
-      setActionMessage(
-        errCount > 0
-          ? { type: 'error', text: t('pages:trash.restoredWithErrors', { count: result.updated, errors: errCount }) }
-          : { type: 'success', text: t('pages:trash.restored', { count: result.updated }) },
-      );
+      if (errCount > 0) {
+        toast.error(t('common:toasts.trash.restoredWithErrors', { count: result.updated, errors: errCount }));
+      } else {
+        toast.success(t('common:toasts.trash.restored', { count: result.updated }));
+      }
       gridSelection.deselectAll();
       await loadTrash();
     } catch (err) {
-      setActionMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to restore' });
+      toast.error(err instanceof Error ? err.message : t('common:toasts.trash.restoreFailed'));
     } finally {
       setIsRestoring(false);
     }
@@ -92,19 +89,18 @@ export function TrashPage() {
     setConfirmPurge(false);
     if (selected.size === 0) return;
     setIsPurging(true);
-    setActionMessage(null);
     try {
       const result = await purgePhotos(Array.from(selected));
       const errCount = result.errors?.length ?? 0;
-      setActionMessage(
-        errCount > 0
-          ? { type: 'error', text: t('pages:trash.purgedWithErrors', { count: result.purged, errors: errCount }) }
-          : { type: 'success', text: t('pages:trash.purged', { count: result.purged }) },
-      );
+      if (errCount > 0) {
+        toast.error(t('common:toasts.trash.purgedWithErrors', { count: result.purged, errors: errCount }));
+      } else {
+        toast.success(t('common:toasts.trash.purged', { count: result.purged }));
+      }
       gridSelection.deselectAll();
       await loadTrash();
     } catch (err) {
-      setActionMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to purge' });
+      toast.error(err instanceof Error ? err.message : t('common:toasts.trash.purgeFailed'));
     } finally {
       setIsPurging(false);
     }
@@ -170,12 +166,6 @@ export function TrashPage() {
           )}
         </div>
       </div>
-
-      {actionMessage && (
-        <Alert variant={actionMessage.type === 'success' ? 'success' : 'error'}>
-          {actionMessage.text}
-        </Alert>
-      )}
 
       {loadError && (
         <Alert variant="error">{loadError}</Alert>
