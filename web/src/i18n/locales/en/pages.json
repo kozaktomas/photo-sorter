@@ -1076,5 +1076,44 @@
         "sort_job_cancel": "Sort job cancelled"
       }
     }
+  },
+  "shortcuts": {
+    "title": "Keyboard shortcuts",
+    "close": "Close",
+    "scopes": {
+      "global": "Global",
+      "photosGrid": "Photos grid",
+      "photoDetail": "Photo detail",
+      "bookEditor": "Book editor"
+    },
+    "items": {
+      "global": {
+        "help": "Show keyboard shortcuts"
+      },
+      "photosGrid": {
+        "next": "Focus next photo",
+        "prev": "Focus previous photo",
+        "toggleSelect": "Toggle selection of focused photo",
+        "openDetail": "Open focused photo"
+      },
+      "photoDetail": {
+        "next": "Next photo",
+        "prev": "Previous photo",
+        "favorite": "Toggle favorite",
+        "edit": "Open edit modal",
+        "archive": "Archive photo",
+        "close": "Close / back to grid"
+      },
+      "bookEditor": {
+        "prevItem": "Previous item (page or section)",
+        "nextItem": "Next item (page or section)",
+        "prevChapter": "Jump to previous chapter",
+        "nextChapter": "Jump to next chapter"
+      }
+    },
+    "archiveConfirmTitle": "Archive this photo?",
+    "archiveConfirmMessage": "The photo will be moved to the trash. You can restore it within the retention window.",
+    "archiveConfirmButton": "Archive",
+    "cancelButton": "Cancel"
   }
 }

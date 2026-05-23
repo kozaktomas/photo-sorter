@@ -1,12 +1,18 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { FolderOpen, Tags, Sparkles, Home, Users, Images, Camera, Maximize2, AlertTriangle, Type, ShieldCheck, Cpu, ChevronDown, LogOut, Copy, FolderSearch, BookOpen, Upload, Trash2, Settings, Globe } from 'lucide-react';
+import { FolderOpen, Tags, Sparkles, Home, Users, Images, Camera, Maximize2, AlertTriangle, Type, ShieldCheck, Cpu, ChevronDown, LogOut, Copy, FolderSearch, BookOpen, Upload, Trash2, Settings, Globe, Keyboard } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
 import { LanguageSwitcher } from './LanguageSwitcher';
 import { getPageConfigForPath, colorMap } from '../constants/pageConfig';
 import type { ColorClasses } from '../constants/pageConfig';
 import { getConfig } from '../api/client';
+import {
+  ShortcutsModal,
+  ShortcutsProvider,
+  useGlobalShortcuts,
+  useRegisterShortcut,
+} from '../shortcuts';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -117,11 +123,24 @@ function NavDropdown({ group, isActive }: { group: NavGroup; isActive: (path: st
 }
 
 export function Layout({ children }: LayoutProps) {
+  return (
+    <ShortcutsProvider>
+      <LayoutInner>{children}</LayoutInner>
+    </ShortcutsProvider>
+  );
+}
+
+function LayoutInner({ children }: LayoutProps) {
   const location = useLocation();
   const { logout } = useAuth();
   const { t } = useTranslation('common');
 
   const [versionLabel, setVersionLabel] = useState('');
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+
+  useGlobalShortcuts();
+  const toggleShortcuts = useCallback(() => setShortcutsOpen((v) => !v), []);
+  useRegisterShortcut('global.help', toggleShortcuts);
 
   useEffect(() => {
     getConfig().then(cfg => {
@@ -245,6 +264,14 @@ export function Layout({ children }: LayoutProps) {
                 )}
               </a>
               <LanguageSwitcher />
+              <button
+                onClick={() => setShortcutsOpen(true)}
+                className="flex items-center gap-1.5 px-2 py-2 rounded-md text-sm font-medium text-slate-300 hover:bg-slate-700 hover:text-white transition-colors"
+                title={t('shortcuts.openTooltip')}
+                aria-label={t('shortcuts.openTooltip')}
+              >
+                <Keyboard className="h-4 w-4" />
+              </button>
               <Link
                 to="/settings"
                 className={`flex items-center gap-1.5 px-2 py-2 rounded-md text-sm font-medium transition-colors ${
@@ -275,6 +302,8 @@ export function Layout({ children }: LayoutProps) {
           {children}
         </div>
       </main>
+
+      <ShortcutsModal open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
     </div>
   );
 }

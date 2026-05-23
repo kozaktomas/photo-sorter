@@ -1089,6 +1089,45 @@
         "sort_job_cancel": "Zrušení třídicí úlohy"
       }
     }
+  },
+  "shortcuts": {
+    "title": "Klávesové zkratky",
+    "close": "Zavřít",
+    "scopes": {
+      "global": "Globální",
+      "photosGrid": "Mřížka fotek",
+      "photoDetail": "Detail fotky",
+      "bookEditor": "Editor knihy"
+    },
+    "items": {
+      "global": {
+        "help": "Zobrazit klávesové zkratky"
+      },
+      "photosGrid": {
+        "next": "Zaměřit další fotku",
+        "prev": "Zaměřit předchozí fotku",
+        "toggleSelect": "Přepnout výběr zaměřené fotky",
+        "openDetail": "Otevřít zaměřenou fotku"
+      },
+      "photoDetail": {
+        "next": "Další fotka",
+        "prev": "Předchozí fotka",
+        "favorite": "Přepnout oblíbenou",
+        "edit": "Otevřít editor",
+        "archive": "Archivovat fotku",
+        "close": "Zavřít / zpět do mřížky"
+      },
+      "bookEditor": {
+        "prevItem": "Předchozí položka (stránka nebo sekce)",
+        "nextItem": "Další položka (stránka nebo sekce)",
+        "prevChapter": "Přejít na předchozí kapitolu",
+        "nextChapter": "Přejít na další kapitolu"
+      }
+    },
+    "archiveConfirmTitle": "Archivovat tuto fotku?",
+    "archiveConfirmMessage": "Fotka bude přesunuta do koše. Můžete ji obnovit v rámci doby uchovávání.",
+    "archiveConfirmButton": "Archivovat",
+    "cancelButton": "Zrušit"
   }
 }
 

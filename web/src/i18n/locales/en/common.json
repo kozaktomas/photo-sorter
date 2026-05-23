@@ -154,5 +154,8 @@
   "match": "{{value}}% match",
   "time": {
     "noDate": "No date"
+  },
+  "shortcuts": {
+    "openTooltip": "Keyboard shortcuts (?)"
   }
 }

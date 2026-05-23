@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useCallback, useEffect, useState, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 import { Loader2, Check, X } from 'lucide-react';
@@ -10,6 +10,7 @@ import { PhotoGrid } from '../../components/PhotoGrid';
 import { BulkActionBar } from '../../components/BulkActionBar';
 import { getLabels, getAlbums } from '../../api/client';
 import { MAX_LABELS_FETCH, MAX_ALBUMS_FETCH, PHOTOS_CACHE_KEY } from '../../constants';
+import { useRegisterShortcut } from '../../shortcuts';
 import { usePhotosFilters } from './hooks/usePhotosFilters';
 import { usePhotosPagination } from './hooks/usePhotosPagination';
 import { usePhotoSelection } from '../../hooks/usePhotoSelection';
@@ -41,22 +42,81 @@ export function PhotosPage() {
   const [selectionMode, setSelectionMode] = useState(false);
   const selection = usePhotoSelection();
 
+  // Keyboard focus (j/k navigates, Enter opens, Space toggles selection).
+  const [focusedIndex, setFocusedIndex] = useState(-1);
+
   // Dropdown data
   const [labels, setLabels] = useState<Label[]>([]);
   const [albums, setAlbums] = useState<Album[]>([]);
 
-  const handlePhotoClick = (photo: Photo) => {
-    // Save current state to cache before navigating
-    pagination.saveCache();
-    const params = new URLSearchParams(searchParams);
-    params.set('source', 'photos');
-    void navigate(`/photos/${photo.uid}?${params.toString()}`);
-  };
+  const handlePhotoClick = useCallback(
+    (photo: Photo) => {
+      // Save current state to cache before navigating
+      pagination.saveCache();
+      const params = new URLSearchParams(searchParams);
+      params.set('source', 'photos');
+      void navigate(`/photos/${photo.uid}?${params.toString()}`);
+    },
+    [pagination, searchParams, navigate],
+  );
 
   const exitSelectionMode = () => {
     setSelectionMode(false);
     selection.deselectAll();
   };
+
+  // Reset focus when the underlying photo list changes (filters, reload).
+  useEffect(() => {
+    setFocusedIndex(-1);
+  }, [
+    filters.search,
+    filters.selectedYear,
+    filters.selectedLabel,
+    filters.selectedAlbum,
+    filters.sortBy,
+    filters.takenFrom,
+    filters.takenTo,
+    filters.bbox,
+  ]);
+
+  const focusedUid =
+    focusedIndex >= 0 && focusedIndex < pagination.photos.length
+      ? pagination.photos[focusedIndex].uid
+      : null;
+
+  const focusNext = useCallback(() => {
+    if (pagination.photos.length === 0) return;
+    setFocusedIndex((i) => {
+      if (i < 0) return 0;
+      return Math.min(i + 1, pagination.photos.length - 1);
+    });
+  }, [pagination.photos.length]);
+
+  const focusPrev = useCallback(() => {
+    if (pagination.photos.length === 0) return;
+    setFocusedIndex((i) => {
+      if (i < 0) return 0;
+      return Math.max(i - 1, 0);
+    });
+  }, [pagination.photos.length]);
+
+  const openFocused = useCallback(() => {
+    if (focusedIndex < 0 || focusedIndex >= pagination.photos.length) return;
+    handlePhotoClick(pagination.photos[focusedIndex]);
+  }, [focusedIndex, pagination.photos, handlePhotoClick]);
+
+  const toggleSelectFocused = useCallback(() => {
+    if (focusedIndex < 0 || focusedIndex >= pagination.photos.length) return;
+    if (!selectionMode) {
+      setSelectionMode(true);
+    }
+    selection.toggleSelection(pagination.photos[focusedIndex].uid);
+  }, [focusedIndex, pagination.photos, selection, selectionMode]);
+
+  useRegisterShortcut('photosGrid.next', focusNext);
+  useRegisterShortcut('photosGrid.prev', focusPrev);
+  useRegisterShortcut('photosGrid.openDetail', openFocused);
+  useRegisterShortcut('photosGrid.toggleSelect', toggleSelectFocused);
 
   // Load dropdown data
   useEffect(() => {
@@ -200,6 +260,7 @@ export function PhotosPage() {
                 selectable={selectionMode}
                 selectedPhotos={selection.selectedPhotos}
                 onSelectionChange={(uid) => selection.toggleSelection(uid)}
+                focusedUid={focusedUid}
               />
             </CardContent>
           </Card>

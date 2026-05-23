@@ -170,8 +170,9 @@ Detailed view of a single photo with face management capabilities.
 - **Add to Book dropdown** - Click "Book" in the header to open a two-step picker (book → section) to quickly add the photo to a book section without leaving the page. Shows success/error feedback and auto-closes
 - **Embeddings status banner** - Automatically checks if embeddings have been calculated for the photo on page load. Shows a yellow warning banner with a "Calculate Embeddings" button if not yet processed
 - **Face detection and assignment** - Load faces to see detected faces with bounding boxes, assign people via suggestions or manual input
-- **Fullscreen mode** - Press `F` to hide all chrome (header, sidebar, status banner, app navigation) and display the photo at maximum size using the full viewport. Press `F` again or `Escape` to return to normal view. Navigation arrows and keyboard shortcuts (`←`/`→`, `M`) remain functional in fullscreen
+- **Fullscreen mode** - Press `Shift+F` to hide all chrome (header, sidebar, status banner, app navigation) and display the photo at maximum size using the full viewport. Press `Shift+F` again or `Escape` to return to normal view. Navigation arrows and keyboard shortcuts (`←`/`→`, `M`) remain functional in fullscreen
 - **Toggle face markings** - Press `M` to show/hide face bounding box overlays on the photo. Automatically loads face data if not already loaded
+- **Quick actions via keyboard** - `J`/`K` (or `←`/`→`) navigate prev/next, `F` toggles favorite, `E` opens the edit modal, `A` archives (with confirm), `Esc` closes the detail view. These ship through the global shortcut registry — press `?` anywhere to see the full list
 
 **Photo Navigation:**
 When accessing a photo from an album, label, or the Photos page, navigation controls are available:
@@ -773,11 +774,24 @@ Find photos that belong in existing albums but aren't there yet by searching the
 
 ## Keyboard Shortcuts
 
+### Global
+- `?` - Toggle the keyboard cheatsheet overlay (lists every active shortcut grouped by page). The same modal is reachable via the keyboard icon in the top bar. `Esc` or click-outside closes it. All shortcuts noop when focus is inside an `<input>`, `<textarea>`, `<select>`, or `contenteditable` element so typing is never stolen.
+
+The cheatsheet renders from the single registry at `web/src/shortcuts/registry.ts`. Pages opt into a shortcut by calling `useRegisterShortcut(id, handler)`; the registry decides what `id` means in terms of key and description so the modal and the dispatcher can't drift apart. BookEditor predates this system and keeps its own `useBookKeyboardNav` hook — its entries appear in the cheatsheet for discoverability but are flagged in `NON_DISPATCHED_SHORTCUTS` so the global dispatcher does not double-fire them.
+
+### Photos Grid
+- `J` / `K` - Move focus to next / previous card (with an amber focus ring that scrolls into view)
+- `Enter` - Open the focused photo's detail page
+- `Space` - Toggle selection of the focused card (auto-enters selection mode if not active)
+
 ### Photo Detail Page
-- `←` / `→` - Navigate to previous/next photo (when accessed from album, label, or Photos page)
+- `J` / `K` or `←` / `→` - Navigate to previous/next photo (when accessed from album, label, or Photos page)
+- `F` - Toggle favorite on the current photo
+- `E` - Open the non-destructive edit modal (editor/admin only)
+- `A` - Archive the current photo (opens a confirm dialog; on confirm, soft-deletes and returns to the photo grid)
 - `M` - Toggle face marking bounding boxes (auto-loads face data if needed)
-- `F` - Toggle fullscreen mode (hides all chrome, photo fills viewport)
-- `Escape` - Exit fullscreen mode
+- `Shift+F` - Toggle fullscreen mode (hides all chrome, photo fills viewport)
+- `Escape` - Close confirm dialog > close edit modal > exit fullscreen > go back to the grid (in that precedence)
 
 ### Photo Detail Modal
 - `←` / `→` - Navigate between photos

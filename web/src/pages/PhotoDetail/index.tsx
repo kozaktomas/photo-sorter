@@ -4,9 +4,12 @@ import { useTranslation } from 'react-i18next';
 import { ArrowLeft, Loader2, AlertCircle, Images, ScanFace, Copy, User, RefreshCw, Sliders } from 'lucide-react';
 import { AddToBookDropdown } from './AddToBookDropdown';
 import { Button } from '../../components/Button';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { colorMap } from '../../constants/pageConfig';
 import { copyToClipboard } from '../../utils/clipboard';
 import { useAuth } from '../../hooks/useAuth';
+import { useRegisterShortcut } from '../../shortcuts';
+import { archivePhotos, updatePhoto } from '../../api/client';
 import { usePhotoData } from './hooks/usePhotoData';
 import { useFacesData } from './hooks/useFacesData';
 import { useFaceAssignment } from './hooks/useFaceAssignment';
@@ -100,13 +103,17 @@ export function PhotoDetailPage() {
   const [markingsVisible, setMarkingsVisible] = useState(true);
   const [fullscreen, setFullscreen] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false);
+  const [archiveConfirmOpen, setArchiveConfirmOpen] = useState(false);
+  const [archiving, setArchiving] = useState(false);
   const { user } = useAuth();
   const hasWriteAccess = user?.role === 'admin' || user?.role === 'editor';
 
-  // Keyboard navigation
+  // Local-only keyboard handlers that aren't part of the global shortcut
+  // registry (markings toggle on `m`, fullscreen on Shift+F — capital `F` is
+  // distinct from the registered `f` favorite shortcut). The global listener
+  // owns prev/next/edit/archive/favorite/close.
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Ignore if user is typing in an input field
       if (
         e.target instanceof HTMLInputElement ||
         e.target instanceof HTMLTextAreaElement ||
@@ -114,30 +121,97 @@ export function PhotoDetailPage() {
       ) {
         return;
       }
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
 
-      if (e.key === 'ArrowLeft' && hasPrev) {
-        e.preventDefault();
-        goToPrev();
-      } else if (e.key === 'ArrowRight' && hasNext) {
-        e.preventDefault();
-        goToNext();
-      } else if (e.key === 'm' || e.key === 'M') {
+      if (e.key === 'm' || e.key === 'M') {
         e.preventDefault();
         setMarkingsVisible((v) => !v);
         if (!facesLoaded && !facesLoading) {
           void loadFaces();
         }
-      } else if (e.key === 'f' || e.key === 'F') {
+      } else if (e.key === 'F') {
+        // Shift+F toggles fullscreen; bare `f` is handled by the registered
+        // favorite shortcut.
         e.preventDefault();
         setFullscreen((v) => !v);
-      } else if (e.key === 'Escape') {
-        setFullscreen(false);
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [hasPrev, hasNext, goToPrev, goToNext, facesLoaded, facesLoading, loadFaces]);
+  }, [facesLoaded, facesLoading, loadFaces]);
+
+  const goToNextShortcut = useCallback(() => {
+    if (hasNext) goToNext();
+  }, [hasNext, goToNext]);
+  const goToPrevShortcut = useCallback(() => {
+    if (hasPrev) goToPrev();
+  }, [hasPrev, goToPrev]);
+
+  const handleToggleFavorite = useCallback(() => {
+    if (!photo || !hasWriteAccess) return;
+    const next = !photo.favorite;
+    void (async () => {
+      try {
+        await updatePhoto(photo.uid, { favorite: next });
+        await refreshPhoto();
+      } catch (err) {
+        console.error('Failed to toggle favorite:', err);
+      }
+    })();
+  }, [photo, hasWriteAccess, refreshPhoto]);
+
+  const handleOpenEdit = useCallback(() => {
+    if (!hasWriteAccess) return;
+    setEditorOpen(true);
+  }, [hasWriteAccess]);
+
+  const handleRequestArchive = useCallback(() => {
+    if (!hasWriteAccess) return;
+    setArchiveConfirmOpen(true);
+  }, [hasWriteAccess]);
+
+  const handleConfirmArchive = useCallback(() => {
+    if (!photo || archiving) return;
+    setArchiving(true);
+    void (async () => {
+      try {
+        await archivePhotos([photo.uid]);
+        setArchiveConfirmOpen(false);
+        // After archiving, fall back to the photos listing — the archived
+        // photo is no longer reachable through normal navigation.
+        handleBack();
+      } catch (err) {
+        console.error('Failed to archive photo:', err);
+      } finally {
+        setArchiving(false);
+      }
+    })();
+  }, [photo, archiving, handleBack]);
+
+  const handleEscape = useCallback(() => {
+    // Esc precedence: confirm dialog > edit modal > fullscreen > go back.
+    if (archiveConfirmOpen) {
+      setArchiveConfirmOpen(false);
+      return;
+    }
+    if (editorOpen) {
+      setEditorOpen(false);
+      return;
+    }
+    if (fullscreen) {
+      setFullscreen(false);
+      return;
+    }
+    handleBack();
+  }, [archiveConfirmOpen, editorOpen, fullscreen, handleBack]);
+
+  useRegisterShortcut('photoDetail.next', goToNextShortcut);
+  useRegisterShortcut('photoDetail.prev', goToPrevShortcut);
+  useRegisterShortcut('photoDetail.favorite', handleToggleFavorite, hasWriteAccess);
+  useRegisterShortcut('photoDetail.edit', handleOpenEdit, hasWriteAccess);
+  useRegisterShortcut('photoDetail.archive', handleRequestArchive, hasWriteAccess);
+  useRegisterShortcut('photoDetail.close', handleEscape);
 
   // Auto-select first unassigned face when faces are loaded
   useEffect(() => {
@@ -398,6 +472,17 @@ export function PhotoDetailPage() {
           }}
         />
       )}
+
+      <ConfirmDialog
+        open={archiveConfirmOpen}
+        title={t('pages:shortcuts.archiveConfirmTitle')}
+        message={t('pages:shortcuts.archiveConfirmMessage')}
+        confirmLabel={t('pages:shortcuts.archiveConfirmButton')}
+        cancelLabel={t('pages:shortcuts.cancelButton')}
+        variant="danger"
+        onConfirm={handleConfirmArchive}
+        onCancel={() => setArchiveConfirmOpen(false)}
+      />
     </div>
   );
 }
