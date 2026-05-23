@@ -14,6 +14,13 @@ interface PhotoGridProps {
   // UID of the keyboard-focused card (drawn with a yellow ring). When set,
   // the grid scrolls that card into view as the focus moves.
   focusedUid?: string | null;
+  // Per-card hover quick-actions toolbar (favorite / archive / add-to-album).
+  // When enabled, callers should supply onArchived to drop the archived card
+  // from their photo list; onFavoriteChanged is optional (the toolbar tracks
+  // an internal optimistic copy of the favorite flag either way).
+  enableQuickActions?: boolean;
+  onArchived?: (uid: string) => void;
+  onFavoriteChanged?: (uid: string, favorite: boolean) => void;
 }
 
 function FocusRing({ focused, children }: { focused: boolean; children: React.ReactNode }) {
@@ -30,7 +37,17 @@ function FocusRing({ focused, children }: { focused: boolean; children: React.Re
   );
 }
 
-export function PhotoGrid({ photos, onPhotoClick, selectable, selectedPhotos, onSelectionChange, focusedUid }: PhotoGridProps) {
+export function PhotoGrid({
+  photos,
+  onPhotoClick,
+  selectable,
+  selectedPhotos,
+  onSelectionChange,
+  focusedUid,
+  enableQuickActions,
+  onArchived,
+  onFavoriteChanged,
+}: PhotoGridProps) {
   if (photos.length === 0) {
     return (
       <div className="text-center py-12 text-slate-400">
@@ -50,6 +67,7 @@ export function PhotoGrid({ photos, onPhotoClick, selectable, selectedPhotos, on
               selectable
               selected={selectedPhotos.has(photo.uid)}
               onSelectionChange={(_, event) => onSelectionChange(photo.uid, event)}
+              favorite={photo.favorite}
             />
           </FocusRing>
         ))}
@@ -67,6 +85,10 @@ export function PhotoGrid({ photos, onPhotoClick, selectable, selectedPhotos, on
             <PhotoCard
               photoUid={photo.uid}
               onClick={() => onPhotoClick(photo)}
+              enableQuickActions={enableQuickActions}
+              favorite={photo.favorite}
+              onArchived={onArchived}
+              onFavoriteChanged={onFavoriteChanged}
             />
           </FocusRing>
         ))}

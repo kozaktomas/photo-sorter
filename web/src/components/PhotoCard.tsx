@@ -5,6 +5,7 @@ import { Copy, Search, Check, Loader2, X, Eye, Star } from 'lucide-react';
 import { getThumbnailUrl } from '../api/client';
 import { copyToClipboard } from '../utils/clipboard';
 import { LazyImage } from './LazyImage';
+import { PhotoQuickActions } from './PhotoQuickActions';
 import { ACTION_LABELS, ACTION_BORDER_COLORS, ACTION_BG_COLORS } from '../constants/actions';
 import type { MatchAction } from '../types';
 
@@ -32,6 +33,18 @@ export interface PhotoCardProps {
   badge?: string;
   // Aspect ratio
   aspectRatio?: 'square' | 'auto';
+  // Quick-actions toolbar (favorite / archive / add-to-album). Opt-in so that
+  // single-purpose grids (face approval, duplicate compare, similarity search)
+  // are not cluttered with mutation controls that don't fit their workflow.
+  enableQuickActions?: boolean;
+  // Current favorite state — drives the star fill in the quick-actions toolbar.
+  favorite?: boolean;
+  // Called after a successful archive. Callers typically remove the photo
+  // from their local grid state.
+  onArchived?: (uid: string) => void;
+  // Called after a successful favorite toggle so callers can update their
+  // photo list state without an extra refetch.
+  onFavoriteChanged?: (uid: string, favorite: boolean) => void;
 }
 
 export function PhotoCard({
@@ -49,6 +62,10 @@ export function PhotoCard({
   onReject,
   badge,
   aspectRatio = 'square',
+  enableQuickActions = false,
+  favorite = false,
+  onArchived,
+  onFavoriteChanged,
 }: PhotoCardProps) {
   const { t } = useTranslation('common');
   const [isApproving, setIsApproving] = useState(false);
@@ -86,6 +103,11 @@ export function PhotoCard({
   };
 
   const showFaceActions = action && action !== 'already_done' && (onApprove ?? onReject);
+  // The quick-actions toolbar belongs to the "browse and curate" workflow. It
+  // is suppressed when the card is in face-approval mode or when it is part
+  // of a multi-select set (selection UI wins).
+  const showQuickActions =
+    enableQuickActions && !showFaceActions && !(selectable && selected);
 
   return (
     <div
@@ -208,6 +230,18 @@ export function PhotoCard({
           </div>
         </div>
       </div>
+
+      {/* Hover quick-actions toolbar (favorite / archive / add-to-album).
+          Lives inside the card's relative-positioned root so its absolute
+          positioning lines up with the image (see CLAUDE.md bbox pitfall). */}
+      {showQuickActions && (
+        <PhotoQuickActions
+          photoUid={photoUid}
+          favorite={favorite}
+          onArchived={onArchived}
+          onFavoriteChanged={onFavoriteChanged}
+        />
+      )}
 
       {/* Face approve/reject buttons */}
       {showFaceActions && (

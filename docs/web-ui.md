@@ -149,6 +149,7 @@ Browse all photos in your library with powerful filtering.
   - Bulk actions: Add to Album, Add Label, Favorite
   - When viewing album filter: Remove from Album action
   - Click "Cancel" to exit selection mode
+- **Hover quick actions** - When not in selection mode, hovering a photo card surfaces a bottom-right toolbar with three buttons: favorite (★ toggle), add-to-album (➕ opens an in-card album picker), and archive (🗑 with confirm dialog). Mutations call the same batch endpoints as the bulk action bar; archived photos drop from the grid immediately. The toolbar is hidden for viewers (HasWriteAccess required) and on coarse-pointer devices (no hover). Also enabled on the Album Detail and Smart Album Detail grids.
 - **Filter persistence** - Active filters are stored in the URL (`?q=…&year=…&label=…&album=…&sort=…&taken_from=…&taken_to=…&bbox=lat1,lng1,lat2,lng2`) and forwarded to Photo Detail, so the back button returns you to the same filtered view with cached photos and scroll position restored. Sharing the URL preserves the full filter (including date range and bbox).
 - **Photo navigation context** - When clicking a photo, navigation arrows and position counter are available in Photo Detail
 - **Photo Detail Modal** - Click any photo to see full details
@@ -870,7 +871,8 @@ web/src/
 │   ├── PageHeader.tsx      # Page header with title/actions
 │   ├── PageLayoutPreview.tsx # Mini SVG preview of a book page layout (slot grid)
 │   ├── PhotoCard.tsx
-│   ├── PhotoGrid.tsx       # Supports optional selection mode
+│   ├── PhotoGrid.tsx       # Supports optional selection mode; opt-in hover quick-actions toolbar (favorite / archive / add-to-album) on PhotoCard via `enableQuickActions`
+│   ├── PhotoQuickActions.tsx # Bottom-right hover toolbar on PhotoCard: favorite toggle, archive (confirm), add-to-album popover. Hidden on coarse-pointer devices.
 │   ├── PhotoWithBBox.tsx
 │   ├── ShareModal.tsx      # Mint / list / revoke public share links for an album
 │   └── StatsGrid.tsx       # Stats display grid (configurable 2-6 columns)

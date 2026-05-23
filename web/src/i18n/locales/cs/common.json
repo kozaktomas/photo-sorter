@@ -66,7 +66,10 @@
     "clear": "Vymazat",
     "play": "P\u0159ehr\u00e1t",
     "pause": "Pozastavit",
-    "close": "Zav\u0159\u00edt"
+    "close": "Zav\u0159\u00edt",
+    "favorite": "P\u0159idat k obl\u00edben\u00fdm",
+    "unfavorite": "Odebrat z obl\u00edben\u00fdch",
+    "archive": "P\u0159esunout do ko\u0161e"
   },
   "status": {
     "loading": "Načítání...",
@@ -165,5 +168,8 @@
   },
   "shortcuts": {
     "openTooltip": "Klávesové zkratky (?)"
+  },
+  "quickActions": {
+    "addedTo": "Přidáno do {{name}}"
   }
 }

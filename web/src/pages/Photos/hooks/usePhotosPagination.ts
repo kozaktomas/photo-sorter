@@ -52,6 +52,12 @@ export interface UsePhotosPaginationReturn {
   handleLoadMore: () => void;
   saveCache: () => void;
   restoredFromCache: boolean;
+  // Drop a photo from the local list without refetching (used by per-card
+  // quick-actions after archive).
+  removePhoto: (uid: string) => void;
+  // Patch a single photo in the local list (used by per-card quick-actions
+  // after favorite toggle).
+  updatePhotoLocal: (uid: string, updates: Partial<Photo>) => void;
 }
 
 export function usePhotosPagination(filters: FilterParams): UsePhotosPaginationReturn {
@@ -152,6 +158,14 @@ export function usePhotosPagination(filters: FilterParams): UsePhotosPaginationR
     }
   }, [isLoadingMore, hasMore, loadPhotos]);
 
+  const removePhoto = useCallback((uid: string) => {
+    setPhotos((prev) => prev.filter((p) => p.uid !== uid));
+  }, []);
+
+  const updatePhotoLocal = useCallback((uid: string, updates: Partial<Photo>) => {
+    setPhotos((prev) => prev.map((p) => (p.uid === uid ? { ...p, ...updates } : p)));
+  }, []);
+
   const saveCache = useCallback(() => {
     const cache: PhotosCache = {
       photos,
@@ -173,5 +187,7 @@ export function usePhotosPagination(filters: FilterParams): UsePhotosPaginationR
     handleLoadMore,
     saveCache,
     restoredFromCache: restoredFromCache.current,
+    removePhoto,
+    updatePhotoLocal,
   };
 }

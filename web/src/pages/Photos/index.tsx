@@ -279,6 +279,11 @@ export function PhotosPage() {
                   )
                 }
                 focusedUid={focusedUid}
+                enableQuickActions={!selectionMode}
+                onArchived={pagination.removePhoto}
+                onFavoriteChanged={(uid, favorite) =>
+                  pagination.updatePhotoLocal(uid, { favorite })
+                }
               />
             </CardContent>
           </Card>

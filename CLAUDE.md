@@ -645,7 +645,8 @@ web/src/
 │   ├── PageHeader.tsx         # Page header with title/actions
 │   ├── PageLayoutPreview.tsx  # Mini SVG preview of a book page layout (slot grid)
 │   ├── PhotoCard.tsx
-│   ├── PhotoGrid.tsx          # Supports optional selection mode
+│   ├── PhotoGrid.tsx          # Supports optional selection mode + opt-in hover quick-actions (favorite / archive / add-to-album) via `enableQuickActions`
+│   ├── PhotoQuickActions.tsx  # Bottom-right hover toolbar on PhotoCard: favorite toggle, archive (confirm), add-to-album popover. Hidden on coarse-pointer devices and for viewers (HasWriteAccess required)
 │   ├── PhotoWithBBox.tsx
 │   ├── ShareModal.tsx         # Mint/list/revoke public share links for an album
 │   └── StatsGrid.tsx          # Stats display grid (configurable columns/colors)

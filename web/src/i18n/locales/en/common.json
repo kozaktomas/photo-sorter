@@ -66,7 +66,10 @@
     "clear": "Clear",
     "play": "Play",
     "pause": "Pause",
-    "close": "Close"
+    "close": "Close",
+    "favorite": "Add to favorites",
+    "unfavorite": "Remove from favorites",
+    "archive": "Move to trash"
   },
   "status": {
     "loading": "Loading...",
@@ -157,5 +160,8 @@
   },
   "shortcuts": {
     "openTooltip": "Keyboard shortcuts (?)"
+  },
+  "quickActions": {
+    "addedTo": "Added to {{name}}"
   }
 }

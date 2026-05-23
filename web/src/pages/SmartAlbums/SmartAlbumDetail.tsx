@@ -242,6 +242,16 @@ export function SmartAlbumDetailPage() {
                     event ?? {},
                   )
                 }
+                enableQuickActions={!selectionMode}
+                onArchived={(archivedUid) => {
+                  setPhotos((prev) => prev.filter((p) => p.uid !== archivedUid));
+                  setTotal((prev) => Math.max(prev - 1, 0));
+                }}
+                onFavoriteChanged={(photoUid, favorite) =>
+                  setPhotos((prev) =>
+                    prev.map((p) => (p.uid === photoUid ? { ...p, favorite } : p)),
+                  )
+                }
               />
               {hasMore && (
                 <div className="flex justify-center mt-4">

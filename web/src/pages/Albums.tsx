@@ -273,7 +273,19 @@ function AlbumDetailPage({ uid }: { uid: string }) {
               }
             />
           ) : (
-            <PhotoGrid photos={photos} onPhotoClick={handlePhotoClick} />
+            <PhotoGrid
+              photos={photos}
+              onPhotoClick={handlePhotoClick}
+              enableQuickActions
+              onArchived={(archivedUid) =>
+                setPhotos((prev) => prev.filter((p) => p.uid !== archivedUid))
+              }
+              onFavoriteChanged={(photoUid, favorite) =>
+                setPhotos((prev) =>
+                  prev.map((p) => (p.uid === photoUid ? { ...p, favorite } : p)),
+                )
+              }
+            />
           )}
         </CardContent>
       </Card>
