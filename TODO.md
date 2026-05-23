@@ -67,3 +67,42 @@ up.
   i18n labels in `web/src/i18n/locales/*/pages.json` need matching
   entries so the audit-log viewer renders human-readable verbs instead
   of raw action strings.
+
+## File IO hardening sweep — 2026-05-23
+
+Deferred from [task-d8674ee1](docs/specs/task-d8674ee1-7527-4eb1-9597-16a5afb57054.md).
+The sweep fixed the unambiguous bugs (RFC 6266 Content-Disposition,
+XMP-sidecar PID-collision, multipart-upload basename clobber, and the
+concurrent-upload rollback that could delete the winner's file). The
+items below were flagged during the audit but the right answer needs an
+explicit product / ops decision rather than an in-line guess.
+
+- [ ] **Edited-download memory pressure.** `GET /photos/{uid}/download`
+  with stored `photo_edits` calls `imgedit.DecodeAndApply` + `EncodeJPEG`
+  which pin the entire decoded image (potentially 100+ MB for a
+  60-megapixel original) plus the encoded byte slice in RAM before the
+  first byte is written to the wire. The HTTP server has no upstream cap
+  on simultaneous renders. Options: (a) cap concurrent renders with a
+  semaphore, (b) stage the rendered JPEG to a temp file and stream it
+  via `http.ServeContent` so the GC can reclaim the in-memory image
+  before the network handoff, (c) downscale the source to a maximum
+  longest-side before applying edits when the request comes from a
+  browser (keep the full-resolution path for an explicit
+  `?max_side=original` opt-in). Pick one and document the trade-off.
+- [ ] **Upload-race UX.** Two concurrent uploads of the same SHA256 now
+  preserve catalogue integrity (the losing rollback no longer deletes
+  the winner's file, see
+  [`internal/photopipe/pipeline.go`](internal/photopipe/pipeline.go)
+  `releaseOriginalIfOurs`), but the loser still gets a generic 500
+  instead of the friendly `409 + DuplicateError` the single-upload path
+  returns. Fix by mapping the `photos.file_hash` unique-violation in
+  `persistPhoto` onto `*DuplicateError` so the handler can surface the
+  existing photo UID.
+- [ ] **`bufferAndHash` temp-file extension is user-controlled.** The
+  extension from the multipart filename rides through `filepath.Ext`
+  into the temp file pattern. Go's `os.CreateTemp` rejects path
+  separators in the pattern, so traversal is blocked, but a
+  pathological extension (e.g. extremely long, contains shell-special
+  characters that downstream tools see when they shell out) could still
+  produce surprising filenames in `/tmp`. Defense-in-depth: clamp to
+  alphanumeric + dot + max-8-chars before composing the pattern.

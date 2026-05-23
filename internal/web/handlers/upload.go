@@ -37,37 +37,59 @@ func NewUploadHandler(cfg *config.Config, sm *middleware.SessionManager, ph *Pro
 	}
 }
 
-// saveUploadedFiles saves multipart files to a temporary directory and returns their paths.
+// saveUploadedFiles saves multipart files to a temporary directory and
+// returns their paths. Each file lands in a per-index subdirectory so
+// two uploads with the same basename (e.g. duplicate IMG_001.jpg from
+// different cameras) cannot clobber each other. The original basename
+// is preserved inside that subdirectory so the downstream pipeline still
+// sees the user-supplied filename for EXIF / on-disk path heuristics.
 func saveUploadedFiles(files []*multipart.FileHeader, tempDir string) ([]string, error) {
-	var filePaths []string
-	for _, fileHeader := range files {
-		if err := func() error {
-			file, err := fileHeader.Open()
-			if err != nil {
-				return fmt.Errorf("failed to open file: %s", fileHeader.Filename)
-			}
-			defer file.Close()
-
-			safeName := filepath.Base(fileHeader.Filename)
-			tempPath := filepath.Join(tempDir, safeName)
-			out, err := os.Create(tempPath) //nolint:gosec // filename sanitized via filepath.Base
-			if err != nil {
-				return errors.New("failed to create temp file")
-			}
-
-			if _, err := io.Copy(out, file); err != nil {
-				out.Close()
-				return errors.New("failed to save file")
-			}
-			out.Close()
-
-			filePaths = append(filePaths, tempPath)
-			return nil
-		}(); err != nil {
+	filePaths := make([]string, 0, len(files))
+	for i, fileHeader := range files {
+		tempPath, err := saveSingleUploadedFile(fileHeader, tempDir, i)
+		if err != nil {
 			return nil, err
 		}
+		filePaths = append(filePaths, tempPath)
 	}
 	return filePaths, nil
+}
+
+// saveSingleUploadedFile writes one multipart file into a per-index
+// subdir under tempDir and returns the resulting path. The subdir
+// scheme is what guarantees no two uploads with the same basename
+// collide; the basename itself is preserved so the downstream pipeline
+// still sees the user-supplied filename.
+func saveSingleUploadedFile(fh *multipart.FileHeader, tempDir string, idx int) (string, error) {
+	file, err := fh.Open()
+	if err != nil {
+		return "", fmt.Errorf("failed to open file: %s", fh.Filename)
+	}
+	defer file.Close()
+
+	subDir := filepath.Join(tempDir, fmt.Sprintf("u%05d", idx))
+	if mkErr := os.MkdirAll(subDir, 0o700); mkErr != nil {
+		return "", errors.New("failed to create temp file")
+	}
+
+	safeName := filepath.Base(fh.Filename)
+	if safeName == "." || safeName == "/" || safeName == "" {
+		safeName = "upload"
+	}
+	tempPath := filepath.Join(subDir, safeName)
+	//nolint:gosec // G304: filename via filepath.Base, path constrained to per-index subdir
+	out, err := os.Create(tempPath)
+	if err != nil {
+		return "", errors.New("failed to create temp file")
+	}
+	if _, err := io.Copy(out, file); err != nil {
+		out.Close()
+		return "", errors.New("failed to save file")
+	}
+	if err := out.Close(); err != nil {
+		return "", errors.New("failed to save file")
+	}
+	return tempPath, nil
 }
 
 // Upload handles multipart file uploads.

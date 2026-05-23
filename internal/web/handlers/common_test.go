@@ -259,6 +259,58 @@ func TestHealthCheck_ReturnsStatusOk(t *testing.T) {
 	}
 }
 
+func TestContentDispositionAttachment(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "plain ASCII",
+			in:   "photo.jpg",
+			want: `attachment; filename="photo.jpg"`,
+		},
+		{
+			name: "ASCII with space",
+			in:   "my photo.jpg",
+			want: `attachment; filename="my photo.jpg"`,
+		},
+		{
+			name: "double quote scrubbed and RFC5987",
+			in:   `bad"name.jpg`,
+			want: `attachment; filename="bad_name.jpg"; filename*=UTF-8''bad%22name.jpg`,
+		},
+		{
+			name: "CRLF stripped from ASCII and percent-encoded in starred",
+			in:   "evil\r\nX-Inject: yes.jpg",
+			// Both CR and LF become '_' in the fallback; the printable
+			// space survives the ASCII pass but is percent-encoded in
+			// the RFC 5987 form along with the colon.
+			want: `attachment; filename="evil__X-Inject: yes.jpg"; filename*=UTF-8''evil%0D%0AX-Inject%3A%20yes.jpg`,
+		},
+		{
+			name: "non-ASCII Czech",
+			in:   "koťátko.jpg",
+			// ASCII fallback replaces the multi-byte chars with '_'; starred carries the UTF-8 bytes.
+			want: `attachment; filename="ko____tko.jpg"; filename*=UTF-8''ko%C5%A5%C3%A1tko.jpg`,
+		},
+		{
+			name: "empty becomes download",
+			in:   "",
+			want: `attachment; filename="download"`,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := contentDispositionAttachment(tc.in)
+			if got != tc.want {
+				t.Errorf("contentDispositionAttachment(%q)\n  got:  %s\n  want: %s",
+					tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
 func TestHealthCheck_IgnoresHTTPMethod(t *testing.T) {
 	methods := []string{"GET", "POST", "PUT", "DELETE", "HEAD"}
 

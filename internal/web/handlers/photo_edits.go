@@ -446,8 +446,7 @@ func (h *PhotosHandler) tryServeEditedDownload(
 		return false
 	}
 	w.Header().Set("Content-Type", "image/jpeg")
-	w.Header().Set("Content-Disposition",
-		fmt.Sprintf(`attachment; filename=%q`, fileName))
+	w.Header().Set("Content-Disposition", contentDispositionAttachment(fileName))
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.Header().Set("Content-Length", strconv.Itoa(len(data)))
 	w.Header().Set("Cache-Control", "no-cache, must-revalidate")

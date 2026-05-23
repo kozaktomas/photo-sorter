@@ -275,6 +275,51 @@ func TestUploadHandler_Upload_EmptyAlbumUID(t *testing.T) {
 	assertJSONError(t, recorder, "album_uid is required")
 }
 
+// TestSaveUploadedFiles_BasenameCollision verifies the per-index
+// subdir guard: two uploaded files that share a basename (e.g. duplicate
+// IMG_001.jpg) must both survive into distinct on-disk paths instead of
+// the second overwriting the first.
+func TestSaveUploadedFiles_BasenameCollision(t *testing.T) {
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part1, _ := writer.CreateFormFile("files", "dup.jpg")
+	part1.Write([]byte("first"))
+	part2, _ := writer.CreateFormFile("files", "dup.jpg")
+	part2.Write([]byte("second"))
+	writer.Close()
+
+	req := httptest.NewRequestWithContext(context.Background(), "POST", "/upload", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	if err := req.ParseMultipartForm(1 << 20); err != nil {
+		t.Fatalf("parse multipart: %v", err)
+	}
+
+	tempDir := t.TempDir()
+	paths, err := saveUploadedFiles(req.MultipartForm.File["files"], tempDir)
+	if err != nil {
+		t.Fatalf("saveUploadedFiles: %v", err)
+	}
+	if len(paths) != 2 {
+		t.Fatalf("expected 2 paths, got %d", len(paths))
+	}
+	if paths[0] == paths[1] {
+		t.Fatalf("collision: both uploads saved to %q", paths[0])
+	}
+
+	got1, err := os.ReadFile(paths[0])
+	if err != nil {
+		t.Fatalf("read first: %v", err)
+	}
+	got2, err := os.ReadFile(paths[1])
+	if err != nil {
+		t.Fatalf("read second: %v", err)
+	}
+	if string(got1) != "first" || string(got2) != "second" {
+		t.Errorf("file content mismatch: got %q / %q, want %q / %q",
+			got1, got2, "first", "second")
+	}
+}
+
 func TestNewUploadHandler(t *testing.T) {
 	cfg := testConfig()
 	sm := middleware.NewSessionManager("test-secret", nil)

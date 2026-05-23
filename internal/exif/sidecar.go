@@ -2,6 +2,8 @@ package exif
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log"
@@ -125,12 +127,19 @@ func WriteSidecar(ctx context.Context, sidecarPath string, fields SidecarFields)
 	}
 
 	// exiftool detects the output format from the file extension, so the
-	// staging file must still end in `.xmp`. We append a per-process
-	// suffix to avoid colliding with the destination.
+	// staging file must still end in `.xmp`. A 16-hex random suffix
+	// guarantees uniqueness across concurrent goroutines AND across
+	// multiple photo-sorter processes writing the same sidecar — a
+	// per-PID suffix would alias when two goroutines in the same process
+	// raced and would also collide across processes that happen to be
+	// assigned the same PID on different hosts.
 	base := filepath.Base(sidecarPath)
 	stem := strings.TrimSuffix(base, filepath.Ext(base))
-	tmpPath := filepath.Join(dir, fmt.Sprintf("%s.tmp.%d.xmp", stem, os.Getpid()))
-	_ = os.Remove(tmpPath)
+	suffix, err := randomTmpSuffix()
+	if err != nil {
+		return fmt.Errorf("exif: generate sidecar tmp suffix: %w", err)
+	}
+	tmpPath := filepath.Join(dir, fmt.Sprintf("%s.tmp.%s.xmp", stem, suffix))
 
 	if err := runExiftoolWrite(ctx, tmpPath, fields); err != nil {
 		_ = os.Remove(tmpPath)
@@ -141,6 +150,16 @@ func WriteSidecar(ctx context.Context, sidecarPath string, fields SidecarFields)
 		return fmt.Errorf("exif: rename sidecar: %w", err)
 	}
 	return nil
+}
+
+// randomTmpSuffix returns 16 hex characters drawn from crypto/rand for
+// use as a unique sidecar staging-file suffix.
+func randomTmpSuffix() (string, error) {
+	var b [8]byte
+	if _, err := rand.Read(b[:]); err != nil {
+		return "", fmt.Errorf("read random bytes: %w", err)
+	}
+	return hex.EncodeToString(b[:]), nil
 }
 
 // runExiftoolWrite invokes exiftool to write the given fields into the

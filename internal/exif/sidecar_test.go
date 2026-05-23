@@ -126,6 +126,47 @@ func TestWriteSidecar_OverwritesExisting(t *testing.T) {
 	}
 }
 
+// TestWriteSidecar_ConcurrentSameTarget exercises the per-write random
+// tmp suffix: two goroutines writing distinct values to the same final
+// path must both produce a well-formed sidecar (one will win the
+// rename, but neither must crash on a "tmp already exists" collision
+// the way a PID-based suffix would when two goroutines share a PID).
+func TestWriteSidecar_ConcurrentSameTarget(t *testing.T) {
+	requireExiftoolWrite(t)
+
+	dir := t.TempDir()
+	path := filepath.Join(dir, "concurrent.xmp")
+
+	const goroutines = 4
+	errs := make(chan error, goroutines)
+	for i := range goroutines {
+		title := "T" + string(rune('0'+i))
+		go func() {
+			errs <- WriteSidecar(context.Background(), path, SidecarFields{Title: title})
+		}()
+	}
+	for i := range goroutines {
+		if err := <-errs; err != nil {
+			t.Errorf("concurrent WriteSidecar #%d: %v", i, err)
+		}
+	}
+	// The final sidecar exists and parses; the specific Title is racey
+	// (any winner is fine — we only assert no corruption + no stray tmp).
+	if _, statErr := os.Stat(path); statErr != nil {
+		t.Fatalf("expected final sidecar at %s: %v", path, statErr)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("read dir: %v", err)
+	}
+	for _, ent := range entries {
+		if ent.Name() == "concurrent.xmp" {
+			continue
+		}
+		t.Errorf("stray file in sidecar dir after concurrent writes: %s", ent.Name())
+	}
+}
+
 // readSidecarJSON shells out to exiftool to read the sidecar tags back as
 // a JSON map. Test-only helper — keeps the assertions independent of the
 // production parse code.

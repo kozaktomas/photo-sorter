@@ -899,7 +899,7 @@ func serveOriginal(
 		mime = "application/octet-stream"
 	}
 	w.Header().Set("Content-Type", mime)
-	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename=%q`, fileName))
+	w.Header().Set("Content-Disposition", contentDispositionAttachment(fileName))
 	w.Header().Set("X-Content-Type-Options", "nosniff")
 	http.ServeContent(w, r, fileName, stat.ModTime(), f)
 }

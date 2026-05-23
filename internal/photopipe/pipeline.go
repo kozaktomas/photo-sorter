@@ -276,13 +276,22 @@ func (p *Pipeline) Ingest(ctx context.Context, src io.Reader, opts Options) (*In
 
 	// From here on the original is on disk. If anything below fails the
 	// deferred rollback removes it so we don't leave orphaned files behind.
+	//
+	// Race-safety detail: two concurrent uploads with the same SHA256 may
+	// both observe "no duplicate" in lookupDuplicate, both pick the same
+	// relPath (resolveOriginalPath checks OriginalExists which is itself
+	// racey), and both call WriteOriginal. The atomic rename means the
+	// resulting file is well-formed and identical-content for both, but
+	// only one CreatePhoto will succeed (UNIQUE on photos.file_hash).
+	// The losing transaction's rollback MUST NOT delete the file: the
+	// winner's photo row points at it. p.releaseOriginalIfOurs makes the
+	// post-hoc ownership check before unlinking.
 	success := false
 	defer func() {
-		if !success {
-			if delErr := p.store.DeleteOriginal(relPath); delErr != nil {
-				log.Printf("photopipe: rollback delete original %q: %v", relPath, delErr)
-			}
+		if success {
+			return
 		}
+		p.releaseOriginalIfOurs(ctx, relPath, prep.fileHash)
 	}()
 
 	photoRecord, err := p.persistPhoto(ctx, relPath, prep, opts)
@@ -568,6 +577,25 @@ func (p *Pipeline) resolveOriginalPath(prep *ingestPrep) string {
 		relPath = appendHashSuffix(relPath, prep.fileHash)
 	}
 	return relPath
+}
+
+// releaseOriginalIfOurs deletes the on-disk original at relPath UNLESS a
+// concurrent upload with the same SHA256 has already won the
+// CreatePhoto race and its row points at the same path. The check
+// closes a narrow window in which two uploaders both observed "not a
+// duplicate", both wrote (rename-overwrites means the bytes are the
+// same), and the losing CreatePhoto came back with a unique-violation;
+// without the ownership probe the losing rollback would unlink the
+// winner's file and corrupt the catalogue.
+func (p *Pipeline) releaseOriginalIfOurs(ctx context.Context, relPath, fileHash string) {
+	winner, err := p.reader.GetPhotoByHash(ctx, fileHash)
+	if err == nil && winner != nil && winner.FilePath == relPath {
+		// Another concurrent upload owns this file now. Leave it alone.
+		return
+	}
+	if delErr := p.store.DeleteOriginal(relPath); delErr != nil {
+		log.Printf("photopipe: rollback delete original %q: %v", relPath, delErr)
+	}
 }
 
 // persistPhoto inserts the photo row plus its primary photo_files row.
