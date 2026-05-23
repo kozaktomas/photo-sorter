@@ -5,7 +5,6 @@ import (
 	"errors"
 	"log"
 	"net/http"
-	"regexp"
 	"sort"
 	"time"
 
@@ -16,15 +15,6 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/database"
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
-
-// minPasswordLength is the minimum length accepted for new passwords. The
-// floor matches the requirement called out in the user-management spec.
-const minPasswordLength = 8
-
-// usernameRegexp matches a valid username: lowercase alphanumerics plus _,
-// ., and -, length 3-64. The same shape is documented in the spec and
-// already enforced by the bootstrap admin flow.
-var usernameRegexp = regexp.MustCompile(`^[a-z0-9_.-]{3,64}$`)
 
 // UsersHandler hosts the admin-only user-management endpoints plus the
 // `/me` self-service routes. Every method assumes RequireAuth has populated
@@ -151,11 +141,11 @@ func (h *UsersHandler) Create(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return
 	}
-	if !usernameRegexp.MatchString(req.Username) {
+	if !auth.ValidUsername(req.Username) {
 		respondError(w, http.StatusBadRequest, "invalid username")
 		return
 	}
-	if len(req.Password) < minPasswordLength {
+	if len(req.Password) < auth.MinPasswordLength {
 		respondError(w, http.StatusBadRequest, "password too short")
 		return
 	}
@@ -296,7 +286,7 @@ func (h *UsersHandler) SetPassword(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return
 	}
-	if len(req.Password) < minPasswordLength {
+	if len(req.Password) < auth.MinPasswordLength {
 		respondError(w, http.StatusBadRequest, "password too short")
 		return
 	}
@@ -365,32 +355,24 @@ func (h *UsersHandler) SetDisabled(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]bool{"success": true})
 }
 
-// ensureNotLastAdmin returns true when removing `targetUID` would leave the
-// users table with no enabled admin remaining. The check is a no-op when
-// the target is not an admin. Repo errors are surfaced as a 500 response
-// and the function returns true so the caller bails out.
+// ensureNotLastAdmin wraps auth.EnsureNotLastAdmin with the HTTP-layer
+// error translation: returns true (caller should bail) when the action is
+// forbidden or the underlying read failed. The actual rule lives in
+// internal/auth so the CLI can reuse it.
 func ensureNotLastAdmin(
 	w http.ResponseWriter, r *http.Request, repo database.UserWriter,
 	target *database.User, targetUID string,
 ) bool {
-	if target.Role != auth.RoleAdmin {
+	err := auth.EnsureNotLastAdmin(r.Context(), repo, target, targetUID)
+	if err == nil {
 		return false
 	}
-	users, err := repo.ListUsers(r.Context())
-	if err != nil {
-		log.Printf("users delete list: %v", err)
-		respondError(w, http.StatusInternalServerError, "failed to list users")
+	if errors.Is(err, auth.ErrLastAdmin) {
+		respondError(w, http.StatusBadRequest, err.Error())
 		return true
 	}
-	for _, u := range users {
-		if u.UID == targetUID {
-			continue
-		}
-		if u.Role == auth.RoleAdmin && !u.Disabled {
-			return false
-		}
-	}
-	respondError(w, http.StatusBadRequest, "cannot delete the last admin")
+	log.Printf("users delete list: %v", err)
+	respondError(w, http.StatusInternalServerError, "failed to list users")
 	return true
 }
 
@@ -515,7 +497,7 @@ func (h *UsersHandler) ChangeMyPassword(w http.ResponseWriter, r *http.Request) 
 		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
 		return
 	}
-	if len(req.NewPassword) < minPasswordLength {
+	if len(req.NewPassword) < auth.MinPasswordLength {
 		respondError(w, http.StatusBadRequest, "password too short")
 		return
 	}

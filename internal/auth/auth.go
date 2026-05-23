@@ -70,3 +70,8 @@ func HasWriteAccess(role string) bool {
 func IsAdmin(role string) bool {
 	return role == RoleAdmin
 }
+
+// ErrLastAdmin is returned by EnsureNotLastAdmin when the requested
+// operation would leave the system without an enabled admin user. It is
+// sentinel-style so callers can pattern-match without parsing strings.
+var ErrLastAdmin = errors.New("cannot delete the last admin")

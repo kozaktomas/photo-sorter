@@ -240,6 +240,77 @@ beyond opening / closing the DB pool. See
 
 ---
 
+### users
+
+Manage local user accounts from the CLI. Useful for bootstrapping a
+fresh install, resetting a forgotten admin password, or removing a stale
+account when the web UI is unreachable.
+
+Every mutating subcommand (`create`, `set-password`, `delete`) appends a
+row to the `audit_log` table with `metadata.actor = "cli"` so CLI
+activity shows up in the admin audit viewer.
+
+#### users list
+
+List all local users.
+
+```bash
+photo-sorter users list [--json]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--json` | bool | false | Output as JSON instead of a table |
+
+#### users create
+
+Create a new user. Prompts for the password on the terminal (hidden,
+confirmed twice). Refuses to run when stdin is not a TTY — scripted
+callers should use the REST API.
+
+```bash
+photo-sorter users create <username> --role=<admin|editor|viewer> [flags]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--role` | string | (required) | One of `admin`, `editor`, `viewer` |
+| `--display-name` | string | username | Human-friendly display name |
+| `--email` | string | | Email address |
+
+Username must match `[a-z0-9_.-]{3,64}`; password must be at least 8
+characters.
+
+**Example:**
+```bash
+photo-sorter users create alice --role=editor --display-name="Alice"
+```
+
+#### users set-password
+
+Reset a user's password. Prompts for the new password twice on the
+terminal. Refuses to run when stdin is not a TTY.
+
+```bash
+photo-sorter users set-password <username>
+```
+
+#### users delete
+
+Delete a user account. Prompts for confirmation unless `--yes` is given.
+Refuses to delete the last enabled admin (same guarantee the REST API
+enforces).
+
+```bash
+photo-sorter users delete <username> [--yes]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--yes` | bool | false | Skip the confirmation prompt |
+
+---
+
 ### photo info
 
 Get perceptual hashes and metadata for photos.

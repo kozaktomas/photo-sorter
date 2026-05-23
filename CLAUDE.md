@@ -221,9 +221,9 @@ TailwindCSS, embedded into the binary at compile time via `go:embed`.
 
 ### Core Components
 
-- **cmd/** — Cobra commands (sort, albums, labels, count, move, upload, photo, cache, serve, backup, migrate-from-photoprism, migrate-verify, migrate-remap-references, version)
+- **cmd/** — Cobra commands (sort, albums, labels, count, move, upload, photo, cache, serve, users, backup, migrate-from-photoprism, migrate-verify, migrate-remap-references, version). `users` is the CLI surface for local user management: `users list`, `users create <username> --role=...`, `users set-password <username>`, `users delete <username> [--yes]`. Password-prompting commands require a TTY; mutations append to `audit_log` with `metadata.actor = "cli"`.
 - **internal/ai/** — AI provider interface with OpenAI, Gemini, Ollama, and llama.cpp implementations
-- **internal/auth/** — Password hashing, role constants, bootstrap admin creation
+- **internal/auth/** — Password hashing, role constants, bootstrap admin creation, shared validators (`ValidUsername`, `MinPasswordLength`) and the `EnsureNotLastAdmin` guard used by both the REST handler and the `users` CLI
 - **internal/config/** — Environment-based configuration loader
 - **internal/constants/** — Shared constants (page sizes, thresholds, concurrency, upload limits)
 - **internal/database/** — PostgreSQL storage with pgvector (HNSW indexes via `vector_cosine_ops`), repository interfaces, in-process readers/writers
