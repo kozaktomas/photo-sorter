@@ -201,6 +201,10 @@ func validateSubjectUpdate(req SubjectUpdateRequest) string {
 
 // UpdateSubject updates a subject.
 func (h *FacesHandler) UpdateSubject(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	uid := chi.URLParam(r, "uid")
 	if uid == "" {
 		respondError(w, http.StatusBadRequest, "uid is required")

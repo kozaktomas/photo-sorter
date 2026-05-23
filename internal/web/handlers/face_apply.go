@@ -154,6 +154,10 @@ func (h *FacesHandler) applyUnassignPerson(w http.ResponseWriter, r *http.Reques
 
 // Apply creates a marker or assigns a person to an existing marker.
 func (h *FacesHandler) Apply(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	var req ApplyRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
@@ -328,7 +332,13 @@ func (h *FacesHandler) loadPhotoImageBytes(ctx context.Context, photoUID string)
 
 // ComputeFaces detects and stores face and image embeddings for a single photo.
 // This recalculates embeddings even if they already exist (useful for reprocessing).
+//
+//nolint:funlen // straight-line orchestration of validation, embedding fetch, persist + audit.
 func (h *FacesHandler) ComputeFaces(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	photoUID := chi.URLParam(r, "uid")
 	if photoUID == "" {
 		respondError(w, http.StatusBadRequest, "photo_uid is required")
@@ -386,5 +396,9 @@ func (h *FacesHandler) ComputeFaces(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionFaceCompute, audit.EntityPhoto, photoUID,
+		map[string]any{"faces_count": len(faces)},
+	)
 	respondJSON(w, http.StatusOK, ComputeFacesResponse{PhotoUID: photoUID, FacesCount: len(faces), Success: true})
 }

@@ -229,6 +229,10 @@ func (m *BookExportJobManager) sweep() {
 // It validates the request, creates a background job, and returns 202 with
 // the job ID. The job runs in a goroutine and reports progress via SSE.
 func (h *BooksHandler) StartExportJob(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	pp := middleware.MustGetPhotoPrism(r.Context(), w)
 	if pp == nil {
 		return
@@ -377,6 +381,10 @@ func (h *BooksHandler) DownloadExport(w http.ResponseWriter, r *http.Request) {
 
 // CancelExportJob handles DELETE /api/v1/book-export/{jobId}.
 func (h *BooksHandler) CancelExportJob(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	jobID := chi.URLParam(r, "jobId")
 	job := h.exportJobs.GetJob(jobID)
 	if job == nil {
@@ -385,6 +393,10 @@ func (h *BooksHandler) CancelExportJob(w http.ResponseWriter, r *http.Request) {
 	}
 	job.Cancel()
 	job.removeTempFile()
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionBookExportCancel, audit.EntityBookExport, jobID,
+		map[string]any{"book_id": job.BookID},
+	)
 	respondJSON(w, http.StatusOK, map[string]bool{"cancelled": true})
 }
 

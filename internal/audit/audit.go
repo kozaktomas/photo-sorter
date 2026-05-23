@@ -59,6 +59,7 @@ const (
 	// Face.
 	ActionFaceApply           = "face_apply"
 	ActionFaceOutlierUnassign = "face_outlier_unassign"
+	ActionFaceCompute         = "face_compute"
 
 	// User.
 	ActionUserCreate        = "user_create"
@@ -73,6 +74,34 @@ const (
 	ActionBookUpdate    = "book_update"
 	ActionBookDelete    = "book_delete"
 	ActionBookExportPDF = "book_export_pdf"
+	// ActionBookExportCancel records a cancellation of an in-flight PDF
+	// export job. The job lifecycle is mutating (it spawns lualatex and
+	// holds temp files), so cancellation deserves a trail entry.
+	ActionBookExportCancel = "book_export_cancel"
+
+	// Book sub-resource mutations. Chapter / section / page / slot
+	// operations are full DB writes; auditing them per-operation gives
+	// the admin viewer the same coverage album mutations already enjoy.
+	ActionBookChapterCreate   = "book_chapter_create"
+	ActionBookChapterUpdate   = "book_chapter_update"
+	ActionBookChapterDelete   = "book_chapter_delete"
+	ActionBookChapterReorder  = "book_chapter_reorder"
+	ActionBookSectionCreate   = "book_section_create"
+	ActionBookSectionUpdate   = "book_section_update"
+	ActionBookSectionDelete   = "book_section_delete"
+	ActionBookSectionReorder  = "book_section_reorder"
+	ActionBookSectionPhotoAdd = "book_section_photo_add"
+	ActionBookSectionPhotoRem = "book_section_photo_remove"
+	ActionBookSectionPhotoEd  = "book_section_photo_update"
+	ActionBookPageCreate      = "book_page_create"
+	ActionBookPageUpdate      = "book_page_update"
+	ActionBookPageDelete      = "book_page_delete"
+	ActionBookPageReorder     = "book_page_reorder"
+	ActionBookSlotAssign      = "book_slot_assign"
+	ActionBookSlotClear       = "book_slot_clear"
+	ActionBookSlotCrop        = "book_slot_crop"
+	ActionBookSlotSwap        = "book_slot_swap"
+	ActionBookAutoLayout      = "book_auto_layout"
 
 	// Share link.
 	ActionShareLinkCreate         = "share_link_create"
@@ -86,10 +115,17 @@ const (
 	ActionSmartAlbumDelete = "smart_album_delete"
 
 	// Process / sort jobs.
-	ActionProcessJobStart  = "process_job_start"
-	ActionProcessJobCancel = "process_job_cancel"
-	ActionSortJobStart     = "sort_job_start"
-	ActionSortJobCancel    = "sort_job_cancel"
+	ActionProcessJobStart   = "process_job_start"
+	ActionProcessJobCancel  = "process_job_cancel"
+	ActionProcessSyncCache  = "process_sync_cache"
+	ActionProcessBuildThumb = "process_build_thumbs"
+	ActionSortJobStart      = "sort_job_start"
+	ActionSortJobCancel     = "sort_job_cancel"
+	ActionUploadJobCancel   = "upload_job_cancel"
+
+	// Text operations that mutate the database.
+	ActionTextCheckSave     = "text_check_save"
+	ActionTextVersionRestor = "text_version_restore"
 )
 
 // Entity type constants.

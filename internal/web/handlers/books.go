@@ -225,6 +225,10 @@ func (h *BooksHandler) ListBooks(w http.ResponseWriter, r *http.Request) {
 
 // CreateBook handles POST /api/v1/books and creates a new photo book.
 func (h *BooksHandler) CreateBook(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	bw := getBookWriter(r, w)
 	if bw == nil {
 		return
@@ -486,6 +490,10 @@ func validateRange(v *float64, lo, hi float64, name string) string {
 
 // UpdateBook handles PUT /api/v1/books/:id and updates a book's title, description, and typography.
 func (h *BooksHandler) UpdateBook(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	bw := getBookWriter(r, w)
 	if bw == nil {
 		return
@@ -518,6 +526,10 @@ func (h *BooksHandler) UpdateBook(w http.ResponseWriter, r *http.Request) {
 
 // DeleteBook handles DELETE /api/v1/books/:id and deletes a book and all its contents.
 func (h *BooksHandler) DeleteBook(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	bw := getBookWriter(r, w)
 	if bw == nil {
 		return
@@ -537,6 +549,10 @@ func (h *BooksHandler) DeleteBook(w http.ResponseWriter, r *http.Request) {
 
 // CreateChapter handles POST /api/v1/books/:id/chapters and creates a chapter in a book.
 func (h *BooksHandler) CreateChapter(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	bw := getBookWriter(r, w)
 	if bw == nil {
 		return
@@ -558,6 +574,10 @@ func (h *BooksHandler) CreateChapter(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to create chapter")
 		return
 	}
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionBookChapterCreate, audit.EntityBook, bookID,
+		map[string]any{"chapter_id": chapter.ID, "title": chapter.Title},
+	)
 	respondJSON(w, http.StatusCreated, chapterResponse{
 		ID:          chapter.ID,
 		Title:       chapter.Title,
@@ -571,6 +591,10 @@ func (h *BooksHandler) CreateChapter(w http.ResponseWriter, r *http.Request) {
 // title, color, and/or TOC visibility. Supports partial updates: only fields
 // present in the request body are modified.
 func (h *BooksHandler) UpdateChapter(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	bw := getBookWriter(r, w)
 	if bw == nil {
 		return
@@ -603,11 +627,19 @@ func (h *BooksHandler) UpdateChapter(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to update chapter")
 		return
 	}
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionBookChapterUpdate, audit.EntityBook, chapter.BookID,
+		map[string]any{"chapter_id": id, "title": chapter.Title},
+	)
 	respondJSON(w, http.StatusOK, map[string]string{"id": id})
 }
 
 // DeleteChapter handles DELETE /api/v1/chapters/:id and deletes a chapter.
 func (h *BooksHandler) DeleteChapter(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	bw := getBookWriter(r, w)
 	if bw == nil {
 		return
@@ -617,11 +649,21 @@ func (h *BooksHandler) DeleteChapter(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to delete chapter")
 		return
 	}
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionBookChapterDelete, audit.EntityBook, "",
+		map[string]any{"chapter_id": id},
+	)
 	respondJSON(w, http.StatusOK, map[string]bool{"deleted": true})
 }
 
 // ReorderChapters handles PUT /api/v1/books/:id/chapters/reorder and reorders chapters in a book.
+//
+//nolint:dupl // mirrors ReorderSections/ReorderPages on different resources.
 func (h *BooksHandler) ReorderChapters(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	bw := getBookWriter(r, w)
 	if bw == nil {
 		return
@@ -638,6 +680,10 @@ func (h *BooksHandler) ReorderChapters(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to reorder chapters")
 		return
 	}
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionBookChapterReorder, audit.EntityBook, bookID,
+		map[string]any{"count": len(req.ChapterIDs)},
+	)
 	respondJSON(w, http.StatusOK, map[string]bool{"reordered": true})
 }
 
@@ -645,6 +691,10 @@ func (h *BooksHandler) ReorderChapters(w http.ResponseWriter, r *http.Request) {
 
 // CreateSection handles POST /api/v1/books/:id/sections and creates a section in a book.
 func (h *BooksHandler) CreateSection(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	bw := getBookWriter(r, w)
 	if bw == nil {
 		return
@@ -667,6 +717,10 @@ func (h *BooksHandler) CreateSection(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to create section")
 		return
 	}
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionBookSectionCreate, audit.EntityBook, bookID,
+		map[string]any{"section_id": section.ID, "title": section.Title},
+	)
 	respondJSON(w, http.StatusCreated, sectionResponse{
 		ID:        section.ID,
 		ChapterID: section.ChapterID,
@@ -677,6 +731,10 @@ func (h *BooksHandler) CreateSection(w http.ResponseWriter, r *http.Request) {
 
 // UpdateSection handles PUT /api/v1/sections/:id and updates a section's title and chapter assignment.
 func (h *BooksHandler) UpdateSection(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	bw := getBookWriter(r, w)
 	if bw == nil {
 		return
@@ -706,11 +764,19 @@ func (h *BooksHandler) UpdateSection(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to update section")
 		return
 	}
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionBookSectionUpdate, audit.EntityBook, section.BookID,
+		map[string]any{"section_id": id, "title": section.Title},
+	)
 	respondJSON(w, http.StatusOK, map[string]string{"id": id})
 }
 
 // DeleteSection handles DELETE /api/v1/sections/:id and deletes a section.
 func (h *BooksHandler) DeleteSection(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	bw := getBookWriter(r, w)
 	if bw == nil {
 		return
@@ -720,11 +786,21 @@ func (h *BooksHandler) DeleteSection(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to delete section")
 		return
 	}
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionBookSectionDelete, audit.EntityBook, "",
+		map[string]any{"section_id": id},
+	)
 	respondJSON(w, http.StatusOK, map[string]bool{"deleted": true})
 }
 
 // ReorderSections handles PUT /api/v1/books/:id/sections/reorder and reorders sections in a book.
+//
+//nolint:dupl // mirrors ReorderChapters/ReorderPages on different resources.
 func (h *BooksHandler) ReorderSections(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	bw := getBookWriter(r, w)
 	if bw == nil {
 		return
@@ -741,6 +817,10 @@ func (h *BooksHandler) ReorderSections(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to reorder sections")
 		return
 	}
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionBookSectionReorder, audit.EntityBook, bookID,
+		map[string]any{"count": len(req.SectionIDs)},
+	)
 	respondJSON(w, http.StatusOK, map[string]bool{"reordered": true})
 }
 
@@ -792,6 +872,10 @@ func (h *BooksHandler) GetSectionPhotos(w http.ResponseWriter, r *http.Request) 
 
 // AddSectionPhotos handles POST /api/v1/sections/:id/photos and adds photos to a section.
 func (h *BooksHandler) AddSectionPhotos(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	bw := getBookWriter(r, w)
 	if bw == nil {
 		return
@@ -812,11 +896,19 @@ func (h *BooksHandler) AddSectionPhotos(w http.ResponseWriter, r *http.Request) 
 		respondError(w, http.StatusInternalServerError, "failed to add photos")
 		return
 	}
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionBookSectionPhotoAdd, audit.EntityBook, "",
+		map[string]any{"section_id": sectionID, "count": len(req.PhotoUIDs)},
+	)
 	respondJSON(w, http.StatusOK, map[string]int{"added": len(req.PhotoUIDs)})
 }
 
 // RemoveSectionPhotos handles DELETE /api/v1/sections/:id/photos and removes photos from a section.
 func (h *BooksHandler) RemoveSectionPhotos(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	bw := getBookWriter(r, w)
 	if bw == nil {
 		return
@@ -833,12 +925,20 @@ func (h *BooksHandler) RemoveSectionPhotos(w http.ResponseWriter, r *http.Reques
 		respondError(w, http.StatusInternalServerError, "failed to remove photos")
 		return
 	}
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionBookSectionPhotoRem, audit.EntityBook, "",
+		map[string]any{"section_id": sectionID, "count": len(req.PhotoUIDs)},
+	)
 	respondJSON(w, http.StatusOK, map[string]int{"removed": len(req.PhotoUIDs)})
 }
 
 // UpdatePhotoDescription handles PUT /api/v1/sections/:id/photos/:photoUid/description
 // and updates a photo's description and note in a section.
 func (h *BooksHandler) UpdatePhotoDescription(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	bw := getBookWriter(r, w)
 	if bw == nil {
 		return
@@ -861,6 +961,10 @@ func (h *BooksHandler) UpdatePhotoDescription(w http.ResponseWriter, r *http.Req
 		respondError(w, http.StatusInternalServerError, "failed to update photo")
 		return
 	}
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionBookSectionPhotoEd, audit.EntityBook, "",
+		map[string]any{"section_id": sectionID, "photo_uid": photoUID},
+	)
 	respondJSON(w, http.StatusOK, map[string]bool{"updated": true})
 }
 
@@ -868,6 +972,10 @@ func (h *BooksHandler) UpdatePhotoDescription(w http.ResponseWriter, r *http.Req
 
 // CreatePage handles POST /api/v1/books/:id/pages and creates a page in a book.
 func (h *BooksHandler) CreatePage(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	bw := getBookWriter(r, w)
 	if bw == nil {
 		return
@@ -899,6 +1007,14 @@ func (h *BooksHandler) CreatePage(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to create page")
 		return
 	}
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionBookPageCreate, audit.EntityBook, bookID,
+		map[string]any{
+			"page_id":    page.ID,
+			"section_id": page.SectionID,
+			"format":     page.Format,
+		},
+	)
 	respondJSON(w, http.StatusCreated, pageResponse{
 		ID:             page.ID,
 		SectionID:      page.SectionID,
@@ -1006,6 +1122,10 @@ func applySplitPosition(page *database.BookPage, raw json.RawMessage) string {
 // page is appended at the end of the target section and the source/target
 // section photo pools are reconciled atomically.
 func (h *BooksHandler) UpdatePage(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	bw := getBookWriter(r, w)
 	if bw == nil {
 		return
@@ -1039,6 +1159,10 @@ func (h *BooksHandler) UpdatePage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	clearExcessSlotsIfShrunk(r, bw, id, req, oldSlotCount)
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionBookPageUpdate, audit.EntityBook, page.BookID,
+		map[string]any{"page_id": id, "format": page.Format, "section_id": page.SectionID},
+	)
 	respondJSON(w, http.StatusOK, map[string]string{"id": id})
 }
 
@@ -1109,6 +1233,10 @@ func handleCrossSectionMove(
 
 // DeletePage handles DELETE /api/v1/pages/:id and deletes a page.
 func (h *BooksHandler) DeletePage(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	bw := getBookWriter(r, w)
 	if bw == nil {
 		return
@@ -1118,11 +1246,21 @@ func (h *BooksHandler) DeletePage(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to delete page")
 		return
 	}
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionBookPageDelete, audit.EntityBook, "",
+		map[string]any{"page_id": id},
+	)
 	respondJSON(w, http.StatusOK, map[string]bool{"deleted": true})
 }
 
 // ReorderPages handles PUT /api/v1/books/:id/pages/reorder and reorders pages in a book.
+//
+//nolint:dupl // mirrors ReorderChapters/ReorderSections on different resources.
 func (h *BooksHandler) ReorderPages(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	bw := getBookWriter(r, w)
 	if bw == nil {
 		return
@@ -1139,6 +1277,10 @@ func (h *BooksHandler) ReorderPages(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to reorder pages")
 		return
 	}
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionBookPageReorder, audit.EntityBook, bookID,
+		map[string]any{"count": len(req.PageIDs)},
+	)
 	respondJSON(w, http.StatusOK, map[string]bool{"reordered": true})
 }
 
@@ -1177,6 +1319,10 @@ func (r assignSlotRequest) validate() string {
 // AssignSlot handles PUT /api/v1/pages/:id/slots/:index and assigns a photo,
 // text content, or captions-slot marker to a page slot.
 func (h *BooksHandler) AssignSlot(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	bw := getBookWriter(r, w)
 	if bw == nil {
 		return
@@ -1199,6 +1345,13 @@ func (h *BooksHandler) AssignSlot(w http.ResponseWriter, r *http.Request) {
 	if !dispatchSlotAssign(r, w, bw, pageID, slotIndex, req) {
 		return
 	}
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionBookSlotAssign, audit.EntityBook, "",
+		map[string]any{
+			"page_id":    pageID,
+			"slot_index": slotIndex,
+		},
+	)
 	respondJSON(w, http.StatusOK, map[string]bool{"assigned": true})
 }
 
@@ -1263,6 +1416,10 @@ func dispatchContentsAssign(
 
 // SwapSlots handles POST /api/v1/pages/:id/slots/swap and swaps two page slots atomically.
 func (h *BooksHandler) SwapSlots(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	bw := getBookWriter(r, w)
 	if bw == nil {
 		return
@@ -1284,6 +1441,14 @@ func (h *BooksHandler) SwapSlots(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to swap slots")
 		return
 	}
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionBookSlotSwap, audit.EntityBook, "",
+		map[string]any{
+			"page_id": pageID,
+			"slot_a":  req.SlotA,
+			"slot_b":  req.SlotB,
+		},
+	)
 	respondJSON(w, http.StatusOK, map[string]bool{"swapped": true})
 }
 
@@ -1304,6 +1469,10 @@ func validateCropParams(cropX, cropY float64, cropScalePtr *float64) (float64, s
 // UpdateSlotCrop handles PUT /api/v1/pages/:id/slots/:index/crop
 // and updates the crop position and scale for a page slot.
 func (h *BooksHandler) UpdateSlotCrop(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	bw := getBookWriter(r, w)
 	if bw == nil {
 		return
@@ -1332,11 +1501,22 @@ func (h *BooksHandler) UpdateSlotCrop(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to update slot crop")
 		return
 	}
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionBookSlotCrop, audit.EntityBook, "",
+		map[string]any{
+			"page_id":    pageID,
+			"slot_index": slotIndex,
+		},
+	)
 	respondJSON(w, http.StatusOK, map[string]bool{"updated": true})
 }
 
 // ClearSlot handles DELETE /api/v1/pages/:id/slots/:index and clears a page slot.
 func (h *BooksHandler) ClearSlot(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	bw := getBookWriter(r, w)
 	if bw == nil {
 		return
@@ -1351,6 +1531,13 @@ func (h *BooksHandler) ClearSlot(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to clear slot")
 		return
 	}
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionBookSlotClear, audit.EntityBook, "",
+		map[string]any{
+			"page_id":    pageID,
+			"slot_index": slotIndex,
+		},
+	)
 	respondJSON(w, http.StatusOK, map[string]bool{"cleared": true})
 }
 
@@ -1508,6 +1695,10 @@ func parseAutoLayoutFormats(preferFormats []string) (map[string]bool, string) {
 // AutoLayout handles POST /api/v1/books/{id}/sections/{sectionId}/auto-layout
 // and generates pages with optimal format choices based on photo orientations.
 func (h *BooksHandler) AutoLayout(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	pp := middleware.MustGetPhotoPrism(r.Context(), w)
 	if pp == nil {
 		return
@@ -1549,6 +1740,14 @@ func (h *BooksHandler) AutoLayout(w http.ResponseWriter, r *http.Request) {
 	// Run layout algorithm and create pages.
 	specs := computeAutoLayout(landscapes, portraits, allowedFormats, req.MaxPages)
 	result := createAutoLayoutPages(r, bw, bookID, sectionID, specs)
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionBookAutoLayout, audit.EntityBook, bookID,
+		map[string]any{
+			"section_id":    sectionID,
+			"pages_created": result.PagesCreated,
+			"photos_placed": result.PhotosPlaced,
+		},
+	)
 	respondJSON(w, http.StatusOK, result)
 }
 

@@ -50,3 +50,20 @@ product decision rather than a guess from the implementer.
   now revokes everything; for the self path we want to keep the caller
   logged in but drop the rest, which needs a slightly different shape
   on `SessionManager.DeleteSessionsForUser` (skip-by-ID parameter).
+
+## Authorization sweep — 2026-05-23
+
+Notes left by [task-5588be0f](docs/specs/task-5588be0f-9cb9-4b7d-a626-a6bd544f153d.md).
+The sweep itself enforced HasWriteAccess on every mutating route and
+filled in the audit-log gaps it found; the items below are
+documentation / follow-up that the dedicated API doc task should pick
+up.
+
+- [ ] **`docs/API.md` is missing the new audit actions.** The sweep
+  introduced `face_compute`, `process_sync_cache`, `process_build_thumbs`,
+  `upload_job_cancel`, `book_export_cancel`, the `book_chapter_*` /
+  `book_section_*` / `book_page_*` / `book_slot_*` / `book_auto_layout`
+  family, `text_check_save`, and `text_version_restore`. The frontend
+  i18n labels in `web/src/i18n/locales/*/pages.json` need matching
+  entries so the audit-log viewer renders human-readable verbs instead
+  of raw action strings.

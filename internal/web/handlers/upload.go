@@ -72,6 +72,10 @@ func saveUploadedFiles(files []*multipart.FileHeader, tempDir string) ([]string,
 
 // Upload handles multipart file uploads.
 func (h *UploadHandler) Upload(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	r.Body = http.MaxBytesReader(w, r.Body, constants.MaxUploadSize)
 	if err := r.ParseMultipartForm(constants.MaxUploadSize); err != nil {
 		respondError(w, http.StatusBadRequest, "failed to parse multipart form")
@@ -158,7 +162,13 @@ func parseUploadJobOptions(r *http.Request) (*UploadJobOptions, error) {
 }
 
 // StartJob starts a background upload job.
+//
+//nolint:funlen // straight-line validation + multipart parse + job dispatch + audit.
 func (h *UploadHandler) StartJob(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	if active := h.jobManager.GetActiveJob(); active != nil {
 		if active.Status == JobStatusRunning || active.Status == JobStatusPending {
 			respondError(w, http.StatusConflict, "an upload job is already running")
@@ -240,6 +250,10 @@ func (h *UploadHandler) GetJobEvents(w http.ResponseWriter, r *http.Request) {
 
 // CancelJob cancels an upload job.
 func (h *UploadHandler) CancelJob(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	jobID := chi.URLParam(r, "jobId")
 	if jobID == "" {
 		respondError(w, http.StatusBadRequest, "missing job ID")
@@ -253,5 +267,8 @@ func (h *UploadHandler) CancelJob(w http.ResponseWriter, r *http.Request) {
 	}
 
 	job.Cancel()
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionUploadJobCancel, audit.EntityProcessJob, jobID, nil,
+	)
 	respondJSON(w, http.StatusOK, map[string]bool{"cancelled": true})
 }

@@ -355,3 +355,32 @@ func TestProcessJobResult_JSON(t *testing.T) {
 		t.Errorf("expected total_new_faces 120, got %d", parsed.TotalNewFaces)
 	}
 }
+
+// TestProcessHandler_RoleGating asserts that the process job mutating
+// endpoints reject a viewer-role session with 403. The check runs before
+// any DB / PhotoPrism wiring, so a bare handler is enough.
+func TestProcessHandler_RoleGating(t *testing.T) {
+	h := NewProcessHandler(testConfig(), nil, nil, nil, nil)
+	cases := []struct {
+		name string
+		fn   http.HandlerFunc
+		req  *http.Request
+	}{
+		{"Start", h.Start,
+			httptest.NewRequestWithContext(context.Background(), "POST", "/process", bytes.NewBufferString(`{}`))},
+		{"Cancel", h.Cancel,
+			httptest.NewRequestWithContext(context.Background(), "DELETE", "/process/x", nil)},
+		{"SyncCache", h.SyncCache,
+			httptest.NewRequestWithContext(context.Background(), "POST", "/process/sync-cache", nil)},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx := middleware.SetSessionInContext(tc.req.Context(), &middleware.Session{Role: "viewer"})
+			rec := httptest.NewRecorder()
+			tc.fn(rec, tc.req.WithContext(ctx))
+			if rec.Code != http.StatusForbidden {
+				t.Fatalf("status = %d, want 403 — viewer must not mutate", rec.Code)
+			}
+		})
+	}
+}

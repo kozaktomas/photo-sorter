@@ -175,7 +175,13 @@ type ProcessStartRequest struct {
 }
 
 // Start starts a new processing job.
+//
+//nolint:funlen // straight-line orchestration of validation + audit + job dispatch.
 func (h *ProcessHandler) Start(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	// Validate PostgreSQL is configured.
 	if !database.IsInitialized() {
 		respondError(w, http.StatusBadRequest, "DATABASE_URL is not configured")
@@ -259,6 +265,10 @@ func (h *ProcessHandler) Events(w http.ResponseWriter, r *http.Request) {
 
 // Cancel cancels a process job.
 func (h *ProcessHandler) Cancel(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	jobID := chi.URLParam(r, "jobId")
 	if jobID == "" {
 		respondError(w, http.StatusBadRequest, "missing job ID")
@@ -800,7 +810,13 @@ func collectSyncPhotoUIDs(
 // without recomputing embeddings. This is useful when faces are assigned/unassigned.
 // directly in PhotoPrism's native UI. Also cleans up data for photos that have.
 // been deleted or archived in PhotoPrism.
+//
+//nolint:funlen // worker pool orchestration with progress + audit logging.
 func (h *ProcessHandler) SyncCache(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	ctx := r.Context()
 	startTime := time.Now()
 
@@ -850,6 +866,14 @@ func (h *ProcessHandler) SyncCache(w http.ResponseWriter, r *http.Request) {
 		h.statsHandler.InvalidateCache()
 	}
 
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionProcessSyncCache, audit.EntityProcessJob, "",
+		map[string]any{
+			"photos_scanned": len(photoUIDs),
+			"faces_updated":  int(facesUpdated),
+			"photos_deleted": int(photosDeleted),
+		},
+	)
 	respondJSON(w, http.StatusOK, SyncCacheResponse{
 		Success: true, PhotosScanned: len(photoUIDs),
 		FacesUpdated: int(facesUpdated), PhotosDeleted: int(photosDeleted),

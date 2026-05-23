@@ -1937,3 +1937,88 @@ func TestComputeAutoLayout_EmptyInput(t *testing.T) {
 		t.Fatalf("expected 0 pages, got %d", len(specs))
 	}
 }
+
+// withViewerSession decorates a request with a session whose role is "viewer".
+// Used by the role-gating tests to assert that mutating handlers return 403
+// without a write-capable session.
+func withViewerSession(r *http.Request) *http.Request {
+	ctx := middleware.SetSessionInContext(r.Context(), &middleware.Session{Role: "viewer"})
+	return r.WithContext(ctx)
+}
+
+// TestBooksHandler_RoleGating sweeps every mutating endpoint on the books
+// surface (book CRUD, chapter/section/page/slot CUD) with a viewer-role
+// session and asserts a 403. This is the regression net for the auth
+// completeness sweep: any new mutating book endpoint added in the future
+// will fail this test until it calls requireWriteRole(r).
+func TestBooksHandler_RoleGating(t *testing.T) {
+	_, handler := setupBookTest(t)
+	bodyJSON := bytes.NewBufferString(`{"title":"x"}`)
+	emptyJSON := func() *bytes.Buffer { return bytes.NewBufferString("{}") }
+	cases := []struct {
+		name string
+		fn   http.HandlerFunc
+		req  *http.Request
+	}{
+		{"CreateBook", handler.CreateBook,
+			httptest.NewRequestWithContext(context.Background(), "POST", "/books", bodyJSON)},
+		{"UpdateBook", handler.UpdateBook,
+			httptest.NewRequestWithContext(context.Background(), "PUT", "/books/b1", emptyJSON())},
+		{"DeleteBook", handler.DeleteBook,
+			httptest.NewRequestWithContext(context.Background(), "DELETE", "/books/b1", nil)},
+		{"CreateChapter", handler.CreateChapter,
+			httptest.NewRequestWithContext(context.Background(), "POST", "/books/b1/chapters", emptyJSON())},
+		{"UpdateChapter", handler.UpdateChapter,
+			httptest.NewRequestWithContext(context.Background(), "PUT", "/chapters/c1", emptyJSON())},
+		{"DeleteChapter", handler.DeleteChapter,
+			httptest.NewRequestWithContext(context.Background(), "DELETE", "/chapters/c1", nil)},
+		{"ReorderChapters", handler.ReorderChapters,
+			httptest.NewRequestWithContext(context.Background(), "PUT", "/books/b1/chapters/reorder", emptyJSON())},
+		{"CreateSection", handler.CreateSection,
+			httptest.NewRequestWithContext(context.Background(), "POST", "/books/b1/sections", emptyJSON())},
+		{"UpdateSection", handler.UpdateSection,
+			httptest.NewRequestWithContext(context.Background(), "PUT", "/sections/s1", emptyJSON())},
+		{"DeleteSection", handler.DeleteSection,
+			httptest.NewRequestWithContext(context.Background(), "DELETE", "/sections/s1", nil)},
+		{"ReorderSections", handler.ReorderSections,
+			httptest.NewRequestWithContext(context.Background(), "PUT", "/books/b1/sections/reorder", emptyJSON())},
+		{"AddSectionPhotos", handler.AddSectionPhotos,
+			httptest.NewRequestWithContext(context.Background(), "POST", "/sections/s1/photos", emptyJSON())},
+		{"RemoveSectionPhotos", handler.RemoveSectionPhotos,
+			httptest.NewRequestWithContext(context.Background(), "DELETE", "/sections/s1/photos", emptyJSON())},
+		{"UpdatePhotoDescription", handler.UpdatePhotoDescription,
+			httptest.NewRequestWithContext(context.Background(), "PUT", "/sections/s1/photos/p1/description", emptyJSON())},
+		{"CreatePage", handler.CreatePage,
+			httptest.NewRequestWithContext(context.Background(), "POST", "/books/b1/pages", emptyJSON())},
+		{"UpdatePage", handler.UpdatePage,
+			httptest.NewRequestWithContext(context.Background(), "PUT", "/pages/p1", emptyJSON())},
+		{"DeletePage", handler.DeletePage,
+			httptest.NewRequestWithContext(context.Background(), "DELETE", "/pages/p1", nil)},
+		{"ReorderPages", handler.ReorderPages,
+			httptest.NewRequestWithContext(context.Background(), "PUT", "/books/b1/pages/reorder", emptyJSON())},
+		{"AssignSlot", handler.AssignSlot,
+			httptest.NewRequestWithContext(context.Background(), "PUT", "/pages/p1/slots/0", emptyJSON())},
+		{"SwapSlots", handler.SwapSlots,
+			httptest.NewRequestWithContext(context.Background(), "POST", "/pages/p1/slots/swap", emptyJSON())},
+		{"UpdateSlotCrop", handler.UpdateSlotCrop,
+			httptest.NewRequestWithContext(context.Background(), "PUT", "/pages/p1/slots/0/crop", emptyJSON())},
+		{"ClearSlot", handler.ClearSlot,
+			httptest.NewRequestWithContext(context.Background(), "DELETE", "/pages/p1/slots/0", nil)},
+		{"AutoLayout", handler.AutoLayout,
+			httptest.NewRequestWithContext(context.Background(), "POST", "/books/b1/sections/s1/auto-layout", emptyJSON())},
+		{"StartExportJob", handler.StartExportJob,
+			httptest.NewRequestWithContext(context.Background(), "POST", "/books/b1/export-pdf/job", nil)},
+		{"CancelExportJob", handler.CancelExportJob,
+			httptest.NewRequestWithContext(context.Background(), "DELETE", "/book-export/j1", nil)},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			tc.fn(rec, withViewerSession(tc.req))
+			if rec.Code != http.StatusForbidden {
+				t.Fatalf("status = %d, want 403 (forbidden) — viewer must not mutate", rec.Code)
+			}
+		})
+	}
+}

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/kozaktomas/photo-sorter/internal/audit"
 	"github.com/kozaktomas/photo-sorter/internal/constants"
 	"github.com/kozaktomas/photo-sorter/internal/database"
 	"github.com/kozaktomas/photo-sorter/internal/imgconvert"
@@ -62,8 +63,23 @@ func (h *ProcessHandler) BuildThumbs(w http.ResponseWriter, r *http.Request) {
 	job := newBuildThumbsJob(req, sizes)
 	h.jobManager.SetActiveJob(job)
 
+	//nolint:gosec // G118 - background job outlives HTTP request; runBuildThumbsJob owns its own context.
 	go h.runBuildThumbsJob(job, req.PhotoUID)
 
+	auditMeta := map[string]any{
+		"job_id":       job.ID,
+		"concurrency":  job.Options.Concurrency,
+		"sizes":        job.Options.Sizes,
+		"only_missing": job.Options.OnlyMissing,
+		"limit":        job.Options.Limit,
+	}
+	if req.PhotoUID != "" {
+		auditMeta["photo_uid"] = req.PhotoUID
+	}
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionProcessBuildThumb, audit.EntityProcessJob, job.ID,
+		auditMeta,
+	)
 	respondJSON(w, http.StatusAccepted, map[string]string{
 		"job_id": job.ID,
 		"status": string(JobStatusPending),

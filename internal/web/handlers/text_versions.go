@@ -6,6 +6,7 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/kozaktomas/photo-sorter/internal/audit"
 	"github.com/kozaktomas/photo-sorter/internal/database"
 )
 
@@ -70,6 +71,10 @@ func (h *TextVersionsHandler) List(w http.ResponseWriter, r *http.Request) {
 // Restore handles POST /api/v1/text-versions/:id/restore.
 // It saves the current text as a version, then updates the current text to the restored version's content.
 func (h *TextVersionsHandler) Restore(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	store := getTextVersionStore(w, r)
 	if store == nil {
 		return
@@ -97,6 +102,10 @@ func (h *TextVersionsHandler) Restore(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	audit.FromContext(r.Context()).Log(
+		r.Context(), audit.ActionTextVersionRestor, version.SourceType, version.SourceID,
+		map[string]any{"version_id": id, "field": version.Field},
+	)
 	respondJSON(w, http.StatusOK, map[string]string{"content": version.Content})
 }
 

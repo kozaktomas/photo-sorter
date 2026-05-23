@@ -59,7 +59,13 @@ type StartRequest struct {
 }
 
 // Start starts a new sort job.
+//
+//nolint:funlen // straight-line validation + job dispatch + audit logging.
 func (h *SortHandler) Start(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	var req StartRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
@@ -163,6 +169,10 @@ func (h *SortHandler) Events(w http.ResponseWriter, r *http.Request) {
 
 // Cancel cancels a sort job.
 func (h *SortHandler) Cancel(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	jobID := chi.URLParam(r, "jobId")
 	if jobID == "" {
 		respondError(w, http.StatusBadRequest, "missing job ID")

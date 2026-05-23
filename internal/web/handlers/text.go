@@ -14,6 +14,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/kozaktomas/photo-sorter/internal/ai"
+	"github.com/kozaktomas/photo-sorter/internal/audit"
 	"github.com/kozaktomas/photo-sorter/internal/config"
 	"github.com/kozaktomas/photo-sorter/internal/database"
 )
@@ -255,7 +256,13 @@ func (r checkAndSaveRequest) valid() bool {
 
 // CheckAndSave handles POST /api/v1/text/check-and-save.
 // Runs the AI text check and persists the result to the database.
+//
+//nolint:funlen // straight-line orchestration of validation + cache lookup + persist + audit.
 func (h *TextHandler) CheckAndSave(w http.ResponseWriter, r *http.Request) {
+	if err := requireWriteRole(r); err != nil {
+		respondError(w, http.StatusForbidden, "forbidden")
+		return
+	}
 	if h.config.OpenAI.Token == "" {
 		respondError(w, http.StatusServiceUnavailable, "OpenAI not configured")
 		return
@@ -301,6 +308,14 @@ func (h *TextHandler) CheckAndSave(w http.ResponseWriter, r *http.Request) {
 		checkedAt = cr.checkedAt
 	}
 
+	if !fromDB {
+		// Only log when we actually wrote a new row. DB hits would
+		// otherwise spam the audit trail with no-op entries.
+		audit.FromContext(r.Context()).Log(
+			r.Context(), audit.ActionTextCheckSave, req.SourceType, req.SourceID,
+			map[string]any{"field": req.Field, "status": status},
+		)
+	}
 	respondJSON(w, http.StatusOK, map[string]any{
 		"corrected_text":    cr.correctedText,
 		"readability_score": cr.readabilityScore,
