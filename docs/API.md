@@ -8,6 +8,8 @@ This document describes all REST API endpoints for the photo-sorter web server. 
 
 - [Authentication](#authentication)
 - [Albums](#albums)
+- [Smart Albums (Saved Photo Searches)](#smart-albums-saved-photo-searches)
+- [Public Share Links](#public-share-links)
 - [Photos](#photos)
 - [Labels](#labels)
 - [Subjects (People)](#subjects-people)
@@ -16,14 +18,30 @@ This document describes all REST API endpoints for the photo-sorter web server. 
 - [Process (Embeddings & Faces)](#process-embeddings--faces)
 - [Upload](#upload)
 - [Users (Admin) / Self-service](#users-admin--self-service)
+- [Audit Log (Admin)](#audit-log-admin)
 - [Configuration](#configuration)
 - [Statistics](#statistics)
 - [Health Check](#health-check)
 - [Error Responses](#error-responses)
 - [Real-Time Updates (SSE)](#real-time-updates-sse)
+- [Photo Books](#photo-books)
 - [Text AI](#text-ai)
 - [Text Version History](#text-version-history)
 - [MCP Server](#mcp-server)
+
+## Auth model — at a glance
+
+| Mechanism | Endpoints | Notes |
+|-----------|-----------|-------|
+| Anonymous (no cookie) | `/health`, `/public/share/{slug}/*` | Public share endpoints layer their own per-share `share_<slug>` HttpOnly cookie set by `POST /public/share/{slug}/verify`; the verify endpoint is rate-limited to 10 attempts per (IP, slug) per 5 minutes (`429` + `Retry-After`). |
+| Authenticated (any role) | most `/api/v1/*` reads, `/me`, `/me/password`, smart-album listing, photo similarity, text AI | Requires the `session` cookie. |
+| Write access (`admin` or `editor`) | every mutating CRUD endpoint outside the admin-only set (albums, photos, labels, books, smart albums, share-link create/revoke, EXIF/edits, ...) | `auth.HasWriteAccess` — `viewer` gets `403 forbidden`. |
+| Admin only | `/users/*`, `/audit-log`, `/photos/batch/purge`, `/process/build-thumbs` | `middleware.RequireRole(auth.RoleAdmin)` — non-admins get `403 forbidden`. The last admin cannot be deleted, disabled, or demoted (`400 last admin`). |
+
+Long-running endpoints — every SSE stream, every `POST /upload*`, and
+the synchronous PDF export — are mounted on a separate Chi sub-group
+that lifts the 5-minute Chi timeout + 5-minute `http.Server.WriteTimeout`.
+See [Real-Time Updates (SSE)](#real-time-updates-sse) for the full list.
 
 ---
 
@@ -129,10 +147,12 @@ GET /albums
 **Query Parameters:**
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `count` | int | 100 | Number of albums to return |
+| `q` | string | — | Substring search against album title / slug |
+| `type` | string | `album` | Filter on the native `type` column (`album`, `folder`, `moment`, `month`, `state`) |
+| `favorite` | bool | — | `true`/`false` to filter |
+| `sort` | string | — | Sort key (`name`, `-name`, `count`, `-count`, `created`, `-created`) |
+| `count` | int | 100 | Number of albums to return (alias: `limit`; `limit` wins when both are present) |
 | `offset` | int | 0 | Pagination offset |
-| `order` | string | - | Sort order |
-| `q` | string | - | Search query |
 
 **Response (200):**
 ```json
@@ -142,14 +162,21 @@ GET /albums
     "title": "Vacation 2024",
     "description": "Summer trip to Italy",
     "photo_count": 150,
-    "thumb": "abc123hash",
+    "thumb": "pq8covercarrying32",
     "type": "album",
     "favorite": false,
+    "location": "Toscana, Italia",
+    "category": "travel",
+    "notes": "",
+    "filter": "",
+    "order": "",
     "created_at": "2024-01-10T08:00:00Z",
     "updated_at": "2024-01-12T15:30:00Z"
   }
 ]
 ```
+
+`thumb` is the cover photo UID (not a file hash) — the frontend may compose `/photos/{thumb}/thumb/{size}` to render the cover. `filter` is the raw smart-album DSL string preserved from migrated PhotoPrism albums; it is informational only.
 
 ### Get Album
 
@@ -185,12 +212,27 @@ GET /albums/{uid}
 POST /albums
 ```
 
+Requires write access (admin or editor). `title` is required; every other
+field is optional and defaults to the underlying column's zero value.
+
 **Request:**
 ```json
 {
-  "title": "New Album Name"
+  "title": "New Album Name",
+  "description": "Optional",
+  "type": "album",
+  "favorite": false,
+  "private": false,
+  "cover_photo_uid": "",
+  "location": "",
+  "category": "",
+  "notes": "",
+  "filter": "",
+  "order": ""
 }
 ```
+
+**Validation:** `notes` is capped at 8 KiB.
 
 **Response (201):**
 ```json
@@ -202,9 +244,48 @@ POST /albums
   "thumb": "",
   "type": "album",
   "favorite": false,
+  "location": "",
+  "category": "",
+  "notes": "",
+  "filter": "",
+  "order": "",
   "created_at": "2024-01-15T10:00:00Z",
   "updated_at": "2024-01-15T10:00:00Z"
 }
+```
+
+### Update Album
+
+```
+PUT /albums/{uid}
+```
+
+Partial update of an album. Pointer-encoded body — keys omitted from the
+JSON are left untouched, while explicit zero values (empty strings,
+`false`) are honored. Setting a non-empty `title` re-slugs the row. Same
+field set as `POST /albums` (excluding `title`, which is the only
+required field on create).
+
+Requires write access. `403` for the `viewer` role; `404` when the album
+does not exist; `400` when `notes` exceeds 8 KiB.
+
+**Response (200):** Updated album object.
+
+### Delete Album
+
+```
+DELETE /albums/{uid}
+```
+
+Hard-deletes an album row. The matching `album_photos` rows are removed
+by `ON DELETE CASCADE`; the photos themselves are untouched. Share links
+for the album are also cascade-deleted.
+
+Requires write access. `404` when the album does not exist.
+
+**Response (200):**
+```json
+{ "status": "deleted" }
 ```
 
 ### Get Album Photos
@@ -921,6 +1002,57 @@ Returns the list of albums that contain the given photo.
 ]
 ```
 
+### Get Photo Book Memberships
+
+```
+GET /photos/{uid}/books
+```
+
+Returns the list of book sections that reference the photo (a photo can
+live in many books and many sections per book).
+
+**Response (200):**
+```json
+[
+  {
+    "book_id": "9797de58-a0ec-4330-8173-b7ce5b198f33",
+    "book_title": "Veselice 2024",
+    "section_id": "8b7c-...-...",
+    "section_title": "Léto"
+  }
+]
+```
+
+### Estimate Photo Era
+
+```
+GET /photos/{uid}/estimate-era
+```
+
+Uses CLIP image embeddings against the precomputed era centroids
+(`internal/database/postgres/era_embeddings.go`) to estimate when a photo
+was taken. Useful for backfilling missing dates on scanned analog photos.
+
+**Response (200):**
+```json
+{
+  "photo_uid": "pq8abc123",
+  "best_match": {
+    "era": "1990s",
+    "distance": 0.21,
+    "confidence": 0.79
+  },
+  "top_matches": [
+    { "era": "1990s", "distance": 0.21, "confidence": 0.79 },
+    { "era": "2000s", "distance": 0.27, "confidence": 0.73 }
+  ]
+}
+```
+
+**Errors:**
+- `404` when the photo has no stored CLIP embedding.
+- `503` when era centroids have not been computed yet (`cache compute-eras`).
+
 ### Batch Add Labels to Photos
 
 ```
@@ -1191,6 +1323,103 @@ POST /photos/similar/collection
     }
   ],
   "count": 25
+}
+```
+
+### Find Near-Duplicates
+
+Find groups of near-duplicate photos via CLIP embedding similarity.
+Either across the whole library (no `album_uid`) or limited to one
+album.
+
+```
+POST /photos/duplicates
+```
+
+**Request:**
+```json
+{
+  "album_uid": "aq8i4k2l3m9n0o1p",
+  "threshold": 0.05,
+  "limit": 50
+}
+```
+
+| Field | Type | Required | Default | Description |
+|-------|------|----------|---------|-------------|
+| `album_uid` | string | No | — | Restrict the scan to one album; omit for library-wide |
+| `threshold` | float | No | `DefaultDuplicateThreshold` | Max cosine distance to count as a duplicate |
+| `limit` | int | No | `DefaultDuplicateLimit` | Max number of duplicate groups to return |
+
+The handler walks every photo's CLIP embedding, queries the pgvector
+HNSW index for neighbours within `threshold`, and clusters the matches
+via union-find. Groups are sorted by size (largest first) and ties are
+broken by lowest average intra-group distance.
+
+**Response (200):**
+```json
+{
+  "total_photos_scanned": 18342,
+  "total_groups": 17,
+  "total_duplicates": 42,
+  "duplicate_groups": [
+    {
+      "photo_count": 3,
+      "avg_distance": 0.02,
+      "photos": [
+        { "photo_uid": "pq8aaa", "distance": 0.02 },
+        { "photo_uid": "pq8bbb", "distance": 0.02 },
+        { "photo_uid": "pq8ccc", "distance": 0.02 }
+      ]
+    }
+  ]
+}
+```
+
+### Suggest Album Completion
+
+Find photos that probably belong in existing albums but are not yet
+members. The handler builds a per-album CLIP centroid (one `AVG()`
+round-trip) and searches the pgvector index for nearest neighbours
+outside the album.
+
+```
+POST /photos/suggest-albums
+```
+
+**Request:**
+```json
+{
+  "threshold": 0.7,
+  "top_k": 5
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `threshold` | float | No | Minimum cosine similarity to suggest (0-1). Defaults to `DefaultSuggestAlbumThreshold` |
+| `top_k` | int | No | Max suggested photos per album. Defaults to `DefaultSuggestAlbumTopK` |
+
+Only albums with at least `MinAlbumPhotosForCentroid` members are
+considered. Suggestions are sorted descending by the number of matched
+photos.
+
+**Response (200):**
+```json
+{
+  "albums_analyzed": 12,
+  "photos_analyzed": 38,
+  "skipped": 1,
+  "suggestions": [
+    {
+      "album_uid": "aq8sun",
+      "album_title": "Sunsets",
+      "photos": [
+        { "photo_uid": "pq8new1", "similarity": 0.82 },
+        { "photo_uid": "pq8new2", "similarity": 0.79 }
+      ]
+    }
+  ]
 }
 ```
 
@@ -2059,17 +2288,18 @@ GET /upload/{jobId}/events
 **SSE Event Types:**
 | Event | Data | Description |
 |-------|------|-------------|
-| `started` | - | Job started |
+| `started` | — | Job started |
 | `upload_progress` | `{current, total, filename}` | Per-file upload progress |
-| `processing_upload` | - | Native pipeline processing phase (hash, EXIF, dedup, originals write, thumbnails) |
-| `detecting_photos` | - | Detecting new photos via album diff |
+| `processing_upload` | — | Native pipeline processing phase (hash, EXIF, dedup, originals write, thumbnails) |
+| `detecting_photos` | — | Album snapshot + diff to find newly inserted UIDs |
 | `applying_labels` | `{current, total}` | Applying labels to new photos |
-| `applying_albums` | - | Adding to additional albums |
-| `adding_to_book` | - | Adding to book section |
+| `applying_albums` | — | Adding to additional albums |
+| `adding_to_book` | — | Adding to book section |
 | `process_progress` | `{processed, total}` | Embeddings/faces progress |
+| `near_duplicates` | `{ photo_uid, candidates: [...] }` | Emitted per file when the upload pipeline finds a near-duplicate (pHash hamming and/or CLIP embedding within thresholds). The frontend collects these and shows the conflict resolution modal. |
 | `completed` | `UploadJobResult` | Job completed successfully |
 | `job_error` | `{message}` | Job failed |
-| `cancelled` | - | Job was cancelled |
+| `cancelled` | — | Job was cancelled |
 
 ### Cancel Upload Job
 
@@ -2114,9 +2344,11 @@ GET /me
   "role": "admin",
   "disabled": false,
   "created_at": "2026-01-01T00:00:00Z",
-  "updated_at": "2026-01-01T00:00:00Z"
+  "last_login_at": "2026-05-22T18:14:00Z"
 }
 ```
+
+`last_login_at` is `null` for accounts that have never logged in.
 
 #### Change Own Password
 
@@ -2145,7 +2377,10 @@ All endpoints below require `RequireRole("admin")`.
 GET /users
 ```
 
-**Response (200):** `UserResponse[]`.
+**Response (200):** Wrapped in `{ "users": UserResponse[] }`. Sorted by
+username ascending. Each `UserResponse` is `{ uid, username,
+display_name, email, role, disabled, created_at, last_login_at }`;
+`last_login_at` is `null` for accounts that have never logged in.
 
 #### Create User
 
@@ -2179,8 +2414,22 @@ DELETE /users/{uid}
 ```
 
 `PUT` accepts any subset of `display_name`, `email`, `role` (username is
-immutable — supplying a different username returns `400`). `DELETE`
-returns `409` when the target is the last admin.
+immutable — supplying a different username returns `400`; supplying an
+invalid role returns `400`). Demoting the only admin returns `400 last
+admin`. Successful role changes revoke every active session for the
+target so a now-demoted cookie cannot keep operating with the old
+privileges.
+
+`DELETE` refuses to delete the caller's own account (`400 cannot delete
+yourself`) and refuses to remove the last admin (`400 last admin`).
+Successful deletes also sweep the target's sessions.
+
+**Responses:**
+
+- `GET` → single `UserResponse` (same shape as the entries inside the
+  `List` envelope; `last_login_at` is nullable).
+- `PUT` → updated `UserResponse`.
+- `DELETE` → `{ "success": true }`.
 
 #### Reset Another User's Password / Disable
 
@@ -2194,8 +2443,17 @@ Both endpoints take a single-field JSON body:
 - `POST /users/{uid}/password` → `{ "password": "new-password" }`
 - `POST /users/{uid}/disable` → `{ "disabled": true }`
 
-A disabled user keeps their data but cannot log in. Disabling the last
-admin returns `409`.
+A disabled user keeps their data but cannot log in. Both admin-side
+mutations revoke every active session belonging to the target (so a
+rotated password / disabled account / role demotion cannot be ridden
+out on the previously-issued cookie). Disabling the last admin returns
+`400 last admin`.
+
+**Responses:**
+
+- `POST /users/{uid}/password` → `{ "success": true }`. Validates the new
+  password is at least `auth.MinPasswordLength` characters.
+- `POST /users/{uid}/disable` → `{ "success": true }`.
 
 ---
 
@@ -2267,16 +2525,24 @@ or when the original user has since been deleted (FK is `ON DELETE SET NULL`).
   `album_photos_add`, `album_photos_remove`
 - **label**: `label_update`, `label_delete`
 - **subject**: `subject_update`
-- **face**: `face_apply`
+- **face**: `face_apply`, `face_outlier_unassign`, `face_compute`
 - **user**: `user_create`, `user_update`, `user_disable`, `user_enable`,
   `user_delete`, `user_password_reset`
-- **book**: `book_create`, `book_update`, `book_delete`, `book_export_pdf`
+- **book**: `book_create`, `book_update`, `book_delete`,
+  `book_export_pdf`, `book_export_cancel`
+- **book children**: `book_chapter_{create,update,delete,reorder}`,
+  `book_section_{create,update,delete,reorder}`,
+  `book_section_photo_{add,remove,update}`,
+  `book_page_{create,update,delete,reorder}`,
+  `book_slot_{assign,clear,crop,swap}`, `book_auto_layout`
 - **share_link**: `share_link_create`, `share_link_revoke`,
   `share_link_password_verify`, `share_link_password_failed`
 - **smart_album**: `smart_album_create`, `smart_album_update`,
   `smart_album_delete`
-- **process**: `process_job_start`, `process_job_cancel`,
-  `sort_job_start`, `sort_job_cancel`
+- **process / jobs**: `process_job_start`, `process_job_cancel`,
+  `process_sync_cache`, `process_build_thumbs`,
+  `sort_job_start`, `sort_job_cancel`, `upload_job_cancel`
+- **text**: `text_check_save`, `text_version_restore`
 
 Batch operations record a single row with `metadata.count`, not one row
 per item, so a 10 000-photo bulk archive does not blow up the table.
@@ -2469,9 +2735,14 @@ interface AlbumResponse {
   title: string;
   description: string;
   photo_count: number;
-  thumb: string;          // File hash (not photo UID)
-  type: string;
+  thumb: string;          // Cover photo UID (compose /photos/{thumb}/thumb/{size})
+  type: string;           // "album" | "folder" | "moment" | "month" | "state"
   favorite: boolean;
+  location: string;
+  category: string;
+  notes: string;
+  filter: string;         // Smart-album DSL preserved from PhotoPrism (informational)
+  order: string;
   created_at: string;     // ISO 8601
   updated_at: string;     // ISO 8601
 }
@@ -2484,22 +2755,33 @@ interface PhotoResponse {
   uid: string;
   title: string;
   description: string;
-  taken_at: string;       // ISO 8601
+  taken_at: string;          // ISO 8601 (empty when unknown)
   year: number;
   month: number;
   day: number;
-  hash: string;           // File hash
+  hash: string;              // SHA256 of the primary file (use for /thumb/{size} ETag)
   width: number;
   height: number;
   lat: number;
   lng: number;
-  country: string;        // ISO country code
+  country: string;           // ISO country code
   favorite: boolean;
   private: boolean;
-  type: string;           // "image", "video", etc.
+  type: string;              // "image" | "video"
   original_name: string;
   file_name: string;
   camera_model: string;
+  keywords: string[];        // empty array when no keywords
+  panorama: boolean;
+  scan: boolean;
+  quality: number;
+  time_zone: string;
+  taken_at_offset: number;
+  exif_artist: string;
+  exif_copyright: string;
+  exif_license: string;
+  exif_software: string;
+  edited: boolean;           // true when a photo_edits row exists for this photo
 }
 ```
 
@@ -2872,10 +3154,10 @@ POST /books/{id}/pages
 
 | Field | Type | Required | Default | Description |
 |-------|------|----------|---------|-------------|
-| `format` | string | Yes | - | `4_landscape`, `2l_1p`, `1p_2l`, `2_portrait`, `1_fullscreen` |
-| `section_id` | string | No | null | Section UUID |
+| `format` | string | Yes | - | One of `4_landscape`, `2l_1p`, `1p_2l`, `2_portrait`, `1_fullscreen`, `1_fullbleed` |
+| `section_id` | string | Yes | - | Section UUID (required — pages always live inside a section) |
 | `style` | string | No | `modern` | `modern` or `archival` |
-| `split_position` | float | No | 0.5 | Column split ratio (0.0-1.0) for `2l_1p`/`1p_2l` formats |
+| `split_position` | float | No | 0.5 | Column split ratio (0.2-0.8) for `2l_1p`/`1p_2l` formats. Send `null` to clear |
 
 #### Update Page
 
