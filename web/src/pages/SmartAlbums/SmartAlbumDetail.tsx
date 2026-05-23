@@ -30,9 +30,9 @@ export function SmartAlbumDetailPage() {
   const [album, setAlbum] = useState<SmartAlbum | null>(null);
   const [photos, setPhotos] = useState<Photo[]>([]);
   const [total, setTotal] = useState(0);
-  const [offset, setOffset] = useState(0);
   const [sort, setSort] = useState<string>('');
   const [loading, setLoading] = useState(true);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
@@ -65,13 +65,13 @@ export function SmartAlbumDetailPage() {
     }
   }, [uid, sort]);
 
-  const loadPhotos = useCallback(async () => {
+  const loadFirstPage = useCallback(async () => {
     if (!uid) return;
     setLoading(true);
     try {
       const resp = await getSmartAlbumPhotos(uid, {
         limit: PAGE_SIZE,
-        offset,
+        offset: 0,
         sort: sort || undefined,
       });
       setPhotos(resp.photos);
@@ -81,22 +81,47 @@ export function SmartAlbumDetailPage() {
     } finally {
       setLoading(false);
     }
-  }, [uid, offset, sort]);
+  }, [uid, sort]);
+
+  const loadNextPage = useCallback(async () => {
+    if (!uid) return;
+    setIsLoadingMore(true);
+    try {
+      const resp = await getSmartAlbumPhotos(uid, {
+        limit: PAGE_SIZE,
+        offset: photos.length,
+        sort: sort || undefined,
+      });
+      setPhotos((prev) => [...prev, ...resp.photos]);
+      setTotal(resp.total);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [uid, sort, photos.length]);
 
   useEffect(() => {
     void loadAlbum();
   }, [loadAlbum]);
 
+  // Reset list whenever the smart album or sort changes.
   useEffect(() => {
-    void loadPhotos();
-  }, [loadPhotos]);
+    void loadFirstPage();
+  }, [loadFirstPage]);
+
+  const hasMore = photos.length < total;
+
+  const handleEndReached = useCallback(() => {
+    if (isLoadingMore || loading || !hasMore) return;
+    void loadNextPage();
+  }, [isLoadingMore, loading, hasMore, loadNextPage]);
 
   const handleSubmitEdit = async (name: string, filters: SmartAlbumFilters) => {
     if (!uid) return;
     await updateSmartAlbum(uid, name, filters);
-    setOffset(0);
     await loadAlbum();
-    await loadPhotos();
+    await loadFirstPage();
   };
 
   const handleDelete = async () => {
@@ -124,8 +149,6 @@ export function SmartAlbumDetailPage() {
       </div>
     );
   }
-
-  const hasMore = offset + photos.length < total;
 
   return (
     <div className="space-y-6">
@@ -158,10 +181,7 @@ export function SmartAlbumDetailPage() {
             <SortAsc className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
             <select
               value={sort}
-              onChange={(e) => {
-                setOffset(0);
-                setSort(e.target.value);
-              }}
+              onChange={(e) => setSort(e.target.value)}
               className="pl-9 pr-8 py-2 bg-slate-800 border border-slate-600 rounded-lg text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 appearance-none cursor-pointer"
             >
               <option value="">{t('pages:smartAlbums.sortLabel')}</option>
@@ -262,17 +282,10 @@ export function SmartAlbumDetailPage() {
                     prev.map((p) => (p.uid === photoUid ? { ...p, favorite } : p)),
                   )
                 }
+                onEndReached={handleEndReached}
+                hasMore={hasMore}
+                isLoadingMore={isLoadingMore}
               />
-              {hasMore && (
-                <div className="flex justify-center mt-4">
-                  <Button
-                    variant="ghost"
-                    onClick={() => setOffset(offset + PAGE_SIZE)}
-                  >
-                    {t('common:buttons.loadMore', { defaultValue: 'Load more' })}
-                  </Button>
-                </div>
-              )}
             </>
           )}
         </CardContent>

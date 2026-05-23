@@ -284,29 +284,12 @@ export function PhotosPage() {
                 onFavoriteChanged={(uid, favorite) =>
                   pagination.updatePhotoLocal(uid, { favorite })
                 }
+                onEndReached={pagination.handleLoadMore}
+                hasMore={pagination.hasMore}
+                isLoadingMore={pagination.isLoadingMore}
               />
             </CardContent>
           </Card>
-
-          {/* Load more button */}
-          {pagination.hasMore && pagination.photos.length > 0 && (
-            <div className="flex justify-center">
-              <Button
-                onClick={pagination.handleLoadMore}
-                disabled={pagination.isLoadingMore}
-                variant="secondary"
-              >
-                {pagination.isLoadingMore ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    {t('common:status.loading')}
-                  </>
-                ) : (
-                  t('common:buttons.loadMore')
-                )}
-              </Button>
-            </div>
-          )}
 
           {!pagination.hasMore && pagination.photos.length > 0 && (
             <div className="text-center text-slate-500 text-sm">
