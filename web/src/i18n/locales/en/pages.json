@@ -715,6 +715,8 @@
       "searchResults": "{{count}} of {{total}} texts",
       "keyboardShortcuts": "Keyboard shortcuts",
       "pressForHelp": "Press ? for help",
+      "reorderFailed": "Reorder failed — reverted",
+      "moveFailed": "Move failed — reverted",
       "shortcuts": {
         "globalTitle": "Global",
         "switchTab": "Switch tab",

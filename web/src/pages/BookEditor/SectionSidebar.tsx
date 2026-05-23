@@ -25,6 +25,8 @@ interface Props {
   isPhotoDragging: boolean;
   dragSourceSectionId: string | null;
   overSectionId: string | null;
+  overChapterId: string | null;
+  activeSortableId: string | null;
 }
 
 function SortableItem({ section, isSelected, isDropTarget, onSelect, onDelete, onRename, onMoveToChapter, chapters, placedCount, chapterColor, scrollRef }: {
@@ -41,8 +43,12 @@ function SortableItem({ section, isSelected, isDropTarget, onSelect, onDelete, o
   scrollRef?: (el: HTMLDivElement | null) => void;
 }) {
   const { t } = useTranslation(['common']);
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: `section-${section.id}` });
-  const style = { transform: CSS.Transform.toString(transform), transition };
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: `section-${section.id}` });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : undefined,
+  };
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(section.title);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -152,15 +158,20 @@ function SortableItem({ section, isSelected, isDropTarget, onSelect, onDelete, o
   );
 }
 
-function SortableChapter({ chapter, children, onDelete, onRename, onColorChange }: {
+function SortableChapter({ chapter, children, onDelete, onRename, onColorChange, isSectionDropTarget }: {
   chapter: BookChapter;
   children: React.ReactNode;
   onDelete: () => void;
   onRename: (title: string) => void;
   onColorChange: (color: string) => void;
+  isSectionDropTarget: boolean;
 }) {
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id: `chapter-${chapter.id}` });
-  const style = { transform: CSS.Transform.toString(transform), transition };
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: `chapter-${chapter.id}` });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : undefined,
+  };
   const [collapsed, setCollapsed] = useState(false);
   const [editing, setEditing] = useState(false);
   const [editTitle, setEditTitle] = useState(chapter.title);
@@ -184,10 +195,11 @@ function SortableChapter({ chapter, children, onDelete, onRename, onColorChange 
     setEditing(false);
   };
 
+  const headerHighlight = isSectionDropTarget ? 'ring-2 ring-rose-400 bg-rose-500/15' : '';
   return (
     <div ref={setNodeRef} style={style}>
       <div
-        className="flex items-center gap-1 p-1.5 rounded-md bg-slate-700/50 border border-slate-600"
+        className={`flex items-center gap-1 p-1.5 rounded-md bg-slate-700/50 border border-slate-600 transition-colors ${headerHighlight}`}
         style={chapter.color ? { borderLeftColor: chapter.color, borderLeftWidth: 3 } : undefined}
       >
         <button {...attributes} {...listeners} className="text-slate-500 hover:text-slate-300 cursor-grab">
@@ -291,7 +303,7 @@ function AddInput({ placeholder, onAdd }: { placeholder: string; onAdd: (title: 
   );
 }
 
-export function SectionSidebar({ bookId, chapters, sections, pages, selectedId, onSelect, onRefresh, isPhotoDragging, dragSourceSectionId, overSectionId }: Props) {
+export function SectionSidebar({ bookId, chapters, sections, pages, selectedId, onSelect, onRefresh, isPhotoDragging, dragSourceSectionId, overSectionId, overChapterId, activeSortableId }: Props) {
   const { t } = useTranslation(['pages', 'common']);
   const selectedItemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -456,6 +468,9 @@ export function SectionSidebar({ bookId, chapters, sections, pages, selectedId, 
         <SortableContext items={allSortableIds} strategy={verticalListSortingStrategy}>
           {hasChapters && chapters.map((chapter) => {
             const chapterSections = sectionsByChapter.get(chapter.id) || [];
+            const isSectionDropTarget = activeSortableId !== null
+              && activeSortableId.startsWith('section-')
+              && overChapterId === chapter.id;
             return (
               <SortableChapter
                 key={chapter.id}
@@ -463,6 +478,7 @@ export function SectionSidebar({ bookId, chapters, sections, pages, selectedId, 
                 onDelete={() => handleDeleteChapter(chapter.id)}
                 onRename={(title) => handleRenameChapter(chapter.id, title)}
                 onColorChange={(color) => handleChapterColorChange(chapter.id, color)}
+                isSectionDropTarget={isSectionDropTarget}
               >
                 {renderSectionList(chapterSections)}
                 <AddInput

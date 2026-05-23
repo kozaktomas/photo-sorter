@@ -707,6 +707,8 @@
       "searchResults": "{{count}} z {{total}} textů",
       "keyboardShortcuts": "Klávesové zkratky",
       "pressForHelp": "Stiskněte ? pro nápovědu",
+      "reorderFailed": "Přesun selhal — vráceno",
+      "moveFailed": "Přesunutí selhalo — vráceno",
       "shortcuts": {
         "globalTitle": "Globální",
         "switchTab": "Přepnout záložku",

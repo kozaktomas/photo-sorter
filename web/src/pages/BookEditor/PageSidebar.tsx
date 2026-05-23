@@ -57,7 +57,7 @@ function SortablePageItem({ page, globalIndex, isSelected, onSelect, onDelete, i
   scrollRef?: (el: HTMLDivElement | null) => void;
 }) {
   const { t } = useTranslation('pages');
-  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: page.id,
     data: { type: 'page-reorder', pageId: page.id, sectionId: page.section_id },
   });
@@ -67,7 +67,11 @@ function SortablePageItem({ page, globalIndex, isSelected, onSelect, onDelete, i
   }, [setNodeRef, scrollRef]);
   const { over } = useDndContext();
   const isOver = over?.id === page.id;
-  const style = { transform: CSS.Transform.toString(transform), transition };
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : undefined,
+  };
   const filledSlots = page.slots.filter(s => s.photo_uid || s.text_content).length;
   const totalSlots = pageFormatSlotCount(page.format);
   const isComplete = filledSlots === totalSlots && totalSlots > 0;

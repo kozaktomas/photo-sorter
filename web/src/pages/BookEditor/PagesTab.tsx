@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo, useRef, type Dispatch, type SetStateAction, type PointerEvent as ReactPointerEvent } from 'react';
 import { useTranslation } from 'react-i18next';
-import { DndContext, DragOverlay, KeyboardSensor, PointerSensor, pointerWithin, useSensor, useSensors, type DragEndEvent, type DragStartEvent, type Modifier } from '@dnd-kit/core';
+import { DndContext, DragOverlay, KeyboardSensor, MouseSensor, TouchSensor, pointerWithin, useSensor, useSensors, type DragEndEvent, type DragStartEvent, type Modifier } from '@dnd-kit/core';
 import { arrayMove, sortableKeyboardCoordinates } from '@dnd-kit/sortable';
 import { Type, Heading1, Heading2, Bold, Italic, List, ListOrdered, LayoutGrid, Wand2, Loader2, SpellCheck, ArrowLeftRight, Check, DollarSign, History, Maximize2, Minimize2, Eye, Printer } from 'lucide-react';
 import { assignSlot, assignTextSlot, assignCaptionsSlot, assignContentsSlot, clearSlot, swapSlots, updatePage, updateSlotCrop, reorderPages, getThumbnailUrl, autoLayoutSection, checkTextAndSave, rewriteText, listTextVersions, restoreTextVersion } from '../../api/client';
@@ -9,6 +9,7 @@ import { CheckSuggestionsList } from './CheckSuggestionsList';
 import { MarkdownContent, contrastTextColor, renderMarkdown } from '../../utils/markdown';
 import { handleMarkdownPaste } from '../../utils/paste';
 import { useBookKeyboardNav } from '../../hooks/useBookKeyboardNav';
+import { useToast } from '../../components/Toast';
 import { useUndoRedo, type SlotContent, type UndoEntry } from './hooks/useUndoRedo';
 import { PageSidebar } from './PageSidebar';
 import { PageMinimap } from './PageMinimap';
@@ -912,6 +913,7 @@ function getSlotContent(book: BookDetail, pageId: string, slotIndex: number): Sl
 
 export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRefresh, initialPageId, onPageSelect }: Props) {
   const { t } = useTranslation('pages');
+  const toast = useToast();
   const defaultPageId = initialPageId && book.pages.find(p => p.id === initialPageId)
     ? initialPageId
     : (book.pages.length > 0 ? book.pages[0].id : null);
@@ -927,8 +929,11 @@ export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRe
   });
   const [autoLayoutLoading, setAutoLayoutLoading] = useState(false);
   const [autoLayoutMessage, setAutoLayoutMessage] = useState<string | null>(null);
+  // MouseSensor for desktop (small drag distance), TouchSensor for long-press
+  // on touch devices — so vertical scrolling and tap-to-select still work.
   const sensors = useSensors(
-    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } }),
     useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
   );
 
@@ -1087,11 +1092,20 @@ export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRe
       if (!activePage || !targetSectionId) return;
       if (activePage.section_id === targetSectionId) return;
       const fromSectionId = activePage.section_id || '';
+      const prevPages = book.pages;
+      // Optimistic: flip section_id on the dragged page locally.
+      setBook(prev => prev ? {
+        ...prev,
+        pages: prev.pages.map(p => p.id === activePage.id ? { ...p, section_id: targetSectionId } : p),
+      } : prev);
       try {
         await updatePage(activePage.id, { section_id: targetSectionId });
         pushUndo([{ type: 'move_page', pageId: activePage.id, fromSectionId, toSectionId: targetSectionId }]);
         onRefresh();
-      } catch { /* silent */ }
+      } catch {
+        setBook(prev => prev ? { ...prev, pages: prevPages } : prev);
+        toast.error(t('books.editor.moveFailed'));
+      }
       return;
     }
 
@@ -1107,20 +1121,33 @@ export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRe
         const targetSectionId = overPage.section_id;
         if (!targetSectionId) return;
         const fromSectionId = activePage.section_id || '';
+        const prevPages = book.pages;
+        setBook(prev => prev ? {
+          ...prev,
+          pages: prev.pages.map(p => p.id === activePage.id ? { ...p, section_id: targetSectionId } : p),
+        } : prev);
         try {
           await updatePage(activePage.id, { section_id: targetSectionId });
           pushUndo([{ type: 'move_page', pageId: activePage.id, fromSectionId, toSectionId: targetSectionId }]);
           onRefresh();
-        } catch { /* silent */ }
+        } catch {
+          setBook(prev => prev ? { ...prev, pages: prevPages } : prev);
+          toast.error(t('books.editor.moveFailed'));
+        }
         return;
       }
       const oldIndex = book.pages.findIndex(p => p.id === activeData.pageId);
       const newIndex = book.pages.findIndex(p => p.id === overData.pageId);
       const reordered = arrayMove(book.pages, oldIndex, newIndex);
+      const prevPages = book.pages;
+      setBook(prev => prev ? { ...prev, pages: reordered } : prev);
       try {
         await reorderPages(book.id, reordered.map(p => p.id));
         onRefresh();
-      } catch { /* silent */ }
+      } catch {
+        setBook(prev => prev ? { ...prev, pages: prevPages } : prev);
+        toast.error(t('books.editor.reorderFailed'));
+      }
       return;
     }
 
@@ -1308,7 +1335,7 @@ export function PagesTab({ book, setBook, sectionPhotos, loadSectionPhotos, onRe
       // Revert on error
       onRefresh();
     }
-  }, [book, selectedPage, setBook, onRefresh, pushUndo]);
+  }, [book, selectedPage, setBook, onRefresh, pushUndo, toast, t]);
 
   const handleClearSlot = useCallback(async (slotIndex: number) => {
     if (!selectedPage) return;

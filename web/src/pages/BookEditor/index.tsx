@@ -344,6 +344,7 @@ export function BookEditorPage() {
             {activeTab === 'sections' && (
               <SectionsTab
                 book={book}
+                setBook={setBook}
                 sectionPhotos={sectionPhotos}
                 loadSectionPhotos={loadSectionPhotos}
                 onRefresh={refresh}

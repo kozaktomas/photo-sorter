@@ -1,5 +1,12 @@
-import { useMemo } from 'react';
+import { useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
+import {
+  SortableContext,
+  useSortable,
+  rectSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
+import { useDndContext } from '@dnd-kit/core';
 import { getThumbnailUrl } from '../../api/client';
 import { pageFormatSlotCount } from '../../types';
 import type { BookDetail, BookPage } from '../../types';
@@ -94,6 +101,64 @@ function isPagePartiallyFilled(page: BookPage): boolean {
   return filled > 0 && !isPageComplete(page);
 }
 
+// Sortable wrapper around a single minimap tile. The drag data matches what
+// PageSidebar's SortablePageItem emits so PagesTab.handleDragEnd handles both
+// the sidebar and the minimap with the same code path.
+function SortableMiniTile({ page, index, isSelected, onSelect, title }: {
+  page: BookPage;
+  index: number;
+  isSelected: boolean;
+  onSelect: (id: string) => void;
+  title: string;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: page.id,
+    data: { type: 'page-reorder', pageId: page.id, sectionId: page.section_id },
+  });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : undefined,
+  };
+  const complete = isPageComplete(page);
+  const partial = isPagePartiallyFilled(page);
+
+  // Suppress the click that immediately follows a drag — useSortable's listeners
+  // already stop the pointerdown, but we don't want the click to flip selection
+  // if the user just rearranged the tile.
+  const handleClick = useCallback((e: React.MouseEvent) => {
+    if (isDragging) {
+      e.preventDefault();
+      return;
+    }
+    onSelect(page.id);
+  }, [isDragging, onSelect, page.id]);
+
+  return (
+    <button
+      ref={setNodeRef}
+      style={style}
+      onClick={handleClick}
+      {...attributes}
+      {...listeners}
+      className={`relative w-[80px] h-[56px] rounded overflow-hidden flex-shrink-0 transition-all p-[2px] cursor-grab active:cursor-grabbing ${
+        isSelected
+          ? 'ring-2 ring-rose-500 ring-offset-1 ring-offset-slate-900'
+          : complete
+            ? 'ring-1 ring-emerald-600/50'
+            : 'ring-1 ring-slate-700 hover:ring-slate-500'
+      }`}
+      title={title}
+    >
+      <MiniLayout page={page} />
+      {partial && (
+        <div className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-amber-500" />
+      )}
+      <span className="absolute bottom-0 left-0.5 text-[8px] text-white/80 font-medium drop-shadow">{index + 1}</span>
+    </button>
+  );
+}
+
 interface Props {
   book: BookDetail;
   selectedId: string | null;
@@ -102,6 +167,9 @@ interface Props {
 
 export function PageMinimap({ book, selectedId, onSelect }: Props) {
   const { t } = useTranslation('pages');
+  // If the parent isn't a DndContext, useDndContext returns a no-op context;
+  // the SortableContext below still mounts safely.
+  useDndContext();
 
   // Group pages by section
   const groupedPages = useMemo(() => {
@@ -132,44 +200,41 @@ export function PageMinimap({ book, selectedId, onSelect }: Props) {
     return groups;
   }, [book.pages, book.sections, t]);
 
+  // Flat list of all page IDs for the SortableContext — order matches the
+  // visual order across all sections, which is also the order PagesTab sends
+  // to reorderPages.
+  const allPageIds = useMemo(() => book.pages.map(p => p.id), [book.pages]);
+  const globalIndex = useMemo(() => {
+    const map = new Map<string, number>();
+    book.pages.forEach((p, i) => map.set(p.id, i));
+    return map;
+  }, [book.pages]);
+
   return (
     <div className="bg-slate-900 border border-slate-700 rounded-lg p-3 max-h-[200px] overflow-y-auto">
-      <div className="space-y-2">
-        {groupedPages.map(group => (
-          <div key={group.sectionId}>
-            <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 truncate">
-              {group.sectionTitle}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {group.pages.map(page => {
-                const isSelected = page.id === selectedId;
-                const complete = isPageComplete(page);
-                const partial = isPagePartiallyFilled(page);
-
-                return (
-                  <button
+      <SortableContext items={allPageIds} strategy={rectSortingStrategy}>
+        <div className="space-y-2">
+          {groupedPages.map(group => (
+            <div key={group.sectionId}>
+              <div className="text-[10px] text-slate-500 uppercase tracking-wider mb-1 truncate">
+                {group.sectionTitle}
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {group.pages.map(page => (
+                  <SortableMiniTile
                     key={page.id}
-                    onClick={() => onSelect(page.id)}
-                    className={`relative w-[80px] h-[56px] rounded overflow-hidden flex-shrink-0 transition-all p-[2px] ${
-                      isSelected
-                        ? 'ring-2 ring-rose-500 ring-offset-1 ring-offset-slate-900'
-                        : complete
-                          ? 'ring-1 ring-emerald-600/50'
-                          : 'ring-1 ring-slate-700 hover:ring-slate-500'
-                    }`}
-                    title={t('books.editor.pageNumber', { number: book.pages.indexOf(page) + 1 })}
-                  >
-                    <MiniLayout page={page} />
-                    {partial && (
-                      <div className="absolute top-0.5 right-0.5 w-1.5 h-1.5 rounded-full bg-amber-500" />
-                    )}
-                  </button>
-                );
-              })}
+                    page={page}
+                    index={globalIndex.get(page.id) ?? 0}
+                    isSelected={page.id === selectedId}
+                    onSelect={onSelect}
+                    title={t('books.editor.pageNumber', { number: (globalIndex.get(page.id) ?? 0) + 1 })}
+                  />
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      </SortableContext>
     </div>
   );
 }
