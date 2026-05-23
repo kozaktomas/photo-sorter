@@ -221,8 +221,9 @@ TailwindCSS, embedded into the binary at compile time via `go:embed`.
 
 ### Core Components
 
-- **cmd/** — Cobra commands (sort, albums, labels, count, move, upload, photo, cache, serve, users, backup, migrate-from-photoprism, migrate-verify, migrate-remap-references, version). `users` is the CLI surface for local user management: `users list`, `users create <username> --role=...`, `users set-password <username>`, `users delete <username> [--yes]`. Password-prompting commands require a TTY; mutations append to `audit_log` with `metadata.actor = "cli"`.
+- **cmd/** — Cobra commands (sort, albums, labels, count, move, upload, photo, cache, serve, users, backup, db-export/db-import, migrate-from-photoprism, migrate-verify, migrate-remap-references, clear, create, version). `users` is the CLI surface for local user management: `users list`, `users create <username> --role=...`, `users set-password <username>`, `users delete <username> [--yes]`. Password-prompting commands require a TTY; mutations append to `audit_log` with `metadata.actor = "cli"`. `clear`/`create` and `cache push-embeddings`/`cache sync` are PhotoPrism-only legacy tools that target the MariaDB-backed REST API; the native pipeline does not use them.
 - **internal/ai/** — AI provider interface with OpenAI, Gemini, Ollama, and llama.cpp implementations
+- **internal/audit/** — `audit.Logger` thin wrapper around the `audit_log` table. Handlers pull a logger off the request context (installed by the audit middleware) and call `Log(ctx, action, ...)`; persistence failures are WARN-logged and never abort the request.
 - **internal/auth/** — Password hashing, role constants, bootstrap admin creation, shared validators (`ValidUsername`, `MinPasswordLength`) and the `EnsureNotLastAdmin` guard used by both the REST handler and the `users` CLI
 - **internal/config/** — Environment-based configuration loader
 - **internal/constants/** — Shared constants (page sizes, thresholds, concurrency, upload limits)
@@ -231,11 +232,12 @@ TailwindCSS, embedded into the binary at compile time via `go:embed`.
 - **internal/facematch/** — Face matching utilities (IoU, bbox conversion, name normalization)
 - **internal/fingerprint/** — Perceptual hash computation (pHash, dHash) + embeddings HTTP client
 - **internal/imgconvert/** — Format detection + thin wrappers around `heif-convert` (HEIC/HEIF) and `dcraw` (RAW), producing intermediate JPEGs
+- **internal/imgedit/** — Pure-Go image renderer that applies the `photo_edits` payload (crop → rotate → brightness → contrast) and re-encodes a JPEG. Used by `GET /photos/{uid}/download` (rendered fallback) and by the thumbnail-rebuild path on `PUT /photos/{uid}/edits`.
 - **internal/latex/** — PDF export via LaTeX (markdown-to-LaTeX, layout validation, 12-column grid, font registry, templates). `GeneratePDFWithCallbacks` accepts an `ExportOptions.OnProgress` callback so the web job flow can emit SSE progress events.
 - **internal/mcp/** — MCP server (HTTP SSE + Bearer auth) for AI agent integration
 - **internal/migrate/** — One-shot PhotoPrism→native migrator (historical; used by `migrate-from-photoprism`)
 - **internal/photopipe/** — Native upload pipeline: buffer → hash → format detect → exact-duplicate check → decode → EXIF → near-duplicate scan (pHash + embedding) → originals write → DB rows → thumbnails → pHash persist
-- **internal/photoprism/** — PhotoPrism REST API client; retained only to drive the migration commands
+- **internal/photoprism/** — PhotoPrism REST API client; retained only to drive the migration commands and the legacy `clear`/`create`/`cache push-embeddings`/`cache sync` CLI tools
 - **internal/sorter/** — AI sort orchestration (photo fetch → AnalyzePhoto → label application)
 - **internal/storage/** — On-disk layout for originals (`YYYY/MM/<filename>`) and the thumbnail cache (`thumb/<aa>/<bb>/<cc>/<hash>_<size>.jpg`)
 - **internal/thumb/** — Thumbnail registry + `GenerateSizes` (decode once, resize many)
@@ -368,6 +370,11 @@ go run . cache compute-phashes [flags]        # Backfill pHash + dHash for photo
 go run . cache compute-eras [flags]           # Compute CLIP era embedding centroids
   --dry-run   Preview without saving
   --json      Output as JSON
+
+# Legacy PhotoPrism-only cache commands (used during the PhotoPrism era;
+# kept for emergency reruns against an existing PhotoPrism+MariaDB pair):
+go run . cache push-embeddings [flags]        # Push InsightFace embeddings to PhotoPrism MariaDB
+go run . cache sync [flags]                   # Refresh cached marker metadata from PhotoPrism
 ```
 
 ### MCP Server
@@ -421,6 +428,8 @@ internal/database/
 **Tables:** `users` (admin/editor/viewer with bcrypt hashes), `photos`, `photo_files`, `albums` + `album_photos`, `labels` + `photo_labels`, `subjects`, `markers`, `photo_phashes`, `embeddings` (768-dim CLIP), `faces` (512-dim ResNet100 with cached marker metadata), `era_embeddings` (768-dim CLIP text centroids), `faces_processed` (tracking), `sessions` (with `user_uid` for upload support across restarts), `photo_books` (with typography settings: `body_font`, `heading_font`, `body_font_size`, `body_line_height`, `h1_font_size`, `h2_font_size`, `caption_opacity`, `caption_font_size`, `heading_color_bleed` added in migrations 021-023, plus `body_text_pad_mm` in migration 029), `book_chapters` (migration 016, with `color` column from migration 020), `book_sections` (with optional `chapter_id`), `section_photos`, `book_pages` (with `split_position`, `hide_page_number` from migration 025, `1_fullbleed` format added to the CHECK constraint in migration 027), `page_slots` (with `text_content`, `is_captions_slot` from migration 026, `is_contents_slot` from migration 030, `crop_x`/`crop_y`/`crop_scale`; photo_uid / text_content / is_captions_slot / is_contents_slot are mutually exclusive), `text_versions` (migration 017), `text_check_results` (migration 019, extended by migration 028 with a `suggestions JSONB` column), `album_share_links` (migration 039 — public-share slugs keyed on `slug PRIMARY KEY`, FK to `albums(uid)` ON DELETE CASCADE, optional bcrypt `password_hash` and `expires_at`; `created_by_user_uid` FK → `users(uid)` is nullable `ON DELETE SET NULL` per migration 043 so deleting the user who minted the link does not block the user delete or revoke the link), `smart_albums` (migration 040 — saved photo searches keyed on `uid VARCHAR(32) PRIMARY KEY`, `name TEXT`, `filters JSONB` shaped like the `GET /photos` query params, `created_by_user_uid` FK → `users(uid)` is nullable `ON DELETE SET NULL` per migration 043 so renames/deletes of the author do not drop saved searches), `photo_edits` (migration 041 — non-destructive edits keyed on `photo_uid VARCHAR(32) PRIMARY KEY` FK → `photos(uid)` ON DELETE CASCADE, nullable `crop_x`/`crop_y`/`crop_w`/`crop_h` REAL group enforced all-or-nothing by a CHECK, `rotation INTEGER NOT NULL CHECK rotation IN (0,90,180,270)`, `brightness`/`contrast` REAL in [-1,1], `updated_at`; a row exists only when at least one parameter is non-default), `audit_log` (migration 042 — append-only audit trail keyed on `id BIGSERIAL PRIMARY KEY`, nullable `user_uid VARCHAR(32)` FK → `users(uid)` `ON DELETE SET NULL` so deleted users keep their trail intact, `action TEXT`, nullable `entity_type TEXT` + `entity_uid TEXT`, `metadata JSONB DEFAULT '{}'::jsonb`, nullable `ip TEXT` + `user_agent TEXT`, `created_at TIMESTAMPTZ DEFAULT NOW()`; indexes on `(user_uid, created_at DESC)`, `(action, created_at DESC)`, `(entity_type, entity_uid)`, and `(created_at DESC)`; failures to write must NOT fail the underlying request — they WARN-log and continue).
 
 **Face name normalization:** `GetFacesBySubjectName` normalizes names via `facematch.NormalizePersonName` (remove diacritics, lowercase, dashes→spaces) using the `unaccent` PostgreSQL extension.
+
+**Czech-aware full-text search:** Migration `035_photo_fts.sql` adds a generated `tsvector` column on `photos` plus a GIN index, populated from title/description/keywords with diacritics stripped via `unaccent`. The `q` filter on `GET /photos` (and any derivative — Browse map, smart albums, public share listing) plans through this index. `internal/database/postgres/photos_browse.go` is the canonical query builder.
 
 ### AI Prompts
 
@@ -487,6 +496,8 @@ Session cookies use `HttpOnly`, `SameSite=Strict`, and auto-detect `Secure` flag
 - `GET /api/v1/albums` - List albums
 - `POST /api/v1/albums` - Create album
 - `GET /api/v1/albums/{uid}` - Get single album
+- `PUT /api/v1/albums/{uid}` - Update album (title, description, location, etc.). HasWriteAccess required.
+- `DELETE /api/v1/albums/{uid}` - Delete album (HasWriteAccess; removes the album row, share links cascade)
 - `GET /api/v1/albums/{uid}/photos` - Get photos in album
 - `POST /api/v1/albums/{uid}/photos` - Add photos to album
 - `DELETE /api/v1/albums/{uid}/photos` - Remove photos from album
@@ -509,7 +520,9 @@ Session cookies use `HttpOnly`, `SameSite=Strict`, and auto-detect `Secure` flag
 - `GET /api/v1/labels/{uid}` - Get single label
 - `PUT /api/v1/labels/{uid}` - Update label (`{ name?, priority?, favorite? }`; non-empty name re-slugs with collision suffix)
 - `DELETE /api/v1/labels` - Batch delete labels (returns count of UIDs that actually existed; unknown UIDs are silently skipped)
-- `GET /api/v1/photos` - List photos (native; archived excluded by default, filters: `album_uid`/`label_uid`/`subject_uid`/`favorite`/`private`/`archived`/`taken_from`/`taken_to`/`min_lat`+`min_lng`+`max_lat`+`max_lng`/`q`/`sort`/`limit`/`offset`; envelope `{photos, total, limit, offset}`)
+- `GET /api/v1/photos` - List photos (native; archived excluded by default, filters: `album_uid`/`label_uid`/`subject_uid`/`favorite`/`private`/`archived`/`taken_from`/`taken_to`/`min_lat`+`min_lng`+`max_lat`+`max_lng`/`q`/`sort`/`limit`/`offset`; envelope `{photos, total, limit, offset}`). `q` is matched via the Czech-aware Postgres full-text search index added in migration 035.
+- `GET /api/v1/photos/histogram` - Time-bucketed counts for the Browse timeline scrubber. Accepts every filter that `GET /photos` accepts plus a `bucket` parameter (`month` (default) or `year`). Pagination params are ignored — the histogram always reflects the entire matching set. Envelope `{ bucket, buckets: [{ start, end, count }], total, no_date_count, no_gps_count }`.
+- `GET /api/v1/photos/geo-points` - Lightweight `[{uid, lat, lng}]` payload for the Browse map (client-side clustered with supercluster). Accepts the same filters as `GET /photos`; capped at 50,000 points server-side with `truncated: true` set in the response envelope when the cap is hit.
 - `GET /api/v1/photos/{uid}` - Get single photo (native; 404 for archived unless `?include_archived=true`)
 - `PUT /api/v1/photos/{uid}` - Update photo
 - `PUT /api/v1/photos/{uid}/exif` - Edit EXIF metadata (taken_at, GPS, camera/lens/exposure, title/description/notes). Writes the photo row AND an XMP sidecar next to the original (same dir + basename + `.xmp`) via `exiftool`; sidecar errors are logged but do not fail the request. Validates year ∈ [1900, 2100], lat/lng ranges, ISO > 0. `HasWriteAccess` required.
@@ -630,9 +643,11 @@ web/src/
 │   ├── Layout.tsx
 │   ├── LoadingState.tsx       # Unified loading/error/empty states
 │   ├── PageHeader.tsx         # Page header with title/actions
+│   ├── PageLayoutPreview.tsx  # Mini SVG preview of a book page layout (slot grid)
 │   ├── PhotoCard.tsx
 │   ├── PhotoGrid.tsx          # Supports optional selection mode
 │   ├── PhotoWithBBox.tsx
+│   ├── ShareModal.tsx         # Mint/list/revoke public share links for an album
 │   └── StatsGrid.tsx          # Stats display grid (configurable columns/colors)
 ├── constants/
 │   ├── actions.ts             # Face action styling (i18n label keys, colors)
@@ -667,11 +682,14 @@ web/src/
 │   ├── SubjectDetail.tsx      # Single person/subject detail
 │   ├── TextSearch.tsx         # Text-to-image search
 │   ├── Analyze/               # AI analysis (hooks/useSortJob.ts)
+│   ├── Browse/                # Map + timeline scrubber with bidirectional filtering (BrowseMap, BrowseTimeline, BrowseSidePanel, leafletSetup.ts)
+│   ├── Capture/               # Installable PWA mobile camera capture page (Capture.tsx)
 │   ├── Faces/                 # Face matching (hooks/useFaceSearch.ts)
 │   ├── Photos/                # Photo browsing (hooks/usePhotosFilters.ts, usePhotosPagination.ts)
 │   ├── PhotoDetail/           # Photo detail (hooks/usePhotoData.ts, useFacesData.ts, useFaceAssignment.ts, usePhotoNavigation.ts)
 │   │   ├── EraEstimate.tsx, AlbumMembership.tsx, BookMembership.tsx, AddToBookDropdown.tsx
 │   │   ├── FacesList.tsx, FaceAssignmentPanel.tsx, EmbeddingsStatus.tsx
+│   │   ├── PhotoEditModal.tsx (non-destructive crop/rotate/brightness/contrast)
 │   │   └── PhotoDisplay.tsx
 │   ├── Recognition/           # Bulk face recognition (hooks/useScanAll.ts)
 │   ├── Duplicates/            # Near-duplicate detection
@@ -679,17 +697,20 @@ web/src/
 │   ├── Books/                 # Photo books list
 │   ├── BookEditor/            # Book editor (sections, pages, preview, typography, texts, duplicates)
 │   │   ├── hooks/useBookData.ts, hooks/useUndoRedo.ts, hooks/useBookExportJob.ts
-│   │   ├── BookStatsPanel.tsx, KeyboardShortcutsHelp.tsx
+│   │   ├── BookStatsPanel.tsx, KeyboardShortcutsHelp.tsx, CheckSuggestionsList.tsx
 │   │   ├── SectionsTab.tsx, SectionSidebar.tsx, SectionPhotoPool.tsx
 │   │   ├── PagesTab.tsx, PageSidebar.tsx, PageMinimap.tsx, PageTemplate.tsx, PageSlot.tsx
-│   │   ├── UnassignedPool.tsx, PreviewTab.tsx, PreviewModal.tsx
+│   │   ├── UnassignedPool.tsx, PreviewTab.tsx, PreflightModal.tsx
 │   │   ├── TypographyTab.tsx, TextsTab.tsx, DuplicatesTab.tsx
 │   │   ├── ExportProgressModal.tsx, PhotoBrowserModal.tsx, PhotoDescriptionDialog.tsx
 │   │   └── PhotoActionOverlay.tsx, PhotoInfoOverlay.tsx
-│   ├── Slideshow/             # Photo slideshow + TV presentation mode (hooks/useSlideshow.ts, useSlideshowPhotos.ts, useTVMode.ts; TVControlBar.tsx)
+│   ├── Settings/              # Admin Settings (Settings.tsx, Users.tsx, EditUserDialog.tsx, AuditLog.tsx)
+│   ├── Share/                 # Public album landing page (PublicShare.tsx) — no app session, posts to /api/v1/public/share/{slug}/verify
+│   ├── Slideshow/             # Photo slideshow + TV presentation mode (hooks/useSlideshow.ts, useSlideshowPhotos.ts, useTVMode.ts; SlideshowControls.tsx, TVControlBar.tsx, effectConfigs.ts)
 │   ├── SuggestAlbums/         # Album completion
 │   ├── SmartAlbums/           # Saved photo searches (SmartAlbumsSection, SmartAlbumModal, SmartAlbumDetail)
-│   └── Upload/                # Photo upload (hooks/useUploadJob.ts, DropZone.tsx)
+│   ├── Trash/                 # Archived-photos view backed by `GET /photos/trash` + batch restore/purge (Trash.tsx)
+│   └── Upload/                # Photo upload (hooks/useUploadJob.ts, DropZone.tsx, NearDuplicatesModal.tsx)
 └── types/
     ├── events.ts              # Typed SSE events (discriminated unions)
     └── index.ts               # API response types
@@ -717,6 +738,16 @@ internal/web/handlers/
 ├── book_export_job.go                          # BookExportJob type, manager with TTL sweeper, 5 job-flow handlers on BooksHandler, background runner that translates latex progress into SSE events
 ├── text.go                                     # TextHandler: AI text check, rewrite, consistency, check-and-save
 ├── text_versions.go                            # TextVersionsHandler: text version history and restore
+├── share.go                                    # ShareHandler: mint/list/revoke album share links + public anonymous endpoints (verify, photos, thumb, download)
+├── smart_albums.go                             # SmartAlbumsHandler: saved photo searches (CRUD + filter-replay listing)
+├── photo_edits.go                              # PhotosHandler.GetEdits/PutEdits/DeleteEdits — non-destructive crop/rotate/brightness/contrast + thumb rebuild
+├── photos_browse.go                            # PhotosHandler.Histogram + GeoPoints for the Browse map + timeline
+├── photos_exif.go                              # PhotosHandler.EditExif — taken_at/GPS/camera/lens edit + XMP sidecar write
+├── photo_albums.go                             # PhotosHandler.GetPhotoAlbums for the photo detail page
+├── process_build_thumbs.go                     # ProcessHandler.BuildThumbs — admin-only thumbnail backfill job (reuses ProcessJobManager)
+├── audit_log.go                                # AuditLogHandler: admin-only GET /audit-log (paginated + filtered)
+├── users.go                                    # UsersHandler: /me + admin /users CRUD
+├── auth.go                                     # AuthHandler: login, logout, status (session cookie)
 └── jobs.go                                     # Sort job status
 ```
 
