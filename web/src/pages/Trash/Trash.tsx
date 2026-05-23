@@ -9,6 +9,8 @@ import { PageHeader } from '../../components/PageHeader';
 import { PhotoGrid } from '../../components/PhotoGrid';
 import { PAGE_CONFIGS } from '../../constants/pageConfig';
 import { useAuth } from '../../hooks/useAuth';
+import { useGridSelection } from '../../hooks/useGridSelection';
+import { useSelectionShortcuts } from '../../hooks/useSelectionShortcuts';
 import { getTrashPhotos, purgePhotos, restorePhotos } from '../../api/client';
 import type { Photo } from '../../types';
 
@@ -25,7 +27,8 @@ export function TrashPage() {
   const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const gridSelection = useGridSelection();
+  const selected = gridSelection.selectedPhotos;
   const [actionMessage, setActionMessage] = useState<ActionMessage | null>(null);
   const [isRestoring, setIsRestoring] = useState(false);
   const [isPurging, setIsPurging] = useState(false);
@@ -51,22 +54,18 @@ export function TrashPage() {
     void loadTrash();
   }, [loadTrash]);
 
-  const toggleSelection = useCallback((uid: string) => {
-    setSelected((prev) => {
-      const next = new Set(prev);
-      if (next.has(uid)) next.delete(uid);
-      else next.add(uid);
-      return next;
-    });
-  }, []);
-
   const selectAll = useCallback(() => {
-    setSelected(new Set(photos.map((p) => p.uid)));
-  }, [photos]);
+    gridSelection.selectAll(photos.map((p) => p.uid));
+  }, [gridSelection, photos]);
 
   const clearSelection = useCallback(() => {
-    setSelected(new Set());
-  }, []);
+    gridSelection.deselectAll();
+  }, [gridSelection]);
+
+  useSelectionShortcuts({
+    onSelectAll: photos.length > 0 ? selectAll : undefined,
+    onClear: selected.size > 0 ? clearSelection : undefined,
+  });
 
   const handleRestore = async () => {
     if (selected.size === 0) return;
@@ -80,7 +79,7 @@ export function TrashPage() {
           ? { type: 'error', text: t('pages:trash.restoredWithErrors', { count: result.updated, errors: errCount }) }
           : { type: 'success', text: t('pages:trash.restored', { count: result.updated }) },
       );
-      setSelected(new Set());
+      gridSelection.deselectAll();
       await loadTrash();
     } catch (err) {
       setActionMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to restore' });
@@ -102,7 +101,7 @@ export function TrashPage() {
           ? { type: 'error', text: t('pages:trash.purgedWithErrors', { count: result.purged, errors: errCount }) }
           : { type: 'success', text: t('pages:trash.purged', { count: result.purged }) },
       );
-      setSelected(new Set());
+      gridSelection.deselectAll();
       await loadTrash();
     } catch (err) {
       setActionMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to purge' });
@@ -207,7 +206,13 @@ export function TrashPage() {
               photos={photos}
               selectable
               selectedPhotos={selected}
-              onSelectionChange={(uid) => toggleSelection(uid)}
+              onSelectionChange={(uid, event) =>
+                gridSelection.handleSelectionClick(
+                  uid,
+                  photos.map((p) => p.uid),
+                  event ?? {},
+                )
+              }
             />
           </CardContent>
         </Card>

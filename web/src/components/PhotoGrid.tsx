@@ -7,7 +7,10 @@ interface PhotoGridProps {
   onPhotoClick?: (photo: Photo) => void;
   selectable?: boolean;
   selectedPhotos?: Set<string>;
-  onSelectionChange?: (uid: string, selected: boolean) => void;
+  // Receives the click UID and the underlying mouse event so the caller can
+  // route shift/ctrl/meta clicks (range select, additive toggle) without the
+  // grid needing to know about anchors.
+  onSelectionChange?: (uid: string, event?: React.MouseEvent) => void;
   // UID of the keyboard-focused card (drawn with a yellow ring). When set,
   // the grid scrolls that card into view as the focus moves.
   focusedUid?: string | null;
@@ -46,7 +49,7 @@ export function PhotoGrid({ photos, onPhotoClick, selectable, selectedPhotos, on
               photoUid={photo.uid}
               selectable
               selected={selectedPhotos.has(photo.uid)}
-              onSelectionChange={() => onSelectionChange(photo.uid, !selectedPhotos.has(photo.uid))}
+              onSelectionChange={(_, event) => onSelectionChange(photo.uid, event)}
             />
           </FocusRing>
         ))}

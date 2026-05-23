@@ -1,7 +1,8 @@
-import { useState, useCallback } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { addPhotosToAlbum, batchAddLabels, batchEditPhotos, removePhotosFromAlbum, getAlbums, getLabels, getBooks, getBook, addSectionPhotos } from '../api/client';
 import { MAX_ALBUMS_FETCH, MAX_LABELS_FETCH } from '../constants';
 import type { Album, Label, PhotoBook, BookSection, BookChapter } from '../types';
+import { useGridSelection, type SelectionClickEvent } from './useGridSelection';
 
 export interface ActionMessage {
   type: 'success' | 'error';
@@ -10,9 +11,15 @@ export interface ActionMessage {
 
 export interface UsePhotoSelectionReturn {
   selectedPhotos: Set<string>;
+  anchorUid: string | null;
   toggleSelection: (photoUID: string) => void;
   selectAll: (uids: string[]) => void;
   deselectAll: () => void;
+  handleSelectionClick: (
+    uid: string,
+    orderedUids: string[],
+    event: SelectionClickEvent,
+  ) => void;
   albums: Album[];
   labels: Label[];
   selectedAlbum: string;
@@ -42,7 +49,7 @@ export interface UsePhotoSelectionReturn {
 }
 
 export function usePhotoSelection(): UsePhotoSelectionReturn {
-  const [selectedPhotos, setSelectedPhotos] = useState<Set<string>>(new Set());
+  const grid = useGridSelection();
   const [albums, setAlbums] = useState<Album[]>([]);
   const [labels, setLabels] = useState<Label[]>([]);
   const [selectedAlbum, setSelectedAlbum] = useState('');
@@ -78,86 +85,70 @@ export function usePhotoSelection(): UsePhotoSelectionReturn {
     }
   }, [dataLoaded]);
 
-  const toggleSelection = useCallback((photoUID: string) => {
-    setSelectedPhotos(prev => {
-      const next = new Set(prev);
-      if (next.has(photoUID)) {
-        next.delete(photoUID);
-      } else {
-        next.add(photoUID);
-      }
-      if (next.size === 1 && !dataLoaded) {
-        void loadAlbumsAndLabels();
-      }
-      return next;
-    });
-  }, [dataLoaded, loadAlbumsAndLabels]);
-
-  const selectAll = useCallback((uids: string[]) => {
-    setSelectedPhotos(new Set(uids));
-    if (!dataLoaded) {
+  // Pre-fetch the bulk-action dropdown data the first time a photo is
+  // selected. Used to live inline in toggleSelection/selectAll; lifted to an
+  // effect so every selection-changing path (shift-click range, Ctrl+A, etc.)
+  // gets the same treatment without each call site having to remember.
+  useEffect(() => {
+    if (grid.selectedPhotos.size > 0 && !dataLoaded) {
       void loadAlbumsAndLabels();
     }
-  }, [dataLoaded, loadAlbumsAndLabels]);
-
-  const deselectAll = useCallback(() => {
-    setSelectedPhotos(new Set());
-  }, []);
+  }, [grid.selectedPhotos.size, dataLoaded, loadAlbumsAndLabels]);
 
   const handleAddToAlbum = useCallback(async () => {
-    if (!selectedAlbum || selectedPhotos.size === 0) return;
+    if (!selectedAlbum || grid.selectedPhotos.size === 0) return;
     setIsAddingToAlbum(true);
     setActionMessage(null);
     try {
-      const result = await addPhotosToAlbum(selectedAlbum, Array.from(selectedPhotos));
+      const result = await addPhotosToAlbum(selectedAlbum, Array.from(grid.selectedPhotos));
       setActionMessage({ type: 'success', text: `Added ${result.added} photos to album` });
-      setSelectedPhotos(new Set());
+      grid.deselectAll();
       setSelectedAlbum('');
     } catch (err) {
       setActionMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to add to album' });
     } finally {
       setIsAddingToAlbum(false);
     }
-  }, [selectedAlbum, selectedPhotos]);
+  }, [selectedAlbum, grid]);
 
   const handleAddLabel = useCallback(async () => {
-    if (!labelInput.trim() || selectedPhotos.size === 0) return;
+    if (!labelInput.trim() || grid.selectedPhotos.size === 0) return;
     setIsAddingLabel(true);
     setActionMessage(null);
     try {
-      const result = await batchAddLabels(Array.from(selectedPhotos), labelInput.trim());
+      const result = await batchAddLabels(Array.from(grid.selectedPhotos), labelInput.trim());
       if (result.errors && result.errors.length > 0) {
         setActionMessage({ type: 'error', text: `Updated ${result.updated} photos, ${result.errors.length} errors` });
       } else {
         setActionMessage({ type: 'success', text: `Added label to ${result.updated} photos` });
       }
-      setSelectedPhotos(new Set());
+      grid.deselectAll();
       setLabelInput('');
     } catch (err) {
       setActionMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to add label' });
     } finally {
       setIsAddingLabel(false);
     }
-  }, [labelInput, selectedPhotos]);
+  }, [labelInput, grid]);
 
   const handleBatchEdit = useCallback(async (updates: { favorite?: boolean; private?: boolean }) => {
-    if (selectedPhotos.size === 0) return;
+    if (grid.selectedPhotos.size === 0) return;
     setIsBatchEditing(true);
     setActionMessage(null);
     try {
-      const result = await batchEditPhotos(Array.from(selectedPhotos), updates);
+      const result = await batchEditPhotos(Array.from(grid.selectedPhotos), updates);
       if (result.errors && result.errors.length > 0) {
         setActionMessage({ type: 'error', text: `Updated ${result.updated} photos, ${result.errors.length} errors` });
       } else {
         setActionMessage({ type: 'success', text: `Updated ${result.updated} photos` });
       }
-      setSelectedPhotos(new Set());
+      grid.deselectAll();
     } catch (err) {
       setActionMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to update photos' });
     } finally {
       setIsBatchEditing(false);
     }
-  }, [selectedPhotos]);
+  }, [grid]);
 
   const setSelectedBookId = useCallback(async (bookId: string) => {
     setSelectedBookIdRaw(bookId);
@@ -178,17 +169,17 @@ export function usePhotoSelection(): UsePhotoSelectionReturn {
   }, []);
 
   const handleAddToBookSection = useCallback(async () => {
-    if (!selectedSectionId || selectedPhotos.size === 0) return;
+    if (!selectedSectionId || grid.selectedPhotos.size === 0) return;
     setIsAddingToSection(true);
     setActionMessage(null);
     try {
-      await addSectionPhotos(selectedSectionId, Array.from(selectedPhotos));
+      await addSectionPhotos(selectedSectionId, Array.from(grid.selectedPhotos));
       const section = bookSections.find(s => s.id === selectedSectionId);
       setActionMessage({
         type: 'success',
-        text: `Added ${selectedPhotos.size} photos to section ${section?.title ?? selectedSectionId}`,
+        text: `Added ${grid.selectedPhotos.size} photos to section ${section?.title ?? selectedSectionId}`,
       });
-      setSelectedPhotos(new Set());
+      grid.deselectAll();
       setSelectedBookIdRaw('');
       setSelectedSectionId('');
       setBookSections([]);
@@ -198,28 +189,30 @@ export function usePhotoSelection(): UsePhotoSelectionReturn {
     } finally {
       setIsAddingToSection(false);
     }
-  }, [selectedSectionId, selectedPhotos, bookSections]);
+  }, [selectedSectionId, grid, bookSections]);
 
   const handleRemoveFromAlbum = useCallback(async (albumUid: string) => {
-    if (selectedPhotos.size === 0) return;
+    if (grid.selectedPhotos.size === 0) return;
     setIsRemovingFromAlbum(true);
     setActionMessage(null);
     try {
-      const result = await removePhotosFromAlbum(albumUid, Array.from(selectedPhotos));
+      const result = await removePhotosFromAlbum(albumUid, Array.from(grid.selectedPhotos));
       setActionMessage({ type: 'success', text: `Removed ${result.removed} photos from album` });
-      setSelectedPhotos(new Set());
+      grid.deselectAll();
     } catch (err) {
       setActionMessage({ type: 'error', text: err instanceof Error ? err.message : 'Failed to remove from album' });
     } finally {
       setIsRemovingFromAlbum(false);
     }
-  }, [selectedPhotos]);
+  }, [grid]);
 
   return {
-    selectedPhotos,
-    toggleSelection,
-    selectAll,
-    deselectAll,
+    selectedPhotos: grid.selectedPhotos,
+    anchorUid: grid.anchorUid,
+    toggleSelection: grid.toggleSelection,
+    selectAll: grid.selectAll,
+    deselectAll: grid.deselectAll,
+    handleSelectionClick: grid.handleSelectionClick,
     albums,
     labels,
     selectedAlbum,

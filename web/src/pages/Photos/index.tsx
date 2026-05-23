@@ -14,6 +14,7 @@ import { useRegisterShortcut } from '../../shortcuts';
 import { usePhotosFilters } from './hooks/usePhotosFilters';
 import { usePhotosPagination } from './hooks/usePhotosPagination';
 import { usePhotoSelection } from '../../hooks/usePhotoSelection';
+import { useSelectionShortcuts } from '../../hooks/useSelectionShortcuts';
 import { PhotosFilters } from './PhotosFilters';
 import type { Photo, Label, Album } from '../../types';
 
@@ -117,6 +118,17 @@ export function PhotosPage() {
   useRegisterShortcut('photosGrid.prev', focusPrev);
   useRegisterShortcut('photosGrid.openDetail', openFocused);
   useRegisterShortcut('photosGrid.toggleSelect', toggleSelectFocused);
+
+  useSelectionShortcuts({
+    onSelectAll: () => {
+      // Ctrl/Cmd+A also flips the page into selection mode so the user
+      // immediately sees the BulkActionBar with their freshly-picked set.
+      if (pagination.photos.length === 0) return;
+      setSelectionMode(true);
+      selection.selectAll(pagination.photos.map((p) => p.uid));
+    },
+    onClear: selection.selectedPhotos.size > 0 ? selection.deselectAll : undefined,
+  });
 
   // Load dropdown data
   useEffect(() => {
@@ -259,7 +271,13 @@ export function PhotosPage() {
                 onPhotoClick={selectionMode ? undefined : handlePhotoClick}
                 selectable={selectionMode}
                 selectedPhotos={selection.selectedPhotos}
-                onSelectionChange={(uid) => selection.toggleSelection(uid)}
+                onSelectionChange={(uid, event) =>
+                  selection.handleSelectionClick(
+                    uid,
+                    pagination.photos.map((p) => p.uid),
+                    event ?? {},
+                  )
+                }
                 focusedUid={focusedUid}
               />
             </CardContent>

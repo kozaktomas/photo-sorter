@@ -12,6 +12,7 @@ import { BulkActionBar } from '../components/BulkActionBar';
 import { findSimilarPhotos, getThumbnailUrl } from '../api/client';
 import { percentToDistance } from '../constants';
 import { usePhotoSelection } from '../hooks/usePhotoSelection';
+import { useSelectionShortcuts } from '../hooks/useSelectionShortcuts';
 import { copyToClipboard } from '../utils/clipboard';
 import type { SimilarPhotosResponse } from '../types';
 
@@ -33,6 +34,14 @@ export function SimilarPhotosPage() {
 
   // Selection state (shared hook)
   const selection = usePhotoSelection();
+
+  useSelectionShortcuts({
+    onSelectAll: () => {
+      if (!result?.results || result.results.length === 0) return;
+      selection.selectAll(result.results.map((p) => p.photo_uid));
+    },
+    onClear: selection.selectedPhotos.size > 0 ? selection.deselectAll : undefined,
+  });
 
   // Auto-fill and auto-search from URL params
   useEffect(() => {
@@ -284,7 +293,13 @@ export function SimilarPhotosPage() {
                   thumbnailSize="tile_500"
                   selectable
                   selected={selection.selectedPhotos.has(photo.photo_uid)}
-                  onSelectionChange={() => selection.toggleSelection(photo.photo_uid)}
+                  onSelectionChange={(_, event) =>
+                    selection.handleSelectionClick(
+                      photo.photo_uid,
+                      result.results.map((p) => p.photo_uid),
+                      event ?? {},
+                    )
+                  }
                 />
               ))}
             </div>

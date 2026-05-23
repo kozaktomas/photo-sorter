@@ -1094,7 +1094,9 @@
         "next": "Focus next photo",
         "prev": "Focus previous photo",
         "toggleSelect": "Toggle selection of focused photo",
-        "openDetail": "Open focused photo"
+        "openDetail": "Open focused photo",
+        "selectAll": "Select every photo in the grid",
+        "clearSelection": "Clear selection"
       },
       "photoDetail": {
         "next": "Next photo",

@@ -15,7 +15,9 @@ export interface PhotoCardProps {
   // Selection
   selectable?: boolean;
   selected?: boolean;
-  onSelectionChange?: (selected: boolean) => void;
+  // The mouse event is passed through so the caller can read shift/ctrl/meta
+  // for range and additive selection.
+  onSelectionChange?: (selected: boolean, event?: React.MouseEvent) => void;
   // Click behavior
   onClick?: () => void;
   // Thumbnail size
@@ -75,9 +77,9 @@ export function PhotoCard({
     onReject?.();
   };
 
-  const handleClick = () => {
+  const handleClick = (e: React.MouseEvent) => {
     if (selectable && onSelectionChange) {
-      onSelectionChange(!selected);
+      onSelectionChange(!selected, e);
     } else if (onClick) {
       onClick();
     }

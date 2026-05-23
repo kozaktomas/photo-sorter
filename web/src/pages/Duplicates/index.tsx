@@ -12,6 +12,7 @@ import { BulkActionBar } from '../../components/BulkActionBar';
 import { StatsGrid } from '../../components/StatsGrid';
 import { findDuplicates, getAlbums } from '../../api/client';
 import { usePhotoSelection } from '../../hooks/usePhotoSelection';
+import { useSelectionShortcuts } from '../../hooks/useSelectionShortcuts';
 import { DEFAULT_DUPLICATE_THRESHOLD, DEFAULT_DUPLICATE_LIMIT, MAX_ALBUMS_FETCH, percentToDistance } from '../../constants';
 import type { DuplicatesResponse, Album } from '../../types';
 
@@ -32,6 +33,21 @@ export function DuplicatesPage() {
 
   // Selection state
   const selection = usePhotoSelection();
+
+  // Flatten every group's photos in render order so shift-click spans across
+  // groups the same way a wireframe walk through the page would. Ctrl/Cmd+A
+  // grabs the whole flattened set.
+  const allDuplicatePhotoUids = (result?.duplicate_groups ?? []).flatMap((group) =>
+    group.photos.map((p) => p.photo_uid),
+  );
+
+  useSelectionShortcuts({
+    onSelectAll: () => {
+      if (allDuplicatePhotoUids.length === 0) return;
+      selection.selectAll(allDuplicatePhotoUids);
+    },
+    onClear: selection.selectedPhotos.size > 0 ? selection.deselectAll : undefined,
+  });
 
   // Load albums on mount
   useEffect(() => {
@@ -237,7 +253,13 @@ export function DuplicatesPage() {
                       matchPercent={Math.round((1 - photo.distance) * 100)}
                       selectable
                       selected={selection.selectedPhotos.has(photo.photo_uid)}
-                      onSelectionChange={() => selection.toggleSelection(photo.photo_uid)}
+                      onSelectionChange={(_, event) =>
+                        selection.handleSelectionClick(
+                          photo.photo_uid,
+                          allDuplicatePhotoUids,
+                          event ?? {},
+                        )
+                      }
                     />
                   ))}
                 </div>

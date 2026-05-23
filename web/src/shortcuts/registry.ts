@@ -73,6 +73,24 @@ export const SHORTCUTS: ShortcutDef[] = [
     displayKeys: 'Enter',
     descriptionKey: 'shortcuts.items.photosGrid.openDetail',
   },
+  // The next two live in the cheatsheet for discoverability only. They use
+  // modifier keys (Ctrl/Cmd+A) or are claimed by modals (Esc), neither of
+  // which the global registry's matcher handles — `useSelectionShortcuts`
+  // owns the actual key handling and is wired per page.
+  {
+    id: 'photosGrid.selectAll',
+    scope: 'photosGrid',
+    keys: [],
+    displayKeys: 'Ctrl/⌘ + A',
+    descriptionKey: 'shortcuts.items.photosGrid.selectAll',
+  },
+  {
+    id: 'photosGrid.clearSelection',
+    scope: 'photosGrid',
+    keys: [],
+    displayKeys: 'Esc',
+    descriptionKey: 'shortcuts.items.photosGrid.clearSelection',
+  },
 
   // Photo detail
   {
@@ -160,6 +178,8 @@ export const NON_DISPATCHED_SHORTCUTS: ReadonlySet<string> = new Set([
   'bookEditor.nextItem',
   'bookEditor.prevChapter',
   'bookEditor.nextChapter',
+  'photosGrid.selectAll',
+  'photosGrid.clearSelection',
 ]);
 
 function isLetterKey(s: string): boolean {

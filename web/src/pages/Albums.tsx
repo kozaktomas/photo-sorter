@@ -10,6 +10,7 @@ import { PAGE_CONFIGS } from '../constants/pageConfig';
 import { PhotoGrid } from '../components/PhotoGrid';
 import { ShareModal } from '../components/ShareModal';
 import { usePhotoSelection } from '../hooks/usePhotoSelection';
+import { useSelectionShortcuts } from '../hooks/useSelectionShortcuts';
 import { getAlbums, getAlbum, getAlbumPhotos, getThumbnailUrl } from '../api/client';
 import { ALBUM_PHOTOS_CACHE_KEY } from '../constants';
 import { SmartAlbumsSection } from './SmartAlbums/SmartAlbumsSection';
@@ -184,6 +185,15 @@ function AlbumDetailPage({ uid }: { uid: string }) {
     setSelectionMode(!selectionMode);
   };
 
+  useSelectionShortcuts({
+    onSelectAll: () => {
+      if (photos.length === 0) return;
+      setSelectionMode(true);
+      selection.selectAll(photos.map((p) => p.uid));
+    },
+    onClear: selection.selectedPhotos.size > 0 ? selection.deselectAll : undefined,
+  });
+
   if (isLoading) {
     return <div className="text-center py-12 text-slate-400">{t('common:status.loading')}</div>;
   }
@@ -254,7 +264,13 @@ function AlbumDetailPage({ uid }: { uid: string }) {
               photos={photos}
               selectable
               selectedPhotos={selection.selectedPhotos}
-              onSelectionChange={(photoUid) => selection.toggleSelection(photoUid)}
+              onSelectionChange={(photoUid, event) =>
+                selection.handleSelectionClick(
+                  photoUid,
+                  photos.map((p) => p.uid),
+                  event ?? {},
+                )
+              }
             />
           ) : (
             <PhotoGrid photos={photos} onPhotoClick={handlePhotoClick} />

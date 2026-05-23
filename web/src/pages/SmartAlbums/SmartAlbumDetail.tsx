@@ -1,9 +1,10 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
-import { ArrowLeft, Filter, Pencil, Trash2, ChevronDown, SortAsc } from 'lucide-react';
+import { ArrowLeft, Check, ChevronDown, Filter, Pencil, SortAsc, Trash2, X } from 'lucide-react';
 import { Card, CardContent } from '../../components/Card';
 import { Button } from '../../components/Button';
+import { BulkActionBar } from '../../components/BulkActionBar';
 import { PhotoGrid } from '../../components/PhotoGrid';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { SmartAlbumModal } from './SmartAlbumModal';
@@ -13,6 +14,8 @@ import {
   updateSmartAlbum,
   deleteSmartAlbum,
 } from '../../api/client';
+import { usePhotoSelection } from '../../hooks/usePhotoSelection';
+import { useSelectionShortcuts } from '../../hooks/useSelectionShortcuts';
 import { SORT_OPTIONS } from '../Photos/hooks/usePhotosFilters';
 import type { Photo, SmartAlbum, SmartAlbumFilters } from '../../types';
 
@@ -32,6 +35,22 @@ export function SmartAlbumDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [editOpen, setEditOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const selection = usePhotoSelection();
+
+  const exitSelectionMode = useCallback(() => {
+    setSelectionMode(false);
+    selection.deselectAll();
+  }, [selection]);
+
+  useSelectionShortcuts({
+    onSelectAll: () => {
+      if (photos.length === 0) return;
+      setSelectionMode(true);
+      selection.selectAll(photos.map((p) => p.uid));
+    },
+    onClear: selection.selectedPhotos.size > 0 ? selection.deselectAll : undefined,
+  });
 
   const loadAlbum = useCallback(async () => {
     if (!uid) return;
@@ -144,6 +163,17 @@ export function SmartAlbumDetailPage() {
             </select>
             <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 pointer-events-none" />
           </div>
+          {selectionMode ? (
+            <Button variant="secondary" size="sm" onClick={exitSelectionMode}>
+              <X className="h-4 w-4 mr-1" />
+              {t('common:buttons.cancel')}
+            </Button>
+          ) : (
+            <Button variant="secondary" size="sm" onClick={() => setSelectionMode(true)}>
+              <Check className="h-4 w-4 mr-1" />
+              {t('common:buttons.select')}
+            </Button>
+          )}
           <Button variant="ghost" onClick={() => setEditOpen(true)}>
             <Pencil className="h-4 w-4 mr-2" />
             {t('pages:smartAlbums.editButton')}
@@ -154,6 +184,33 @@ export function SmartAlbumDetailPage() {
           </Button>
         </div>
       </div>
+
+      {selectionMode && (
+        <div className="sticky top-0 z-10">
+          {selection.selectedPhotos.size > 0 && (
+            <div className="flex gap-2 mb-2">
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={() => selection.selectAll(photos.map((p) => p.uid))}
+                disabled={selection.selectedPhotos.size === photos.length}
+              >
+                <Check className="h-3 w-3 mr-1" />
+                {t('common:buttons.selectAll')}
+              </Button>
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={selection.deselectAll}
+              >
+                <X className="h-3 w-3 mr-1" />
+                {t('common:buttons.deselect')}
+              </Button>
+            </div>
+          )}
+          <BulkActionBar selection={selection} datalistId="smart-album-labels" showFavorite />
+        </div>
+      )}
 
       {error && (
         <div className="px-3 py-2 bg-red-900/40 border border-red-700 rounded text-sm text-red-200">
@@ -173,7 +230,19 @@ export function SmartAlbumDetailPage() {
             </div>
           ) : (
             <>
-              <PhotoGrid photos={photos} onPhotoClick={handlePhotoClick} />
+              <PhotoGrid
+                photos={photos}
+                onPhotoClick={selectionMode ? undefined : handlePhotoClick}
+                selectable={selectionMode}
+                selectedPhotos={selection.selectedPhotos}
+                onSelectionChange={(photoUid, event) =>
+                  selection.handleSelectionClick(
+                    photoUid,
+                    photos.map((p) => p.uid),
+                    event ?? {},
+                  )
+                }
+              />
               {hasMore && (
                 <div className="flex justify-center mt-4">
                   <Button

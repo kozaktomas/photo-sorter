@@ -1107,7 +1107,9 @@
         "next": "Zaměřit další fotku",
         "prev": "Zaměřit předchozí fotku",
         "toggleSelect": "Přepnout výběr zaměřené fotky",
-        "openDetail": "Otevřít zaměřenou fotku"
+        "openDetail": "Otevřít zaměřenou fotku",
+        "selectAll": "Vybrat všechny fotky v mřížce",
+        "clearSelection": "Zrušit výběr"
       },
       "photoDetail": {
         "next": "Další fotka",
