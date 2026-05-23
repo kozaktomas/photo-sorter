@@ -503,7 +503,7 @@ GET /public/share/{slug}/
 }
 ```
 
-If `has_password` is true and the request lacks a valid share cookie, the `album` field is omitted (the recipient must verify the password first).
+If `has_password` is true and the request lacks a valid share cookie, the `album` field is omitted (the recipient must verify the password first). Archived and private photos are excluded from `photo_count` and from the listing endpoint; `cover_thumb_url` is suppressed when the album's cover photo is archived or private.
 
 **Errors:** `404` when the slug is unknown; `410` when the link has expired.
 
@@ -513,7 +513,7 @@ If `has_password` is true and the request lacks a valid share cookie, the `album
 POST /public/share/{slug}/verify
 ```
 
-Rate-limited to 10 attempts per IP per 5 minutes. Exceeding the limit returns `429` with a `Retry-After: <seconds>` header.
+Rate-limited to 10 attempts per (IP, slug) per 5 minutes — exhausting one share link does not lock the same client out of others. Exceeding the limit returns `429` with a `Retry-After: <seconds>` header. The IP is taken from `r.RemoteAddr` after chi's `RealIP` middleware has applied the deployment's proxy trust rules; the verify handler does not re-parse `X-Forwarded-For` itself.
 
 **Request body:**
 
@@ -521,7 +521,7 @@ Rate-limited to 10 attempts per IP per 5 minutes. Exceeding the limit returns `4
 { "password": "secret-phrase" }
 ```
 
-**Response (200):** `{ "ok": true }` — also sets `Set-Cookie: share_<slug>=<token>; HttpOnly; Path=/api/v1/public/share/<slug>; SameSite=Lax; Max-Age=86400`.
+**Response (200):** `{ "ok": true }` — also sets `Set-Cookie: share_<slug>=<token>; HttpOnly; Path=/api/v1/public/share/<slug>/; SameSite=Lax; Max-Age=86400` (the trailing slash on the path keeps the cookie from bleeding onto a different share whose slug shares a prefix).
 
 **Errors:** `401` for a wrong password; `404` for an unknown slug; `410` for an expired link; `429` when rate-limited.
 
@@ -550,7 +550,7 @@ Requires the share cookie when the link is password-protected.
 GET /public/share/{slug}/photos/{photo_uid}/thumb/{size}
 ```
 
-Streams the cached thumbnail from disk with the same `Cache-Control: public, max-age=31536000, immutable` + `ETag` headers as the authenticated endpoint. The photo must be a member of the linked album — arbitrary UIDs return `404`.
+Streams the cached thumbnail from disk with the same `Cache-Control: public, max-age=31536000, immutable` + `ETag` headers as the authenticated endpoint. The photo must be a member of the linked album AND must not be archived or marked private — arbitrary UIDs and hidden rows return `404`.
 
 ### Public Download
 
@@ -558,7 +558,7 @@ Streams the cached thumbnail from disk with the same `Cache-Control: public, max
 GET /public/share/{slug}/photos/{photo_uid}/download
 ```
 
-Streams the primary file with `Content-Disposition: attachment` and Range support.
+Streams the primary file with `Content-Disposition: attachment` and Range support. Archived or private photos are hidden (404) even when they remain a member of the linked album.
 
 ---
 

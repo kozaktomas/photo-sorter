@@ -28,6 +28,12 @@ func IsValidShareSlug(slug string) bool {
 // the "-N" dedup suffix.
 const shareSlugMaxLen = 64
 
+// ShareSlugMaxLen returns the maximum length (in bytes) of a share
+// slug, matching both the VARCHAR(64) column and the CHECK constraint.
+// Exposed so the handler can size its dedup suffix without re-declaring
+// the constant.
+func ShareSlugMaxLen() int { return shareSlugMaxLen }
+
 // shareSlugFallback is used when an album title slugifies to a string
 // that is either empty or too short to satisfy the 3-char minimum from
 // the CHECK constraint.

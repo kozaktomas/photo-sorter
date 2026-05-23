@@ -191,11 +191,11 @@ func (h *ShareHandler) CreateLink(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	link, ok := h.buildCreateLink(w, r, deps)
+	link, slugWasGenerated, ok := h.buildCreateLink(w, r, deps)
 	if !ok {
 		return
 	}
-	if err := deps.shareRepo.CreateShareLink(r.Context(), link); err != nil {
+	if err := h.insertShareLinkWithRetry(r, deps.shareRepo, link, slugWasGenerated); err != nil {
 		h.respondCreateError(w, link.Slug, err)
 		return
 	}
@@ -208,6 +208,73 @@ func (h *ShareHandler) CreateLink(w http.ResponseWriter, r *http.Request) {
 		},
 	)
 	respondJSON(w, http.StatusCreated, shareLinkToResponse(*link, ""))
+}
+
+// shareSlugAllocMaxAttempts caps the number of auto-derived slug
+// candidates the server will try before giving up. The bound exists so
+// an adversarial album title (or runaway concurrency) cannot turn
+// CreateLink into an unbounded loop hammering the database. 10000 is
+// well above any realistic collision rate but still fast to exhaust.
+const shareSlugAllocMaxAttempts = 10000
+
+// insertShareLinkWithRetry inserts the share link, retrying with the
+// next "-N" suffix on a primary-key collision when the slug was auto-
+// derived from the album title. Replaces the previous SELECT-then-
+// INSERT scheme, which raced under concurrent creates against the same
+// album: two requests would both observe the candidate missing, both
+// insert, and one would get a 409 the user did not deserve. The
+// loop now treats the UNIQUE constraint as the source of truth and
+// only retries when the caller did not pin a specific slug.
+func (h *ShareHandler) insertShareLinkWithRetry(
+	r *http.Request, repo database.ShareLinkWriter, link *database.ShareLink, slugWasGenerated bool,
+) error {
+	if !slugWasGenerated {
+		if err := repo.CreateShareLink(r.Context(), link); err != nil {
+			return fmt.Errorf("create share link: %w", err)
+		}
+		return nil
+	}
+	base := link.Slug
+	for i := 1; i <= shareSlugAllocMaxAttempts; i++ {
+		err := repo.CreateShareLink(r.Context(), link)
+		if err == nil {
+			return nil
+		}
+		if !errors.Is(err, database.ErrShareLinkSlugTaken) {
+			return fmt.Errorf("create share link: %w", err)
+		}
+		next := nextShareSlugCandidate(base, i+1)
+		if next == link.Slug {
+			return fmt.Errorf("create share link: %w", err)
+		}
+		link.Slug = next
+	}
+	return fmt.Errorf("create share link: %w", database.ErrShareLinkSlugTaken)
+}
+
+// nextShareSlugCandidate produces the n-th candidate slug derived from
+// base by appending "-N", trimming base if the suffix would push the
+// total beyond the 64-byte column limit. The trim keeps the suffix
+// readable (never lands on a trailing "-") so successive collisions
+// still produce monotonically growing strings.
+func nextShareSlugCandidate(base string, n int) string {
+	if n < 2 {
+		return base
+	}
+	suffix := "-" + strconv.Itoa(n)
+	maxBase := postgres.ShareSlugMaxLen() - len(suffix)
+	if maxBase <= 0 {
+		return base
+	}
+	trimmed := base
+	if len(trimmed) > maxBase {
+		trimmed = strings.TrimRight(trimmed[:maxBase], "-")
+	}
+	if trimmed == "" {
+		// Suffix-only candidates would violate the 3-char minimum; bail.
+		return base
+	}
+	return trimmed + suffix
 }
 
 // formatNullableTime returns the RFC3339 representation of t, or empty
@@ -264,28 +331,31 @@ func (h *ShareHandler) prepareCreateLink(
 
 // buildCreateLink decodes the JSON body, resolves the slug, hashes the
 // password, and parses the expiration. It returns the ready-to-insert
-// ShareLink or writes the response and returns false on any validation
-// failure.
+// ShareLink and a flag reporting whether the slug came from the album
+// title (true) or was provided by the caller (false). The boolean
+// drives whether insertShareLinkWithRetry will adjust the suffix on
+// collision. Returns ok=false (after writing the response) on any
+// validation failure.
 func (h *ShareHandler) buildCreateLink(
 	w http.ResponseWriter, r *http.Request, deps createLinkDeps,
-) (*database.ShareLink, bool) {
+) (*database.ShareLink, bool, bool) {
 	var req createShareRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		respondError(w, http.StatusBadRequest, errInvalidRequestBody)
-		return nil, false
+		return nil, false, false
 	}
-	slug, status, errMsg := h.resolveShareSlug(r, deps.shareRepo, req.Slug, deps.album.Title)
+	slug, slugWasGenerated, status, errMsg := h.resolveShareSlug(req.Slug, deps.album.Title)
 	if status != 0 {
 		respondError(w, status, errMsg)
-		return nil, false
+		return nil, false, false
 	}
 	passwordHash, ok := h.hashRequestPassword(w, req.Password)
 	if !ok {
-		return nil, false
+		return nil, false, false
 	}
 	expiresAt, ok := h.parseRequestExpiration(w, req.ExpiresAt)
 	if !ok {
-		return nil, false
+		return nil, false, false
 	}
 	return &database.ShareLink{
 		Slug:             slug,
@@ -293,7 +363,7 @@ func (h *ShareHandler) buildCreateLink(
 		PasswordHash:     passwordHash,
 		ExpiresAt:        expiresAt,
 		CreatedByUserUID: deps.info.UserUID,
-	}, true
+	}, slugWasGenerated, true
 }
 
 // requireWriteAccess pulls AuthInfo and enforces HasWriteAccess. It
@@ -376,44 +446,25 @@ func (h *ShareHandler) respondCreateError(w http.ResponseWriter, slug string, er
 	}
 }
 
-// resolveShareSlug normalises and validates a share slug. The slug is
-// derived from the album title when the caller does not supply one; a
-// supplied slug is rejected unless it matches the canonical pattern. If
-// the slug collides, we append "-2", "-3", ... until a free row is
-// found (capped at 10000 attempts to keep an adversarial title bounded).
+// resolveShareSlug normalises a share slug for a create request. A
+// caller-supplied value is accepted only when it matches the canonical
+// `^[a-z0-9-]{3,64}$` pattern; otherwise the slug is derived from the
+// album title and the second return value (generated) is set so
+// insertShareLinkWithRetry knows it may append "-N" on collision. The
+// previous SELECT-then-INSERT scheme has been retired — the UNIQUE
+// constraint on the slug column is now the only race-resistant source
+// of truth, see [insertShareLinkWithRetry].
 func (h *ShareHandler) resolveShareSlug(
-	r *http.Request, repo database.ShareLinkReader, requested, albumTitle string,
-) (slug string, status int, msg string) {
+	requested, albumTitle string,
+) (slug string, generated bool, status int, msg string) {
 	requested = strings.TrimSpace(requested)
 	if requested != "" {
 		if !postgres.IsValidShareSlug(requested) {
-			return "", http.StatusBadRequest, database.ErrShareLinkInvalidSlug.Error()
+			return "", false, http.StatusBadRequest, database.ErrShareLinkInvalidSlug.Error()
 		}
-		return requested, 0, ""
+		return requested, false, 0, ""
 	}
-
-	base := postgres.SlugifyShareTitle(albumTitle)
-	candidate := base
-	for i := 2; i < 10000; i++ {
-		_, err := repo.GetShareLink(r.Context(), candidate)
-		if errors.Is(err, database.ErrNotFound) {
-			return candidate, 0, ""
-		}
-		if err != nil {
-			log.Printf("share: lookup slug %s: %v", sanitizeForLog(candidate), err)
-			return "", http.StatusInternalServerError, "failed to resolve slug"
-		}
-		// Existing row, try next suffix. Truncate base so the suffixed
-		// candidate still fits the 64-byte limit.
-		suffix := "-" + strconv.Itoa(i)
-		maxBase := 64 - len(suffix)
-		trimmed := base
-		if len(trimmed) > maxBase {
-			trimmed = strings.TrimRight(trimmed[:maxBase], "-")
-		}
-		candidate = trimmed + suffix
-	}
-	return "", http.StatusInternalServerError, "could not allocate unique share slug"
+	return postgres.SlugifyShareTitle(albumTitle), true, 0, ""
 }
 
 // ListLinks handles GET /api/v1/albums/{uid}/shares. It returns every
@@ -532,7 +583,11 @@ func (h *ShareHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	album, err := h.albumRepo.GetAlbum(r.Context(), link.AlbumUID)
+	albumRepo := h.requireAlbumReader(w)
+	if albumRepo == nil {
+		return
+	}
+	album, err := albumRepo.GetAlbum(r.Context(), link.AlbumUID)
 	if errors.Is(err, database.ErrNotFound) {
 		// The album was deleted but the link survives (cascade should
 		// have caught this, but treat as gone-anyway). Respond 404.
@@ -547,12 +602,89 @@ func (h *ShareHandler) Get(w http.ResponseWriter, r *http.Request) {
 
 	resp.Album = &publicAlbumPayload{
 		Title:      album.Title,
-		PhotoCount: album.PhotoCount,
+		PhotoCount: h.countPublicPhotos(r, link.AlbumUID),
 	}
-	if album.CoverPhotoUID != "" {
+	if album.CoverPhotoUID != "" && h.coverIsPublic(r, link.AlbumUID, album.CoverPhotoUID) {
 		resp.Album.CoverThumbURL = publicThumbURL(link.Slug, album.CoverPhotoUID, "fit_720")
 	}
 	respondJSON(w, http.StatusOK, resp)
+}
+
+// countPublicPhotos returns the number of photos in the album that are
+// safe to surface through the public share endpoints (archived and
+// private photos are excluded). On error it logs the failure and falls
+// back to 0 so the request still succeeds — the caller is anonymous and
+// gains nothing from a 500 here.
+func (h *ShareHandler) countPublicPhotos(r *http.Request, albumUID string) int {
+	if h.photoRepo == nil {
+		return 0
+	}
+	_, total, err := h.photoRepo.ListPhotos(r.Context(), publicPhotoFilter(albumUID, 1, 0))
+	if err != nil {
+		log.Printf("share public count %s: %v", sanitizeForLog(albumUID), err)
+		return 0
+	}
+	return total
+}
+
+// coverIsPublic reports whether the album's stored cover photo is
+// eligible to be exposed via the public thumbnail endpoint. A cover that
+// is archived or marked private would otherwise leak — the thumbnail
+// route would refuse to serve it but the recipient would see a broken
+// image and learn the UID. Returning false here suppresses the URL
+// entirely.
+func (h *ShareHandler) coverIsPublic(r *http.Request, albumUID, photoUID string) bool {
+	if h.photoRepo == nil {
+		return false
+	}
+	photo, err := h.photoRepo.GetPhoto(r.Context(), photoUID)
+	if err != nil {
+		// ErrNotFound or a transient failure: drop the cover silently.
+		return false
+	}
+	if !photoIsPublic(photo) {
+		return false
+	}
+	uids, err := h.albumRepo.ListAlbumPhotoUIDs(r.Context(), albumUID)
+	if err != nil {
+		return false
+	}
+	return slices.Contains(uids, photoUID)
+}
+
+// publicPhotoFilter returns a PhotoFilter that excludes archived and
+// private photos so the same gate applies to every public surface
+// (listing, count, membership check). The function is a single source
+// of truth for what counts as "visible to an anonymous share recipient".
+func publicPhotoFilter(albumUID string, limit, offset int) database.PhotoFilter {
+	private := false
+	archived := false
+	return database.PhotoFilter{
+		AlbumUID: albumUID,
+		Limit:    limit,
+		Offset:   offset,
+		SortBy:   "newest",
+		Private:  &private,
+		Archived: &archived,
+	}
+}
+
+// photoIsPublic reports whether the given photo row may be exposed
+// through a public share. Archived (soft-deleted) and private photos
+// are always hidden. The check is the per-photo counterpart of
+// publicPhotoFilter so the listing, thumbnail, and download endpoints
+// stay in agreement.
+func photoIsPublic(photo *database.Photo) bool {
+	if photo == nil {
+		return false
+	}
+	if photo.Private {
+		return false
+	}
+	if photo.ArchivedAt != nil {
+		return false
+	}
+	return true
 }
 
 // verifyRequest is the JSON body accepted by POST
@@ -571,7 +703,7 @@ func (h *ShareHandler) VerifyPassword(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusBadRequest, "missing slug")
 		return
 	}
-	if !h.checkVerifyRateLimit(w, r) {
+	if !h.checkVerifyRateLimit(w, r, slug) {
 		return
 	}
 	link, ok := h.loadVerifyLink(w, r, slug)
@@ -609,18 +741,32 @@ func (h *ShareHandler) VerifyPassword(w http.ResponseWriter, r *http.Request) {
 }
 
 // checkVerifyRateLimit consults the in-memory limiter and writes a 429
-// response when the per-IP attempt budget is exhausted.
-func (h *ShareHandler) checkVerifyRateLimit(w http.ResponseWriter, r *http.Request) bool {
+// response when the per-(IP, slug) attempt budget is exhausted. Keying
+// on the tuple (instead of IP alone) means an attacker exhausting one
+// share link does not lock the same IP out of every other share, and
+// an attacker rotating slugs to dodge the limit still hits the cap on
+// the slug they are actually trying to crack.
+func (h *ShareHandler) checkVerifyRateLimit(w http.ResponseWriter, r *http.Request, slug string) bool {
 	if h.limiter == nil {
 		return true
 	}
-	retryAfter, blocked := h.limiter.allow(clientIP(r), time.Now())
+	key := shareRateLimitKey(clientIP(r), slug)
+	retryAfter, blocked := h.limiter.allow(key, time.Now())
 	if !blocked {
 		return true
 	}
 	w.Header().Set("Retry-After", strconv.Itoa(int(retryAfter.Seconds())))
 	respondError(w, http.StatusTooManyRequests, "too many attempts")
 	return false
+}
+
+// shareRateLimitKey builds the limiter bucket key from the client IP
+// and the slug being verified. The `|` separator cannot appear in a
+// valid slug (the slug pattern is `^[a-z0-9-]{3,64}$`) so the
+// concatenation is unambiguous and an IP cannot be conflated with a
+// slug.
+func shareRateLimitKey(ip, slug string) string {
+	return ip + "|" + slug
 }
 
 // loadVerifyLink is the slug -> ShareLink lookup used by VerifyPassword.
@@ -677,12 +823,7 @@ func (h *ShareHandler) ListPhotos(w http.ResponseWriter, r *http.Request) {
 
 	limit, offset := readPaginationParams(r,
 		sharePublicPhotosDefaultLimit, sharePublicPhotosMaxLimit)
-	photos, total, err := photoRepo.ListPhotos(r.Context(), database.PhotoFilter{
-		AlbumUID: link.AlbumUID,
-		Limit:    limit,
-		Offset:   offset,
-		SortBy:   "newest",
-	})
+	photos, total, err := photoRepo.ListPhotos(r.Context(), publicPhotoFilter(link.AlbumUID, limit, offset))
 	if err != nil {
 		log.Printf("share public photos %s: %v", sanitizeForLog(link.Slug), err)
 		respondError(w, http.StatusInternalServerError, "failed to list photos")
@@ -820,6 +961,14 @@ func (h *ShareHandler) preparePhotoRequest(
 	if !ok {
 		return ctx, false
 	}
+	// Belt-and-braces: a photo can be a member of the album but still
+	// archived or marked private. The share recipient must not see it
+	// even if they know the UID. Mirror the gate publicPhotoFilter
+	// applies to the listing.
+	if !photoIsPublic(photo) {
+		respondError(w, http.StatusNotFound, "photo not found in share")
+		return ctx, false
+	}
 	ctx.link = link
 	ctx.photo = photo
 	ctx.repo = repo
@@ -936,14 +1085,17 @@ func (h *ShareHandler) hasVerifiedCookie(r *http.Request, slug string) bool {
 
 // setShareCookie issues a per-share HttpOnly cookie containing an HMAC-
 // signed token. The cookie name is `share_<slug>` so an unlock for one
-// link does not unlock another.
+// link does not unlock another, and the path is scoped to the slug's
+// public sub-tree (with a trailing slash, so RFC 6265 path-match never
+// bleeds the cookie onto a different share whose slug happens to share
+// a prefix).
 func (h *ShareHandler) setShareCookie(w http.ResponseWriter, r *http.Request, slug string) {
 	token := h.signShareToken(slug)
 	secure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
 	http.SetCookie(w, &http.Cookie{
 		Name:     shareCookiePrefix + slug,
 		Value:    token,
-		Path:     "/api/v1/public/share/" + slug,
+		Path:     "/api/v1/public/share/" + slug + "/",
 		HttpOnly: true,
 		Secure:   secure,
 		SameSite: http.SameSiteLaxMode,
@@ -986,22 +1138,32 @@ func publicThumbURL(slug, photoUID, size string) string {
 	return fmt.Sprintf("/api/v1/public/share/%s/photos/%s/thumb/%s", slug, photoUID, size)
 }
 
-// clientIP best-effort extracts the client IP from RemoteAddr or the
-// X-Forwarded-For header. The result is purely a rate-limit key — we
-// fall back to the raw RemoteAddr string when parsing fails so a
-// malformed header still rate-limits the same key consistently.
+// clientIP extracts the rate-limit key for a request. chi's RealIP
+// middleware runs before us and rewrites r.RemoteAddr to the
+// X-Forwarded-For / X-Real-IP / True-Client-IP value (in that order)
+// when those headers are present, so the audit log, the chi access
+// log, and this limiter all key on the same IP. We strip the trailing
+// :port — RealIP only writes a bare IP, but a direct (non-proxied)
+// client still arrives with host:port and the bucket key should be
+// the IP alone so an attacker cycling source ports cannot dodge it.
+//
+// Reading X-Forwarded-For ourselves would re-introduce the bypass we
+// disable in the audit middleware: an unproxied attacker can supply
+// any value for that header.
 func clientIP(r *http.Request) string {
-	if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-		if first, _, ok := strings.Cut(fwd, ","); ok {
-			return strings.TrimSpace(first)
+	addr := r.RemoteAddr
+	if addr == "" {
+		return ""
+	}
+	if host, _, err := net.SplitHostPort(addr); err == nil {
+		return host
+	}
+	if strings.HasPrefix(addr, "[") {
+		if end := strings.Index(addr, "]"); end > 0 {
+			return addr[1:end]
 		}
-		return strings.TrimSpace(fwd)
 	}
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
+	return addr
 }
 
 // --- Rate limiter ------------------------------------------------------
