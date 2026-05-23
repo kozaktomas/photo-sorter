@@ -20,18 +20,23 @@ user accounts kept in Postgres.
 - **Face Outlier Detection** — Find incorrectly assigned faces by computing distance from the per-person centroid
 - **Photo Books** — Plan multi-format printed photo books with chapter color themes, customizable typography (24 free fonts), auto-generated table of contents, captions slots, and PDF export via LaTeX
 - **Era Estimation** — Estimate photo time periods using CLIP embedding comparison
-- **Duplicate Detection** — Find near-duplicate photos via pHash + CLIP embedding similarity
+- **Duplicate Detection** — Find near-duplicate photos via pHash + CLIP embedding similarity (both on upload and across the existing library)
 - **Trash with auto-purge** — Soft-delete photos to a per-user trash; an hourly daemon hard-deletes anything older than `TRASH_RETENTION_DAYS` (default 30)
+- **Non-destructive photo edits** — Crop, rotate (90/180/270), and tune brightness/contrast from the UI. Edits live in `photo_edits`; downloads can return either the rendered JPEG or the pristine original, and the thumbnail cache is rebuilt from the post-edit pixels
 - **EXIF edit** — Fix date, GPS, camera/lens/exposure, and EXIF text fields from the UI; changes also land in an XMP sidecar
+- **Smart albums** — Saved photo searches (label/subject/favorite/date/bbox/query filters) that re-evaluate live, with stable UIDs that survive renames so bookmarks keep working
+- **Public album share links** — Mint anonymous share URLs for an album with optional bcrypt password and expiry. Archived and private photos are filtered server-side; password verify is rate-limited (10 attempts / IP / 5 min)
 - **Czech-aware full-text search** — Diacritic-folded `q=` filter on photo title/description/notes/file_name
 - **Album Suggestions** — Find photos missing from albums via a pgvector centroid query
+- **Map + timeline browse** — Bidirectional filtering: pan/zoom the Leaflet map and the timeline scrubber updates, drag the timeline and the map highlights matching pins
 - **Photo Comparison** — Side-by-side photo comparison with metadata diff
-- **Slideshow** — Full-screen photo slideshow with keyboard navigation
+- **Slideshow + TV presentation mode** — Full-screen photo slideshow with keyboard navigation; dedicated TV mode auto-hides the cursor and exposes a minimal control bar for ambient display use
 - **Mobile capture (PWA)** — `/capture` page that opens the device camera and uploads single shots
-- **User management** — Native bcrypt accounts with roles `admin` / `editor` / `viewer`, first admin bootstrapped from env vars
-- **Backup CLI** — `photo-sorter backup` tars the originals dir and `pg_dump`s the Postgres database in one timestamped folder, with retention
-- **PhotoPrism migration** — One-shot `migrate-from-photoprism` + cell-by-cell `migrate-verify` for operators moving off PhotoPrism
-- **MCP Server** — Model Context Protocol server for AI agent integration (52 tools)
+- **User management** — Native bcrypt accounts with roles `admin` / `editor` / `viewer`, first admin bootstrapped from env vars; `users` CLI for recovery when the web UI is unreachable
+- **Audit log** — Append-only `audit_log` table records every successful mutating action plus `login_failed` / `share_link_password_failed`. Admin-only `/api/v1/audit-log` viewer with filters (user, action, entity, time range)
+- **Backup CLI** — `photo-sorter backup` tars the originals dir and `pg_dump`s the Postgres database in one timestamped folder, with retention. `db-export` / `db-import` cover the DB side standalone
+- **PhotoPrism migration** — One-shot `migrate-from-photoprism` + cell-by-cell `migrate-verify` for operators moving off PhotoPrism (UIDs preserved verbatim)
+- **MCP Server** — Model Context Protocol server for AI agent integration (52 tools), mounted at `/mcp/sse` when `MCP_API_TOKEN` is set
 - **Web Interface** — Browser-based UI with real-time progress updates via SSE
 - **Internationalization** — Czech and English language support
 - **Dry Run Mode** — Preview AI sort changes before applying them
@@ -175,12 +180,17 @@ GEMINI_API_KEY=...
 OLLAMA_URL=http://localhost:11434
 OLLAMA_MODEL=llama3.2-vision:11b
 LLAMACPP_URL=http://localhost:8080
+LLAMACPP_MODEL=llava
 
 # Web server
 WEB_PORT=8080
 WEB_HOST=0.0.0.0
 WEB_SESSION_SECRET=change-me-in-production
 WEB_ALLOWED_ORIGINS=https://photos.example.com
+
+# MCP server (optional — mounts /mcp/sse + /mcp/message on the serve command
+# when set; clients authenticate with Authorization: Bearer <token>)
+MCP_API_TOKEN=
 ```
 
 ## Usage
@@ -269,6 +279,30 @@ photo-sorter photo info <photo-uid>
 photo-sorter photo info --album <album-uid> --json
 ```
 
+### User Management (CLI)
+
+The web UI manages users via Settings → Users. The CLI is for recovery
+when the UI is unreachable (forgotten admin password, locked-out
+account, fresh-install bootstrap):
+
+```bash
+# List all local users
+photo-sorter users list
+
+# Create a new user (prompts for the password; --role defaults to viewer)
+photo-sorter users create alice --role=editor
+
+# Reset a forgotten password
+photo-sorter users set-password alice
+
+# Delete a stale account (use --yes to skip the confirmation prompt; the
+# last admin cannot be deleted)
+photo-sorter users delete alice
+```
+
+Mutating subcommands append rows to `audit_log` with `actor=cli` so the
+operation appears in the admin audit viewer.
+
 ### Cache Management
 
 Backfill thumbnails and perceptual hashes after migrating or wiping the
@@ -322,6 +356,30 @@ sudo systemctl enable --now photo-sorter-backup.timer
 ```
 
 The timer fires the oneshot service nightly at 03:00 (with a 10-minute random jitter, persistent across reboots).
+
+#### Database dump / restore
+
+For DB-only disaster recovery (move to a new host, snapshot before a
+risky migration), use the `db-export` / `db-import` pair. They wrap
+`pg_dump` / `pg_restore` and cover every row in the `photosorter`
+database — photos, albums, labels, faces, books, users, sessions. The
+originals tree on disk is NOT included.
+
+```bash
+# Dump to the default timestamped file (custom pg_dump format)
+photo-sorter db-export
+
+# Or pin the output path + format
+photo-sorter db-export -o photosorter-snapshot.dump
+photo-sorter db-export --format=plain --no-compress -o photosorter.sql
+
+# Restore (refuses to overwrite a non-empty DB without --yes; format is
+# auto-detected and gzipped dumps are decompressed transparently)
+photo-sorter db-import -i photosorter-snapshot.dump --yes
+
+# Clean-slate restore (drops and recreates the public schema first)
+photo-sorter db-import -i photosorter-snapshot.dump --drop-existing --yes
+```
 
 #### Backup & Restore runbook
 
@@ -399,6 +457,7 @@ photo-sorter/
 ├── internal/
 │   ├── ai/                 # AI provider implementations
 │   │   └── prompts/        # Embedded prompt templates
+│   ├── audit/              # Append-only audit_log writer
 │   ├── auth/               # Password hashing + bootstrap admin
 │   ├── config/             # Configuration and pricing
 │   ├── constants/          # Shared constants (page sizes, thresholds)
@@ -407,6 +466,7 @@ photo-sorter/
 │   ├── facematch/          # Face matching utilities (IoU, bbox conversion)
 │   ├── fingerprint/        # Perceptual hashing and embeddings
 │   ├── imgconvert/         # HEIC/RAW → JPEG via heif-convert / dcraw
+│   ├── imgedit/            # Non-destructive edits (crop / rotate / brightness / contrast)
 │   ├── latex/              # PDF export via LaTeX
 │   ├── mcp/                # MCP server for AI agent integration
 │   ├── migrate/            # PhotoPrism→native one-shot migrator
