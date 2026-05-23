@@ -1,18 +1,41 @@
 # CLI Reference
 
-Complete reference for all Photo Sorter CLI commands.
+Complete reference for every `photo-sorter` Cobra command and flag, as
+registered by the binary today. Where a command's behaviour overlaps
+the REST surface, the relevant entry in [`docs/API.md`](API.md) is
+cross-referenced; for backup and disaster recovery see
+[`docs/backup.md`](backup.md).
+
+> **External binaries required by the upload + EXIF pipelines.** The
+> `serve` and `migrate-from-photoprism` commands shell out to
+> `exiftool`, `heif-convert` (libheif-tools), and `dcraw` (LibRaw shim)
+> when they need to read RAW/HEIC pixels or write XMP sidecars. The
+> official Docker image bundles all three; for local development install
+> them via the OS package manager (`apt install exiftool libheif-examples
+> libraw-bin` on Debian/Ubuntu). `serve` logs a startup WARN line for
+> each missing binary so deployments fail loud, not silent.
+
+> **PhotoPrism vs native commands.** Photo-sorter's day-to-day surface is
+> the REST API exposed by `serve` (and the embedded web UI). Most CLI
+> commands listed here predate the native pipeline and still target a
+> legacy PhotoPrism MariaDB instance (`PHOTOPRISM_URL` /
+> `PHOTOPRISM_USERNAME` / `PHOTOPRISM_PASSWORD`). They are kept for
+> emergency reruns and one-shot migrations; the commands explicitly
+> flagged "legacy" below have no native equivalent and only make sense
+> against an existing PhotoPrism install.
 
 ## Global Flags
 
 | Flag | Description |
 |------|-------------|
-| `--capture <dir>` | Save API responses to directory for testing |
+| `--capture <dir>` | Save PhotoPrism API responses to a directory (test/debug aid). |
 
 ## Commands
 
 ### albums
 
-List albums from the native `albums` table.
+List albums from the PhotoPrism REST API. *Legacy* — the native
+equivalent is `GET /api/v1/albums` (see [API §Albums](API.md#albums)).
 
 ```bash
 photo-sorter albums [flags]
@@ -22,8 +45,8 @@ photo-sorter albums [flags]
 |------|------|---------|-------------|
 | `--count` | int | 100 | Number of albums to retrieve |
 | `--offset` | int | 0 | Offset for pagination |
-| `--order` | string | | Sort order (e.g., 'name', 'count') |
-| `--query` | string | | Search query to filter albums |
+| `--order` | string | `""` | Sort order (e.g., `name`, `count`) |
+| `--query` | string | `""` | Search query to filter albums |
 
 **Example:**
 ```bash
@@ -34,7 +57,10 @@ photo-sorter albums --count 50 --order name
 
 ### sort
 
-Analyze photos in an album using AI and apply labels, descriptions, and date estimates.
+Analyze photos in a PhotoPrism album using AI and apply labels,
+descriptions, and date estimates. Labels are written via the native
+`labels` PostgreSQL repository; album/photo metadata is still fetched
+through PhotoPrism, so `PHOTOPRISM_URL` is required.
 
 ```bash
 photo-sorter sort <album-uid> [flags]
@@ -42,13 +68,13 @@ photo-sorter sort <album-uid> [flags]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--dry-run` | bool | false | Preview changes without applying them |
-| `--limit` | int | 0 | Limit number of photos to process (0 = no limit) |
-| `--individual-dates` | bool | false | Estimate date per photo instead of album-wide |
-| `--batch` | bool | false | Use batch API for 50% cost savings (slower) |
-| `--provider` | string | openai | AI provider: openai, gemini, ollama, llamacpp |
-| `--force-date` | bool | false | Overwrite existing dates with AI estimates |
-| `--concurrency` | int | 5 | Number of parallel requests |
+| `--dry-run` | bool | `false` | Preview changes without applying them |
+| `--limit` | int | `0` | Limit number of photos to process (`0` = no limit) |
+| `--individual-dates` | bool | `false` | Estimate a date per photo instead of one date for the whole album |
+| `--batch` | bool | `false` | Use the batch API for 50% cost savings (slower; may take minutes) |
+| `--provider` | string | `openai` | AI provider: `openai`, `gemini`, `ollama`, `llamacpp` |
+| `--force-date` | bool | `false` | Overwrite existing dates with AI estimates. By default `TakenAt` is only set when the photo currently has no date (`Year` 0/1). |
+| `--concurrency` | int | `5` | Number of parallel requests in standard mode |
 
 **Examples:**
 ```bash
@@ -65,11 +91,14 @@ photo-sorter sort aq8abc123def --batch
 photo-sorter sort aq8abc123def --concurrency 10
 ```
 
+REST equivalent: `POST /api/v1/sort` (see [API §Sort](API.md#sort-ai-analysis)).
+
 ---
 
 ### labels
 
-List and manage labels.
+List labels from PhotoPrism. *Legacy* — the native equivalent is
+`GET /api/v1/labels`.
 
 ```bash
 photo-sorter labels [flags]
@@ -77,10 +106,10 @@ photo-sorter labels [flags]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--count` | int | 1000 | Maximum number of labels to retrieve |
-| `--all` | bool | true | Include all labels (including unused) |
-| `--sort` | string | name | Sort order: name, -name, count, -count |
-| `--min-photos` | int | 0 | Only show labels with at least N photos |
+| `--count` | int | `1000` | Maximum number of labels to retrieve |
+| `--all` | bool | `true` | Include all labels (even unused ones) |
+| `--sort` | string | `name` | Sort by: `name`, `count`, `-name`, `-count` (prefix `-` for descending) |
+| `--min-photos` | int | `0` | Only show labels with at least N photos |
 
 **Examples:**
 ```bash
@@ -96,7 +125,8 @@ photo-sorter labels --min-photos=5
 
 #### labels delete
 
-Delete labels by UID.
+Delete labels by UID. Unknown UIDs are skipped with a warning and the
+final summary counts only UIDs that actually existed.
 
 ```bash
 photo-sorter labels delete <uid1> [uid2...] [flags]
@@ -104,7 +134,7 @@ photo-sorter labels delete <uid1> [uid2...] [flags]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--yes` | bool | false | Skip confirmation prompt |
+| `--yes` | bool | `false` | Skip the confirmation prompt |
 
 **Example:**
 ```bash
@@ -115,7 +145,7 @@ photo-sorter labels delete lq8abc123 lq8def456 --yes
 
 ### count
 
-Count photos in an album.
+Count photos in a PhotoPrism album. *Legacy.*
 
 ```bash
 photo-sorter count <album-uid>
@@ -125,7 +155,9 @@ photo-sorter count <album-uid>
 
 ### create
 
-Create a new album.
+Create a new album in PhotoPrism. *Legacy PhotoPrism-only tool* — the
+native pipeline does not use it; create albums via `POST /api/v1/albums`
+instead.
 
 ```bash
 photo-sorter create <album-name>
@@ -140,7 +172,9 @@ photo-sorter create "Summer Vacation 2024"
 
 ### clear
 
-Remove all photos from an album (keeps photos in library).
+Remove all photos from a PhotoPrism album (keeps the photos in the
+library). *Legacy PhotoPrism-only tool* — not used by the native
+pipeline.
 
 ```bash
 photo-sorter clear <album-uid> [flags]
@@ -148,7 +182,7 @@ photo-sorter clear <album-uid> [flags]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--yes` | bool | false | Skip confirmation prompt |
+| `--yes` | bool | `false` | Skip the confirmation prompt |
 
 **Example:**
 ```bash
@@ -159,7 +193,8 @@ photo-sorter clear aq8abc123def --yes
 
 ### move
 
-Move all photos from source album to a newly created album.
+Move all photos from a source PhotoPrism album to a newly created
+album. *Legacy.*
 
 ```bash
 photo-sorter move <source-album-uid> <new-album-name>
@@ -174,7 +209,11 @@ photo-sorter move aq8abc123def "Sorted Photos 2024"
 
 ### upload
 
-Upload photos to an album.
+Upload photos to a PhotoPrism album. *Legacy* — the native equivalent
+is `POST /api/v1/upload` (multipart) or `POST /api/v1/upload/job`
+(background job with SSE progress). Supported extensions: `jpg`, `jpeg`,
+`png`, `gif`, `heic`, `heif`, `webp`, `tiff`, `tif`, `bmp`, `raw`,
+`cr2`, `nef`, `arw`, `dng`.
 
 ```bash
 photo-sorter upload <album-uid> <folder-path> [folder-path...] [flags]
@@ -182,8 +221,8 @@ photo-sorter upload <album-uid> <folder-path> [folder-path...] [flags]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `-r, --recursive` | bool | false | Search for photos recursively in subdirectories |
-| `-l, --label` | string[] | none | Labels to apply to uploaded photos (can be specified multiple times) |
+| `-r, --recursive` | bool | `false` | Search for photos recursively in subdirectories |
+| `-l, --label` | string[] | `[]` | Labels to apply to uploaded photos (repeatable) |
 
 **Examples:**
 ```bash
@@ -204,7 +243,10 @@ photo-sorter upload -l "Vacation" -l "Summer" aq8abc123def /path/to/photos
 
 ### serve
 
-Start the web server.
+Start the photo-sorter web server. The HTTP server hosts the REST API
+plus the embedded React SPA, and — when `MCP_API_TOKEN` is set — the
+MCP endpoints (`/mcp/sse`, `/mcp/message`). The hourly trash auto-purge
+daemon also runs out of this command.
 
 ```bash
 photo-sorter serve [flags]
@@ -212,43 +254,64 @@ photo-sorter serve [flags]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--port` | int | 8080 | Server port |
-| `--host` | string | 0.0.0.0 | Server host |
-| `--session-secret` | string | (random) | Secret for signing session cookies |
+| `--port` | int | `8080` | Server port (TCP listener) |
+| `--host` | string | `0.0.0.0` | Server bind address |
+| `--session-secret` | string | `""` | Secret for signing session cookies. When unset, falls back to `WEB_SESSION_SECRET`; if that is also unset a random per-process secret is used and the server logs a startup WARN. |
 
-**Environment Variables:**
+**Environment-variable overrides** (read after the flags, so they win
+when both are set):
 
 | Variable | Description |
 |----------|-------------|
-| `WEB_PORT` | Override `--port` flag |
-| `WEB_HOST` | Override `--host` flag |
-| `WEB_SESSION_SECRET` | Override `--session-secret` flag |
+| `WEB_PORT` | Override `--port` |
+| `WEB_HOST` | Override `--host` |
+| `WEB_SESSION_SECRET` | Override `--session-secret` |
+| `MCP_API_TOKEN` | If set, mounts the MCP server at `/mcp/sse` + `/mcp/message`. If unset the routes are not registered. |
+| `TRASH_RETENTION_DAYS` | Retention window for the hourly auto-purge daemon (default `30`). Invalid values fall back to the default with a WARN. |
+| `PHOTOPRISM_URL` | Required — `serve` boots the legacy PhotoPrism client used by a handful of bridge handlers and refuses to start without it. |
 
 **Example:**
 ```bash
 photo-sorter serve --port 3000
 ```
 
-**Similarity search:**
+**External decoders:** `serve` runs a startup check for `dcraw`,
+`heif-convert`, and `exiftool` and logs a WARN line for each missing
+binary. Missing binaries make RAW/HEIC uploads or XMP sidecar writes
+fail loud at request time rather than silently.
 
-The server uses pgvector's native HNSW indexes on `embeddings.embedding`
-and `faces.embedding` (operator class `vector_cosine_ops`). pgvector
-maintains them automatically on INSERT / UPDATE / DELETE — there is no
-in-process index, no on-disk file, and no startup or shutdown overhead
-beyond opening / closing the DB pool. See
-[`docs/similarity-search.md`](similarity-search.md).
+**Similarity search:** the server uses pgvector's native HNSW indexes
+on `embeddings.embedding` and `faces.embedding` (operator class
+`vector_cosine_ops`). pgvector maintains them automatically on INSERT /
+UPDATE / DELETE — there is no in-process index, no on-disk file, and
+no startup or shutdown overhead beyond opening / closing the DB pool.
+See [`docs/similarity-search.md`](similarity-search.md).
+
+**MCP server (integrated):** when `MCP_API_TOKEN` is set, the MCP
+endpoints are mounted on the same HTTP server:
+
+```bash
+export MCP_API_TOKEN=my-secret-token
+photo-sorter serve --port 8085
+# MCP available at http://localhost:8085/mcp/sse
+# Web UI available at http://localhost:8085/
+```
+
+MCP clients authenticate with `Authorization: Bearer <MCP_API_TOKEN>`.
+For the tool catalogue and parameter shapes see
+[API §MCP Server](API.md#mcp-server).
 
 ---
 
 ### users
 
-Manage local user accounts from the CLI. Useful for bootstrapping a
-fresh install, resetting a forgotten admin password, or removing a stale
-account when the web UI is unreachable.
+Manage the local user accounts that back the web UI login. Useful for
+bootstrapping a fresh install, resetting a forgotten admin password, or
+removing a stale account when the web UI is unreachable.
 
-Every mutating subcommand (`create`, `set-password`, `delete`) appends a
-row to the `audit_log` table with `metadata.actor = "cli"` so CLI
-activity shows up in the admin audit viewer.
+Every mutating subcommand (`create`, `set-password`, `delete`) appends
+a row to the `audit_log` table with `metadata.actor = "cli"` so CLI
+activity shows up in the admin audit viewer alongside web traffic.
 
 #### users list
 
@@ -260,13 +323,13 @@ photo-sorter users list [--json]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--json` | bool | false | Output as JSON instead of a table |
+| `--json` | bool | `false` | Output as JSON instead of a table |
 
 #### users create
 
-Create a new user. Prompts for the password on the terminal (hidden,
+Create a new user. The password is read from the terminal (hidden,
 confirmed twice). Refuses to run when stdin is not a TTY — scripted
-callers should use the REST API.
+callers should hit the REST API instead.
 
 ```bash
 photo-sorter users create <username> --role=<admin|editor|viewer> [flags]
@@ -274,12 +337,12 @@ photo-sorter users create <username> --role=<admin|editor|viewer> [flags]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--role` | string | (required) | One of `admin`, `editor`, `viewer` |
+| `--role` | string | *(required)* | One of `admin`, `editor`, `viewer` |
 | `--display-name` | string | username | Human-friendly display name |
-| `--email` | string | | Email address |
+| `--email` | string | `""` | Email address (optional) |
 
-Username must match `[a-z0-9_.-]{3,64}`; password must be at least 8
-characters.
+Username must match `[a-z0-9_.-]{3,64}`; password must be at least
+8 characters.
 
 **Example:**
 ```bash
@@ -298,8 +361,8 @@ photo-sorter users set-password <username>
 #### users delete
 
 Delete a user account. Prompts for confirmation unless `--yes` is given.
-Refuses to delete the last enabled admin (same guarantee the REST API
-enforces).
+Refuses to delete the only remaining enabled admin (same invariant the
+REST handler enforces).
 
 ```bash
 photo-sorter users delete <username> [--yes]
@@ -307,13 +370,20 @@ photo-sorter users delete <username> [--yes]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--yes` | bool | false | Skip the confirmation prompt |
+| `--yes` | bool | `false` | Skip the confirmation prompt |
 
 ---
 
-### photo info
+### photo
 
-Get perceptual hashes and metadata for photos.
+Photo operations and information. Subcommands work on individual
+photos or photo collections.
+
+#### photo info
+
+Display detailed information about a photo including metadata and
+perceptual hashes (pHash and dHash) for similarity matching. Photo
+data is downloaded from PhotoPrism, hashes are computed locally.
 
 ```bash
 photo-sorter photo info <photo-uid> [flags]
@@ -322,10 +392,10 @@ photo-sorter photo info --album <album-uid> [flags]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--album` | string | | Process all photos in an album |
-| `--json` | bool | false | Output as JSON |
-| `--limit` | int | 0 | Limit number of photos in album mode |
-| `--concurrency` | int | 5 | Number of parallel workers |
+| `--album` | string | `""` | Process all photos in an album (mutually exclusive with the positional `photo-uid`) |
+| `--json` | bool | `false` | Output as JSON |
+| `--limit` | int | `0` | Limit number of photos in album mode (`0` = no limit) |
+| `--concurrency` | int | `5` | Number of parallel workers |
 
 **Examples:**
 ```bash
@@ -336,84 +406,132 @@ photo-sorter photo info pq8abc123def
 photo-sorter photo info --album aq8xyz789 --json
 ```
 
----
+#### photo match
 
-### Face / embedding diagnostics — web UI only
-
-For deeper face data, use the web UI:
-
-- `GET /api/v1/photos/{uid}/faces` — list detected faces + suggestions
-- `POST /api/v1/photos/{uid}/faces/compute` — recompute embeddings
-- `POST /api/v1/process/sync-cache` — re-derive cached marker metadata for every face
-
-Face matching and outlier detection are exposed via the web UI and the
-equivalent `POST /api/v1/faces/match` / `POST /api/v1/faces/outliers`
-endpoints.
-
----
-
-### cache compute-phashes
-
-Backfill perceptual hashes (pHash + dHash) for photos that lack them in
-the `photo_phashes` table. New uploads write a row automatically; this
-command fills the gap for photos that pre-date the
-`DUPLICATE_PHASH_MAX_DIFF` feature.
+Find every photo containing a specific person by comparing face
+embeddings stored in PostgreSQL against the candidate person's seed
+faces fetched from PhotoPrism (`q=person:<name>`). With `--apply`, the
+command writes back to PhotoPrism: creating missing markers and
+assigning the person to existing-but-unassigned markers. *Legacy* —
+the native UI exposes the same operations via `POST /api/v1/faces/match`
+and `POST /api/v1/faces/apply`.
 
 ```bash
-photo-sorter cache compute-phashes [flags]
+photo-sorter photo match <person-name> [flags]
 ```
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--limit` | int | 0 | Maximum number of photos to process (0 = unlimited) |
-| `--concurrency` | int | 4 | Number of parallel decode + hash workers |
-| `--json` | bool | false | Output as JSON instead of a progress bar |
+| `--threshold` | float64 | `0.5` | Maximum cosine distance for face matching (lower = stricter) |
+| `--limit` | int | `0` | Limit number of results (`0` = no limit) |
+| `--json` | bool | `false` | Output as JSON |
+| `--apply` | bool | `false` | Apply changes to PhotoPrism (create markers and assign the person) |
+| `--dry-run` | bool | `false` | Preview the apply pass without writing (use with `--apply`) |
+| `--save-matches` | bool | `false` | Write matched photos with face boxes drawn to `test/matches/<uid>.jpg` (debug aid) |
 
 **Examples:**
 ```bash
-# Backfill every photo missing a pHash
-photo-sorter cache compute-phashes
+# Find all photos containing john-doe
+photo-sorter photo match john-doe
 
-# First-run smoke test on the first 1000 photos
-photo-sorter cache compute-phashes --limit 1000
+# Stricter matching, capped results
+photo-sorter photo match john-doe --threshold 0.4 --limit 100
 
-# JSON output for scripting
-photo-sorter cache compute-phashes --json
+# Preview the apply pass
+photo-sorter photo match john-doe --apply --dry-run
+
+# Actually create markers / assign people
+photo-sorter photo match john-doe --apply
+
+# Machine-readable
+photo-sorter photo match john-doe --json
 ```
 
-#### What It Does
+#### photo similar
 
-1. Selects every `photos.uid` that has no row in `photo_phashes`
-2. For each photo (parallelized):
-   - Resolves the on-disk primary file via the configured storage tree
-   - Runs `imgconvert.EnsureDecodable` so HEIC/RAW originals are funnelled
-     through `heif-convert`/`dcraw` into a JPEG-friendly intermediate
-   - Computes pHash + dHash via `internal/fingerprint`
-   - Upserts the row into `photo_phashes`
-3. Reports counts of (hashed, skipped, errored)
+Find photos similar to a given photo (by UID) or to every photo
+carrying a given label (by `--label`). Uses cosine distance over the
+CLIP image embeddings in `embeddings` (pgvector HNSW). With `--apply`
+the matched photos receive the labels in PhotoPrism. *Legacy* — the
+native UI exposes the same operations via
+`POST /api/v1/photos/similar` and `POST /api/v1/photos/similar/collection`.
 
-#### Prerequisites
+```bash
+photo-sorter photo similar <photo-uid> [flags]
+photo-sorter photo similar --label <name> [--label <name>...] [flags]
+```
 
-- `DATABASE_URL` environment variable must be set
-- `STORAGE_ORIGINALS_PATH` / `STORAGE_CACHE_PATH` must point at the
-  originals tree the upload pipeline writes to
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--threshold` | float64 | `0.3` | Maximum cosine distance for similarity (lower = more similar) |
+| `--limit` | int | `50` | Maximum number of results |
+| `--json` | bool | `false` | Output as JSON |
+| `--label` | string[] | `[]` | Find photos similar to every photo carrying this label (repeatable). Mutually exclusive with the positional `photo-uid`. |
+| `--apply` | bool | `false` | Apply the label(s) to similar photos found (`--label` mode only) |
+| `--dry-run` | bool | `false` | Preview label assignments without applying them (use with `--apply`) |
 
-#### Idempotency
+**Examples:**
+```bash
+# Single photo
+photo-sorter photo similar pq8abc123def
 
-Re-runs are safe — only photos missing a `photo_phashes` row are touched.
-To force a re-hash of every photo, truncate the table first:
+# Find every photo similar to photos already tagged "cat"
+photo-sorter photo similar --label cat
 
-```sql
-TRUNCATE photo_phashes;
+# Multiple seed labels, stricter threshold
+photo-sorter photo similar --label cat --label dog --threshold 0.2
+
+# Preview label propagation
+photo-sorter photo similar --label cat --apply --dry-run
+
+# Apply labels for real
+photo-sorter photo similar --label cat --apply
+```
+
+#### photo clear-faces
+
+Delete face markers from a PhotoPrism photo. By default removes every
+face marker (both assigned and unassigned); pass `--assigned-only` to
+keep raw detections and only strip person assignments. *Legacy.*
+
+```bash
+photo-sorter photo clear-faces <photo-uid> [flags]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--dry-run` | bool | `false` | List markers that would be deleted without writing |
+| `--assigned-only` | bool | `false` | Only delete markers that have a person assigned |
+
+**Examples:**
+```bash
+# Delete every face marker on the photo
+photo-sorter photo clear-faces pt4abc123def
+
+# Only delete markers with a person assigned
+photo-sorter photo clear-faces pt4abc123def --assigned-only
+
+# Preview without writing
+photo-sorter photo clear-faces pt4abc123def --dry-run
 ```
 
 ---
 
-### cache build-thumbs
+### cache
 
-Generate any missing thumbnails for every photo in the database. Used
-after a migration, after a cache wipe, or whenever a new size definition
-is added to the registry.
+Cache management commands. Most subcommands target the native
+PostgreSQL store written by the upload pipeline; the two PhotoPrism
+subcommands are explicitly flagged below.
+
+#### cache build-thumbs
+
+Generate any missing thumbnails for every photo in the `photos` table.
+Used after a migration, after a cache wipe, or whenever a new size
+definition is added to the registry. Reuses
+`internal/thumb.GenerateSizes` (decode once, write every requested
+size). For each photo the original is resolved via storage; HEIC/RAW
+originals are funnelled through `imgconvert.EnsureDecodable`
+(`heif-convert` / `dcraw`) before resizing.
 
 ```bash
 photo-sorter cache build-thumbs [flags]
@@ -421,12 +539,16 @@ photo-sorter cache build-thumbs [flags]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--concurrency` | int | 4 | Number of parallel decode + resize workers |
-| `--sizes` | strings | (all) | Comma-separated subset of registered sizes (e.g. `fit_720,tile_224`) |
-| `--limit` | int | 0 | Maximum number of photos to process (0 = unlimited) |
-| `--only-missing` | bool | true | Only generate thumbs that are not already cached. Pass `--only-missing=false` to force regeneration |
-| `--photo-uid` | string | "" | Regenerate thumbs for a single photo by UID (overrides `--limit`) |
-| `--json` | bool | false | Output as JSON instead of a progress bar |
+| `--concurrency` | int | `4` | Number of parallel decode + resize workers |
+| `--sizes` | strings | *(all)* | Comma-separated subset of registered sizes (e.g. `fit_720,tile_224`). Unknown names error out. |
+| `--limit` | int | `0` | Maximum number of photos to process (`0` = unlimited) |
+| `--only-missing` | bool | `true` | Only generate thumbs not already cached. Pass `--only-missing=false` to force regeneration (existing thumbs are deleted first). |
+| `--photo-uid` | string | `""` | Regenerate thumbs for a single photo by UID (short-circuits the listing pass and overrides `--limit`) |
+| `--json` | bool | `false` | Output the run summary as JSON instead of a progress bar |
+
+**Output counts** (`generated`, `skipped`, `failed`): `generated`
+counts individual thumbnail files written, not photos. Per-photo
+failures are logged to stderr and the run continues.
 
 **Examples:**
 ```bash
@@ -443,38 +565,78 @@ photo-sorter cache build-thumbs --sizes fit_720,fit_1920,tile_224
 photo-sorter cache build-thumbs --limit 50
 ```
 
-#### What It Does
+REST equivalent: `POST /api/v1/process/build-thumbs` (admin only).
 
-1. Lists photos from the `photos` table (paginated; `--photo-uid` short-circuits to one row).
-2. For each photo (parallelised):
-   - Resolves the on-disk primary file via the configured storage tree.
-   - Runs `imgconvert.EnsureDecodable` so HEIC/RAW originals are funnelled
-     through `heif-convert` / `dcraw` into a JPEG-friendly intermediate
-     (with the temp file cleaned up via `defer`).
-   - Calls `thumb.GenerateSizes` for the requested size subset, which
-     decodes the source image once and writes only the missing thumbs.
-3. Reports `(photos_scanned, generated, skipped, failed)` — `generated`
-   counts individual thumbnail files written, not photos.
+**Prerequisites:**
 
-Decode failures for a single photo are logged to stderr and counted as
-`failed`; the run continues.
-
-#### Prerequisites
-
-- `DATABASE_URL` environment variable must be set.
+- `DATABASE_URL` must be set.
 - `STORAGE_ORIGINALS_PATH` / `STORAGE_CACHE_PATH` must point at the
   originals tree the upload pipeline writes to.
+- `heif-convert` / `dcraw` must be installed for HEIC / RAW originals.
 
-#### Idempotency
+**Idempotency:** with `--only-missing` on (the default), re-runs are
+safe — photos whose thumbs are all cached are skipped without rewriting.
 
-With `--only-missing` on (the default), re-runs are safe — photos whose
-thumbs are all cached are skipped without rewriting anything.
+#### cache compute-phashes
 
----
+Backfill perceptual hashes (pHash + dHash) for photos that have no row
+in `photo_phashes`. New uploads write the row automatically; this
+command fills the gap for older photos. Idempotent — re-runs only
+re-hash photos that have been added since the previous invocation.
 
-### cache compute-eras
+```bash
+photo-sorter cache compute-phashes [flags]
+```
 
-Compute CLIP text embedding centroids for photo era estimation.
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--limit` | int | `0` | Maximum number of photos to process (`0` = unlimited) |
+| `--concurrency` | int | `4` | Number of parallel decode + hash workers |
+| `--json` | bool | `false` | Output the run summary as JSON |
+
+**Examples:**
+```bash
+# Backfill every photo missing a pHash
+photo-sorter cache compute-phashes
+
+# First-run smoke test on the first 1000 photos
+photo-sorter cache compute-phashes --limit 1000
+
+# JSON output for scripting
+photo-sorter cache compute-phashes --json
+```
+
+**What it does:**
+
+1. Selects every `photos.uid` that has no row in `photo_phashes`.
+2. For each photo (parallelised):
+   - Resolves the on-disk primary file via the configured storage tree.
+   - Runs `imgconvert.EnsureDecodable` so HEIC/RAW originals are
+     funnelled through `heif-convert` / `dcraw` into a JPEG-friendly
+     intermediate.
+   - Computes pHash + dHash via `internal/fingerprint`.
+   - Upserts the row into `photo_phashes`.
+3. Reports counts of `(hashed, skipped, errored)`.
+
+**Prerequisites:** `DATABASE_URL`, `STORAGE_ORIGINALS_PATH`,
+`STORAGE_CACHE_PATH`.
+
+**Force a full re-hash:** truncate `photo_phashes` and re-run:
+
+```sql
+TRUNCATE photo_phashes;
+```
+
+#### cache compute-eras
+
+Compute CLIP text embedding centroids for the photo-era estimation
+feature. For each of the 12 eras the command generates ~30 text prompts
+describing typical visual cues of photos from that era, computes their
+CLIP text embeddings via the embedding service (`POST /embed/text`),
+averages them into an L2-normalised centroid, and stores the centroid
+in the `era_embeddings` table. After the run, stale eras (centroids
+whose slug is no longer in the current list) are deleted so the table
+stays in sync with the code.
 
 ```bash
 photo-sorter cache compute-eras [flags]
@@ -482,69 +644,87 @@ photo-sorter cache compute-eras [flags]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--dry-run` | bool | false | Compute embeddings but don't save to database |
-| `--json` | bool | false | Output as JSON |
+| `--dry-run` | bool | `false` | Compute embeddings but do not save to the database |
+| `--json` | bool | `false` | Output the run summary as JSON |
 
 **Examples:**
 ```bash
 # Preview without saving
 photo-sorter cache compute-eras --dry-run
 
-# Compute and save era embeddings
+# Compute and save era centroids
 photo-sorter cache compute-eras
 
 # JSON output
 photo-sorter cache compute-eras --json
 ```
 
-#### What It Does
+**Prerequisites:** `DATABASE_URL`, `EMBEDDING_URL` (defaults to
+`http://localhost:8000`). See
+[`docs/era-estimation.md`](era-estimation.md) for the math.
 
-1. For each of 16 eras (1900s through 2025-2029), generates 20 text prompts describing typical visual characteristics of photos from that era
-2. Computes CLIP text embeddings for each prompt via the embedding service (`POST /embed/text`)
-3. Averages the 20 embeddings into a single L2-normalized centroid per era
-4. Stores the centroids in the `era_embeddings` PostgreSQL table
+#### cache push-embeddings *(legacy PhotoPrism)*
 
-The resulting centroids can be compared against photo image embeddings using cosine distance to estimate which era a photo belongs to.
+Push InsightFace (buffalo_l / ResNet100) face embeddings from the local
+PostgreSQL cache into PhotoPrism's MariaDB, replacing the default
+TensorFlow embeddings on `markers.embeddings_json`. Optionally
+recomputes face-cluster centroids from the new embeddings. Requires
+`PHOTOPRISM_DATABASE_URL` (MariaDB DSN) and `DATABASE_URL`. *Legacy* —
+only meaningful for operators still running a PhotoPrism + MariaDB pair;
+the native pipeline does not use it.
 
-#### Prerequisites
-
-- `DATABASE_URL` environment variable must be set
-- `EMBEDDING_URL` environment variable must be set (or defaults to `http://localhost:8000`)
-
----
-
-
-### MCP Server (integrated into serve)
-
-The MCP (Model Context Protocol) server for AI agent integration is part of the `serve` command. When `MCP_API_TOKEN` is set, MCP endpoints are mounted at `/mcp/sse` and `/mcp/message` on the same HTTP server. If the token is not set, MCP routes are not registered.
-
-**Example:**
 ```bash
-export MCP_API_TOKEN=my-secret-token
-photo-sorter serve --port 8085
-# MCP available at http://localhost:8085/mcp/sse
-# Web UI available at http://localhost:8085/
+photo-sorter cache push-embeddings [flags]
 ```
 
-MCP clients authenticate with `Authorization: Bearer <MCP_API_TOKEN>`.
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--dry-run` | bool | `false` | Preview changes without writing to MariaDB |
+| `--recompute-centroids` | bool | `false` | Also recompute face-cluster centroids from the new embeddings |
+| `--json` | bool | `false` | Output as JSON |
 
-**Available Tools (48 total):**
-- **Books** (5): `list_books`, `get_book`, `create_book`, `update_book`, `delete_book`
-- **Chapters** (4): `create_chapter`, `update_chapter`, `delete_chapter`, `reorder_chapters`
-- **Sections** (8): `create_section`, `update_section`, `delete_section`, `reorder_sections`, `list_section_photos`, `add_photos_to_section`, `remove_photos_from_section`, `update_section_photo`
-- **Pages & Slots** (9): `create_page`, `update_page`, `delete_page`, `reorder_pages`, `assign_photo_to_slot`, `assign_text_to_slot`, `clear_slot`, `swap_slots`, `update_slot_crop`
-- **Photos** (7): `list_photos`, `get_photo`, `get_photo_thumbnail`, `update_photo`, `get_photo_faces`, `find_similar_photos`, `search_photos_by_text`
-- **Albums** (6): `list_albums`, `get_album`, `create_album`, `get_album_photos`, `add_photos_to_album`, `remove_photos_from_album`
-- **Labels** (6): `list_labels`, `get_label`, `update_label`, `delete_labels`, `add_photo_label`, `remove_photo_label`
-- **Text & AI** (5): `check_text`, `rewrite_text`, `check_consistency`, `list_text_versions`, `restore_text_version`
+**Examples:**
+```bash
+photo-sorter cache push-embeddings --dry-run
+photo-sorter cache push-embeddings
+photo-sorter cache push-embeddings --recompute-centroids
+```
 
-See [API Reference — MCP Server](API.md#mcp-server) for detailed parameter documentation.
+#### cache sync *(legacy PhotoPrism)*
+
+Refresh cached face marker metadata (marker UID, subject UID, subject
+name, photo dimensions / orientation) from PhotoPrism for every face in
+the local PostgreSQL cache. Use this after faces were assigned or
+unassigned directly in the PhotoPrism UI so the local cache catches
+up. *Legacy* — the native pipeline uses
+`POST /api/v1/process/sync-cache` instead, which derives the same
+metadata from the native `markers` table.
+
+```bash
+photo-sorter cache sync [flags]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--concurrency` | int | `20` | Number of parallel workers (default `constants.WorkerPoolSize`) |
+| `--json` | bool | `false` | Output the run summary as JSON instead of a progress bar |
+
+**Examples:**
+```bash
+photo-sorter cache sync
+photo-sorter cache sync --concurrency 5
+photo-sorter cache sync --json
+```
 
 ---
 
 ### backup
 
-Create a timestamped backup of the originals directory and the photo-sorter Postgres database. The thumbnail cache is intentionally excluded because it can be regenerated from the originals via the thumbnail backfill job.
+Create a timestamped backup containing the originals tree and a
+`pg_dump` of the photo-sorter Postgres database. The thumbnail cache
+is intentionally excluded because it can be regenerated from the
+originals via `cache build-thumbs`. For the full DR runbook see
+[`docs/backup.md`](backup.md).
 
 ```bash
 photo-sorter backup --output <dir> [flags]
@@ -552,27 +732,33 @@ photo-sorter backup --output <dir> [flags]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--output` | string | (required) | Directory where backups are written |
+| `--output` | string | *(required)* | Directory where backups are written |
 | `--originals-path` | string | `$STORAGE_ORIGINALS_PATH` | Path to the originals tree |
 | `--db-url` | string | `$DATABASE_URL` | Postgres connection URL passed to `pg_dump` |
-| `--keep` | int | 14 | Number of backups to retain (0 disables pruning) |
-| `--compress` | string | zstd | Compression algorithm: `zstd` or `gzip` |
-| `--skip-originals` | bool | false | Skip the originals tar |
-| `--skip-db` | bool | false | Skip the `pg_dump` |
-| `--cleanup-on-failure` | bool | false | Remove the `.tmp` directory if the run fails |
-| `--progress-every` | int | 500 | Originals progress cadence (files between log lines) |
+| `--keep` | int | `14` | Number of backups to retain (`0` disables pruning) |
+| `--compress` | string | `zstd` | Compression algorithm: `zstd` or `gzip` |
+| `--skip-originals` | bool | `false` | Skip the originals tar |
+| `--skip-db` | bool | `false` | Skip the `pg_dump` |
+| `--cleanup-on-failure` | bool | `false` | Remove the `.tmp` directory if the run fails |
+| `--progress-every` | int | `500` | Originals progress cadence (files between log lines) |
 
-**Output layout:** Each run produces `<output>/photo-sorter-<YYYYMMDD-HHMMSS>/` containing three sibling files so they can be restored selectively:
+**Output layout:** each run produces `<output>/photo-sorter-<YYYYMMDD-HHMMSS>/`
+containing three sibling files so they can be restored selectively:
 
-- `metadata.json` — `{ created_at, sorter_version, db_size_bytes, originals_bytes, file_count }`
+- `metadata.json` — `{ created_at, sorter_version, db_size_bytes, originals_bytes, file_count }`.
 - `db.sql.zst` (or `.gz`) — `pg_dump --format=plain --no-owner --no-privileges` piped through the compressor.
 - `originals.tar.zst` (or `.tar.gz`) — streamed tar of the originals directory, preserving relative paths.
 
-The directory is written first to `.photo-sorter-<ts>.tmp/` and only renamed atomically once both artifacts succeed; failed runs leave the `.tmp` directory in place unless `--cleanup-on-failure` is set.
+The directory is written first to `.photo-sorter-<ts>.tmp/` and only
+renamed atomically once both artifacts succeed. Failed runs leave the
+`.tmp` directory in place unless `--cleanup-on-failure` is set, so an
+operator can inspect partial output. `--skip-originals` and `--skip-db`
+cannot both be set in the same invocation.
 
 **Requirements:**
 
-- `pg_dump` must be on PATH (`apt: postgresql-client`; the Docker image already ships it).
+- `pg_dump` must be on PATH (`apt: postgresql-client`; the Docker image
+  bundles it).
 
 **Examples:**
 
@@ -583,13 +769,17 @@ photo-sorter backup --output /var/backups/photo-sorter --keep 14
 # Originals only (no database access).
 photo-sorter backup --output /tmp/bak --skip-db
 
+# Database only (no large file scan).
+photo-sorter backup --output /tmp/bak --skip-originals
+
 # Gzip instead of zstd, retain only 3 runs.
 photo-sorter backup --output /tmp/bak --compress gzip --keep 3
 ```
 
 #### Scheduling with systemd
 
-Sample units live in [`deploy/systemd/`](../deploy/systemd/). Install with:
+Sample units live in [`deploy/systemd/`](../deploy/systemd/). Install
+with:
 
 ```bash
 sudo cp deploy/systemd/photo-sorter-backup.{service,timer} /etc/systemd/system/
@@ -603,7 +793,8 @@ sudo systemctl daemon-reload
 sudo systemctl enable --now photo-sorter-backup.timer
 ```
 
-The timer triggers `photo-sorter-backup.service` every day at 03:00 (with a 10-minute random jitter and persistence across reboots).
+The timer fires `photo-sorter-backup.service` daily at 03:00 (with a
+10-minute random jitter and persistence across reboots).
 
 ---
 
@@ -611,10 +802,11 @@ The timer triggers `photo-sorter-backup.service` every day at 03:00 (with a 10-m
 
 The `db-export` / `db-import` pair covers the metadata side of disaster
 recovery: embeddings, faces, books, users, sessions, era_embeddings,
-photos, albums, labels, markers, subjects — everything that lives in the
-`photosorter` database. Photos themselves (the originals tree on disk)
-are NOT part of these commands; back those up separately via
-rsync/borg/etc. or the higher-level `backup` command above.
+photos, albums, labels, markers, subjects — every row that lives in the
+`photosorter` database. The on-disk originals tree is NOT part of these
+commands; back it up separately via `rsync` / `borg` / etc., or via the
+higher-level `backup` command above which bundles both into one
+timestamped directory.
 
 Both commands read `DATABASE_URL` from the environment and shell out to
 the system `pg_dump` / `pg_restore` / `psql` binaries (install
@@ -630,12 +822,12 @@ photo-sorter db-export [flags]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--output`, `-o` | string | `photosorter-<UTC timestamp>.<ext>` | Destination file path. Extension matches the format. |
-| `--format` | string | `custom` | Dump format: `custom` (pg_dump's compressed binary) or `plain` (SQL). |
-| `--no-compress` | bool | false | For `plain` format, skip gzipping the output. Ignored for `custom` (already compressed). |
-| `--force` | bool | false | Overwrite the output file if it already exists. |
+| `--output`, `-o` | string | `photosorter-<UTC timestamp>.<ext>` | Destination file path. The extension is chosen to match the format. |
+| `--format` | string | `custom` | Dump format: `custom` (pg_dump's compressed binary) or `plain` (SQL) |
+| `--no-compress` | bool | `false` | For `plain` format, skip gzipping the output. Ignored for `custom` (already compressed). |
+| `--force` | bool | `false` | Overwrite the output file if it already exists |
 
-The `custom` format is recommended: it is what `pg_restore` expects, and
+The `custom` format is recommended: it is what `pg_restore` expects and
 it supports selective restores. Use `plain` only if you need a
 human-readable SQL file.
 
@@ -667,24 +859,25 @@ photo-sorter db-import [flags]
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--input`, `-i` | string | (required) | Source dump file. |
-| `--yes`, `-y` | bool | false | Skip the interactive confirmation prompt. |
-| `--drop-existing` | bool | false | `DROP SCHEMA public CASCADE; CREATE SCHEMA public;` before restoring (clean slate). |
+| `--input`, `-i` | string | *(required)* | Source dump file |
+| `--yes`, `-y` | bool | `false` | Skip the interactive confirmation prompt |
+| `--drop-existing` | bool | `false` | `DROP SCHEMA public CASCADE; CREATE SCHEMA public;` before restoring (clean slate) |
 
 The dump format is auto-detected from the file header — `PGDMP` magic
-bytes for `pg_restore`, anything that looks like SQL for `psql`. Gzipped
-files are decompressed transparently. For `custom` format dumps that are
-also gzipped, the import gunzips to a temp file first (pg_restore needs
-a seekable file) and removes it afterward.
+bytes route to `pg_restore`; anything that looks like SQL goes to
+`psql`. Gzipped files are decompressed transparently. For `custom`
+format dumps that are also gzipped, the import gunzips to a temp file
+first (`pg_restore` needs a seekable file) and removes it afterwards;
+the gunzip is capped at 50 GiB as a gzip-bomb guard.
 
-If the target database already contains data (the `embeddings` table has
-rows), `db-import` refuses to overwrite it without `--yes`. The
+If the target database already contains data (the `embeddings` table
+has rows), `db-import` refuses to overwrite it without `--yes`. The
 interactive prompt requires the literal token `yes`.
 
 For `custom` format dumps, `db-import` invokes `pg_restore --clean
---if-exists` unless `--drop-existing` is set; for `plain` format dumps,
-the SQL statements emitted by `pg_dump` (or by `db-export --format
-plain`) handle the drop/create ordering themselves.
+--if-exists` unless `--drop-existing` is set; for `plain` format
+dumps, the SQL emitted by `pg_dump` (or by `db-export --format plain`)
+handles the drop/create ordering itself.
 
 **Examples:**
 
@@ -701,23 +894,23 @@ photo-sorter db-import -i sorter.dump --yes --drop-existing
 
 **Next steps after a successful import:**
 
-1. Restart the photo-sorter server (HNSW indexes load at startup).
+1. Restart the photo-sorter server (HNSW indexes load lazily as the
+   pool warms up).
 2. If the imported DB came from a host with a different originals tree,
    verify `STORAGE_ORIGINALS_PATH` and re-run `photo-sorter cache
    build-thumbs` to regenerate thumbnails for any missing sizes.
-3. If face-search results look off, hit `POST
-   /api/v1/process/rebuild-index` (Rebuild Index button in the UI) to
-   rebuild the in-memory HNSW indexes from the freshly imported
-   embeddings.
 
 ---
 
 ### migrate-from-photoprism
 
 One-shot import of an existing PhotoPrism instance into photo-sorter's
-native PostgreSQL schema and storage tree. Reads directly from
-PhotoPrism's MariaDB and copies primary originals from the source
-filesystem.
+native PostgreSQL schema and storage tree. Reads PhotoPrism's MariaDB
+and copies primary originals from the source filesystem. Idempotent:
+photos are skipped by SHA256 `file_hash`; subjects, labels, and albums
+are looked up by name/slug before being created; markers are only
+created for newly-inserted photos. A re-run prints "Created=0" for
+every stage.
 
 ```bash
 photo-sorter migrate-from-photoprism \
@@ -733,16 +926,16 @@ photo-sorter migrate-from-photoprism \
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--pp-db` | string | (required) | PhotoPrism MariaDB DSN (`user:pw@tcp(host:3306)/db`) |
-| `--pp-originals` | string | (required) | Path to PhotoPrism's originals directory |
+| `--pp-db` | string | *(required)* | PhotoPrism MariaDB DSN (`user:pw@tcp(host:3306)/db`) |
+| `--pp-originals` | string | *(required)* | Path to PhotoPrism's originals directory |
 | `--pp-cache` | string | `""` | PhotoPrism storage/cache dir (currently unused; reserved) |
-| `--uploader-username` | string | `""` | Native photo-sorter username written to `photos.uploaded_by` |
-| `--dry-run` | bool | false | Walk PhotoPrism and print counts; no DB writes, no file copies |
-| `--skip-thumbs` | bool | false | Skip thumbnail regeneration |
-| `--batch-size` | int | 200 | Source DB query batch size |
-| `--concurrency` | int | 4 | Thumbnail generation worker count |
-| `--only` | strings | (all) | Limit stages: `subjects`, `photos`, `labels`, `albums`, `markers`, `thumbs` |
-| `--emit-photo-map` | string | `""` | Optional path: after the photos stage, write a JSON dump of the PhotoPrism→native photo UID map (consumed by `migrate-remap-references`). Identity map in the happy path. |
+| `--uploader-username` | string | `""` | Native photo-sorter username to write into `photos.uploaded_by`. Empty leaves `NULL`. |
+| `--dry-run` | bool | `false` | Walk PhotoPrism and print counts; no DB writes, no file copies |
+| `--skip-thumbs` | bool | `false` | Skip thumbnail regeneration |
+| `--batch-size` | int | `200` | Source DB query batch size |
+| `--concurrency` | int | `4` | Thumbnail-generation worker count |
+| `--only` | strings | *(all)* | Limit stages: `subjects`, `photos`, `labels`, `albums`, `markers`, `thumbs` |
+| `--emit-photo-map` | string | `""` | Optional path: after the photos stage, write a JSON dump of the PhotoPrism→native photo-UID map (consumed by `migrate-remap-references`). Identity map in the happy path. |
 
 **UID preservation:** PhotoPrism UIDs for photos, albums, subjects, and
 markers are written verbatim into the native `uid` columns. Cached
@@ -754,14 +947,20 @@ with `migrate-remap-references --map <emit-file>`.
 
 **Stages (in order):**
 
-1. **subjects** — read PhotoPrism `subjects` and upsert into native `subjects` (idempotent on name).
-2. **photos** — read `photos` joined with `files`/`cameras`/`lenses`/`details`; SHA256-hash each primary file, skip if `photos.file_hash` already exists, copy bytes into `STORAGE_ORIGINALS_PATH/YYYY/MM/<basename>`, insert the photo row, attach non-primary files.
-3. **labels** — upsert labels by slug (priority < 0 excluded), then attach `photos_labels` rows with `source = "import"`.
-4. **albums** — upsert albums by slug, then attach `photos_albums` rows (skipping already-linked photos).
-5. **markers** — create face/label markers for newly-created photos. Markers are skipped for photos that already existed before this run (they are presumed to already carry their markers).
-6. **thumbnails** — regenerate every cached thumbnail size for the photos created in this run (skipped via `--skip-thumbs`).
-
-**Idempotency:** photos are skipped by SHA256 file_hash; subjects/labels/albums are looked up by name/slug before insert; album_photos and photo_labels are pre-checked; markers are only created for newly-inserted photos. A re-run prints "Created=0" for every stage.
+1. **subjects** — read PhotoPrism `subjects` and upsert into the native
+   `subjects` table (idempotent on name).
+2. **photos** — read `photos` joined with `files` / `cameras` / `lenses` /
+   `details`; SHA256-hash each primary file; skip if `photos.file_hash`
+   already exists; otherwise copy bytes into
+   `STORAGE_ORIGINALS_PATH/YYYY/MM/<basename>`, insert the photo row,
+   attach non-primary files.
+3. **labels** — upsert labels by slug (priority < 0 excluded), then
+   attach `photos_labels` rows with `source = "import"`.
+4. **albums** — upsert albums by slug, then attach `photos_albums` rows
+   (skipping already-linked photos).
+5. **markers** — create face/label markers for newly-created photos.
+6. **thumbnails** — regenerate every cached thumbnail size for photos
+   created in this run (skipped via `--skip-thumbs`).
 
 **Examples:**
 
@@ -773,7 +972,7 @@ photo-sorter migrate-from-photoprism \
   --uploader-username admin \
   --dry-run
 
-# Full migration without regenerating thumbnails (run cache compute-*
+# Full migration without regenerating thumbnails (run cache build-thumbs
 # afterwards instead).
 photo-sorter migrate-from-photoprism \
   --pp-db "photoprism:photoprism@tcp(mariadb:3306)/photoprism" \
@@ -788,30 +987,34 @@ photo-sorter migrate-from-photoprism \
   --only markers
 ```
 
-The native uploader user must exist before the migration runs;
-create one with the admin tooling (or leave `--uploader-username` empty
-to write NULL `uploaded_by`).
+The native uploader user must exist before the migration runs; create
+one with `photo-sorter users create` (or leave `--uploader-username`
+empty to write `NULL` `uploaded_by`). See
+[`docs/migration-from-photoprism.md`](migration-from-photoprism.md) for
+the full runbook.
 
 ---
 
 ### migrate-verify
 
 Compare an existing PhotoPrism instance against the photo-sorter native
-database after a migration. Runs read-only against both data sources
-and prints (or emits as JSON) a two-phase diff:
+database after a migration. Read-only against both data sources; prints
+(or emits as JSON) a two-phase diff:
 
 1. **Structural** — counts, existence (`missing_in_sorter` /
    `orphan_in_sorter`), per-album/label photo memberships, marker
    geometry drift, on-disk orphan files.
 2. **Field-level** — every column the migrator is supposed to copy is
-   compared cell-by-cell. A field-level mismatch is reported as
+   compared cell-by-cell. Field-level mismatches are reported as
    `field_diffs[]` per entity (JSON) and as colour-coded lines below
    the structural section (text). Tolerance bands swallow 1-second
    drift on dates, 1e-6 on lat/lng, 1 m on altitude, and 0.01 on
-   marker score by default; use `--strict` to treat them as diffs.
+   marker score by default; `--strict` disables them.
 
 Zero diffs from `migrate-verify` is the authoritative gate for
-cancelling the PhotoPrism + MariaDB compose services.
+cancelling the PhotoPrism + MariaDB compose services. The exit code is
+`0` when no diffs are reported and `1` otherwise, so the command
+chains directly into CI / shell scripts.
 
 ```bash
 photo-sorter migrate-verify \
@@ -820,19 +1023,17 @@ photo-sorter migrate-verify \
   [--json] [--no-color] [--concurrency <N>] [--fields-only] [--strict]
 ```
 
-Flags:
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--pp-db` | string | *(required)* | PhotoPrism MariaDB DSN |
+| `--pp-originals` | string | *(required)* | Path to the PhotoPrism originals directory (the verifier rehashes primary files) |
+| `--json` | bool | `false` | Emit a machine-readable JSON report instead of the human-readable text |
+| `--no-color` | bool | `false` | Disable ANSI colour escapes in the human-readable report (useful for log files / CI) |
+| `--concurrency` | int | `verify.DefaultConcurrency` | Goroutine-pool size for the SHA256 re-hash pass |
+| `--fields-only` | bool | `false` | Skip the structural existence / disk pass and run only the field-level diff. Useful when iterating on migrator fixes — the rehash pass dominates wall time on large libraries. |
+| `--strict` | bool | `false` | Drop every tolerance band: 1-second drift on `taken_at`, 1e-6 on lat/lng, 1 m on altitude, 0.01 on marker score all become diffs |
 
-| Flag             | Description                                                                          |
-|------------------|--------------------------------------------------------------------------------------|
-| `--pp-db`        | PhotoPrism MariaDB DSN, e.g. `photoprism:photoprism@tcp(mariadb:3306)/photoprism`.   |
-| `--pp-originals` | Path to the PhotoPrism originals directory (the verifier rehashes primary files).    |
-| `--json`         | Emit a machine-readable JSON report instead of the human-readable text.              |
-| `--no-color`     | Disable ANSI colour escapes in the human-readable report (useful for log files/CI). |
-| `--concurrency`  | Goroutine-pool size for the SHA256 re-hash pass (default 4).                         |
-| `--fields-only`  | Skip the structural existence/disk pass and run only the field-level diff. Useful when iterating on migrator fixes (the rehash pass dominates wall time on large libraries). |
-| `--strict`       | Drop every tolerance band: 1-second drift on `taken_at`, 1e-6 on lat/lng, 1 m on altitude, 0.01 on marker score all become diffs. |
-
-Sections in the report:
+**Sections in the report:**
 
 1. **photos** — PhotoPrism row count vs sorter `photos` count. Each PP
    primary file is re-hashed with SHA256 and looked up by `file_hash`;
@@ -843,33 +1044,32 @@ Sections in the report:
    NFC-normalised), GPS (`lat` / `lng` / `altitude`), camera /
    lens (`camera_make` / `camera_model` / `lens_model`), exposure
    (`iso` / `f_number` / `exposure` / `focal_length`), dimensions
-   (`width` / `height` / `orientation`), flags (`favorite` / `private`
-   / `panorama` / `scan` / `quality`), and EXIF text (`exif_artist` /
+   (`width` / `height` / `orientation`), flags (`favorite` / `private` /
+   `panorama` / `scan` / `quality`), and EXIF text (`exif_artist` /
    `exif_copyright` / `exif_license` / `exif_software`).
 2. **albums** — slug + title parity, per-album symmetric photo diff,
-   plus a widened per-pair `membership_diffs` list (PhotoPrism photo
-   `file_hash[:8]` + album slug for each asymmetric membership). Field
-   diff covers `description`, `location`, `category`, `notes`,
-   `filter`, `album_order`, `favorite`, `private`, `type`.
+   plus per-pair `membership_diffs`. Field diff covers `description`,
+   `location`, `category`, `notes`, `filter`, `album_order`, `favorite`,
+   `private`, `type`.
 3. **labels** — slug + name parity, per-label photo-pair counts, and
-   per-pair `membership_diffs` (same shape as albums). Field diff
-   covers `description`, `categories`, `priority`, `favorite`.
+   per-pair `membership_diffs`. Field diff covers `description`,
+   `categories`, `priority`, `favorite`.
 4. **subjects / markers** — accent-insensitive subject name match,
-   per-subject marker count diffs, and per-marker geometry drift
-   (markers whose x/y/w/h differs by more than 1% on any axis). Subject
-   field diff covers `bio`, `about`, `alias`, `favorite`, `private`,
-   `type`. Marker field diff covers `score` (≤ 0.01 tolerance),
-   `invalid`, `reviewed`, and `subject_uid` linkage.
+   per-subject marker count diffs, per-marker geometry drift (markers
+   whose x/y/w/h differs by more than 1% on any axis). Subject field
+   diff covers `bio`, `about`, `alias`, `favorite`, `private`, `type`.
+   Marker field diff covers `score` (≤ 0.01 tolerance), `invalid`,
+   `reviewed`, and `subject_uid` linkage.
 5. **disk** — orphan files: every regular file under the sorter's
    originals root that has no corresponding `photos.file_path` row.
 
 JSON output: each entity's `field_diffs[]` is capped at 1000 entries
 per field name (a single noisy field cannot crowd out diffs from
 others). The human-readable output samples the first 50 entries per
-entity and prints a `...and N more truncated (use --json for the full
-report)` footer when the bucket overflowed.
+entity and prints `...and N more truncated (use --json for the full
+report)` when the bucket overflowed.
 
-Examples:
+**Examples:**
 
 ```bash
 # Human-readable report with ANSI colour.
@@ -889,27 +1089,24 @@ photo-sorter migrate-verify \
   --pp-originals /photoprism/originals \
   --strict
 
-# Machine-readable JSON, for jq/CI integration.
+# Machine-readable JSON, for jq / CI integration.
 photo-sorter migrate-verify \
   --pp-db "photoprism:photoprism@tcp(mariadb:3306)/photoprism" \
   --pp-originals /photoprism/originals \
   --json > verify.json
 ```
 
-Exit code is `0` when no differences are found and `1` when at least one
-diff is reported, so the command can be chained into automated
-post-migration checks.
-
 ---
 
 ### migrate-remap-references
 
-Rewrite every soft `photo_uid` reference in the native database using a
-photo-UID map (as emitted by `migrate-from-photoprism --emit-photo-map`).
+Rewrite every soft `photo_uid` reference in the native database using
+a photo-UID map (as emitted by
+`migrate-from-photoprism --emit-photo-map`).
 
-Intended for operators who landed an older buggy version of the migrator
-that wrote generated UIDs into `photos` instead of preserving the
-PhotoPrism UIDs. After the fixed migrator runs, the operator's
+Intended for operators who landed an older buggy version of the
+migrator that wrote generated UIDs into `photos` instead of preserving
+the PhotoPrism UIDs. After the fixed migrator runs, the operator's
 historical `embeddings` / `faces` / `section_photos` / `page_slots`
 rows still reference the old (buggy) UIDs; this command rewrites them
 in one transaction so they point at the new UIDs.
@@ -922,11 +1119,11 @@ photo-sorter migrate-remap-references \
 
 | Flag | Type | Default | Description |
 |------|------|---------|-------------|
-| `--map` | string | (required) | Path to the photo-UID map JSON file (`{"version":1,"photo_uid_map":{...},"file_uid_map":{...}}`) |
-| `--dry-run` | bool | false | Run the UPDATEs and roll back; report row counts and orphan stats without writing |
-| `--yes` | bool | false | Skip the interactive confirmation prompt |
+| `--map` | string | *(required)* | Path to the photo-UID map JSON file (`{"version":1,"photo_uid_map":{...},"file_uid_map":{...}}`) |
+| `--dry-run` | bool | `false` | Run the UPDATEs and roll back; report row counts and orphan stats without writing |
+| `--yes` | bool | `false` | Skip the interactive confirmation prompt |
 
-**Tables rewritten** (every (old, new) pair in `photo_uid_map`):
+**Tables rewritten** (every `(old, new)` pair in `photo_uid_map`):
 
 - `embeddings.photo_uid`
 - `faces.photo_uid`
@@ -941,12 +1138,13 @@ photo-sorter migrate-remap-references \
 All updates run inside one Postgres transaction; either every table is
 remapped or nothing is. An identity map (every key equal to its value)
 short-circuits before any work is done — the command prints
-"nothing to remap" and exits 0.
+"nothing to remap" and exits `0`.
 
-After the UPDATEs, the command runs an integrity audit and prints, per
-table, how many rows now point at a `photo_uid` that does not match any
-`photos.uid`. Non-zero is informational (some PhotoPrism originals may
-have been deleted before the migration); the command does not fail.
+After the UPDATEs the command runs an integrity audit and prints, per
+table, how many rows now point at a `photo_uid` that does not match
+any `photos.uid`. Non-zero is informational (some PhotoPrism originals
+may have been deleted before the migration); the command does not
+fail.
 
 **Examples:**
 
@@ -965,8 +1163,18 @@ for the full migration runbook.
 
 ### version
 
-Print the version number.
+Print the binary's version, commit SHA, and build date — all three are
+injected via `-ldflags` at compile time and exposed in the web UI
+header next to the GitHub icon.
 
 ```bash
 photo-sorter version
+```
+
+Sample output:
+
+```
+photo-sorter v0.42.0
+  Commit: 1234abcd
+  Built:  2026-05-23T12:00:00Z
 ```
