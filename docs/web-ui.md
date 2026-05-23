@@ -61,12 +61,39 @@ The header navigation groups items to reduce clutter:
 - **AI** dropdown: Analyze, Text Search
 - **Faces** dropdown: Faces, Recognition, Outliers
 - **Tools** dropdown: Similar, Expand, Duplicates, Album Completion, Photo Book, Upload, Process, Trash
-- **User menu** (top-right): Settings (admin-only on the Users tab), Logout
-- **Mobile-only** (visible below the `md` breakpoint): Capture link to the PWA shoot page
+- **Right toolbar** (top-right): Capture link (mobile-only, below the `md` breakpoint), GitHub icon with version label, language switcher, Settings link (admin-only tabs for Users and Audit log are hidden for non-admin users), Logout button.
 
-Dropdown buttons highlight when one of their child pages is active. Dropdowns close when clicking outside.
+Dropdown buttons highlight when one of their child pages is active. Dropdowns close when clicking outside or pressing `Escape`; `ArrowDown` on the trigger opens the menu.
 
 The header also displays the app version next to the GitHub icon: tag name (e.g., `v1.0.2`) for releases, or the short commit hash for dev builds.
+
+## Routing
+
+All routes live in `web/src/App.tsx`. Authenticated routes are wrapped in `ProtectedRoute` (redirects to `/login` when no session). The public share viewer and the login page are the only routes that skip auth.
+
+| Path | Component |
+|------|-----------|
+| `/login` | Login |
+| `/share/:slug` | Public share viewer (no app session) |
+| `/` | Dashboard |
+| `/albums`, `/albums/:uid` | Albums (list + detail share the same component) |
+| `/smart-albums/:uid` | Smart album detail (CRUD lives on `/albums`) |
+| `/photos`, `/photos/:uid` | Photos list / Photo Detail |
+| `/browse` | Map + timeline scrubber |
+| `/labels`, `/labels/:uid` | Labels list / Label Detail |
+| `/subjects/:uid` | Subject Detail |
+| `/analyze` | AI Analyze |
+| `/faces`, `/recognition`, `/outliers` | Face workflows |
+| `/similar`, `/expand`, `/duplicates`, `/compare`, `/suggest-albums` | Photo similarity tools |
+| `/text-search` | CLIP text-to-image search |
+| `/process` | Compute embeddings + faces |
+| `/books`, `/books/:id` | Books list / Book Editor |
+| `/upload` | Drag-and-drop upload |
+| `/capture` | Mobile PWA quick-shoot |
+| `/trash` | Archived-photos browser |
+| `/settings`, `/settings/audit-log` | Settings (the `/audit-log` deep link opens the audit tab) |
+| `/slideshow` | Fullscreen slideshow (rendered without `Layout` chrome) |
+| `*` | Redirect to `/` |
 
 ## Pages
 
@@ -136,8 +163,7 @@ Detailed view of a single photo with face management capabilities.
 **Features:**
 - Full-resolution photo display with interactive face bounding boxes
 - Photo metadata (title, date, dimensions)
-- **Edit EXIF** — corrects `taken_at`, GPS, camera/lens/exposure, title/description/notes, keywords, and the EXIF text fields. Writes the photo row AND an XMP sidecar next to the original via `exiftool`; the DB is authoritative when the sidecar write fails. Requires `editor`/`admin`.
-- **Edit photo (non-destructive)** — header button (sliders icon, `editor`/`admin` only) opens a full-screen modal with a live `react-easy-crop` preview, brightness + contrast sliders (-100..+100 → -1.0..+1.0), and Rotate Left/Right buttons (90° steps). **Save** PUTs `/photos/{uid}/edits` (the server synchronously regenerates every cached thumbnail from the post-edit pixels and rolls back if `heif-convert`/`dcraw` is missing on a HEIC/RAW source — surfaced as a 503). **Restore original** confirms then DELETEs the edits row (idempotent revert). The original file on disk is never modified — edits live in `photo_edits` and are re-applied at thumbnail/download/PDF-export time. Photos with stored edits get an amber "Edited" badge next to the title.
+- **Edit photo (non-destructive)** — header button (sliders icon, `editor`/`admin` only) opens a full-screen modal with a live `react-easy-crop` preview, brightness + contrast sliders (-100..+100 → -1.0..+1.0), and Rotate Left/Right buttons (90° steps). **Save** PUTs `/photos/{uid}/edits` (the server synchronously regenerates every cached thumbnail from the post-edit pixels and rolls back if `heif-convert`/`dcraw` is missing on a HEIC/RAW source — surfaced as a 503). **Restore original** confirms then DELETEs the edits row (idempotent revert). The original file on disk is never modified — edits live in `photo_edits` and are re-applied at thumbnail/download/PDF-export time. Photos with stored edits get an amber "Edited" badge next to the title. EXIF metadata edits are available via the backend (`PUT /api/v1/photos/{uid}/exif` writes the photo row AND an XMP sidecar via `exiftool`); the Web UI does not yet expose an inline form — use the CLI or REST API directly.
 - Quick actions: Copy UID, Find Similar, Add to Book, Load Faces
 - **Album membership** - If the photo belongs to any albums, an "In albums" panel is shown in the right sidebar listing each album as a clickable link to the album detail page
 - **Book membership** - If the photo belongs to any photo book sections, a "In books" panel is shown in the right sidebar (above Era Estimation) listing each book/section as a clickable link to the book editor
@@ -780,116 +806,26 @@ Find photos that belong in existing albums but aren't there yet by searching the
 
 ## API Endpoints
 
-The Web UI communicates with these backend endpoints:
+`web/src/api/client.ts` is the single typed wrapper for every REST call the UI makes. See [`docs/API.md`](API.md) for the authoritative endpoint reference (request/response shapes, auth requirements, status codes). The UI surfaces the following endpoint groups; cross-reference API.md for details:
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/api/v1/auth/login` | Login with a local user account (bcrypt, against the `users` table) |
-| GET | `/api/v1/auth/status` | Check authentication status |
-| POST | `/api/v1/auth/logout` | Logout |
-| GET | `/api/v1/albums` | List albums |
-| GET | `/api/v1/albums/:uid/photos` | Get photos in album |
-| GET | `/api/v1/photos` | List/search photos |
-| GET | `/api/v1/photos/histogram` | Date histogram for the Browse page (month / year buckets) |
-| GET | `/api/v1/photos/geo-points` | Per-photo (uid, lat, lng) triples for the Browse map |
-| GET | `/api/v1/photos/:uid` | Get single photo details |
-| GET | `/api/v1/labels` | List labels |
-| GET | `/api/v1/labels/:uid` | Get single label |
-| PUT | `/api/v1/labels/:uid` | Update label (rename, etc.) |
-| DELETE | `/api/v1/labels` | Batch delete labels |
-| POST | `/api/v1/photos/batch/labels` | Add labels to photos |
-| GET | `/api/v1/subjects` | List people/subjects |
-| GET | `/api/v1/subjects/:uid` | Get single subject |
-| PUT | `/api/v1/subjects/:uid` | Update subject (rename, etc.) |
-| GET | `/api/v1/config` | Get available providers |
-| GET | `/api/v1/stats` | Get processing statistics |
-| POST | `/api/v1/sort` | Start AI sort job |
-| GET | `/api/v1/sort/:jobId` | Get job status |
-| GET | `/api/v1/sort/:jobId/events` | SSE stream for job progress |
-| POST | `/api/v1/sort/:jobId/cancel` | Cancel running job |
-| POST | `/api/v1/photos/similar` | Find similar photos |
-| POST | `/api/v1/photos/similar/collection` | Find similar to label/album |
-| POST | `/api/v1/faces/match` | Match faces for a person |
-| POST | `/api/v1/faces/apply` | Apply face match result |
-| POST | `/api/v1/faces/outliers` | Detect face outliers for a person |
-| POST | `/api/v1/photos/search-by-text` | Text-to-image similarity search |
-| GET | `/api/v1/photos/:uid/faces` | Get faces in a photo |
-| POST | `/api/v1/photos/:uid/faces/compute` | Compute face embeddings for a photo |
-| GET | `/api/v1/photos/:uid/estimate-era` | Estimate photo era from CLIP embeddings |
-| POST | `/api/v1/albums/:uid/photos` | Add photos to album |
-| POST | `/api/v1/upload/job` | Start background upload job |
-| GET | `/api/v1/upload/:jobId/events` | SSE stream for upload job |
-| DELETE | `/api/v1/upload/:jobId` | Cancel upload job |
-| POST | `/api/v1/process` | Start photo processing job |
-| GET | `/api/v1/process/:jobId/events` | SSE stream for process job |
-| DELETE | `/api/v1/process/:jobId` | Cancel process job |
-| POST | `/api/v1/process/sync-cache` | Re-derive cached face-marker metadata on the `faces` table |
-| POST | `/api/v1/photos/batch/edit` | Batch edit photos (favorite, private) |
-| POST | `/api/v1/photos/duplicates` | Find near-duplicate photos |
-| POST | `/api/v1/photos/batch/archive` | Archive (soft-delete) photos |
-| POST | `/api/v1/photos/batch/restore` | Restore (un-archive) photos |
-| GET | `/api/v1/photos/trash` | List archived photos (trash view; any role) |
-| POST | `/api/v1/photos/batch/purge` | Hard-delete archived photos (admin only) |
-| POST | `/api/v1/photos/suggest-albums` | Album completion — find missing photos for existing albums |
-| DELETE | `/api/v1/albums/:uid/photos/batch` | Remove specific photos from album |
-| GET | `/api/v1/books` | List all photo books |
-| POST | `/api/v1/books` | Create a new book |
-| GET | `/api/v1/books/:id` | Get book detail with chapters, sections and pages |
-| PUT | `/api/v1/books/:id` | Update book (title, description) |
-| DELETE | `/api/v1/books/:id` | Delete book (cascades) |
-| POST | `/api/v1/books/:id/chapters` | Create a chapter in a book |
-| PUT | `/api/v1/books/:id/chapters/reorder` | Reorder chapters |
-| PUT | `/api/v1/chapters/:id` | Update chapter (title) |
-| DELETE | `/api/v1/chapters/:id` | Delete chapter |
-| POST | `/api/v1/books/:id/sections` | Create a section in a book |
-| PUT | `/api/v1/books/:id/sections/reorder` | Reorder sections |
-| PUT | `/api/v1/sections/:id` | Update section (title, chapter_id) |
-| DELETE | `/api/v1/sections/:id` | Delete section |
-| GET | `/api/v1/sections/:id/photos` | Get photos in a section |
-| POST | `/api/v1/sections/:id/photos` | Add photos to a section |
-| DELETE | `/api/v1/sections/:id/photos` | Remove photos from a section |
-| PUT | `/api/v1/sections/:id/photos/:uid/description` | Update photo description |
-| POST | `/api/v1/books/:id/pages` | Create a page in a book |
-| PUT | `/api/v1/books/:id/pages/reorder` | Reorder pages |
-| PUT | `/api/v1/pages/:id` | Update page (format, section) |
-| DELETE | `/api/v1/pages/:id` | Delete page |
-| PUT | `/api/v1/pages/:id/slots/:index` | Assign photo to page slot |
-| POST | `/api/v1/pages/:id/slots/swap` | Swap two slots atomically |
-| DELETE | `/api/v1/pages/:id/slots/:index` | Clear page slot |
-| GET | `/api/v1/photos/:uid/books` | Get photo book/section memberships |
-| POST | `/api/v1/books/:id/sections/:sectionId/auto-layout` | Auto-generate pages from unassigned photos |
-| GET | `/api/v1/books/:id/preflight` | Validate book before PDF export |
-| GET | `/api/v1/books/:id/export-pdf` | Export book as PDF (synchronous, for CLI/MCP) |
-| POST | `/api/v1/books/:id/export-pdf/job` | Start background PDF export job (UI flow) |
-| GET | `/api/v1/book-export/:jobId` | Get export job state |
-| GET | `/api/v1/book-export/:jobId/events` | SSE stream of export progress events |
-| GET | `/api/v1/book-export/:jobId/download` | Download compiled PDF (streams temp file) |
-| DELETE | `/api/v1/book-export/:jobId` | Cancel export job |
-| PUT | `/api/v1/pages/:id/slots/:index/crop` | Update crop for a slot |
-| POST | `/api/v1/text/check` | AI text check (spelling, grammar) |
-| POST | `/api/v1/text/check-and-save` | AI text check with database persistence |
-| POST | `/api/v1/text/rewrite` | AI text rewrite (length adjustment) |
-| POST | `/api/v1/text/consistency` | AI style consistency check across texts |
-| GET | `/api/v1/books/:id/text-check-status` | Get text check status for a book |
-| GET | `/api/v1/text-versions` | List text version history |
-| POST | `/api/v1/text-versions/:id/restore` | Restore a text version |
-| POST | `/api/v1/process/sync-cache` | Re-derive cached face-marker metadata on the `faces` table |
-| POST | `/api/v1/process/build-thumbs` | Admin-only thumbnail backfill job |
-| POST | `/api/v1/photos/batch/edit` | Batch edit photos (favorite, private) |
-| POST | `/api/v1/photos/batch/archive` | Batch archive photos |
-| POST | `/api/v1/photos/batch/restore` | Batch restore (un-archive) photos |
-| POST | `/api/v1/photos/batch/purge` | Hard-delete archived photos (admin only) |
-| DELETE | `/api/v1/albums/:uid/photos/batch` | Remove specific photos from album |
-| PUT | `/api/v1/photos/:uid/exif` | Edit EXIF metadata (writes DB + XMP sidecar via exiftool) |
-| GET | `/api/v1/me` | Currently authenticated user |
-| POST | `/api/v1/me/password` | Change own password |
-| GET | `/api/v1/users` | List users (admin only) |
-| POST | `/api/v1/users` | Create user (admin only) |
-| GET | `/api/v1/users/:uid` | Get user (admin only) |
-| PUT | `/api/v1/users/:uid` | Update user (admin only) |
-| POST | `/api/v1/users/:uid/password` | Reset user password (admin only) |
-| POST | `/api/v1/users/:uid/disable` | Disable / re-enable user (admin only) |
-| DELETE | `/api/v1/users/:uid` | Delete user (admin only; last admin protected) |
+| Area | Endpoint group | UI surfaces |
+|------|----------------|-------------|
+| Auth + session | `/api/v1/auth/{login,status,logout}` | Login page, `useAuth` |
+| Current user / users (admin) | `/api/v1/me/*`, `/api/v1/users/*` | Settings → Profile / Users |
+| Audit log (admin) | `/api/v1/audit-log` | Settings → Audit log |
+| Albums + shares + smart albums | `/api/v1/albums/*`, `/api/v1/shares/*`, `/api/v1/public/share/*`, `/api/v1/smart-albums/*` | Albums page, ShareModal, PublicShare, SmartAlbums |
+| Photos + browse | `/api/v1/photos`, `/api/v1/photos/histogram`, `/api/v1/photos/geo-points`, `/api/v1/photos/:uid/*` | Photos, Browse, Photo Detail |
+| Photo edits | `/api/v1/photos/:uid/edits` (GET/PUT/DELETE) | PhotoEditModal |
+| Photo similarity + text search | `/api/v1/photos/similar*`, `/api/v1/photos/search-by-text`, `/api/v1/photos/duplicates`, `/api/v1/photos/suggest-albums` | SimilarPhotos, Expand, TextSearch, Duplicates, SuggestAlbums |
+| Trash | `/api/v1/photos/trash`, `/api/v1/photos/batch/{archive,restore,purge}` | Trash page (purge admin-only) |
+| Labels + subjects | `/api/v1/labels`, `/api/v1/labels/:uid`, `/api/v1/subjects/*` | Labels, LabelDetail, SubjectDetail |
+| Faces | `/api/v1/photos/:uid/faces*`, `/api/v1/faces/{match,apply,outliers}` | Faces, Outliers, Recognition, PhotoDetail |
+| Sort jobs | `/api/v1/sort/*` (+ SSE) | Analyze |
+| Process jobs | `/api/v1/process*` (+ SSE), `/api/v1/process/sync-cache` | Process |
+| Upload jobs | `/api/v1/upload/job` (+ SSE) | Upload, Capture (the single-shot `/api/v1/upload`) |
+| Books | `/api/v1/books*`, `/api/v1/chapters/*`, `/api/v1/sections/*`, `/api/v1/pages/*`, `/api/v1/book-export/*` (+ SSE) | Books, BookEditor |
+| AI text | `/api/v1/text/{check,check-and-save,rewrite,consistency}`, `/api/v1/books/:id/text-check-status`, `/api/v1/text-versions/*` | BookEditor (Texts tab, dialogs) |
+| Config / stats | `/api/v1/config`, `/api/v1/stats` | Dashboard, Analyze, version label in header |
 
 ## Frontend Architecture
 
@@ -900,7 +836,7 @@ The frontend is built with React + TypeScript + TailwindCSS and follows a modula
 ```
 web/src/
 ├── api/
-│   └── client.ts           # Typed API client
+│   └── client.ts           # Typed API client wrapping every REST endpoint
 ├── components/             # Shared UI components
 │   ├── AccentCard.tsx      # Accent-colored card
 │   ├── Alert.tsx           # Alert/notification component
@@ -915,25 +851,27 @@ web/src/
 │   ├── FormSelect.tsx      # Styled select dropdown with label
 │   ├── LanguageSwitcher.tsx # Language toggle button
 │   ├── LazyImage.tsx
-│   ├── Layout.tsx
+│   ├── Layout.tsx          # Header + nav shell wrapping every authenticated page
 │   ├── LoadingState.tsx    # Unified loading/error/empty states
 │   ├── PageHeader.tsx      # Page header with title/actions
-│   ├── PageLayoutPreview.tsx # Live page layout preview for text editing
+│   ├── PageLayoutPreview.tsx # Mini SVG preview of a book page layout (slot grid)
 │   ├── PhotoCard.tsx
 │   ├── PhotoGrid.tsx       # Supports optional selection mode
 │   ├── PhotoWithBBox.tsx
+│   ├── ShareModal.tsx      # Mint / list / revoke public share links for an album
 │   └── StatsGrid.tsx       # Stats display grid (configurable 2-6 columns)
 ├── constants/              # Shared constants
 │   ├── actions.ts          # Face action styling (i18n label keys, colors)
+│   ├── bookTypography.ts   # Typography CSS defaults, font registry, CSS variable helpers
 │   ├── index.ts            # Magic numbers, defaults, cache keys
 │   └── pageConfig.ts       # Book page format configuration
 ├── hooks/                  # Global hooks
-│   ├── useAuth.tsx
-│   ├── useBookKeyboardNav.ts # Book editor keyboard nav (W/S/E/D)
-│   ├── useFaceApproval.ts  # Face approval logic
-│   ├── usePhotoSelection.ts # Shared photo selection + bulk actions
-│   ├── useSSE.ts           # Server-Sent Events
-│   └── useSubjectsAndConfig.ts
+│   ├── useAuth.tsx                 # Session + login/logout + currently-authenticated user
+│   ├── useBookKeyboardNav.ts       # Book editor keyboard nav (W/S/E/D)
+│   ├── useFaceApproval.ts          # Face approval logic (single + batch)
+│   ├── usePhotoSelection.ts        # Shared photo selection + bulk actions
+│   ├── useSSE.ts                   # Server-Sent Events
+│   └── useSubjectsAndConfig.ts     # Parallel load of subjects + /config
 ├── i18n/                   # Internationalization
 │   ├── index.ts            # i18next configuration
 │   └── locales/
@@ -946,11 +884,41 @@ web/src/
 │           ├── pages.json
 │           └── forms.json
 ├── pages/                  # Page components
-│   ├── Analyze/            # Split into components
+│   ├── Albums.tsx          # Album list + album detail (single component, route-based)
+│   ├── Analyze/            # AI sort
 │   │   ├── hooks/useSortJob.ts
 │   │   ├── AnalyzeForm.tsx
 │   │   ├── AnalyzeResults.tsx
 │   │   ├── AnalyzeStatus.tsx
+│   │   └── index.tsx
+│   ├── BookEditor/         # Book editor (sections, pages, typography, texts, preview, duplicates)
+│   │   ├── hooks/useBookData.ts
+│   │   ├── hooks/useBookExportJob.ts # SSE-backed PDF export job runner
+│   │   ├── hooks/useUndoRedo.ts      # Undo/redo for slot assignments + cross-section page moves
+│   │   ├── BookStatsPanel.tsx        # Statistics panel (pages, photos, fill rate)
+│   │   ├── CheckSuggestionsList.tsx  # Shared readability-suggestions list (major/minor severity)
+│   │   ├── DuplicatesTab.tsx         # Cross-section duplicate photo finder
+│   │   ├── ExportProgressModal.tsx   # Streaming PDF export progress + cancel
+│   │   ├── KeyboardShortcutsHelp.tsx
+│   │   ├── PageMinimap.tsx           # Compact page overview panel
+│   │   ├── PageSidebar.tsx           # Thumbnail previews, quick-add button
+│   │   ├── PageSlot.tsx
+│   │   ├── PageTemplate.tsx
+│   │   ├── PagesTab.tsx
+│   │   ├── PhotoActionOverlay.tsx
+│   │   ├── PhotoBrowserModal.tsx     # Full-library browser for adding photos to a section
+│   │   ├── PhotoDescriptionDialog.tsx # Inline AI check + rewrite for photo captions
+│   │   ├── PhotoInfoOverlay.tsx
+│   │   ├── PreflightModal.tsx        # Pre-export validation + photo-quality picker
+│   │   ├── PreviewTab.tsx
+│   │   ├── SectionPhotoPool.tsx
+│   │   ├── SectionSidebar.tsx
+│   │   ├── SectionsTab.tsx
+│   │   ├── TextsTab.tsx              # AI check (with suggestions), consistency, JSON download
+│   │   ├── TypographyTab.tsx         # Fonts, sizes, colors, body padding, captions opacity, chapter colors + "show in TOC"
+│   │   ├── UnassignedPool.tsx
+│   │   └── index.tsx
+│   ├── Books/              # Photo books list (create / open / delete)
 │   │   └── index.tsx
 │   ├── Browse/             # Map + timeline scrubber page
 │   │   ├── BrowseMap.tsx       # react-leaflet wrapper with clustering
@@ -958,43 +926,64 @@ web/src/
 │   │   ├── BrowseSidePanel.tsx # Side panel for cluster/marker click
 │   │   ├── leafletSetup.ts     # Default marker icon fix for Vite
 │   │   └── index.tsx
-│   ├── Faces/              # Split into components
-│   │   ├── hooks/useFaceSearch.ts
-│   │   ├── FacesConfigPanel.tsx
-│   │   ├── FacesMatchGrid.tsx
-│   │   ├── FacesResultsSummary.tsx
-│   │   └── index.tsx
-│   ├── Photos/             # Split into components
-│   │   ├── hooks/usePhotosFilters.ts
-│   │   ├── hooks/usePhotosPagination.ts
-│   │   ├── PhotosFilters.tsx
-│   │   └── index.tsx
-│   ├── PhotoDetail/        # Split into components
-│   │   ├── hooks/
-│   │   │   └── usePhotoNavigation.ts  # Album/label/photos navigation
-│   │   ├── EmbeddingsStatus.tsx
-│   │   ├── FaceAssignmentPanel.tsx
-│   │   ├── FacesList.tsx
-│   │   ├── PhotoDisplay.tsx
-│   │   ├── AddToBookDropdown.tsx
-│   │   ├── AlbumMembership.tsx
-│   │   ├── BookMembership.tsx
-│   │   └── index.tsx
-│   ├── Recognition/        # Split into components
-│   │   ├── hooks/useScanAll.ts
-│   │   ├── PersonResultCard.tsx
-│   │   ├── ScanConfigPanel.tsx
-│   │   ├── ScanResultsSummary.tsx
-│   │   └── index.tsx
-│   ├── Duplicates/          # Near-duplicate detection
-│   │   └── index.tsx
-│   ├── Compare/             # Side-by-side photo comparison
+│   ├── Capture/            # Mobile PWA quick-shoot page (`/capture`)
+│   │   └── Capture.tsx
+│   ├── Compare/            # Side-by-side photo comparison
 │   │   ├── hooks/useCompareState.ts
 │   │   ├── CompareView.tsx
 │   │   ├── MetadataDiff.tsx
 │   │   ├── CompareSummary.tsx
 │   │   └── index.tsx
-│   ├── Slideshow/            # Fullscreen slideshow + TV presentation mode
+│   ├── Dashboard.tsx       # Home page (stats cards, quick actions, AI provider status)
+│   ├── Duplicates/         # Near-duplicate detection (single index.tsx)
+│   │   └── index.tsx
+│   ├── Expand.tsx          # Find photos similar to an entire label/album
+│   ├── Faces/              # Face matching (per-subject)
+│   │   ├── hooks/useFaceSearch.ts
+│   │   ├── FacesConfigPanel.tsx
+│   │   ├── FacesMatchGrid.tsx
+│   │   ├── FacesResultsSummary.tsx
+│   │   └── index.tsx
+│   ├── LabelDetail.tsx
+│   ├── Labels.tsx
+│   ├── Login.tsx
+│   ├── Outliers.tsx
+│   ├── PhotoDetail/        # Single-photo viewer + face assignment + non-destructive edit
+│   │   ├── hooks/usePhotoData.ts
+│   │   ├── hooks/useFacesData.ts
+│   │   ├── hooks/useFaceAssignment.ts
+│   │   ├── hooks/usePhotoNavigation.ts # Album/label/photos navigation
+│   │   ├── AddToBookDropdown.tsx
+│   │   ├── AlbumMembership.tsx
+│   │   ├── BookMembership.tsx
+│   │   ├── EmbeddingsStatus.tsx
+│   │   ├── EraEstimate.tsx           # Era estimation panel (right sidebar)
+│   │   ├── FaceAssignmentPanel.tsx
+│   │   ├── FacesList.tsx
+│   │   ├── PhotoDisplay.tsx
+│   │   ├── PhotoEditModal.tsx        # Non-destructive crop/rotate/brightness/contrast + revert
+│   │   └── index.tsx
+│   ├── Photos/             # Photo browser with filters + bulk selection
+│   │   ├── hooks/usePhotosFilters.ts
+│   │   ├── hooks/usePhotosPagination.ts
+│   │   ├── PhotosFilters.tsx
+│   │   └── index.tsx
+│   ├── Process.tsx         # Compute embeddings + faces; sync-cache button
+│   ├── Recognition/        # Bulk face recognition (Scan All People)
+│   │   ├── hooks/useScanAll.ts
+│   │   ├── PersonResultCard.tsx
+│   │   ├── ScanConfigPanel.tsx
+│   │   ├── ScanResultsSummary.tsx
+│   │   └── index.tsx
+│   ├── Settings/           # Profile / Users / Audit log (admin-gated tabs)
+│   │   ├── AuditLog.tsx        # Filters + pagination + CSV export
+│   │   ├── EditUserDialog.tsx  # Create / rename / role / password / disable
+│   │   ├── Settings.tsx        # Tab container (initialTab prop honoured)
+│   │   └── Users.tsx           # Admin user list
+│   ├── Share/              # Public album viewer (no app session)
+│   │   └── PublicShare.tsx
+│   ├── SimilarPhotos.tsx
+│   ├── Slideshow/          # Fullscreen slideshow + TV presentation mode
 │   │   ├── hooks/useSlideshow.ts
 │   │   ├── hooks/useSlideshowPhotos.ts
 │   │   ├── hooks/useTVMode.ts     # Browser fullscreen, wake lock, cursor auto-hide
@@ -1002,41 +991,31 @@ web/src/
 │   │   ├── SlideshowControls.tsx
 │   │   ├── TVControlBar.tsx       # Floating pill control bar shown in TV mode
 │   │   └── index.tsx
-│   ├── Upload/              # Photo upload
-│   │   ├── hooks/useUploadJob.ts
-│   │   ├── DropZone.tsx
+│   ├── SmartAlbums/        # Saved photo searches (rendered into the Albums page + own routes)
+│   │   ├── SmartAlbumDetail.tsx   # Detail page at /smart-albums/:uid
+│   │   ├── SmartAlbumModal.tsx    # Create / edit modal with full filter form
+│   │   └── SmartAlbumsSection.tsx # Card section embedded above the album grid
+│   ├── SubjectDetail.tsx
+│   ├── SuggestAlbums/      # Album completion (pgvector centroid search)
 │   │   └── index.tsx
-│   ├── Books/               # Photo books list
-│   │   └── index.tsx
-│   ├── BookEditor/           # Book editor (sections, pages, preview, texts, duplicates)
-│   │   ├── hooks/useBookData.ts
-│   │   ├── hooks/useUndoRedo.ts  # Undo/redo for slot assignments
-│   │   ├── BookStatsPanel.tsx    # Statistics panel (pages, photos, fill rate)
-│   │   ├── KeyboardShortcutsHelp.tsx # Keyboard shortcuts help dialog
-│   │   ├── SectionsTab.tsx       # Sections with cross-section drag-and-drop
-│   │   ├── SectionSidebar.tsx    # Section list with placement stats
-│   │   ├── SectionPhotoPool.tsx  # Photo grid with modal description editing
-│   │   ├── PhotoBrowserModal.tsx
-│   │   ├── PhotoDescriptionDialog.tsx
-│   │   ├── PhotoActionOverlay.tsx
-│   │   ├── PhotoInfoOverlay.tsx
-│   │   ├── PagesTab.tsx          # Pages with minimap and undo/redo
-│   │   ├── PageSidebar.tsx       # Thumbnail previews, quick-add button
-│   │   ├── PageMinimap.tsx       # Compact page overview panel
-│   │   ├── PageTemplate.tsx
-│   │   ├── PageSlot.tsx
-│   │   ├── UnassignedPool.tsx
-│   │   ├── PreviewTab.tsx
-│   │   ├── PreviewModal.tsx      # Preview modal for fullscreen view
-│   │   ├── TextsTab.tsx          # Texts tab: breadcrumbs, AI check with suggestions, JSON download
-│   │   ├── CheckSuggestionsList.tsx # Shared readability-suggestions list (major/minor severity)
-│   │   ├── DuplicatesTab.tsx     # Cross-section duplicate photo finder
-│   │   └── index.tsx
-│   └── SuggestAlbums/       # Album completion
+│   ├── TextSearch.tsx      # CLIP text-to-image search
+│   ├── Trash/              # Archived-photos browser + restore/purge
+│   │   └── Trash.tsx
+│   └── Upload/             # Multipart upload with SSE progress
+│       ├── hooks/useUploadJob.ts
+│       ├── DropZone.tsx
+│       ├── NearDuplicatesModal.tsx # Post-upload near-duplicate warnings
 │       └── index.tsx
-└── types/
-    ├── events.ts           # Typed SSE events
-    └── index.ts            # API response types
+├── types/
+│   ├── events.ts           # Typed SSE events (discriminated unions)
+│   ├── index.ts            # API response types
+│   └── turndown-plugin-gfm.d.ts
+└── utils/
+    ├── clipboard.ts        # Clipboard copy
+    ├── fontLoader.ts       # Google Fonts CSS loader (deduplicates, display=swap)
+    ├── markdown.ts         # Markdown-to-HTML renderer (marked.js + DOMPurify)
+    ├── pageFormats.ts      # Book page format helpers
+    └── paste.ts            # HTML → Markdown paste handler for caption/text textareas
 ```
 
 ### Shared Hooks
@@ -1073,6 +1052,12 @@ Server-Sent Events hook for real-time job progress.
 const sseUrl = jobId ? `/api/v1/sort/${jobId}/events` : null;
 useSSE(sseUrl, { onMessage: handleEvent });
 ```
+
+#### `useBookKeyboardNav`
+Keyboard navigation for the Book Editor (W/S to move between pages or sections; E/D to jump by chapter). Disabled when a dialog is open. Used by `BookEditor/PagesTab` and `BookEditor/SectionsTab`.
+
+#### `useAuth`
+Authentication context provider. Exposes the currently-authenticated user (with `role`), `login`, `logout`, and `isAuthenticated` / `isLoading` flags. `ProtectedRoute` in `App.tsx` consumes it; pages call `useAuth()` to gate write actions by `role` (e.g., the non-destructive edit button on Photo Detail).
 
 ### Typed SSE Events
 
