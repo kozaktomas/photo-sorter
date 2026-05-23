@@ -72,8 +72,12 @@ Book typography (fonts, sizes, caption opacity): `internal/database/postgres/mig
 Caption font size (standalone): `internal/database/postgres/migrations/022_add_caption_font_size.sql`
 Heading color bleed: `internal/database/postgres/migrations/023_add_heading_color_bleed.sql`
 Caption badge size: `internal/database/postgres/migrations/024_add_caption_badge_size.sql`
+Per-page folio suppression: `internal/database/postgres/migrations/025_add_hide_page_number.sql`
+Captions slot: `internal/database/postgres/migrations/026_add_captions_slot.sql`
 Full-bleed format: `internal/database/postgres/migrations/027_add_1_fullbleed_format.sql`
 Body text padding next to photo: `internal/database/postgres/migrations/029_add_body_text_pad_mm.sql`
+Contents slot: `internal/database/postgres/migrations/030_add_contents_slot.sql`
+Per-chapter TOC visibility: `internal/database/postgres/migrations/031_add_chapter_hide_from_toc.sql`
 
 ### Tables
 
@@ -100,7 +104,12 @@ book_chapters
 ├── id (PK)
 ├── book_id (FK → photo_books, CASCADE)
 ├── title
-├── color (TEXT, optional hex color e.g. '#8B0000' for chapter theme)
+├── color (VARCHAR(7), optional hex color e.g. '#8B0000' for chapter theme; '' = no color)
+├── hide_from_toc (BOOLEAN, default FALSE, migration 031)
+│                  When true, the chapter (and its sections) are omitted from
+│                  the auto-generated TOC rendered by an `is_contents_slot`.
+│                  The chapter's pages still render normally — only the TOC
+│                  listing is suppressed.
 ├── sort_order
 ├── created_at
 └── updated_at
@@ -127,9 +136,9 @@ book_pages
 ├── id (PK)
 ├── book_id (FK → photo_books, CASCADE)
 ├── section_id (FK → book_sections, SET NULL)
-├── format (CHECK: 4_landscape, 2l_1p, 1p_2l, 2_portrait, 1_fullscreen, 1_fullbleed)
-├── style (CHECK: modern, archival; DEFAULT 'modern')
-├── split_position (REAL, default 0.5, range 0.2-0.8, for 2l_1p/1p_2l formats)
+├── format (VARCHAR(20), CHECK: 4_landscape, 2l_1p, 1p_2l, 2_portrait, 1_fullscreen, 1_fullbleed)
+├── style (VARCHAR(20), CHECK: modern, archival; DEFAULT 'modern')
+├── split_position (DOUBLE PRECISION, nullable, range 0.2-0.8 when set; NULL = format default 0.5, only meaningful for 2l_1p/1p_2l)
 ├── hide_page_number (BOOLEAN, default false; suppresses folio rendering on this page only — pagination of other pages is unaffected, migration 025)
 ├── description (text displayed at top of page)
 ├── sort_order
@@ -150,9 +159,9 @@ page_slots
 │                    sections with printed page ranges) in this slot, laid
 │                    out in two columns with dotted leaders. At most one
 │                    per page.
-├── crop_x (REAL, default 0.5, range 0.0-1.0, horizontal crop center)
-├── crop_y (REAL, default 0.5, range 0.0-1.0, vertical crop center)
-├── crop_scale (REAL, default 1.0, range 0.1-1.0, zoom level: 1.0 = fill, lower = zoom in)
+├── crop_x (DOUBLE PRECISION, default 0.5, range 0.0-1.0, horizontal crop center)
+├── crop_y (DOUBLE PRECISION, default 0.5, range 0.0-1.0, vertical crop center)
+├── crop_scale (DOUBLE PRECISION, default 1.0, range 0.1-1.0, zoom level: 1.0 = fill, lower = zoom in)
 ├── CHECK: at most one of {photo_uid, text_content, is_captions_slot, is_contents_slot} is set
 ├── UNIQUE(page_id, slot_index)
 ├── UNIQUE(page_id, photo_uid)
@@ -224,6 +233,8 @@ columns inside the slot.
   empty title. The `Úvod` chapter is rendered the same way as other
   chapters.
 - Sections with no printed pages (none assigned yet) are skipped.
+- Chapters with `hide_from_toc = true` (and all their sections) are
+  skipped — useful for the chapter that contains the TOC page itself.
 
 **API:**
 
@@ -262,7 +273,7 @@ Deleting a book cascades to all chapters, sections, pages, and slots.
 |--------|----------|-------------|
 | POST | `/api/v1/books/:id/chapters` | Create chapter (`{ title, color? }`) |
 | PUT | `/api/v1/books/:id/chapters/reorder` | Reorder chapters (`{ chapter_ids: [...] }`) |
-| PUT | `/api/v1/chapters/:id` | Update chapter (`{ title?, color? }`) |
+| PUT | `/api/v1/chapters/:id` | Update chapter (`{ title?, color?, hide_from_toc? }`). `hide_from_toc = true` omits the chapter (and its sections) from the auto-generated contents-slot TOC; the chapter's pages still render. |
 | DELETE | `/api/v1/chapters/:id` | Delete chapter |
 
 ### Sections
@@ -289,17 +300,17 @@ Deleting a book cascades to all chapters, sections, pages, and slots.
 |--------|----------|-------------|
 | POST | `/api/v1/books/:id/pages` | Create page (`{ format, section_id, style? }`) |
 | PUT | `/api/v1/books/:id/pages/reorder` | Reorder pages (`{ ids: [...] }`) |
-| PUT | `/api/v1/pages/:id` | Update page (`{ format, section_id, description, style }`). Changing `section_id` to another section in the same book moves the page there atomically: the page is appended at the end of the target section, its slots (photo/text/captions/contents, crop, split, folio suppression) are preserved, photos used by the page are copied to the target section's pool (carrying over description/note where the target row is empty), and removed from the source pool if no other page in that section still uses them. Rejected with `400` when the target section is in a different book. |
+| PUT | `/api/v1/pages/:id` | Update page (`{ format?, section_id?, description?, style?, split_position?, hide_page_number? }`). Setting `hide_page_number = true` suppresses the folio on this page only; pagination of other pages is unaffected. Changing `section_id` to another section in the same book moves the page there atomically via `BookWriter.MovePageToSection`: the page is appended at the end of the target section, its slots (photo/text/captions/contents, crop, split, folio suppression) are preserved, photos used by the page are copied to the target section's pool (carrying over description/note where the target row is empty), and removed from the source pool if no other page in that section still uses them. Rejected with `400` when the target section is in a different book. |
 | DELETE | `/api/v1/pages/:id` | Delete page |
 
 ### Slots
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| PUT | `/api/v1/pages/:id/slots/:index` | Assign photo or text to slot (`{ photo_uid }` or `{ text_content }`) |
-| PUT | `/api/v1/pages/:id/slots/:index/crop` | Update crop for a slot (`{ crop_x, crop_y, crop_scale? }`) |
+| PUT | `/api/v1/pages/:id/slots/:index` | Assign photo or text or special flag to slot (`{ photo_uid }`, `{ text_content }`, `{ captions: true }`, or `{ contents: true }`). At most one captions slot and one contents slot per page — a second assignment returns HTTP 409. |
+| PUT | `/api/v1/pages/:id/slots/:index/crop` | Update crop for a photo slot (`{ crop_x, crop_y, crop_scale? }`) |
 | POST | `/api/v1/pages/:id/slots/swap` | Swap two slots atomically (`{ slot_a, slot_b }`) |
-| DELETE | `/api/v1/pages/:id/slots/:index` | Clear slot |
+| DELETE | `/api/v1/pages/:id/slots/:index` | Clear slot (also clears captions/contents flags) |
 
 ### Auto-Layout
 
@@ -311,7 +322,20 @@ Deleting a book cascades to all chapters, sections, pages, and slots.
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| GET | `/api/v1/books/:id/preflight` | Validate book before export (returns `{ ok, errors, warnings, info, summary }`) |
+| GET | `/api/v1/books/:id/preflight` | Validate book before export (returns `{ ok, errors, warnings, info, summary }`). Accepts `photo_quality=low\|medium\|original` so tier-specific warnings (notably `original_downgrade` for primaries whose longest side is < 3 840 px — a heads-up that the `medium` thumbnail would actually embed a higher-resolution image than the original) are surfaced up-front. |
+
+### MCP Parity
+
+The MCP server (`internal/mcp/`) mirrors the web book API for everything except heavy operations:
+
+- `update_book` accepts the full typography payload — `body_font`, `heading_font`, `body_font_size`, `body_line_height`, `h1_font_size`, `h2_font_size`, `caption_opacity`, `caption_font_size`, `heading_color_bleed`, `caption_badge_size`, `body_text_pad_mm` — validated against the same registry (`latex.ValidateFont`) and numeric ranges the web handler uses.
+- `update_chapter` accepts `hide_from_toc` to omit the chapter from the contents-slot TOC.
+- `update_page` accepts `hide_page_number` for per-page folio suppression. Changing `section_id` to a section in the same book triggers a cross-section move via `BookWriter.MovePageToSection` (atomic; rejected with a clear error when the target section belongs to a different book).
+- `assign_captions_slot` routes the page's photo captions into a specific slot (at most one per page; the DB partial unique index returns `database.ErrCaptionsSlotExists`, which the tool maps to a clear error).
+- `assign_contents_slot` flips a slot into the auto-generated table-of-contents renderer (at most one per page; partial unique index enforces it).
+- `auto_layout`, `preflight`, and the PDF export job flow are **intentionally web-API-only** — MCP does not expose them.
+
+`internal/mcp/` registers 52 tools in total across books, chapters, sections, section photos, pages, slots, photos, albums, labels, and AI text utilities.
 
 ### Text AI
 
@@ -393,7 +417,7 @@ than `original` — the warning is a heads-up, not an error.
 - `lualatex` must be installed on the server
 - **TeX packages:** `texlive-luatex`, `texmf-dist-latexrecommended`, `texmf-dist-fontsrecommended`, `texmf-dist-langczechslovak`, `texmf-dist-pictures`
 - **Additional LaTeX packages:** `enumitem`, `microtype`, `crop` (from `texmf-dist-latexrecommended` or installed separately)
-- **Fonts:** Google Fonts (downloaded at Docker build time). Default: PT Serif (body) + Source Sans 3 (headings). 20 fonts available — see Typography Customization section
+- **Fonts:** Google Fonts (downloaded at Docker build time on Linux hosts, or installed locally via `make install-fonts` for dev). Default: PT Serif (body) + Source Sans 3 (headings). 25 fonts available — see Typography Customization section. **Bookman Old Style is proprietary and is not bundled with the Docker image** (selecting it will fail PDF export until you stage the TTFs yourself — use `URW Bookman` as a free drop-in)
 - **Font cache:** `luaotfload` requires a writable cache directory; set `TEXMFCACHE` and `TEXMFVAR` env vars if running as a non-root user (the Go code auto-sets both to the temp directory at runtime)
 - Returns HTTP 503 if `lualatex` is not available
 
@@ -568,7 +592,7 @@ Each book has configurable typography settings that control both PDF rendering a
 | `caption_badge_size` | 4.0 mm | 2–12 mm | Square dimension of caption marker badges. Drives both the on-photo overlay marker and the footer caption badge so they always render identically. Inner number scales as `size_mm × 1.5` pt. |
 | `body_text_pad_mm` | 4.0 mm | 0–10 mm | Inner horizontal padding added to body text only on the side of a text slot adjacent to a photo in mixed layouts (`2_portrait`, `4_landscape`, `1p_2l`, `2l_1p`). Page-edge sides and sides next to non-photo neighbours (text/captions/empty) get no padding. Headings compensate via the same value so their colored box still reaches the slot edge — heading appearance is unchanged. |
 
-**Font Registry:** 24 fonts available (13 serif, 11 sans-serif), defined in `internal/latex/fonts.go`. Each font has a `LatexName` (for `fontspec` family lookup in LuaLaTeX) and `GoogleFamily`/`GoogleSpec` (for browser preview — non–Google Fonts use a visually similar fallback). Fonts are validated on save via `latex.ValidateFont()`.
+**Font Registry:** 25 fonts available (13 serif, 12 sans-serif), defined in `internal/latex/fonts.go`. Each font has a `LatexName` (for `fontspec` family lookup in LuaLaTeX) and `GoogleFamily`/`GoogleSpec` (for browser preview — non–Google Fonts use a visually similar fallback). Fonts are validated on save via `latex.ValidateFont()`.
 
 Variable fonts where `fontspec`'s family auto-detection fails to find a Bold face (Crimson Pro, Lora, Merriweather, Bitter, Gelasio, Source Serif 4, Cormorant Garamond, Nunito Sans, Raleway, Montserrat) carry additional `LatexFile` / `LatexItalicFile` fields naming the upright and italic variable-font files (e.g. `CrimsonPro[wght].ttf`). `FontEntry.LatexDeclaration()` then emits a bracket-file `\setmainfont` / `\setsansfont` command with explicit `wght=400` / `wght=700` axis features so `\textbf{}` and `\textbf{\textit{}}` render the correct weights instead of falling back to the regular face. Static fonts and well-behaved variable fonts (Noto Serif, Open Sans, Roboto, Inter, IBM Plex Sans, Noto Sans) keep the simpler family-name declaration.
 
@@ -720,7 +744,7 @@ Progress is emitted at phase granularity: `fetching_metadata`, `downloading_phot
 | `internal/database/postgres/books.go` | `BookRepository` implementing `BookWriter` |
 | `internal/web/handlers/books.go` | `BooksHandler` with all REST endpoints |
 | `internal/web/handlers/book_export_job.go` | `BookExportJob` + manager, 5 job-flow handlers, background runner with progress translator |
-| `internal/web/routes.go` | Route registration (18 routes) |
+| `internal/web/routes.go` | Route registration for all book endpoints (CRUD + slots + auto-layout + preflight + sync/async export + page export + photo membership) |
 | `cmd/serve.go` | Repository creation and registration |
 
 ### Key Implementation Details
