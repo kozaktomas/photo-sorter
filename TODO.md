@@ -107,6 +107,49 @@ explicit product / ops decision rather than an in-line guess.
   produce surprising filenames in `/tmp`. Defense-in-depth: clamp to
   alphanumeric + dot + max-8-chars before composing the pattern.
 
+## DB consistency sweep — 2026-05-23
+
+Deferred from [task-0ea1a8bd](docs/specs/task-0ea1a8bd-f085-4e20-a192-d78e7ab851a1.md).
+The sweep fixed migration 043 (smart_albums + album_share_links FKs
+to users now `ON DELETE SET NULL` so user deletion no longer aborts
+with FK violations) and verified every multi-step writer in scope is
+already wrapped in a transaction. The items below were flagged but
+the right answer needs an explicit product / ops decision.
+
+- [ ] **Audit log row is written outside the mutation transaction.**
+  Every mutating handler runs the DB write, then calls
+  `audit.FromContext(ctx).Log(...)` on success, which issues a
+  separate `INSERT INTO audit_log`. If the mutation commits and the
+  process crashes (or the audit insert hits a transient pool error)
+  before the audit row lands, the trail loses an entry — and the
+  successful mutation has no record. Conversely the audit insert
+  cannot leave a phantom row because it only runs after the mutation
+  returns nil. The package docstring on `internal/audit/audit.go`
+  documents the trade-off intentionally ("audit trail being
+  slightly incomplete is preferable to mutations failing because the
+  trail is down"). Revisit only if compliance asks for strong
+  durability — folding the audit insert into the same transaction
+  would require threading `*sql.Tx` through every writer interface,
+  which is a much larger refactor.
+- [ ] **`section_photos.photo_uid` and `page_slots.photo_uid` are not
+  FKs to `photos(uid)`.** Migration 008 left them as bare `VARCHAR(32)`,
+  so hard-deleting a photo from the trash leaves dangling references in
+  any book that used it. The renderer treats a missing photo as an
+  empty slot, but the section pool still shows the orphaned UID with
+  no thumbnail. Decide whether to add FKs with `ON DELETE SET NULL` (so
+  the slot becomes empty automatically) or `ON DELETE CASCADE` (so the
+  slot disappears entirely), and write a backfill migration that drops
+  any pre-existing orphans before adding the constraint.
+- [ ] **`embeddings` / `faces` / `faces_processed` tables have no FK to
+  `photos`.** Migrations 001-003 predate the native `photos` table.
+  Today the trash purge code deletes from each table explicitly (see
+  `purgePhotoDB` in `internal/trash/trash.go`), which works but is
+  easy to drift from if a new cache table is added. Adding FKs with
+  `ON DELETE CASCADE` would let the purge collapse to a single
+  `DELETE FROM photos` and remove the explicit `DeleteEmbedding` /
+  `DeleteFacesByPhoto` calls. Defer until after the PhotoPrism
+  migration window closes.
+
 ## Jobs / SSE hardening sweep — 2026-05-23
 
 Deferred from [task-ec16a386](docs/specs/task-ec16a386-946b-4f07-b4a5-685250ae54f7.md).

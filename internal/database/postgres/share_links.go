@@ -73,7 +73,8 @@ func NewShareLinkRepository(pool *Pool) *ShareLinkRepository {
 
 const shareLinkColumns = `slug, album_uid,
 	COALESCE(password_hash, '') AS password_hash,
-	expires_at, created_at, created_by_user_uid`
+	expires_at, created_at,
+	COALESCE(created_by_user_uid, '') AS created_by_user_uid`
 
 // GetShareLink fetches a single share link by slug. Returns
 // database.ErrNotFound when no row exists.
@@ -144,7 +145,8 @@ func (r *ShareLinkRepository) CreateShareLink(
 		    (slug, album_uid, password_hash, expires_at, created_by_user_uid)
 		 VALUES ($1, $2, $3, $4, $5)
 		 RETURNING created_at`,
-		link.Slug, link.AlbumUID, passHash, expiresAt, link.CreatedByUserUID,
+		link.Slug, link.AlbumUID, passHash, expiresAt,
+		nullableString(link.CreatedByUserUID),
 	)
 	if err := row.Scan(&link.CreatedAt); err != nil {
 		var pqErr *pq.Error

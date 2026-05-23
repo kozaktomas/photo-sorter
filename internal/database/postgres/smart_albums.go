@@ -41,8 +41,11 @@ func NewSmartAlbumUID() string {
 }
 
 // smartAlbumColumns is the canonical column list for SELECT statements
-// against the smart_albums table.
-const smartAlbumColumns = `uid, name, filters, created_at, updated_at, created_by_user_uid`
+// against the smart_albums table. created_by_user_uid is COALESCEd back to
+// an empty string so the wire shape stays stable when the column is NULL
+// (an author was deleted; see migration 043).
+const smartAlbumColumns = `uid, name, filters, created_at, updated_at,
+	COALESCE(created_by_user_uid, '') AS created_by_user_uid`
 
 // SmartAlbumRepository provides PostgreSQL-backed storage for smart albums.
 // It implements database.SmartAlbumReader and database.SmartAlbumWriter.
@@ -118,7 +121,8 @@ func (r *SmartAlbumRepository) CreateSmartAlbum(
 		    (uid, name, filters, created_by_user_uid)
 		 VALUES ($1, $2, $3::jsonb, $4)
 		 RETURNING created_at, updated_at`,
-		album.UID, album.Name, filtersJSON, album.CreatedByUserUID,
+		album.UID, album.Name, filtersJSON,
+		nullableString(album.CreatedByUserUID),
 	)
 	if err := row.Scan(&album.CreatedAt, &album.UpdatedAt); err != nil {
 		return fmt.Errorf("create smart album: %w", err)
