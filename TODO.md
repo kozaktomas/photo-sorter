@@ -20,3 +20,33 @@
 - [x] Add auto-layout UI button in Pages tab ([spec](docs/specs/auto-layout-frontend.md))
 - [x] Add preflight check backend endpoint for book export validation ([spec](docs/specs/preflight-backend.md))
 - [x] Add preflight check modal before PDF export ([spec](docs/specs/preflight-modal.md))
+
+## Auth / session hardening sweep — 2026-05-23
+
+Deferred from [task-228eb564](docs/specs/task-228eb564-fa4a-4fef-8344-c2736ed99580.md).
+These were flagged during the audit but intentionally left as separate
+follow-ups because the right policy is non-obvious and needs an explicit
+product decision rather than a guess from the implementer.
+
+- [ ] **Login brute-force friction.** `POST /api/v1/auth/login` has no
+  rate limit or lockout today. The audit log records every
+  `login_failed` row with IP + UA + (truncated) attempted username, so
+  detection is possible, but an attacker can still hammer the endpoint
+  at line rate. Decide on a policy (per-IP token bucket vs. per-username
+  exponential backoff vs. CAPTCHA after N failures) and implement; the
+  share-link `verify` endpoint already has a 10-attempt / 5-minute /
+  per-IP gate that could be reused as a starting point.
+- [ ] **Sliding vs. absolute session expiry.** Sessions get a fixed
+  30-day absolute lifetime on creation (`sessionDuration` in
+  `internal/web/middleware/session.go`) and are never extended on
+  activity. That is safer (a stolen cookie has a known expiry) but
+  forces a re-login every 30 days even for active users. Decide whether
+  to add sliding expiry on access and document the choice in
+  `docs/architecture.md`.
+- [ ] **Self password change does not invalidate other sessions.**
+  `POST /api/v1/me/password` rotates the bcrypt hash but keeps the
+  caller's current session as well as every other active session for
+  the same user. The admin-initiated reset (`POST /users/{uid}/password`)
+  now revokes everything; for the self path we want to keep the caller
+  logged in but drop the rest, which needs a slightly different shape
+  on `SessionManager.DeleteSessionsForUser` (skip-by-ID parameter).

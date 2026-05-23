@@ -21,15 +21,32 @@ import (
 // the AuthInfo on the request context; the admin routes additionally pass
 // through RequireRole("admin") in the router.
 type UsersHandler struct {
-	config *config.Config
-	repo   database.UserWriter
+	config   *config.Config
+	repo     database.UserWriter
+	sessions *middleware.SessionManager
 }
 
 // NewUsersHandler returns a handler bound to the supplied user repository.
 // repo may be nil when the user store is unavailable at startup — every
 // endpoint then surfaces a 503 rather than blocking server boot.
-func NewUsersHandler(cfg *config.Config, repo database.UserWriter) *UsersHandler {
-	return &UsersHandler{config: cfg, repo: repo}
+// sessions may also be nil in unit tests; when present, the admin
+// mutation paths use it to revoke the target user's active sessions
+// so a disabled / demoted / deleted principal cannot keep operating
+// through their existing cookie.
+func NewUsersHandler(
+	cfg *config.Config, repo database.UserWriter, sessions *middleware.SessionManager,
+) *UsersHandler {
+	return &UsersHandler{config: cfg, repo: repo, sessions: sessions}
+}
+
+// revokeSessionsFor revokes every active session for the given user.
+// Centralised so the admin-mutation handlers (disable, demote, password
+// reset, delete) all funnel through the same nil-safe path.
+func (h *UsersHandler) revokeSessionsFor(uid string) {
+	if h.sessions == nil || uid == "" {
+		return
+	}
+	h.sessions.DeleteSessionsForUser(uid)
 }
 
 // UserResponse is the wire shape returned by every user endpoint. It is a
@@ -240,33 +257,93 @@ func (h *UsersHandler) Update(w http.ResponseWriter, r *http.Request) {
 	if repo == nil {
 		return
 	}
-	user, err := repo.GetUser(r.Context(), uid)
-	if errors.Is(err, database.ErrNotFound) {
-		respondError(w, http.StatusNotFound, "user not found")
+	user, ok := h.loadUserOr404(w, r, repo, uid, "users update get")
+	if !ok {
 		return
 	}
-	if err != nil {
-		log.Printf("users update get %s: %v", sanitizeForLog(uid), err)
-		respondError(w, http.StatusInternalServerError, "failed to get user")
-		return
-	}
+	// Snapshot the role before applyUserUpdateFields mutates the struct,
+	// so we can detect an admin → non-admin demotion and refuse it when
+	// it would strand the system without an admin.
+	priorRole := user.Role
 	if !applyUserUpdateFields(w, user, req) {
 		return
 	}
-	if err := repo.UpdateUser(r.Context(), user); err != nil {
-		if errors.Is(err, database.ErrNotFound) {
-			respondError(w, http.StatusNotFound, "user not found")
-			return
-		}
-		log.Printf("users update %s: %v", sanitizeForLog(uid), err)
-		respondError(w, http.StatusInternalServerError, "failed to update user")
+	if !h.guardRoleDemotion(w, r, repo, user, priorRole, uid) {
 		return
+	}
+	if !h.persistUserUpdate(w, r, repo, user, uid) {
+		return
+	}
+	// A role change invalidates the role cached on every active session
+	// for this user — drop them so the caller cannot keep using the old
+	// privileges. Other field changes (display name, email) do not need
+	// the sweep.
+	if priorRole != user.Role {
+		h.revokeSessionsFor(user.UID)
 	}
 	audit.FromContext(r.Context()).Log(
 		r.Context(), audit.ActionUserUpdate, audit.EntityUser, user.UID,
 		map[string]any{"username": user.Username, "role": user.Role},
 	)
 	respondJSON(w, http.StatusOK, toUserResponse(*user))
+}
+
+// guardRoleDemotion refuses to demote the only admin. Returns false
+// (after writing the error response) when the change would strand the
+// system without an enabled admin; returns true when the update may
+// proceed.
+func (h *UsersHandler) guardRoleDemotion(
+	w http.ResponseWriter, r *http.Request, repo database.UserWriter,
+	user *database.User, priorRole, uid string,
+) bool {
+	if priorRole != auth.RoleAdmin || user.Role == auth.RoleAdmin {
+		return true
+	}
+	// Use a snapshot with the prior role so the guard sees the user as
+	// the admin row it currently is in the DB.
+	probe := &database.User{UID: user.UID, Role: priorRole}
+	return !ensureNotLastAdmin(w, r, repo, probe, uid)
+}
+
+// persistUserUpdate commits the user row and writes the right error
+// response if the underlying repo call fails. Returns true on success.
+func (h *UsersHandler) persistUserUpdate(
+	w http.ResponseWriter, r *http.Request, repo database.UserWriter,
+	user *database.User, uid string,
+) bool {
+	err := repo.UpdateUser(r.Context(), user)
+	if err == nil {
+		return true
+	}
+	if errors.Is(err, database.ErrNotFound) {
+		respondError(w, http.StatusNotFound, "user not found")
+		return false
+	}
+	log.Printf("users update %s: %v", sanitizeForLog(uid), err)
+	respondError(w, http.StatusInternalServerError, "failed to update user")
+	return false
+}
+
+// loadUserOr404 is a thin wrapper around repo.GetUser that funnels
+// the not-found / server-error responses through a single code path.
+// Returns (user, true) on success, or (nil, false) after writing the
+// error response. logTag is the operation name used in the WARN log
+// for unexpected DB failures.
+func (h *UsersHandler) loadUserOr404(
+	w http.ResponseWriter, r *http.Request, repo database.UserWriter,
+	uid, logTag string,
+) (*database.User, bool) {
+	user, err := repo.GetUser(r.Context(), uid)
+	if errors.Is(err, database.ErrNotFound) {
+		respondError(w, http.StatusNotFound, "user not found")
+		return nil, false
+	}
+	if err != nil {
+		log.Printf("%s %s: %v", logTag, sanitizeForLog(uid), err)
+		respondError(w, http.StatusInternalServerError, "failed to get user")
+		return nil, false
+	}
+	return user, true
 }
 
 // SetPasswordRequest is the JSON body accepted by POST /users/{uid}/password.
@@ -309,6 +386,10 @@ func (h *UsersHandler) SetPassword(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to set password")
 		return
 	}
+	// Admin-initiated password reset revokes every active session for
+	// the target so the previously-issued cookies cannot keep operating
+	// under the rotated credential.
+	h.revokeSessionsFor(uid)
 	audit.FromContext(r.Context()).Log(
 		r.Context(), audit.ActionUserPasswordReset, audit.EntityUser, uid, nil,
 	)
@@ -318,6 +399,38 @@ func (h *UsersHandler) SetPassword(w http.ResponseWriter, r *http.Request) {
 // SetDisabledRequest is the JSON body accepted by POST /users/{uid}/disable.
 type SetDisabledRequest struct {
 	Disabled bool `json:"disabled"`
+}
+
+// guardDisableLastAdmin fetches the target user and refuses to disable
+// the only enabled admin. Returns true when the disable may proceed,
+// false (after writing the error response) when it must be rejected.
+func (h *UsersHandler) guardDisableLastAdmin(
+	w http.ResponseWriter, r *http.Request, repo database.UserWriter, uid string,
+) bool {
+	target, ok := h.loadUserOr404(w, r, repo, uid, "users set disabled get")
+	if !ok {
+		return false
+	}
+	return !ensureNotLastAdmin(w, r, repo, target, uid)
+}
+
+// persistSetDisabled commits the disabled flag and writes the right
+// error response if the repo call fails. Returns true on success.
+func (h *UsersHandler) persistSetDisabled(
+	w http.ResponseWriter, r *http.Request, repo database.UserWriter,
+	uid string, disabled bool,
+) bool {
+	err := repo.SetDisabled(r.Context(), uid, disabled)
+	if err == nil {
+		return true
+	}
+	if errors.Is(err, database.ErrNotFound) {
+		respondError(w, http.StatusNotFound, "user not found")
+		return false
+	}
+	log.Printf("users set disabled %s: %v", sanitizeForLog(uid), err)
+	respondError(w, http.StatusInternalServerError, "failed to set disabled")
+	return false
 }
 
 // SetDisabled toggles the disabled flag for the target user.
@@ -336,14 +449,17 @@ func (h *UsersHandler) SetDisabled(w http.ResponseWriter, r *http.Request) {
 	if repo == nil {
 		return
 	}
-	if err := repo.SetDisabled(r.Context(), uid, req.Disabled); err != nil {
-		if errors.Is(err, database.ErrNotFound) {
-			respondError(w, http.StatusNotFound, "user not found")
-			return
-		}
-		log.Printf("users set disabled %s: %v", sanitizeForLog(uid), err)
-		respondError(w, http.StatusInternalServerError, "failed to set disabled")
+	if req.Disabled && !h.guardDisableLastAdmin(w, r, repo, uid) {
 		return
+	}
+	if !h.persistSetDisabled(w, r, repo, uid, req.Disabled) {
+		return
+	}
+	// Disabling a user must immediately revoke their sessions; without
+	// this, the disabled account keeps working until the cookie expires
+	// because RequireAuth reads role/UID off the cached session row.
+	if req.Disabled {
+		h.revokeSessionsFor(uid)
 	}
 	action := audit.ActionUserEnable
 	if req.Disabled {
@@ -417,6 +533,11 @@ func (h *UsersHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		respondError(w, http.StatusInternalServerError, "failed to delete user")
 		return
 	}
+	// The sessions table has no FK on user_uid (it pre-dates the native
+	// users table), so a DELETE on users does NOT cascade. Sweep the
+	// caller's sessions explicitly so a stale cookie cannot be used to
+	// keep acting as the deleted user.
+	h.revokeSessionsFor(uid)
 	audit.FromContext(r.Context()).Log(
 		r.Context(), audit.ActionUserDelete, audit.EntityUser, uid,
 		map[string]any{"username": target.Username},

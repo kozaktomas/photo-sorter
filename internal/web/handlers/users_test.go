@@ -16,9 +16,22 @@ import (
 	"github.com/kozaktomas/photo-sorter/internal/web/middleware"
 )
 
-// newTestUsersHandler wires a UsersHandler against an in-memory user repo.
+// newTestUsersHandler wires a UsersHandler against an in-memory user repo
+// and a fresh in-memory SessionManager. Tests that need to observe the
+// session-revocation behaviour can construct the manager themselves and
+// pass it in via newTestUsersHandlerWithSessions.
 func newTestUsersHandler(repo database.UserWriter) *UsersHandler {
-	return NewUsersHandler(testConfig(), repo)
+	sm := middleware.NewSessionManager("test-secret", nil)
+	return NewUsersHandler(testConfig(), repo, sm)
+}
+
+// newTestUsersHandlerWithSessions lets a test pre-create sessions on the
+// returned manager and then assert they are revoked after a mutation.
+func newTestUsersHandlerWithSessions(
+	repo database.UserWriter,
+) (*UsersHandler, *middleware.SessionManager) {
+	sm := middleware.NewSessionManager("test-secret", nil)
+	return NewUsersHandler(testConfig(), repo, sm), sm
 }
 
 // withAuthInfo attaches an AuthInfo for `info` to the request context so
@@ -451,6 +464,220 @@ func TestUsersHandler_Delete_LastAdmin(t *testing.T) {
 	assertJSONError(t, rec, "cannot delete the last admin")
 	if _, ok := repo.byUID["u-admin"]; !ok {
 		t.Error("admin was deleted despite being the last one")
+	}
+}
+
+// TestUsersHandler_Update_LastAdminDemotion refuses to change the sole
+// admin's role to a non-admin role, mirroring the Delete/Disable guards
+// so the system always retains at least one enabled admin.
+func TestUsersHandler_Update_LastAdminDemotion(t *testing.T) {
+	repo := newFakeUserRepo()
+	seedUser(t, repo, "u-admin", "admin", auth.RoleAdmin, "passw0rd!")
+	seedUser(t, repo, "u-editor", "editor", auth.RoleEditor, "passw0rd!")
+	h := newTestUsersHandler(repo)
+
+	body := bytes.NewBufferString(`{"role":"editor"}`)
+	req := httptest.NewRequestWithContext(
+		context.Background(), http.MethodPut, "/api/v1/users/u-admin", body,
+	)
+	req.Header.Set("Content-Type", "application/json")
+	req = requestWithChiParams(req, map[string]string{"uid": "u-admin"})
+	rec := httptest.NewRecorder()
+	h.Update(rec, req)
+
+	assertStatusCode(t, rec, http.StatusBadRequest)
+	assertJSONError(t, rec, "cannot delete the last admin")
+	// Role must be unchanged on disk after the rejection.
+	if repo.byUID["u-admin"].Role != auth.RoleAdmin {
+		t.Errorf("role mutated despite 400: %q", repo.byUID["u-admin"].Role)
+	}
+}
+
+// TestUsersHandler_Update_DemotionAllowedWhenOtherAdminExists confirms
+// the guard only fires on the last admin: with a second admin present
+// the demotion goes through.
+func TestUsersHandler_Update_DemotionAllowedWhenOtherAdminExists(t *testing.T) {
+	repo := newFakeUserRepo()
+	seedUser(t, repo, "u-admin1", "alfa", auth.RoleAdmin, "passw0rd!")
+	seedUser(t, repo, "u-admin2", "bravo", auth.RoleAdmin, "passw0rd!")
+	h := newTestUsersHandler(repo)
+
+	body := bytes.NewBufferString(`{"role":"editor"}`)
+	req := httptest.NewRequestWithContext(
+		context.Background(), http.MethodPut, "/api/v1/users/u-admin1", body,
+	)
+	req.Header.Set("Content-Type", "application/json")
+	req = requestWithChiParams(req, map[string]string{"uid": "u-admin1"})
+	rec := httptest.NewRecorder()
+	h.Update(rec, req)
+
+	assertStatusCode(t, rec, http.StatusOK)
+	if repo.byUID["u-admin1"].Role != auth.RoleEditor {
+		t.Errorf("role = %q, want editor", repo.byUID["u-admin1"].Role)
+	}
+}
+
+// TestUsersHandler_SetDisabled_LastAdmin refuses to disable the last
+// enabled admin. Re-enabling is always allowed (no guard).
+func TestUsersHandler_SetDisabled_LastAdmin(t *testing.T) {
+	repo := newFakeUserRepo()
+	seedUser(t, repo, "u-admin", "admin", auth.RoleAdmin, "passw0rd!")
+	seedUser(t, repo, "u-other", "other", auth.RoleEditor, "passw0rd!")
+	h := newTestUsersHandler(repo)
+
+	body := bytes.NewBufferString(`{"disabled":true}`)
+	req := httptest.NewRequestWithContext(
+		context.Background(), http.MethodPost, "/api/v1/users/u-admin/disable", body,
+	)
+	req.Header.Set("Content-Type", "application/json")
+	req = requestWithChiParams(req, map[string]string{"uid": "u-admin"})
+	rec := httptest.NewRecorder()
+	h.SetDisabled(rec, req)
+
+	assertStatusCode(t, rec, http.StatusBadRequest)
+	assertJSONError(t, rec, "cannot delete the last admin")
+	if repo.byUID["u-admin"].Disabled {
+		t.Error("last admin was disabled despite the guard")
+	}
+}
+
+// TestUsersHandler_SetDisabled_NotLastAdmin disables a second admin
+// while one remains. Confirms the guard is targeted at the strand-the-
+// system case rather than blocking all admin disables.
+func TestUsersHandler_SetDisabled_NotLastAdmin(t *testing.T) {
+	repo := newFakeUserRepo()
+	seedUser(t, repo, "u-admin1", "alfa", auth.RoleAdmin, "passw0rd!")
+	seedUser(t, repo, "u-admin2", "bravo", auth.RoleAdmin, "passw0rd!")
+	h := newTestUsersHandler(repo)
+
+	body := bytes.NewBufferString(`{"disabled":true}`)
+	req := httptest.NewRequestWithContext(
+		context.Background(), http.MethodPost, "/api/v1/users/u-admin1/disable", body,
+	)
+	req.Header.Set("Content-Type", "application/json")
+	req = requestWithChiParams(req, map[string]string{"uid": "u-admin1"})
+	rec := httptest.NewRecorder()
+	h.SetDisabled(rec, req)
+
+	assertStatusCode(t, rec, http.StatusOK)
+	if !repo.byUID["u-admin1"].Disabled {
+		t.Error("admin was not disabled")
+	}
+}
+
+// TestUsersHandler_SetDisabled_RevokesSessions verifies disabling a
+// user immediately invalidates every active session for them.
+// Without this guard, the disabled account keeps working until the
+// cookie expires because RequireAuth reads role/UID off the session.
+func TestUsersHandler_SetDisabled_RevokesSessions(t *testing.T) {
+	repo := newFakeUserRepo()
+	seedUser(t, repo, "u-admin", "admin", auth.RoleAdmin, "passw0rd!")
+	seedUser(t, repo, "u-victim", "victim", auth.RoleEditor, "passw0rd!")
+	h, sm := newTestUsersHandlerWithSessions(repo)
+
+	session, err := sm.CreateSession("", "", "u-victim", auth.RoleEditor)
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	body := bytes.NewBufferString(`{"disabled":true}`)
+	req := httptest.NewRequestWithContext(
+		context.Background(), http.MethodPost, "/api/v1/users/u-victim/disable", body,
+	)
+	req.Header.Set("Content-Type", "application/json")
+	req = requestWithChiParams(req, map[string]string{"uid": "u-victim"})
+	rec := httptest.NewRecorder()
+	h.SetDisabled(rec, req)
+
+	assertStatusCode(t, rec, http.StatusOK)
+	if sm.GetSession(session.ID) != nil {
+		t.Error("victim's session still valid after disable")
+	}
+}
+
+// TestUsersHandler_Update_RoleChangeRevokesSessions verifies that a
+// role change drops every cached session for the target user. Without
+// this, a demoted admin keeps admin privileges (the role is cached on
+// the session row) until they log in again.
+func TestUsersHandler_Update_RoleChangeRevokesSessions(t *testing.T) {
+	repo := newFakeUserRepo()
+	seedUser(t, repo, "u-admin1", "alfa", auth.RoleAdmin, "passw0rd!")
+	seedUser(t, repo, "u-admin2", "bravo", auth.RoleAdmin, "passw0rd!")
+	h, sm := newTestUsersHandlerWithSessions(repo)
+
+	session, err := sm.CreateSession("", "", "u-admin1", auth.RoleAdmin)
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	body := bytes.NewBufferString(`{"role":"editor"}`)
+	req := httptest.NewRequestWithContext(
+		context.Background(), http.MethodPut, "/api/v1/users/u-admin1", body,
+	)
+	req.Header.Set("Content-Type", "application/json")
+	req = requestWithChiParams(req, map[string]string{"uid": "u-admin1"})
+	rec := httptest.NewRecorder()
+	h.Update(rec, req)
+
+	assertStatusCode(t, rec, http.StatusOK)
+	if sm.GetSession(session.ID) != nil {
+		t.Error("demoted admin's session still valid after role change")
+	}
+}
+
+// TestUsersHandler_SetPassword_RevokesSessions verifies an admin
+// password reset invalidates the target's outstanding sessions so a
+// stolen cookie cannot keep operating under the rotated credential.
+func TestUsersHandler_SetPassword_RevokesSessions(t *testing.T) {
+	repo := newFakeUserRepo()
+	seedUser(t, repo, "u-target", "target", auth.RoleViewer, "passw0rd!")
+	h, sm := newTestUsersHandlerWithSessions(repo)
+
+	session, err := sm.CreateSession("", "", "u-target", auth.RoleViewer)
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	body := bytes.NewBufferString(`{"password":"new-passw0rd"}`)
+	req := httptest.NewRequestWithContext(
+		context.Background(), http.MethodPost, "/api/v1/users/u-target/password", body,
+	)
+	req.Header.Set("Content-Type", "application/json")
+	req = requestWithChiParams(req, map[string]string{"uid": "u-target"})
+	rec := httptest.NewRecorder()
+	h.SetPassword(rec, req)
+
+	assertStatusCode(t, rec, http.StatusOK)
+	if sm.GetSession(session.ID) != nil {
+		t.Error("target's session survived an admin password reset")
+	}
+}
+
+// TestUsersHandler_Delete_RevokesSessions verifies deleting a user
+// drops their active session. The sessions table has no FK on
+// user_uid, so cascade-delete does NOT happen automatically.
+func TestUsersHandler_Delete_RevokesSessions(t *testing.T) {
+	repo := newFakeUserRepo()
+	seedUser(t, repo, "u-admin", "admin", auth.RoleAdmin, "passw0rd!")
+	seedUser(t, repo, "u-victim", "victim", auth.RoleEditor, "passw0rd!")
+	h, sm := newTestUsersHandlerWithSessions(repo)
+
+	session, err := sm.CreateSession("", "", "u-victim", auth.RoleEditor)
+	if err != nil {
+		t.Fatalf("create session: %v", err)
+	}
+
+	req := httptest.NewRequestWithContext(
+		context.Background(), http.MethodDelete, "/api/v1/users/u-victim", nil,
+	)
+	req = withAuthInfo(req, "u-admin", auth.RoleAdmin)
+	req = requestWithChiParams(req, map[string]string{"uid": "u-victim"})
+	rec := httptest.NewRecorder()
+	h.Delete(rec, req)
+
+	assertStatusCode(t, rec, http.StatusOK)
+	if sm.GetSession(session.ID) != nil {
+		t.Error("victim's session survived account deletion")
 	}
 }
 

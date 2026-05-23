@@ -50,6 +50,11 @@ type SessionRepository interface {
 	) error
 	Get(ctx context.Context, sessionID string) (*StoredSession, error)
 	Delete(ctx context.Context, sessionID string) error
+	// DeleteByUser removes every session for the given user UID and
+	// returns the count deleted. It is used by the admin user-management
+	// flow (disable / role change / password reset / delete) to ensure a
+	// revoked principal cannot keep using their old cookie.
+	DeleteByUser(ctx context.Context, userUID string) (int64, error)
 	DeleteExpired(ctx context.Context) (int64, error)
 }
 
@@ -241,6 +246,36 @@ func (sm *SessionManager) DeleteSession(sessionID string) {
 	}
 }
 
+// DeleteSessionsForUser revokes every session belonging to the given
+// user UID, in memory and in the persistent store. The admin user-
+// management endpoints call this after disabling a user, demoting an
+// admin, rotating a password, or deleting an account so the revoked
+// principal cannot keep operating through a stale cookie.
+//
+// userUID = "" is a no-op so the caller does not need to guard against
+// the PhotoPrism-era sessions that have no native user attached.
+func (sm *SessionManager) DeleteSessionsForUser(userUID string) {
+	if userUID == "" {
+		return
+	}
+	// Sweep the in-memory cache first; the DB sweep happens after.
+	sm.mu.Lock()
+	for id, s := range sm.sessions {
+		if s != nil && s.UserUID == userUID {
+			delete(sm.sessions, id)
+		}
+	}
+	sm.mu.Unlock()
+
+	if sm.repo != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if _, err := sm.repo.DeleteByUser(ctx, userUID); err != nil {
+			log.Printf("Warning: failed to revoke sessions for user %q: %v", userUID, err)
+		}
+	}
+}
+
 // SetSessionCookie sets the session cookie on the response.
 // Secure flag is auto-detected from X-Forwarded-Proto or TLS state.
 func (sm *SessionManager) SetSessionCookie(w http.ResponseWriter, r *http.Request, session *Session) {
@@ -261,13 +296,21 @@ func (sm *SessionManager) SetSessionCookie(w http.ResponseWriter, r *http.Reques
 	})
 }
 
-// ClearSessionCookie removes the session cookie.
-func (sm *SessionManager) ClearSessionCookie(w http.ResponseWriter) {
+// ClearSessionCookie removes the session cookie. Browsers only honour the
+// expiry when the deletion cookie's attributes (Path, Secure, SameSite) match
+// the original — if any differ, the original cookie is left in place and the
+// browser keeps sending it. We therefore mirror SetSessionCookie's flags,
+// including the auto-detected Secure bit, so logout actually drops the
+// cookie under both HTTPS and bare-HTTP development.
+func (sm *SessionManager) ClearSessionCookie(w http.ResponseWriter, r *http.Request) {
+	secure := r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
 	http.SetCookie(w, &http.Cookie{
 		Name:     sessionCookieName,
 		Value:    "",
 		Path:     "/",
 		HttpOnly: true,
+		Secure:   secure,
+		SameSite: http.SameSiteStrictMode,
 		MaxAge:   -1,
 	})
 }

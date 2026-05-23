@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -353,6 +354,101 @@ func TestAuthHandler_Login_NilUserReader(t *testing.T) {
 	w := httptest.NewRecorder()
 	handler.Login(w, req)
 	assertStatusCode(t, w, http.StatusInternalServerError)
+}
+
+// TestAuthHandler_Login_RotatesSessionID is the session-fixation guard:
+// when the login request carries a pre-existing session cookie, that
+// session must be deleted server-side before the new one is minted.
+// Otherwise an attacker who had pre-set the victim's cookie would
+// retain access through the old ID after the victim authenticated.
+func TestAuthHandler_Login_RotatesSessionID(t *testing.T) {
+	repo := newFakeUserRepo()
+	repo.add(t, database.User{
+		UID: "u-admin", Username: "admin", Role: auth.RoleAdmin,
+	}, "s3cret")
+	handler, sm := newTestAuthHandler(repo)
+
+	// An attacker-fixed session exists in the store before login.
+	planted, err := sm.CreateSession("", "", "u-victim-prior", auth.RoleViewer)
+	if err != nil {
+		t.Fatalf("planted session: %v", err)
+	}
+
+	req := httptest.NewRequestWithContext(
+		context.Background(), http.MethodPost, "/api/v1/auth/login",
+		loginRequestBody("admin", "s3cret"),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+planted.ID)
+	w := httptest.NewRecorder()
+	handler.Login(w, req)
+
+	assertStatusCode(t, w, http.StatusOK)
+
+	// The planted session must be unusable after a successful login.
+	if sm.GetSession(planted.ID) != nil {
+		t.Error("planted session survived login — session-fixation guard failed")
+	}
+}
+
+// TestAuthHandler_Login_TimingConstantForUnknownUser is a coarse smoke
+// check that the unknown-user branch still runs bcrypt against the
+// dummy hash (so it takes a comparable amount of time to a real
+// wrong-password path). A wide tolerance keeps the test stable on slow
+// CI — the real defence is that a bcrypt call happens, not its exact
+// duration.
+func TestAuthHandler_Login_TimingConstantForUnknownUser(t *testing.T) {
+	repo := newFakeUserRepo()
+	repo.add(t, database.User{
+		UID: "u-real", Username: "real", Role: auth.RoleEditor,
+	}, "right-password")
+	handler, _ := newTestAuthHandler(repo)
+
+	timeReq := func(body *bytes.Buffer) time.Duration {
+		req := httptest.NewRequestWithContext(
+			context.Background(), http.MethodPost, "/api/v1/auth/login", body,
+		)
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		start := time.Now()
+		handler.Login(w, req)
+		return time.Since(start)
+	}
+
+	// Warmup so the first call doesn't pay outsized init costs.
+	timeReq(loginRequestBody("real", "wrong"))
+
+	wrongPassword := timeReq(loginRequestBody("real", "wrong"))
+	unknownUser := timeReq(loginRequestBody("nobody", "anything"))
+
+	// Both paths must spend non-trivial time on a real bcrypt compare.
+	// 30ms is a generous floor that still excludes the no-bcrypt
+	// regression (which would return in microseconds on a Pi).
+	const floor = 30 * time.Millisecond
+	if wrongPassword < floor {
+		t.Errorf("wrong-password path too fast (%v) — bcrypt skipped?", wrongPassword)
+	}
+	if unknownUser < floor {
+		t.Errorf("unknown-user path too fast (%v) — bcrypt skipped?", unknownUser)
+	}
+}
+
+// TestAuthHandler_Login_TruncatesAuditActor verifies that an absurdly
+// long username submitted to /login does not get persisted verbatim
+// into metadata.actor — the truncation cap keeps audit rows bounded.
+func TestAuthHandler_Login_TruncatesAuditActor(t *testing.T) {
+	if maxFailedLoginActorLen <= 0 {
+		t.Fatal("maxFailedLoginActorLen must be > 0")
+	}
+	long := strings.Repeat("a", maxFailedLoginActorLen+512)
+	got := truncateForAudit(long)
+	if len(got) != maxFailedLoginActorLen {
+		t.Errorf("len = %d, want %d", len(got), maxFailedLoginActorLen)
+	}
+	short := "alice"
+	if truncateForAudit(short) != short {
+		t.Error("truncateForAudit altered a short input")
+	}
 }
 
 // TestAuthHandler_Logout_HardDeletesSession verifies the session row is

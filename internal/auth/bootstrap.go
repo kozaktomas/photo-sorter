@@ -54,14 +54,8 @@ func BootstrapAdmin(
 		return nil
 	}
 
-	username := os.Getenv(envBootstrapUsername)
-	password := os.Getenv(envBootstrapPassword)
-	if username == "" || password == "" {
-		log.Printf(
-			"WARN: no users exist and %s / %s are not set; "+
-				"the first admin user must be created manually before login is possible",
-			envBootstrapUsername, envBootstrapPassword,
-		)
+	username, password, ok := readBootstrapCredentials()
+	if !ok {
 		return nil
 	}
 
@@ -93,4 +87,40 @@ func BootstrapAdmin(
 	}
 	log.Printf("Bootstrap admin user %q created", username)
 	return nil
+}
+
+// readBootstrapCredentials reads BOOTSTRAP_ADMIN_USERNAME / _PASSWORD
+// from the environment and applies the same shape + length checks the
+// REST and CLI surfaces use. The boolean return is false when either
+// var is empty or fails validation — in every such case a WARN is
+// logged and the caller skips creation so the server can still boot.
+func readBootstrapCredentials() (username, password string, ok bool) {
+	username = os.Getenv(envBootstrapUsername)
+	password = os.Getenv(envBootstrapPassword)
+	if username == "" || password == "" {
+		log.Printf(
+			"WARN: no users exist and %s / %s are not set; "+
+				"the first admin user must be created manually before login is possible",
+			envBootstrapUsername, envBootstrapPassword,
+		)
+		return "", "", false
+	}
+	if !ValidUsername(username) {
+		log.Printf(
+			"WARN: %s = %q does not match the required shape "+
+				"(lowercase alphanumerics + _.-, length 3-64); "+
+				"skipping bootstrap admin creation",
+			envBootstrapUsername, username,
+		)
+		return "", "", false
+	}
+	if len(password) < MinPasswordLength {
+		log.Printf(
+			"WARN: %s is shorter than the required %d characters; "+
+				"skipping bootstrap admin creation",
+			envBootstrapPassword, MinPasswordLength,
+		)
+		return "", "", false
+	}
+	return username, password, true
 }

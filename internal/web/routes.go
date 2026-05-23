@@ -176,7 +176,7 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 	s.booksHandler = booksHandler
 	textHandler := handlers.NewTextHandler(s.config)
 	textVersionsHandler := handlers.NewTextVersionsHandler()
-	usersHandler := handlers.NewUsersHandler(s.config, userWriter)
+	usersHandler := handlers.NewUsersHandler(s.config, userWriter, sessionManager)
 	shareHandler := handlers.NewShareHandler(
 		s.config, sessionManager, shareLinkRepo, albumRepo, photoRepo, photoStore,
 	)

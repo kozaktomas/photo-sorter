@@ -94,3 +94,22 @@ func (r *SessionRepository) DeleteExpired(ctx context.Context) (int64, error) {
 	}
 	return count, nil
 }
+
+// DeleteByUser removes every session belonging to the given user UID
+// and returns the count deleted. Used by the admin user-management
+// flow to revoke a principal in one shot (disable, role change,
+// password reset, delete).
+func (r *SessionRepository) DeleteByUser(ctx context.Context, userUID string) (int64, error) {
+	if userUID == "" {
+		return 0, nil
+	}
+	result, err := r.pool.Exec(ctx, "DELETE FROM sessions WHERE user_uid = $1", userUID)
+	if err != nil {
+		return 0, fmt.Errorf("delete sessions by user: %w", err)
+	}
+	count, err := result.RowsAffected()
+	if err != nil {
+		return 0, fmt.Errorf("getting rows affected: %w", err)
+	}
+	return count, nil
+}

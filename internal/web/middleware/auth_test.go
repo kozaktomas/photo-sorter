@@ -232,7 +232,8 @@ func TestSessionManager_ClearSessionCookie(t *testing.T) {
 	sm := NewSessionManager("test-secret", nil)
 
 	w := httptest.NewRecorder()
-	sm.ClearSessionCookie(w)
+	r := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/auth/logout", nil)
+	sm.ClearSessionCookie(w, r)
 
 	cookies := w.Result().Cookies()
 	if len(cookies) == 0 {
@@ -253,6 +254,43 @@ func TestSessionManager_ClearSessionCookie(t *testing.T) {
 
 	if sessionCookie.MaxAge != -1 {
 		t.Errorf("MaxAge = %d, want -1 (expired)", sessionCookie.MaxAge)
+	}
+	// Browsers refuse to delete a cookie unless the deletion's Path /
+	// SameSite / Secure match the original. Mirror SetSessionCookie's
+	// flags so logout actually drops the session.
+	if sessionCookie.Path != "/" {
+		t.Errorf("Path = %q, want /", sessionCookie.Path)
+	}
+	if !sessionCookie.HttpOnly {
+		t.Error("HttpOnly = false, want true")
+	}
+	if sessionCookie.SameSite != http.SameSiteStrictMode {
+		t.Errorf("SameSite = %v, want Strict", sessionCookie.SameSite)
+	}
+}
+
+// TestSessionManager_ClearSessionCookie_SecureBehindProxy verifies that the
+// Secure flag is auto-detected from X-Forwarded-Proto so a TLS-terminating
+// reverse proxy still produces a Secure deletion cookie.
+func TestSessionManager_ClearSessionCookie_SecureBehindProxy(t *testing.T) {
+	sm := NewSessionManager("test-secret", nil)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequestWithContext(context.Background(), "POST", "/api/v1/auth/logout", nil)
+	r.Header.Set("X-Forwarded-Proto", "https")
+	sm.ClearSessionCookie(w, r)
+
+	var sessionCookie *http.Cookie
+	for _, c := range w.Result().Cookies() {
+		if c.Name == sessionCookieName {
+			sessionCookie = c
+		}
+	}
+	if sessionCookie == nil {
+		t.Fatal("Session cookie not found")
+	}
+	if !sessionCookie.Secure {
+		t.Error("Secure = false behind X-Forwarded-Proto=https, want true")
 	}
 }
 
