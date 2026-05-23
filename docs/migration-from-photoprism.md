@@ -7,6 +7,38 @@ linkage, on-disk originals, and (optionally) cached thumbnails.
 A zero-diff `migrate-verify` run is the gate for cancelling the
 PhotoPrism + MariaDB compose services.
 
+## UIDs are preserved verbatim
+
+`migrate-from-photoprism` copies PhotoPrism UIDs across `photos`,
+`albums`, `subjects`, and `markers` unchanged. The downstream native
+tables that hold a soft `photo_uid` reference (`embeddings`, `faces`,
+`section_photos`, `page_slots`) therefore stay valid out of the box —
+no remap pass is needed in the happy path. `migrate-remap-references`
+exists only as a recovery tool for operators who landed an earlier
+buggy migrator that generated new UIDs (see Step 4's
+`--emit-photo-map`).
+
+## Migrated fields
+
+The migrator is field-explicit, not "copy everything that looks
+related". Each stage carries the columns below across from PhotoPrism;
+anything not listed is either intentionally dropped or recomputed from
+the originals on the native side. `migrate-verify`'s field-level diff
+compares the same set.
+
+- **photos** — title, description, taken_at + timezone, lat/lng/altitude,
+  EXIF tags (camera, lens, exposure, ISO, focal length, GPS), `keywords`
+  (union of `details.keywords` and the `photos_keywords` join table,
+  deduplicated), the `scan` / `panorama` / `private` / `favorite` flags,
+  and the `quality` score.
+- **subjects** — name, bio, about, alias, type, favorite, private.
+- **labels** — name, slug, description, categories, priority, favorite
+  (PhotoPrism rows with priority < 0 are skipped on purpose).
+- **albums** — title, description, location, category, notes, filter,
+  order, favorite, private, type.
+- **markers** — bounding box, score, invalid / reviewed flags,
+  subject UID linkage.
+
 ## Prerequisites
 
 - **PhotoPrism MariaDB reachable** from the host running `photo-sorter`.

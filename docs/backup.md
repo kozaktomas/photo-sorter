@@ -249,3 +249,12 @@ because it sees migration versions it does not know about. The fix is to
 upgrade the binary on the restore host, not to downgrade the dump. The
 reverse direction (older dump, newer binary) is supported: the binary
 applies any pending migrations and starts normally.
+
+## See also
+
+- [`docs/cli-reference.md`](cli-reference.md) — full flag tables for
+  `backup`, `db-export`, `db-import`, and `cache build-thumbs`.
+- [`docs/architecture.md`](architecture.md) — what's in the originals
+  tree vs. the thumbnail cache vs. Postgres.
+- [`docs/similarity-search.md`](similarity-search.md) — how the pgvector
+  HNSW indexes are recreated as part of a `db-import`.

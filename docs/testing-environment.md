@@ -2,6 +2,25 @@
 
 This document describes the testing environment configured for development and automated testing.
 
+## dev.sh
+
+The `./dev.sh` script is the canonical local entrypoint: it stops any
+running `photo-sorter serve`, runs `npm install` if `web/node_modules`
+is older than `package-lock.json`, builds the frontend with `tsc -b &&
+vite build` when `web/src/**`, `web/public/**`, `web/index.html`,
+`vite.config.ts`, `tsconfig*.json`, or `package.json` are newer than
+`internal/web/static/dist/index.html`, builds the Go binary when any
+`.go` file (or `go.mod` / `go.sum`) is newer than the `photo-sorter`
+binary, sources `.env.dev`, and starts `photo-sorter serve` on port
+8085 (override with `PORT=…`) in the background. Logs land in
+`./photo-sorter.log` and the script waits for `/api/v1/health` to
+become green before returning.
+
+Pass `--force` to bypass the smart-caching checks and rebuild every
+stage. The script also warns if the canonical book-fonts sentinel
+(`/usr/local/share/fonts/photo-sorter/truetype/lato/Lato-Regular.ttf`)
+is missing — PDF export will fail until `make install-fonts` has run.
+
 ## Docker Compose Setup
 
 The testing environment consists of a single managed container defined in
@@ -131,18 +150,6 @@ Data is persisted in local volumes:
 ./volumes/pgvector_data              → /var/lib/postgresql/data
 ```
 
-The following directories are leftover from the retired PhotoPrism + MariaDB
-test services and are intentionally preserved until the operator confirms the
-native migration is good and backups are restorable:
-```
-./volumes/photoprism-test-originals
-./volumes/photoprism-test-storage
-./volumes/mariadb-test-data
-```
-
-`docker compose down` does not delete them (bind mounts are never managed by
-compose). Remove manually after backup verification.
-
 ## Network Configuration
 
 The pgvector container is exposed on host port `5433`. Other dev processes
@@ -179,6 +186,38 @@ you need them on `PATH`:
 
 The serve command logs a `WARN` line for each missing binary on startup so
 deployments fail loud, not silent.
+
+## Book Typography Fonts
+
+PDF export (the book exporter at `internal/latex/`) needs the book fonts
+installed on the host. Production reads them from the Docker image's
+`/usr/share/fonts`; for dev environments outside Docker, install them
+once after cloning:
+
+```bash
+make install-fonts
+```
+
+The target shells into `scripts/install-fonts.sh` — the same script the
+Docker build runs — under `sudo` and writes the 24 free book fonts to
+`/usr/local/share/fonts/photo-sorter`. The script is idempotent (skips
+already-installed files) and refreshes the fontconfig cache for that
+directory on success.
+
+The system path matters. `compileLatex` in `internal/latex/latex.go`
+overrides `HOME` to a fresh temp dir before spawning `lualatex` (so
+`luaotfload` writes its cache there), which hides any user-local font
+directory from fontconfig. Installing to `~/.local/share/fonts/...`
+would silently break PDF export.
+
+Bookman Old Style is proprietary (Microsoft) and is NOT installed by
+the script. It is registered in `internal/latex/fonts.go` but operators
+who need it must drop the licensed `BOOKOS*.TTF` files into
+`/usr/local/share/fonts/photo-sorter/truetype/bookman-old-style/` and
+rerun `fc-cache -f` + `luaotfload-tool --update --force`.
+
+`dev.sh` warns when the canonical sentinel (`Lato-Regular.ttf`) is
+missing so a fresh checkout cannot quietly land a broken PDF pipeline.
 
 ## Go Integration Tests
 
@@ -235,3 +274,52 @@ export DATABASE_URL="postgres://postgres:photoprism@localhost:5433/postgres?sslm
 # Run the app
 go run . serve
 ```
+
+## Test Commands
+
+The Makefile is the canonical source. The Go side uses the race
+detector with explicit paths (so traversal never hits the root-owned
+`./volumes` tree).
+
+```bash
+# Run the whole Go test suite with -race
+make test
+
+# Same, with verbose output
+make test-v
+
+# Run a single package or test
+go test -v ./internal/photoprism/
+go test -v ./internal/photoprism/ -run TestGetAlbum
+```
+
+## Quality Gate
+
+`make check` is the full quality gate the CI runs:
+
+```bash
+make check    # fmt + vet + lint + test
+```
+
+Sub-targets are also available individually:
+
+| Target | What it does |
+|--------|--------------|
+| `make fmt` | `goimports -w . && go fmt ./...` |
+| `make vet` | `go vet . ./cmd/... ./internal/...` |
+| `make lint` | `golangci-lint run . ./cmd/... ./internal/...` |
+| `make lint-fix` | same, with `--fix` |
+| `make test` | `go test -race . ./cmd/... ./internal/...` |
+
+### Pre-commit Hook
+
+A pre-commit hook is wired up at the repo level and is scoped to the
+files actually being committed:
+
+- **Go changes:** `make lint` must pass.
+- **Frontend changes:** `npx tsc --noEmit` and `npm run lint` (both in
+  `web/`) must pass.
+
+The hook short-circuits when none of the staged files touch the
+relevant language, so a docs-only commit never spends time on the Go or
+JS pipelines.
