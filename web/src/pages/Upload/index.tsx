@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Upload, Play, Square, CheckCircle, XCircle, AlertCircle, RotateCcw } from 'lucide-react';
 import { Card, CardContent, CardHeader } from '../../components/Card';
@@ -13,6 +13,46 @@ import { NearDuplicatesModal } from './NearDuplicatesModal';
 import { useUploadJob } from './hooks/useUploadJob';
 import { getAlbums, getLabels, getBooks, getBook, getThumbnailUrl } from '../../api/client';
 import type { Album, Label, PhotoBook, BookDetail, BookSection } from '../../types';
+
+const PASTE_HINT_TIMEOUT_MS = 3500;
+
+function pad2(n: number): string {
+  return n < 10 ? `0${n}` : `${n}`;
+}
+
+function formatPasteTimestamp(d: Date): string {
+  return (
+    `${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}` +
+    `-${pad2(d.getHours())}${pad2(d.getMinutes())}${pad2(d.getSeconds())}`
+  );
+}
+
+function extensionForMime(type: string): string {
+  const slash = type.indexOf('/');
+  if (slash < 0) return 'bin';
+  const sub = type.slice(slash + 1).toLowerCase().split(';')[0].trim();
+  switch (sub) {
+    case 'jpeg':
+    case 'jpg':
+      return 'jpg';
+    case 'png':
+      return 'png';
+    case 'gif':
+      return 'gif';
+    case 'webp':
+      return 'webp';
+    case 'heic':
+      return 'heic';
+    case 'heif':
+      return 'heif';
+    case 'tiff':
+      return 'tif';
+    case 'bmp':
+      return 'bmp';
+    default:
+      return 'bin';
+  }
+}
 
 const pageConfig = PAGE_CONFIGS.upload;
 
@@ -203,6 +243,16 @@ export function UploadPage() {
   // and there is at least one pending decision to make.
   const showNearDuplicatesModal = isDone && nearDuplicates.length > 0;
 
+  // Transient hint for paste-to-upload (Ctrl+V). Auto-dismisses below.
+  const [pasteHint, setPasteHint] = useState<{ type: 'success' | 'warning'; message: string } | null>(null);
+
+  // Refs let the document-level paste listener see the latest values
+  // without needing to re-register on every render.
+  const filesRef = useRef(files);
+  filesRef.current = files;
+  const busyRef = useRef(isRunning || isStarting);
+  busyRef.current = isRunning || isStarting;
+
   // Load albums + labels + books
   useEffect(() => {
     void Promise.all([
@@ -225,6 +275,80 @@ export function UploadPage() {
     }
     void getBook(selectedBookId).then(setBookDetail);
   }, [selectedBookId]);
+
+  // Paste-to-upload: any image found in the clipboard is added to the
+  // queue. Form fields are skipped so the album-picker / labels input
+  // can still receive Ctrl+V.
+  useEffect(() => {
+    const handler = (e: ClipboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target instanceof HTMLElement) {
+        const tag = target.tagName.toLowerCase();
+        if (tag === 'input' || tag === 'textarea' || tag === 'select') return;
+        if (target.isContentEditable) return;
+      }
+
+      // Don't interrupt an in-flight or starting upload.
+      if (busyRef.current) return;
+
+      const items = e.clipboardData?.items;
+      // Truly empty clipboards (e.g. user hit Ctrl+V with nothing copied)
+      // shouldn't produce a "no image" complaint.
+      if (!items || items.length === 0) return;
+
+      const timestamp = formatPasteTimestamp(new Date());
+      const pasted: File[] = [];
+      let counter = 1;
+
+      for (const item of items) {
+        if (item.kind !== 'file') continue;
+        if (!item.type.startsWith('image/')) continue;
+        const file = item.getAsFile();
+        if (!file) continue;
+
+        // Generate a name when the clipboard didn't supply one, OR when
+        // the browser supplied its generic "image.png" placeholder.
+        let name = file.name;
+        if (!name || /^image\.\w+$/i.test(name)) {
+          name = `pasted-${timestamp}-${counter}.${extensionForMime(file.type)}`;
+        }
+        counter++;
+
+        const renamed = name === file.name
+          ? file
+          : new File([file], name, { type: file.type, lastModified: file.lastModified });
+        pasted.push(renamed);
+      }
+
+      if (pasted.length === 0) {
+        setPasteHint({ type: 'warning', message: t('pages:upload.pasteNoImage') });
+        return;
+      }
+
+      // We consumed the paste — block any default behavior (e.g. focus
+      // shifting to a hidden form field).
+      e.preventDefault();
+
+      const existing = new Set(filesRef.current.map(f => `${f.name}:${f.size}`));
+      const unique = pasted.filter(f => !existing.has(`${f.name}:${f.size}`));
+      if (unique.length > 0) {
+        setFiles([...filesRef.current, ...unique]);
+      }
+      setPasteHint({
+        type: 'success',
+        message: t('pages:upload.pasteAdded', { count: pasted.length }),
+      });
+    };
+
+    document.addEventListener('paste', handler);
+    return () => document.removeEventListener('paste', handler);
+  }, [t]);
+
+  useEffect(() => {
+    if (!pasteHint) return;
+    const id = window.setTimeout(() => setPasteHint(null), PASTE_HINT_TIMEOUT_MS);
+    return () => window.clearTimeout(id);
+  }, [pasteHint]);
 
   const toggleAlbum = useCallback((uid: string) => {
     setSelectedAlbums(prev => {
@@ -292,6 +416,13 @@ export function UploadPage() {
               onFilesChange={setFiles}
               disabled={isRunning}
             />
+
+            {/* Paste-to-upload feedback */}
+            {pasteHint && (
+              <Alert variant={pasteHint.type === 'success' ? 'success' : 'warning'}>
+                {pasteHint.message}
+              </Alert>
+            )}
 
             {/* Albums */}
             <div>

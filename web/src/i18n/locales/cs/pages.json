@@ -870,7 +870,12 @@
     "albumsApplied": "Další alba",
     "bookAdded": "Přidáno do knihy",
     "uploadedPhotos": "Nahrané fotky",
-    "supportedFormats": "JPG, PNG, GIF, HEIC, WebP, TIFF, RAW"
+    "supportedFormats": "JPG, PNG, GIF, HEIC, WebP, TIFF, RAW",
+    "pasteAdded_one": "Přidán {{count}} obrázek ze schránky.",
+    "pasteAdded_few": "Přidány {{count}} obrázky ze schránky.",
+    "pasteAdded_many": "Přidáno {{count}} obrázků ze schránky.",
+    "pasteAdded_other": "Přidáno {{count}} obrázků ze schránky.",
+    "pasteNoImage": "Schránka neobsahuje obrázek."
   },
   "capture": {
     "title": "Vyfotit",

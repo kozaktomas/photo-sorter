@@ -876,7 +876,10 @@
     "albumsApplied": "Additional albums",
     "bookAdded": "Added to book",
     "uploadedPhotos": "Uploaded Photos",
-    "supportedFormats": "JPG, PNG, GIF, HEIC, WebP, TIFF, RAW"
+    "supportedFormats": "JPG, PNG, GIF, HEIC, WebP, TIFF, RAW",
+    "pasteAdded_one": "Added {{count}} image from clipboard.",
+    "pasteAdded_other": "Added {{count}} images from clipboard.",
+    "pasteNoImage": "Clipboard did not contain an image."
   },
   "capture": {
     "title": "Capture",
