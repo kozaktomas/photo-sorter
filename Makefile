@@ -109,14 +109,21 @@ install-fonts:
 
 ## deploy: Build, install /usr/bin/photo-sorter, restart photo-sorter.service, and verify health.
 ##         VERSION defaults to `git describe --tags --always --dirty` unless caller passed VERSION=.
-##         Honours WEB_PORT for the health check (default 8080). Intended to run locally on the host.
+##         Health-check port is read from the unit's EnvironmentFile (WEB_PORT); falls back to
+##         $$WEB_PORT in the calling shell, then 8080. Intended to run locally on the host.
 deploy: VERSION := $(if $(filter file default,$(origin VERSION)),$(shell git describe --tags --always --dirty 2>/dev/null || echo dev),$(VERSION))
 deploy: build
 	@echo "Installing photo-sorter $(VERSION) to /usr/bin/photo-sorter ..."
 	sudo install -m 0755 ./photo-sorter /usr/bin/photo-sorter
 	@echo "Restarting photo-sorter.service ..."
 	sudo systemctl restart photo-sorter.service
-	@PORT="$${WEB_PORT:-8080}"; \
+	@ENV_FILE="$$(systemctl show -p EnvironmentFiles --value photo-sorter.service 2>/dev/null \
+	             | awk '{print $$1; exit}')"; \
+	PORT=""; \
+	if [ -n "$$ENV_FILE" ] && sudo test -r "$$ENV_FILE"; then \
+	  PORT="$$(sudo sed -n 's/^[[:space:]]*WEB_PORT=//p' "$$ENV_FILE" | tail -n1 | tr -d '"'"'"' \t\r')"; \
+	fi; \
+	PORT="$${PORT:-$${WEB_PORT:-8080}}"; \
 	echo "Polling http://localhost:$$PORT/api/v1/health (up to 15 attempts, 1s apart) ..."; \
 	for i in $$(seq 1 15); do \
 	  if curl -fs -o /dev/null "http://localhost:$$PORT/api/v1/health"; then \

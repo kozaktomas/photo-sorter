@@ -550,10 +550,15 @@ make deploy
 This builds the frontend and Go binary with `VERSION` defaulted to
 `git describe --tags --always --dirty`, installs the binary to
 `/usr/bin/photo-sorter` (`sudo install -m 0755`), restarts
-`photo-sorter.service`, and polls `http://localhost:${WEB_PORT:-8080}/api/v1/health`
-for up to 15 seconds. The target exits non-zero if the service fails to
-come up, so it can be chained from other scripts. Pass `VERSION=<tag>`
-to override the derived version (e.g. `make deploy VERSION=v1.4.0`).
+`photo-sorter.service`, and polls `/api/v1/health` for up to 15
+seconds. The health-check port is taken from `WEB_PORT` in the
+systemd unit's `EnvironmentFile` (typically
+`/etc/photo-sorter/photo-sorter.env`); if the file is unreadable or
+does not set `WEB_PORT`, it falls back to `$WEB_PORT` from the calling
+shell and finally to `8080`. The target exits non-zero if the service
+fails to come up, so it can be chained from other scripts. Pass
+`VERSION=<tag>` to override the derived version (e.g.
+`make deploy VERSION=v1.4.0`).
 
 ## Troubleshooting
 
