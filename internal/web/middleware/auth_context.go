@@ -16,6 +16,12 @@ type AuthInfo struct {
 	UserUID  string
 	Username string
 	Role     string
+	// ReadOnly is true for a machine principal authenticated by a read-scope
+	// API token. Such a caller already carries the viewer role, so every
+	// existing role check rejects its writes; this flag exists so a handler
+	// can tell "a human viewer" from "an export bot" when that distinction
+	// matters (e.g. in an error message).
+	ReadOnly bool
 }
 
 // SetAuthInfoInContext attaches an AuthInfo to the context. RequireAuth

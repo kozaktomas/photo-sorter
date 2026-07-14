@@ -40,6 +40,15 @@ type Session struct {
 	Role          string    `json:"role,omitempty"` // admin / editor / viewer
 	CreatedAt     time.Time `json:"created_at"`
 	ExpiresAt     time.Time `json:"expires_at"`
+
+	// APITokenUID is set only on the synthetic sessions minted from an
+	// api_tokens row (see sessionFromAPIToken). It is empty for every real
+	// login session, and is never persisted — a token principal has no row
+	// in the sessions table.
+	APITokenUID string `json:"-"`
+	// ReadOnly marks a principal that may not mutate anything, whatever its
+	// role says. RequireAuth enforces it by rejecting unsafe HTTP methods.
+	ReadOnly bool `json:"-"`
 }
 
 // SessionRepository defines the interface for persistent session storage.
@@ -76,6 +85,10 @@ type SessionManager struct {
 	mu       sync.RWMutex
 	repo     SessionRepository // optional persistent storage
 	stopCh   chan struct{}     // channel to stop cleanup goroutine
+
+	// apiTokens resolves long-lived machine tokens. Optional: nil disables
+	// `Authorization: Bearer psat_...` and leaves session auth untouched.
+	apiTokens APITokenStore
 }
 
 // NewSessionManager creates a new session manager.
@@ -316,6 +329,12 @@ func (sm *SessionManager) ClearSessionCookie(w http.ResponseWriter, r *http.Requ
 }
 
 // GetSessionFromRequest extracts the session from a request.
+//
+// Two kinds of credential arrive in the same `Authorization: Bearer <v>`
+// header: a session ID, and a long-lived API token (prefixed `psat_`). The
+// prefix routes the value to the right store — an API token is resolved
+// against api_tokens and yields a synthetic read-only session, never a real
+// one. Bearer values without the prefix keep their existing meaning.
 func (sm *SessionManager) GetSessionFromRequest(r *http.Request) *Session {
 	// Try cookie first.
 	if session := sm.getSessionFromCookie(r); session != nil {
@@ -324,13 +343,14 @@ func (sm *SessionManager) GetSessionFromRequest(r *http.Request) *Session {
 
 	// Try Authorization header.
 	authHeader := r.Header.Get("Authorization")
-	if sessionID, ok := strings.CutPrefix(authHeader, "Bearer "); ok {
-		if session := sm.GetSession(sessionID); session != nil {
-			return session
-		}
+	bearer, ok := strings.CutPrefix(authHeader, "Bearer ")
+	if !ok {
+		return nil
 	}
-
-	return nil
+	if tokenPrefixed(bearer) {
+		return sm.sessionFromAPIToken(r.Context(), bearer)
+	}
+	return sm.GetSession(bearer)
 }
 
 // getSessionFromCookie extracts and validates a session from the request cookie.

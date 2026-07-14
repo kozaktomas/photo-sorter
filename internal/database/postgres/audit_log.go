@@ -81,8 +81,14 @@ func (r *AuditLogRepository) ListAuditLog(
 	// the same predicates is fine — the (created_at DESC) index covers
 	// the unfiltered path and the action / user_uid indexes cover the
 	// typical filtered paths.
+	//
+	// The `al` alias is required, not cosmetic: buildAuditFilterClauses qualifies
+	// every predicate as `al.<column>`, so without it any filtered query
+	// dies with `missing FROM-clause entry for table "al"`. The unfiltered
+	// path masked this — `where` is empty there, so the alias is never
+	// referenced.
 	var total int
-	countQuery := `SELECT COUNT(*) FROM audit_log` + where
+	countQuery := `SELECT COUNT(*) FROM audit_log al` + where
 	if err := r.pool.QueryRow(ctx, countQuery, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count audit log: %w", err)
 	}

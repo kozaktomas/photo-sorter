@@ -256,6 +256,54 @@ type PhotoBrowseReader interface {
 	ListGeoPoints(ctx context.Context, filter PhotoFilter, maxPoints int) ([]GeoPoint, bool, error)
 }
 
+// PhotoRelationReader expands a page of photos with their related rows
+// (labels, album memberships, face markers, physical files) in bulk.
+//
+// Like PhotoBrowseReader, this is kept out of PhotoReader on purpose: the
+// in-memory mocks that implement PhotoReader across the handler tests would
+// otherwise all have to grow a method they do not exercise.
+type PhotoRelationReader interface {
+	// LoadPhotoRelations returns the requested relations for the given
+	// photos, keyed by photo UID. Every photo in photoUIDs is present in the
+	// result map. Relations not named in the RelationSet are left nil.
+	//
+	// Implementations must issue O(1) queries per relation, not O(n) —
+	// callers pass a full page of up to 500 UIDs.
+	LoadPhotoRelations(
+		ctx context.Context, photoUIDs []string, include RelationSet,
+	) (map[string]*PhotoRelations, error)
+}
+
+// APITokenReader provides read-only access to the long-lived machine tokens
+// in api_tokens.
+type APITokenReader interface {
+	// ResolveAPIToken maps a raw bearer token onto a live (not revoked, not
+	// expired) token row. It returns (nil, nil) — not ErrNotFound — when no
+	// live token matches, so that "unknown", "revoked", and "expired" are
+	// indistinguishable to the caller and therefore to an attacker.
+	ResolveAPIToken(ctx context.Context, rawToken string) (*APIToken, error)
+	// GetAPITokenByHash fetches a token regardless of liveness. Returns
+	// ErrNotFound when the hash is unknown.
+	GetAPITokenByHash(ctx context.Context, hash string) (*APIToken, error)
+	// ListAPITokens returns every token row, newest first, including revoked
+	// and expired ones.
+	ListAPITokens(ctx context.Context) ([]APIToken, error)
+}
+
+// APITokenWriter provides write access to api_tokens. There is deliberately
+// no Update: a token's scope and secret are immutable, so rotating one means
+// revoking it and minting a replacement.
+type APITokenWriter interface {
+	APITokenReader
+	CreateAPIToken(ctx context.Context, t *APIToken) error
+	// RevokeAPIToken soft-revokes a token. It is idempotent, and returns
+	// ErrNotFound only when the UID does not exist at all.
+	RevokeAPIToken(ctx context.Context, uid string) error
+	// TouchAPIToken records that the token just authenticated a request.
+	// Implementations throttle the write; callers may invoke it per request.
+	TouchAPIToken(ctx context.Context, uid string) error
+}
+
 // PhotoWriter provides write access to native photos and their physical
 // files. Archive/Restore toggle the archived_at column; DeletePhoto is a
 // hard delete that cascades to photo_files.

@@ -5,6 +5,8 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strings"
 	"testing"
 	"time"
 
@@ -404,21 +406,40 @@ func TestMigrations(t *testing.T) {
 		t.Fatalf("Failed to get applied migrations: %v", err)
 	}
 
-	expectedMigrations := []string{
-		"001_create_embeddings.sql",
-		"002_create_faces.sql",
-		"003_create_faces_processed.sql",
-		"004_create_indexes.sql",
-		"005_create_unaccent.sql",
+	// Assert against the embedded migration set rather than a hardcoded
+	// list. The previous version of this test pinned an explicit slice of
+	// five filenames and asserted the total count equalled it, so it went
+	// red the moment migration 006 landed and stayed red ("Expected 5
+	// migrations, got 43") — a permanently-failing test tells you nothing.
+	// Deriving the expectation from migrationsFS keeps it meaningful as
+	// migrations are added.
+	entries, err := migrationsFS.ReadDir("migrations")
+	if err != nil {
+		t.Fatalf("Failed to read embedded migrations: %v", err)
 	}
+	expectedMigrations := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasSuffix(e.Name(), ".sql") {
+			expectedMigrations = append(expectedMigrations, e.Name())
+		}
+	}
+	sort.Strings(expectedMigrations)
 
 	if len(applied) != len(expectedMigrations) {
 		t.Errorf("Expected %d migrations, got %d", len(expectedMigrations), len(applied))
 	}
 
+	// Applied order must match lexical filename order — that is the order
+	// the runner uses, and the migrations depend on it.
 	for i, expected := range expectedMigrations {
 		if i < len(applied) && applied[i] != expected {
 			t.Errorf("Migration %d: expected '%s', got '%s'", i, expected, applied[i])
 		}
+	}
+
+	// Sanity check that the embedded set is actually the one we think it
+	// is, so a broken embed does not turn this test into a tautology.
+	if len(expectedMigrations) == 0 || expectedMigrations[0] != "001_create_embeddings.sql" {
+		t.Errorf("embedded migrations look wrong: first = %v", expectedMigrations)
 	}
 }

@@ -419,9 +419,81 @@ type PhotoFilter struct {
 	// ts_rank when this is non-empty. Queries with no tokens of length
 	// >= 2 fall back to a prefix ILIKE on title.
 	Search string
-	SortBy string // "newest" (default) / "oldest" / "name"
-	Limit  int    // 0 = default 50, capped at 500
+	// UpdatedSince restricts the result to photos whose updated_at is >= the
+	// given instant. Combined with SortUpdated + Cursor it drives the
+	// incremental export used by the migration client.
+	//
+	// Caveat worth knowing: photos.updated_at is bumped by writes to the
+	// photo row itself (metadata edits, archive, restore). Relation-only
+	// changes — attaching a label, adding the photo to an album, moving a
+	// face marker — do NOT touch it, so they are invisible to an
+	// updated_since sweep. A relation-complete sync must do a full walk.
+	UpdatedSince *time.Time
+	SortBy       string // "newest" (default) / "oldest" / "name" / "updated"
+	// Cursor is the keyset resume position and is only honoured together
+	// with SortUpdated. Unlike every other field here it is NOT part of the
+	// shared WHERE clause built by buildPhotoFilter: it is applied by
+	// ListPhotos alone, so that (a) the reported total stays the size of the
+	// whole matching set rather than shrinking each page, and (b) a cursor
+	// cannot leak into the histogram / geo-points views that reuse the same
+	// filter and would be silently truncated by it.
+	Cursor *PhotoCursor
+	Limit  int // 0 = default 50, capped at 500
 	Offset int
+}
+
+// SortUpdated is the sort key that orders photos by (updated_at, uid)
+// ascending. It is the only ordering a PhotoCursor is valid against: the
+// cursor is a keyset over exactly that pair.
+//
+// Ascending is what makes an export resumable. Any write bumps updated_at to
+// now(), which is ahead of every row already walked, so a photo modified
+// mid-export re-appears later in the walk instead of being skipped. The
+// client may therefore see a row twice (harmless — an export upserts by UID),
+// but it can never miss one.
+const SortUpdated = "updated"
+
+// PhotoLabelRelation is a label attached to a photo, carrying the provenance
+// columns from the photo_labels join row. Source is one of manual / ai /
+// import; Uncertainty is PhotoPrism's 0..100 scale where 0 means "certain".
+type PhotoLabelRelation struct {
+	UID         string
+	Name        string
+	Source      string
+	Uncertainty int
+}
+
+// PhotoAlbumRelation is the slim album reference returned by the ?include=
+// expansion — enough for an importer to rebuild album membership without
+// pulling every album column.
+type PhotoAlbumRelation struct {
+	UID   string
+	Title string
+}
+
+// PhotoMarkerRelation is a face/label marker on a photo. Unlike the marker
+// view served by GET /photos/{uid}/faces, this one exposes SubjectUID (the
+// canonical person identity) rather than only the display name, so an
+// importer can reconstruct marker→person links without name matching.
+// X/Y/W/H are relative (0..1) display-space coordinates.
+type PhotoMarkerRelation struct {
+	UID        string
+	SubjectUID string // empty when the marker is not assigned to a subject
+	Type       string // face / label
+	X, Y, W, H float64
+	Score      int
+	Invalid    bool
+	Reviewed   bool
+}
+
+// PhotoRelations bundles every optional expansion for a single photo. A nil
+// slice means the caller did not ask for that relation; an empty non-nil
+// slice means it was asked for and the photo has none.
+type PhotoRelations struct {
+	Labels  []PhotoLabelRelation
+	Albums  []PhotoAlbumRelation
+	Markers []PhotoMarkerRelation
+	Files   []PhotoFile
 }
 
 // Album is a curated or auto-generated grouping of photos. Mirrors the
@@ -711,4 +783,49 @@ func PageFormatSlotCount(format string) int {
 	default:
 		return 0
 	}
+}
+
+// APIToken is a long-lived bearer credential for a machine client (the
+// migration exporter). Only the SHA-256 of the raw token is persisted, so
+// TokenHash — never the token itself — is what round-trips through this
+// struct. The raw value is returned exactly once, by the code that mints it.
+//
+// Scope is 'read' for every token today; the auth path maps a token onto the
+// viewer role and additionally rejects any non-safe HTTP method, so a token
+// cannot write regardless of what the column says.
+type APIToken struct {
+	UID              string
+	Name             string
+	TokenHash        string
+	Scope            string
+	CreatedByUserUID string // empty when the minting admin has since been deleted
+	CreatedAt        time.Time
+	ExpiresAt        *time.Time // nil = never expires
+	LastUsedAt       *time.Time
+	RevokedAt        *time.Time // non-nil = revoked, no longer accepted
+}
+
+// Active reports whether the token may still authenticate a request: not
+// revoked, and either immortal or not yet past its expiry.
+func (t *APIToken) Active(now time.Time) bool {
+	if t.RevokedAt != nil {
+		return false
+	}
+	return t.ExpiresAt == nil || t.ExpiresAt.After(now)
+}
+
+// RelationSet selects which optional relations a photo query should expand.
+// It is the parsed form of the `?include=labels,albums,markers,files` query
+// parameter.
+type RelationSet struct {
+	Labels  bool
+	Albums  bool
+	Markers bool
+	Files   bool
+}
+
+// Empty reports whether no relation at all was requested, letting callers
+// skip the expansion queries entirely.
+func (r RelationSet) Empty() bool {
+	return !r.Labels && !r.Albums && !r.Markers && !r.Files
 }

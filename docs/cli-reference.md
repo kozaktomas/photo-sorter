@@ -374,6 +374,92 @@ photo-sorter users delete <username> [--yes]
 
 ---
 
+### api-tokens
+
+Manage the long-lived, **read-only** bearer tokens used by machine clients —
+principally the Kukátko migration exporter, which walks the whole library over
+the HTTP API.
+
+A session cookie is the wrong credential for a bulk export: it expires after 30
+days and is backed by a `sessions` row that the cleanup loop eventually
+deletes, so a long-running job can die halfway through. An API token has no
+such lifetime.
+
+The token is read-only, enforced three independent ways: it authenticates as
+the `viewer` role (which fails both `auth.HasWriteAccess` and
+`handlers.requireWriteRole`), and `RequireAuth` additionally rejects any
+non-`GET`/`HEAD`/`OPTIONS` request from a token principal outright — that last
+gate holds even for a handler that checks nothing itself.
+
+There is deliberately **no REST surface** for creating tokens: a credential
+able to mint further credentials is exactly what a read-only export must not
+have. Minting and revoking append a row to `audit_log` with
+`metadata.actor = "cli"`.
+
+#### api-tokens create
+
+Mint a token and print it once.
+
+```bash
+photo-sorter api-tokens create <name> [flags]
+```
+
+| Flag | Type | Default | Description |
+|------|------|---------|-------------|
+| `--expires-in` | duration | `0` | Token lifetime (e.g. `720h`). Zero means it never expires. |
+| `--json` | bool | `false` | Output as JSON instead of human-readable text |
+
+```bash
+# Never expires — what a migration run wants.
+$ photo-sorter api-tokens create kukatko-migration
+API token created.
+
+  UID:     t3k9x2mq7n4vb8zc
+  Name:    kukatko-migration
+  Scope:   read (read-only)
+  Expires: never
+
+  Token:   psat_Zm9vYmFyYmF6cXV4MTIzNDU2Nzg5MGFiY2RlZmdoaWo
+
+This is the only time the token is shown — copy it now.
+Use it as:  curl -H 'Authorization: Bearer psat_...' ...
+```
+
+The raw token is printed **once** and never stored — only its SHA-256 goes into
+`api_tokens.token_hash`. SHA-256 rather than bcrypt is deliberate: the token is
+256 bits of `crypto/rand`, so there is no low-entropy structure to
+brute-force, and it is verified on *every* request — a bcrypt round per request
+would add ~100 ms of CPU to a 20k-photo export. A lost token cannot be
+recovered; revoke it and mint a new one.
+
+#### api-tokens list
+
+List every token, newest first. Revoked and expired tokens are included so the
+history stays visible.
+
+```bash
+photo-sorter api-tokens list [--json]
+```
+
+```
+UID               NAME               SCOPE  STATE    EXPIRES  LAST USED             CREATED
+---               ----               -----  -----    -------  ---------             -------
+t3k9x2mq7n4vb8zc  kukatko-migration  read   active   never    2026-07-14T09:12:33Z  2026-07-14T08:00:00Z
+t7f2p1ab5cd9ef3g  ci-export          read   revoked  never    -                     2026-06-01T10:00:00Z
+```
+
+#### api-tokens revoke
+
+Soft-revoke a token by UID. The row is kept so the audit trail still shows the
+token existed. Revocation takes effect immediately — liveness is re-checked in
+SQL on every request.
+
+```bash
+photo-sorter api-tokens revoke <uid>
+```
+
+---
+
 ### photo
 
 Photo operations and information. Subcommands work on individual

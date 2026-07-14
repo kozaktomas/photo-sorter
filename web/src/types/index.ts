@@ -106,8 +106,10 @@ export interface Photo {
   hash: string;
   width: number;
   height: number;
-  lat: number;
-  lng: number;
+  // null means "no GPS". These used to arrive as 0, which was
+  // indistinguishable from a photo actually taken at 0°N 0°E.
+  lat: number | null;
+  lng: number | null;
   country: string;
   favorite: boolean;
   private: boolean;
@@ -132,6 +134,80 @@ export interface Photo {
   // Only populated by GET /photos/{uid}; list endpoints omit it. Treat
   // missing values as false.
   edited?: boolean;
+
+  // --- Migration-export fields ---
+  //
+  // The full-fidelity columns, added so an external importer can rebuild a
+  // photo row over the API. The UI does not read them; they are typed here
+  // so a future consumer gets checking rather than `any`.
+  file_path?: string;
+  file_size?: number;
+  file_mime?: string;
+  file_orientation?: number;
+  taken_at_source?: string;
+  notes?: string;
+  altitude?: number | null;
+  camera_make?: string;
+  lens_model?: string;
+  iso?: number | null;
+  aperture?: number | null;
+  exposure?: string;
+  focal_length?: number | null;
+  exif?: Record<string, unknown>;
+  uploaded_by?: string;
+  archived_at?: string | null;
+  created_at?: string;
+  updated_at?: string;
+
+  // --- ?include= expansions ---
+  //
+  // Present only when the request asked for them. An absent field means "not
+  // requested"; an empty array means "requested, and this photo has none".
+  labels?: PhotoLabelRelation[];
+  albums?: PhotoAlbumRelation[];
+  markers?: PhotoMarkerRelation[];
+  files?: PhotoFileRelation[];
+}
+
+// PhotoLabelRelation is a label attached to a photo, with the provenance
+// columns from the photo_labels join row.
+export interface PhotoLabelRelation {
+  uid: string;
+  name: string;
+  source: string;
+  uncertainty: number;
+}
+
+// PhotoAlbumRelation is a slim album reference from ?include=albums.
+export interface PhotoAlbumRelation {
+  uid: string;
+  title: string;
+}
+
+// PhotoMarkerRelation is a face/label marker. Unlike the /photos/{uid}/faces
+// view it carries subject_uid, so marker-to-person identity can be rebuilt
+// without matching on display names.
+export interface PhotoMarkerRelation {
+  uid: string;
+  subject_uid: string;
+  type: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  score: number;
+  invalid: boolean;
+  reviewed: boolean;
+}
+
+// PhotoFileRelation is one entry of a photo's physical file stack.
+export interface PhotoFileRelation {
+  file_path: string;
+  file_hash: string;
+  file_size: number;
+  file_mime: string;
+  is_primary: boolean;
+  role: string;
 }
 
 // PhotoEditsCrop is the crop sub-object of PhotoEdits — all four fields

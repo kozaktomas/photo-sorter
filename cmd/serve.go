@@ -111,8 +111,11 @@ func registerServeNativeRepos(pool *postgres.Pool) {
 
 	auditLogRepo := postgres.NewAuditLogRepository(pool)
 	database.RegisterAuditLogWriter(func() database.AuditLogWriter { return auditLogRepo })
+
+	apiTokenRepo := postgres.NewAPITokenRepository(pool)
+	database.RegisterAPITokenWriter(func() database.APITokenWriter { return apiTokenRepo })
 	fmt.Printf("Native photo + album + label + subject + marker + phash + " +
-		"share-link + smart-album + photo-edits + audit-log storage enabled (PostgreSQL)\n")
+		"share-link + smart-album + photo-edits + audit-log + api-token storage enabled (PostgreSQL)\n")
 }
 
 // resolveServeHostPort resolves port and host from flags and environment variables.

@@ -7,6 +7,7 @@ This document describes all REST API endpoints for the photo-sorter web server. 
 ## Table of Contents
 
 - [Authentication](#authentication)
+- [API Tokens](#api-tokens)
 - [Albums](#albums)
 - [Smart Albums (Saved Photo Searches)](#smart-albums-saved-photo-searches)
 - [Public Share Links](#public-share-links)
@@ -37,6 +38,7 @@ This document describes all REST API endpoints for the photo-sorter web server. 
 | Authenticated (any role) | most `/api/v1/*` reads, `/me`, `/me/password`, smart-album listing, photo similarity, text AI | Requires the `session` cookie. |
 | Write access (`admin` or `editor`) | every mutating CRUD endpoint outside the admin-only set (albums, photos, labels, books, smart albums, share-link create/revoke, EXIF/edits, ...) | `auth.HasWriteAccess` — `viewer` gets `403 forbidden`. |
 | Admin only | `/users/*`, `/audit-log`, `/photos/batch/purge`, `/process/build-thumbs` | `middleware.RequireRole(auth.RoleAdmin)` — non-admins get `403 forbidden`. The last admin cannot be deleted, disabled, or demoted (`400 last admin`). |
+| Read-only API token | every authenticated **read** (`GET`/`HEAD`/`OPTIONS`) | `Authorization: Bearer psat_...`. Authenticates as the `viewer` role AND is rejected outright on any unsafe method (`403 read-only credential`). Minted with `photo-sorter api-tokens create`. See [API Tokens](#api-tokens). |
 
 Long-running endpoints — every SSE stream, every `POST /upload*`, and
 the synchronous PDF export — are mounted on a separate Chi sub-group
@@ -133,6 +135,67 @@ GET /auth/status
   "authenticated": false
 }
 ```
+
+---
+
+## API Tokens
+
+Long-lived, read-only bearer credentials for machine clients — principally the
+Kukátko migration exporter.
+
+A session cookie is the wrong credential for a bulk export. It expires after 30
+days and is backed by a `sessions` row that the cleanup loop eventually
+deletes, so a long-running job can die halfway through. An API token has no
+such lifetime.
+
+**Tokens are read-only, enforced three independent ways:**
+
+1. The token authenticates as the `viewer` role, which fails `auth.HasWriteAccess`.
+2. The same viewer role fails `handlers.requireWriteRole`.
+3. `RequireAuth` rejects any non-`GET`/`HEAD`/`OPTIONS` request from a token
+   principal outright, with `403 read-only credential` — this one holds even
+   for a handler that performs no role check at all.
+
+### Minting a token
+
+Tokens are managed from the CLI (there is no REST surface for creating them —
+a credential that can mint credentials is exactly what a read-only export must
+not have):
+
+```bash
+# Never expires — what a migration run wants.
+photo-sorter api-tokens create kukatko-migration
+
+# Or time-boxed.
+photo-sorter api-tokens create ci-export --expires-in=720h
+
+photo-sorter api-tokens list
+photo-sorter api-tokens revoke <uid>
+```
+
+The raw token is printed **once** and never stored — only its SHA-256 is
+persisted (`api_tokens.token_hash`). A lost token cannot be recovered; revoke
+it and mint a new one. Revocation is a soft delete (`revoked_at`) so the audit
+trail keeps the record, and takes effect immediately — liveness is re-checked
+in SQL on every request.
+
+### Using a token
+
+```bash
+curl -H "Authorization: Bearer psat_xxxxxxxxxxxx" \
+  "http://localhost:8080/api/v1/photos?sort=updated&limit=500&include=labels,albums,markers,files"
+```
+
+The `psat_` prefix is what routes the value to the token store; an
+unprefixed `Bearer` value is still interpreted as a session ID, so existing
+clients are unaffected.
+
+`last_used_at` is stamped on use, throttled to at most one write per minute so
+a 20k-photo export does not turn a read-only walk into thousands of writes.
+
+Minting and revoking are recorded in the audit log (`api_token_create` /
+`api_token_revoke`). Token *use* is not — a read-only export would otherwise
+write one audit row per photo.
 
 ---
 
@@ -665,10 +728,13 @@ Reads from the native Postgres `photos` table. Archived rows are excluded by def
 | `taken_from` | RFC3339 datetime | - | Lower bound on `taken_at` (inclusive) |
 | `taken_to` | RFC3339 datetime | - | Upper bound on `taken_at` (inclusive) |
 | `min_lat`, `min_lng`, `max_lat`, `max_lng` | float | - | All four required to enable bbox filtering |
-| `q` | string | - | Full-text (tsvector) match against title / description / notes / file_name. Diacritic-folded (Czech-aware) and lowercased server-side; multi-word queries use AND semantics and results are re-ranked by `ts_rank` before the regular sort. Queries with no tokens of length ≥ 2 (e.g. a single character) fall back to a prefix ILIKE on the title. |
-| `sort` | enum | `newest` | `newest` \| `oldest` \| `name` |
+| `q` | string | - | Full-text (tsvector) match against title / description / notes / file_name. Diacritic-folded (Czech-aware) and lowercased server-side; multi-word queries use AND semantics and results are re-ranked by `ts_rank` before the regular sort. Queries with no tokens of length ≥ 2 (e.g. a single character) fall back to a prefix ILIKE on the title. **Exception:** under `sort=updated` the `q` filter still restricts rows but the `ts_rank` ordering is dropped — see below. |
+| `sort` | enum | `newest` | `newest` \| `oldest` \| `name` \| `updated` |
+| `updated_since` | RFC3339 datetime | - | Only photos whose `updated_at` is **>=** this instant. The bound is inclusive so a client that stores "the newest `updated_at` I have seen" and passes it back re-receives that row instead of skipping it. |
+| `cursor` | string (opaque) | - | Keyset resume position. **Requires `sort=updated`** (any other sort → `400 cursor requires sort=updated`). Echo back the `next_cursor` from the previous page. |
+| `include` | csv | - | Expand relations: any of `labels`, `albums`, `markers`, `files`. An unknown name is a `400`. |
 | `limit` | int | 50 | Page size, capped at 500 |
-| `offset` | int | 0 | Pagination offset |
+| `offset` | int | 0 | Pagination offset. **Ignored when `cursor` is set** — a cursor already names the position, so stacking an offset on top would silently drop rows. |
 
 **Response (200):**
 ```json
@@ -687,14 +753,107 @@ Reads from the native Postgres `photos` table. Archived rows are excluded by def
       "type": "image",
       "original_name": "IMG_1234.jpg",
       "file_name": "IMG_1234.jpg",
-      "camera_model": "Canon EOS R5"
+      "camera_model": "Canon EOS R5",
+
+      "file_path": "2024/07/IMG_1234.jpg",
+      "file_size": 8388608,
+      "file_mime": "image/jpeg",
+      "file_orientation": 1,
+      "taken_at_source": "exif",
+      "notes": "",
+      "altitude": 412.5,
+      "camera_make": "Canon",
+      "lens_model": "RF 24-70mm F2.8",
+      "iso": 400,
+      "aperture": 2.8,
+      "exposure": "1/250",
+      "focal_length": 35.0,
+      "exif": { "Make": "Canon", "Flash": "off" },
+      "uploaded_by": "u8abc123def456",
+      "archived_at": null,
+      "created_at": "2024-07-15T20:01:02Z",
+      "updated_at": "2024-07-16T09:12:33Z"
     }
   ],
-  "total": 1,
+  "total": 20310,
   "limit": 50,
-  "offset": 0
+  "offset": 0,
+  "next_cursor": "MjAyNC0wNy0xNlQwOToxMjozM1p8cHE4YWJjMTIzZGVmNDU2"
 }
 ```
+
+`total` is the size of the **whole matching set** and deliberately ignores
+the cursor, so it does not shrink page by page — an exporter can use it as a
+progress denominator.
+
+#### Nullable coordinates
+
+`lat`, `lng`, and `altitude` are **nullable**. `null` means "no GPS". They
+previously serialised as `0`, which was indistinguishable from a photo
+genuinely taken at 0°N 0°E. `iso`, `aperture`, `focal_length`, and
+`archived_at` are nullable for the same reason.
+
+#### Incremental export (`sort=updated` + `cursor`)
+
+`sort=updated` orders by `(updated_at, uid)` **ascending** and is the only
+sort a `cursor` is valid against — the cursor is a keyset over exactly that
+pair.
+
+Walking forward in time is what makes an export resumable under concurrent
+writes. Any write bumps `updated_at` to `now()`, which is ahead of every row
+already walked, so a photo modified mid-export **re-appears later in the walk
+rather than being skipped**. A client may therefore receive the same photo
+twice (harmless — an import upserts by `uid`), but it can never miss one.
+
+`next_cursor` is returned only when the page came back full. An empty
+`next_cursor` means the walk is complete.
+
+```bash
+# Full library export, 500 photos at a time, with every relation.
+CURSOR=""
+while :; do
+  RESP=$(curl -s -H "Authorization: Bearer $PHOTO_SORTER_TOKEN" \
+    "http://localhost:8080/api/v1/photos?sort=updated&limit=500&include=labels,albums,markers,files&cursor=$CURSOR")
+  echo "$RESP" | jq -c '.photos[]' >> export.ndjson
+  CURSOR=$(echo "$RESP" | jq -r '.next_cursor // empty')
+  [ -z "$CURSOR" ] && break
+done
+```
+
+To catch up later, pass the highest `updated_at` you stored as
+`updated_since` and walk again with a fresh cursor.
+
+> **Caveat — relation-only changes do not bump `updated_at`.**
+> `photos.updated_at` is stamped by writes to the photo *row* (metadata edit,
+> archive, restore). Attaching a label, adding the photo to an album, or
+> moving a face marker writes the join table, not `photos`, so such a change
+> is **invisible to an `updated_since` sweep**. A relation-complete refresh
+> needs a full walk (`sort=updated` with no `updated_since`), which is what a
+> one-shot migration does anyway.
+
+#### Relation expansion (`include=`)
+
+| Value | Adds | Fields |
+|-------|------|--------|
+| `labels` | `labels[]` | `uid`, `name`, `source` (`manual`/`ai`/`import`), `uncertainty` (0..100, 0 = certain) |
+| `albums` | `albums[]` | `uid`, `title` |
+| `markers` | `markers[]` | `uid`, **`subject_uid`** (empty when unassigned), `type`, `x`, `y`, `w`, `h` (relative 0..1, display space), `score`, `invalid`, `reviewed` |
+| `files` | `files[]` | `file_path`, `file_hash`, `file_size`, `file_mime`, `is_primary`, `role` (`original`/`sidecar`/`edited`) |
+
+Three wire states, and the difference matters to an importer:
+
+| JSON | Meaning |
+|------|---------|
+| field **absent** | not requested — leave your local copy alone |
+| `"labels": []` | requested; this photo has none — safe to clear locally |
+| `"labels": [...]` | requested; these are the rows |
+
+Each relation costs **one** query for the whole page, not one per photo.
+`include` works on `GET /photos/{uid}` too.
+
+`markers[].subject_uid` is the reason this expansion exists: the
+`GET /photos/{uid}/faces` view exposes only the subject's display *name*, so
+marker→person identity could not be rebuilt without fuzzy name matching.
 
 ### Get Photo
 

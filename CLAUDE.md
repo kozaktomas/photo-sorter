@@ -213,6 +213,32 @@ The bootstrap admin credentials come from `BOOTSTRAP_ADMIN_USERNAME` /
 `BOOTSTRAP_ADMIN_PASSWORD` on the first run; additional users are managed
 via `/api/v1/users/*` (admin only).
 
+### Long-lived read-only API tokens
+
+Machine clients (the Kukátko migration exporter) authenticate with a
+`psat_`-prefixed bearer token instead of a session, because a session
+expires after 30 days and its row can be swept mid-export:
+
+```bash
+photo-sorter api-tokens create kukatko-migration   # prints the raw token ONCE
+curl -H "Authorization: Bearer psat_..." "http://localhost:8085/api/v1/photos?sort=updated&limit=500"
+```
+
+The `psat_` prefix is what routes a bearer value to `api_tokens`; an
+unprefixed `Bearer` value still means a session ID, so existing clients are
+unaffected.
+
+**If you touch the auth path, know this trap.** The repo has two parallel
+write gates: newer handlers check `auth.HasWriteAccess(AuthInfo.Role)`, but
+~57 older ones call `handlers.requireWriteRole`, which reads the `*Session`
+off the request context and **treats a missing session as an admin** (so CLI
+/ MCP callers keep working). A principal that populated only `AuthInfo` would
+therefore sail straight through that gate with full write access. This is why
+`sessionFromAPIToken` mints a synthetic `*Session` with `Role: viewer` rather
+than just setting `AuthInfo` — it satisfies both gates at once.
+`RequireAuth` adds a third, independent guard: a read-only principal is
+rejected outright on any non-`GET`/`HEAD`/`OPTIONS` request.
+
 ## Architecture
 
 A single Go binary (Cobra CLI + Chi HTTP router) backed by PostgreSQL and
@@ -221,10 +247,10 @@ TailwindCSS, embedded into the binary at compile time via `go:embed`.
 
 ### Core Components
 
-- **cmd/** — Cobra commands (sort, albums, labels, count, move, upload, photo, cache, serve, users, backup, db-export/db-import, migrate-from-photoprism, migrate-verify, migrate-remap-references, clear, create, version). `users` is the CLI surface for local user management: `users list`, `users create <username> --role=...`, `users set-password <username>`, `users delete <username> [--yes]`. Password-prompting commands require a TTY; mutations append to `audit_log` with `metadata.actor = "cli"`. `clear`/`create` and `cache push-embeddings`/`cache sync` are PhotoPrism-only legacy tools that target the MariaDB-backed REST API; the native pipeline does not use them.
+- **cmd/** — Cobra commands (sort, albums, labels, count, move, upload, photo, cache, serve, users, api-tokens, backup, db-export/db-import, migrate-from-photoprism, migrate-verify, migrate-remap-references, clear, create, version). `api-tokens` mints/lists/revokes the long-lived read-only API tokens (`api-tokens create <name> [--expires-in=720h]`, `list`, `revoke <uid>`); the raw token is printed once and only its SHA-256 is stored. There is deliberately no REST surface for minting — a credential that can mint credentials is what a read-only export must not have. `users` is the CLI surface for local user management: `users list`, `users create <username> --role=...`, `users set-password <username>`, `users delete <username> [--yes]`. Password-prompting commands require a TTY; mutations append to `audit_log` with `metadata.actor = "cli"`. `clear`/`create` and `cache push-embeddings`/`cache sync` are PhotoPrism-only legacy tools that target the MariaDB-backed REST API; the native pipeline does not use them.
 - **internal/ai/** — AI provider interface with OpenAI, Gemini, Ollama, and llama.cpp implementations
 - **internal/audit/** — `audit.Logger` thin wrapper around the `audit_log` table. Handlers pull a logger off the request context (installed by the audit middleware) and call `Log(ctx, action, ...)`; persistence failures are WARN-logged and never abort the request.
-- **internal/auth/** — Password hashing, role constants, bootstrap admin creation, shared validators (`ValidUsername`, `MinPasswordLength`) and the `EnsureNotLastAdmin` guard used by both the REST handler and the `users` CLI
+- **internal/auth/** — Password hashing, role constants, bootstrap admin creation, shared validators (`ValidUsername`, `MinPasswordLength`), the `EnsureNotLastAdmin` guard used by both the REST handler and the `users` CLI, and the API-token primitives in `apitoken.go` (`GenerateAPIToken`, `HashAPIToken`, `IsAPIToken`, the `psat_` prefix)
 - **internal/config/** — Environment-based configuration loader
 - **internal/constants/** — Shared constants (page sizes, thresholds, concurrency, upload limits)
 - **internal/database/** — PostgreSQL storage with pgvector (HNSW indexes via `vector_cosine_ops`), repository interfaces, in-process readers/writers
@@ -407,8 +433,9 @@ The `internal/database/` package provides storage for embeddings, faces data, ph
 **Key files:**
 ```
 internal/database/
-├── types.go            # StoredPhoto, StoredFace, ExportData, PhotoBook, BookChapter, BookSection, etc.
-├── repository.go       # FaceReader, FaceWriter, EmbeddingReader, BookReader, BookWriter interfaces
+├── types.go            # StoredPhoto, StoredFace, ExportData, PhotoBook, BookChapter, BookSection, APIToken, RelationSet, Photo*Relation, etc.
+├── cursor.go           # PhotoCursor + Encode/DecodePhotoCursor (opaque keyset token) and ClampPhotoLimit (shared by the repo and the handler so "was the page full?" cannot drift)
+├── repository.go       # FaceReader, FaceWriter, EmbeddingReader, BookReader, BookWriter, PhotoRelationReader, APITokenReader/Writer interfaces
 ├── provider.go         # Provider functions for getting readers/writers
 ├── cosine.go           # Cosine distance helper (used by face outlier ranking)
 ├── constants.go        # Shared constants (face size thresholds)
@@ -418,6 +445,8 @@ internal/database/
     ├── embeddings.go   # EmbeddingReader impl (pgvector, ef_search=100 + GetCentroid via AVG())
     ├── faces.go        # FaceReader/FaceWriter impl (pgvector)
     ├── era_embeddings.go  # EraEmbeddingReader/Writer implementation
+    ├── photos_relations.go # Bulk relation loaders for ?include= (one query per relation per page)
+    ├── api_tokens.go   # APITokenRepository — mint/list/revoke + the auth hot path (ResolveAPIToken enforces revoked/expired in SQL)
     ├── books.go        # BookRepository (BookReader/BookWriter)
     ├── sessions.go     # Session persistence for web auth
     ├── text_versions.go   # TextVersionStore implementation
@@ -425,7 +454,7 @@ internal/database/
     └── migrations/     # SQL migrations 001-043 (embedded)
 ```
 
-**Tables:** `users` (admin/editor/viewer with bcrypt hashes), `photos`, `photo_files`, `albums` + `album_photos`, `labels` + `photo_labels`, `subjects`, `markers`, `photo_phashes`, `embeddings` (768-dim CLIP), `faces` (512-dim ResNet100 with cached marker metadata), `era_embeddings` (768-dim CLIP text centroids), `faces_processed` (tracking), `sessions` (with `user_uid` for upload support across restarts), `photo_books` (with typography settings: `body_font`, `heading_font`, `body_font_size`, `body_line_height`, `h1_font_size`, `h2_font_size`, `caption_opacity`, `caption_font_size`, `heading_color_bleed` added in migrations 021-023, plus `body_text_pad_mm` in migration 029), `book_chapters` (migration 016, with `color` column from migration 020), `book_sections` (with optional `chapter_id`), `section_photos`, `book_pages` (with `split_position`, `hide_page_number` from migration 025, `1_fullbleed` format added to the CHECK constraint in migration 027), `page_slots` (with `text_content`, `is_captions_slot` from migration 026, `is_contents_slot` from migration 030, `crop_x`/`crop_y`/`crop_scale`; photo_uid / text_content / is_captions_slot / is_contents_slot are mutually exclusive), `text_versions` (migration 017), `text_check_results` (migration 019, extended by migration 028 with a `suggestions JSONB` column), `album_share_links` (migration 039 — public-share slugs keyed on `slug PRIMARY KEY`, FK to `albums(uid)` ON DELETE CASCADE, optional bcrypt `password_hash` and `expires_at`; `created_by_user_uid` FK → `users(uid)` is nullable `ON DELETE SET NULL` per migration 043 so deleting the user who minted the link does not block the user delete or revoke the link), `smart_albums` (migration 040 — saved photo searches keyed on `uid VARCHAR(32) PRIMARY KEY`, `name TEXT`, `filters JSONB` shaped like the `GET /photos` query params, `created_by_user_uid` FK → `users(uid)` is nullable `ON DELETE SET NULL` per migration 043 so renames/deletes of the author do not drop saved searches), `photo_edits` (migration 041 — non-destructive edits keyed on `photo_uid VARCHAR(32) PRIMARY KEY` FK → `photos(uid)` ON DELETE CASCADE, nullable `crop_x`/`crop_y`/`crop_w`/`crop_h` REAL group enforced all-or-nothing by a CHECK, `rotation INTEGER NOT NULL CHECK rotation IN (0,90,180,270)`, `brightness`/`contrast` REAL in [-1,1], `updated_at`; a row exists only when at least one parameter is non-default), `audit_log` (migration 042 — append-only audit trail keyed on `id BIGSERIAL PRIMARY KEY`, nullable `user_uid VARCHAR(32)` FK → `users(uid)` `ON DELETE SET NULL` so deleted users keep their trail intact, `action TEXT`, nullable `entity_type TEXT` + `entity_uid TEXT`, `metadata JSONB DEFAULT '{}'::jsonb`, nullable `ip TEXT` + `user_agent TEXT`, `created_at TIMESTAMPTZ DEFAULT NOW()`; indexes on `(user_uid, created_at DESC)`, `(action, created_at DESC)`, `(entity_type, entity_uid)`, and `(created_at DESC)`; failures to write must NOT fail the underlying request — they WARN-log and continue).
+**Tables:** `users` (admin/editor/viewer with bcrypt hashes), `photos`, `photo_files`, `albums` + `album_photos`, `labels` + `photo_labels`, `subjects`, `markers`, `photo_phashes`, `embeddings` (768-dim CLIP), `faces` (512-dim ResNet100 with cached marker metadata), `era_embeddings` (768-dim CLIP text centroids), `faces_processed` (tracking), `sessions` (with `user_uid` for upload support across restarts), `photo_books` (with typography settings: `body_font`, `heading_font`, `body_font_size`, `body_line_height`, `h1_font_size`, `h2_font_size`, `caption_opacity`, `caption_font_size`, `heading_color_bleed` added in migrations 021-023, plus `body_text_pad_mm` in migration 029), `book_chapters` (migration 016, with `color` column from migration 020), `book_sections` (with optional `chapter_id`), `section_photos`, `book_pages` (with `split_position`, `hide_page_number` from migration 025, `1_fullbleed` format added to the CHECK constraint in migration 027), `page_slots` (with `text_content`, `is_captions_slot` from migration 026, `is_contents_slot` from migration 030, `crop_x`/`crop_y`/`crop_scale`; photo_uid / text_content / is_captions_slot / is_contents_slot are mutually exclusive), `text_versions` (migration 017), `text_check_results` (migration 019, extended by migration 028 with a `suggestions JSONB` column), `album_share_links` (migration 039 — public-share slugs keyed on `slug PRIMARY KEY`, FK to `albums(uid)` ON DELETE CASCADE, optional bcrypt `password_hash` and `expires_at`; `created_by_user_uid` FK → `users(uid)` is nullable `ON DELETE SET NULL` per migration 043 so deleting the user who minted the link does not block the user delete or revoke the link), `smart_albums` (migration 040 — saved photo searches keyed on `uid VARCHAR(32) PRIMARY KEY`, `name TEXT`, `filters JSONB` shaped like the `GET /photos` query params, `created_by_user_uid` FK → `users(uid)` is nullable `ON DELETE SET NULL` per migration 043 so renames/deletes of the author do not drop saved searches), `photo_edits` (migration 041 — non-destructive edits keyed on `photo_uid VARCHAR(32) PRIMARY KEY` FK → `photos(uid)` ON DELETE CASCADE, nullable `crop_x`/`crop_y`/`crop_w`/`crop_h` REAL group enforced all-or-nothing by a CHECK, `rotation INTEGER NOT NULL CHECK rotation IN (0,90,180,270)`, `brightness`/`contrast` REAL in [-1,1], `updated_at`; a row exists only when at least one parameter is non-default), `audit_log` (migration 042 — append-only audit trail keyed on `id BIGSERIAL PRIMARY KEY`, nullable `user_uid VARCHAR(32)` FK → `users(uid)` `ON DELETE SET NULL` so deleted users keep their trail intact, `action TEXT`, nullable `entity_type TEXT` + `entity_uid TEXT`, `metadata JSONB DEFAULT '{}'::jsonb`, nullable `ip TEXT` + `user_agent TEXT`, `created_at TIMESTAMPTZ DEFAULT NOW()`; indexes on `(user_uid, created_at DESC)`, `(action, created_at DESC)`, `(entity_type, entity_uid)`, and `(created_at DESC)`; failures to write must NOT fail the underlying request — they WARN-log and continue)), `api_tokens` (migration 044 — long-lived read-only bearer tokens for machine clients (the Kukátko migration exporter) keyed on `uid VARCHAR(32) PRIMARY KEY`, `name TEXT`, `token_hash VARCHAR(64) UNIQUE` storing only the lowercase-hex SHA-256 of the raw token, `scope` CHECK-constrained to `'read'`, nullable `created_by_user_uid` FK → `users(uid)` `ON DELETE SET NULL`, nullable `expires_at` (NULL = never), `last_used_at` (throttled to one write/minute), and `revoked_at` for soft revocation). SHA-256 rather than bcrypt is deliberate: the token is 256 bits of `crypto/rand` so there is nothing to brute-force, and it is verified on every request — a bcrypt round per request would add ~100 ms of CPU to a 20k-photo export.
 
 **Face name normalization:** `GetFacesBySubjectName` normalizes names via `facematch.NormalizePersonName` (remove diacritics, lowercase, dashes→spaces) using the `unaccent` PostgreSQL extension.
 
@@ -520,10 +549,10 @@ Session cookies use `HttpOnly`, `SameSite=Strict`, and auto-detect `Secure` flag
 - `GET /api/v1/labels/{uid}` - Get single label
 - `PUT /api/v1/labels/{uid}` - Update label (`{ name?, priority?, favorite? }`; non-empty name re-slugs with collision suffix)
 - `DELETE /api/v1/labels` - Batch delete labels (returns count of UIDs that actually existed; unknown UIDs are silently skipped)
-- `GET /api/v1/photos` - List photos (native; archived excluded by default, filters: `album_uid`/`label_uid`/`subject_uid`/`favorite`/`private`/`archived`/`taken_from`/`taken_to`/`min_lat`+`min_lng`+`max_lat`+`max_lng`/`q`/`sort`/`limit`/`offset`; envelope `{photos, total, limit, offset}`). `q` is matched via the Czech-aware Postgres full-text search index added in migration 035.
+- `GET /api/v1/photos` - List photos (native; archived excluded by default, filters: `album_uid`/`label_uid`/`subject_uid`/`favorite`/`private`/`archived`/`taken_from`/`taken_to`/`min_lat`+`min_lng`+`max_lat`+`max_lng`/`q`/`sort`/`limit`/`offset`; envelope `{photos, total, limit, offset, next_cursor}`). `q` is matched via the Czech-aware Postgres full-text search index added in migration 035. **Migration-export surface:** `sort=updated` orders by `(updated_at, uid)` ASC and is the only sort a `cursor` is valid against (any other sort → 400); `cursor` is an opaque keyset token echoed back from `next_cursor` (present only on a full page) and suppresses `offset`; `updated_since=<RFC3339>` filters on `updated_at >= t` (inclusive); `include=labels,albums,markers,files` expands relations (one query per relation for the whole page, never N+1 — unknown names 400). `total` ignores the cursor so it stays a usable progress denominator. Under `sort=updated` the `ts_rank` ordering from `q` is deliberately dropped (the WHERE still applies) because a relevance key ahead of `(updated_at, uid)` would invalidate the keyset. `PhotoResponse` carries every `photos` column (`file_path`, `file_size`, `file_mime`, `file_orientation`, `exif` JSONB, `camera_make`, `lens_model`, `iso`, `aperture`, `exposure`, `focal_length`, `notes`, `taken_at_source`, `uploaded_by`, `created_at`, `updated_at`, `archived_at`); `lat`/`lng`/`altitude`/`iso`/`aperture`/`focal_length` are **nullable** (`null` = no GPS, rather than the old `0.0` which collided with 0°N 0°E). Relations use pointer-to-slice on the wire so absent = not requested, `[]` = requested-but-empty — an importer needs that distinction. **Caveat:** `photos.updated_at` is bumped only by writes to the photo row; relation-only changes (label attach, album add, marker move) do not touch it and are invisible to an `updated_since` sweep.
 - `GET /api/v1/photos/histogram` - Time-bucketed counts for the Browse timeline scrubber. Accepts every filter that `GET /photos` accepts plus a `bucket` parameter (`month` (default) or `year`). Pagination params are ignored — the histogram always reflects the entire matching set. Envelope `{ bucket, buckets: [{ start, end, count }], total, no_date_count, no_gps_count }`.
 - `GET /api/v1/photos/geo-points` - Lightweight `[{uid, lat, lng}]` payload for the Browse map (client-side clustered with supercluster). Accepts the same filters as `GET /photos`; capped at 50,000 points server-side with `truncated: true` set in the response envelope when the cap is hit.
-- `GET /api/v1/photos/{uid}` - Get single photo (native; 404 for archived unless `?include_archived=true`)
+- `GET /api/v1/photos/{uid}` - Get single photo (native; 404 for archived unless `?include_archived=true`). Also accepts `?include=labels,albums,markers,files` — same expansion + same wire semantics as the list endpoint.
 - `PUT /api/v1/photos/{uid}` - Update photo
 - `PUT /api/v1/photos/{uid}/exif` - Edit EXIF metadata (taken_at, GPS, camera/lens/exposure, title/description/notes). Writes the photo row AND an XMP sidecar next to the original (same dir + basename + `.xmp`) via `exiftool`; sidecar errors are logged but do not fail the request. Validates year ∈ [1900, 2100], lat/lng ranges, ISO > 0. `HasWriteAccess` required.
 - `GET /api/v1/photos/{uid}/thumb/{size}` - Stream cached thumbnail from `<cache>/thumb/<aa>/<bb>/<cc>/<hash>_<size>.jpg` (immutable cache headers + `ETag: "sha:<hash>:<size>"`; 404 when the file is missing)
@@ -743,6 +772,7 @@ internal/web/handlers/
 ├── share.go                                    # ShareHandler: mint/list/revoke album share links + public anonymous endpoints (verify, photos, thumb, download)
 ├── smart_albums.go                             # SmartAlbumsHandler: saved photo searches (CRUD + filter-replay listing)
 ├── photo_edits.go                              # PhotosHandler.GetEdits/PutEdits/DeleteEdits — non-destructive crop/rotate/brightness/contrast + thumb rebuild
+├── photos_export.go                            # ?include= parsing + bulk relation expansion, keyset cursor parsing/minting for the migration export
 ├── photos_browse.go                            # PhotosHandler.Histogram + GeoPoints for the Browse map + timeline
 ├── photos_exif.go                              # PhotosHandler.EditExif — taken_at/GPS/camera/lens edit + XMP sidecar write
 ├── photo_albums.go                             # PhotosHandler.GetPhotoAlbums for the photo detail page

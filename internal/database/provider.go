@@ -25,6 +25,7 @@ var (
 	postgresSmartAlbumWriter   func() SmartAlbumWriter
 	postgresPhotoEditsWriter   func() PhotoEditsWriter
 	postgresAuditLogWriter     func() AuditLogWriter
+	postgresAPITokenWriter     func() APITokenWriter
 	postgresInitialized        bool
 )
 
@@ -49,6 +50,7 @@ func ResetForTesting() {
 	postgresSmartAlbumWriter = nil
 	postgresPhotoEditsWriter = nil
 	postgresAuditLogWriter = nil
+	postgresAPITokenWriter = nil
 	postgresInitialized = false
 }
 
@@ -252,6 +254,41 @@ func GetPhotoBrowseReader(ctx context.Context) (PhotoBrowseReader, error) {
 		return nil, errors.New("registered PhotoWriter does not implement PhotoBrowseReader")
 	}
 	return browse, nil
+}
+
+// GetPhotoRelationReader returns a PhotoRelationReader from the PostgreSQL
+// backend. As with GetPhotoBrowseReader, it reuses the registered PhotoWriter
+// constructor rather than taking its own registration, and type-asserts so a
+// future implementation that omits the relation methods fails loudly.
+func GetPhotoRelationReader(ctx context.Context) (PhotoRelationReader, error) {
+	if !postgresInitialized {
+		return nil, errors.New("PostgreSQL backend not initialized: DATABASE_URL is required")
+	}
+	if postgresPhotoWriter == nil {
+		return nil, errors.New("PostgreSQL photo reader not registered")
+	}
+	relations, ok := postgresPhotoWriter().(PhotoRelationReader)
+	if !ok {
+		return nil, errors.New("registered PhotoWriter does not implement PhotoRelationReader")
+	}
+	return relations, nil
+}
+
+// RegisterAPITokenWriter registers the APITokenWriter constructor. The same
+// value also serves APITokenReader, since the writer embeds the reader.
+func RegisterAPITokenWriter(writer func() APITokenWriter) {
+	postgresAPITokenWriter = writer
+}
+
+// GetAPITokenWriter returns an APITokenWriter from the PostgreSQL backend.
+func GetAPITokenWriter(ctx context.Context) (APITokenWriter, error) {
+	if !postgresInitialized {
+		return nil, errors.New("PostgreSQL backend not initialized: DATABASE_URL is required")
+	}
+	if postgresAPITokenWriter == nil {
+		return nil, errors.New("PostgreSQL API token writer not registered")
+	}
+	return postgresAPITokenWriter(), nil
 }
 
 // RegisterAlbumWriter registers the AlbumWriter constructor. The same value

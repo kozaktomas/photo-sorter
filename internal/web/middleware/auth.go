@@ -15,6 +15,12 @@ const sessionContextKey contextKey = "session"
 // session struct on the context for code paths that still need PhotoPrism
 // tokens (faces / upload), and the slimmer AuthInfo for handlers that only
 // care about the native user identity.
+//
+// It also enforces the read-only scope of an API token principal: such a
+// caller may only use safe HTTP methods. This is the outermost of three
+// independent write gates (the other two being the viewer role, which fails
+// both auth.HasWriteAccess and handlers.requireWriteRole), and the only one
+// that holds even for a handler that forgets to check a role at all.
 func RequireAuth(sm *SessionManager) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -23,11 +29,16 @@ func RequireAuth(sm *SessionManager) func(http.Handler) http.Handler {
 				http.Error(w, `{"error": "unauthorized"}`, http.StatusUnauthorized)
 				return
 			}
+			if session.ReadOnly && !isSafeMethod(r.Method) {
+				http.Error(w, `{"error": "read-only credential"}`, http.StatusForbidden)
+				return
+			}
 
 			ctx := context.WithValue(r.Context(), sessionContextKey, session)
 			ctx = SetAuthInfoInContext(ctx, &AuthInfo{
-				UserUID: session.UserUID,
-				Role:    session.Role,
+				UserUID:  session.UserUID,
+				Role:     session.Role,
+				ReadOnly: session.ReadOnly,
 			})
 			// Refresh the audit request context so audit.Logger.Log
 			// records the authenticated user_uid. The global audit

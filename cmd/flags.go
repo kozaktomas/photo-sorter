@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/spf13/cobra"
 )
@@ -19,6 +20,15 @@ func mustGetBool(cmd *cobra.Command, name string) bool {
 // mustGetInt gets an int flag value or panics if the flag doesn't exist.
 func mustGetInt(cmd *cobra.Command, name string) int {
 	val, err := cmd.Flags().GetInt(name)
+	if err != nil {
+		panic(fmt.Sprintf("flag error for --%s: %v", name, err))
+	}
+	return val
+}
+
+// mustGetDuration gets a duration flag value or panics if the flag doesn't exist.
+func mustGetDuration(cmd *cobra.Command, name string) time.Duration {
+	val, err := cmd.Flags().GetDuration(name)
 	if err != nil {
 		panic(fmt.Sprintf("flag error for --%s: %v", name, err))
 	}

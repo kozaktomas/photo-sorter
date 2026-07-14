@@ -17,14 +17,6 @@ import (
 )
 
 const (
-	// defaultPhotoListLimit is the default page size for ListPhotos when
-	// PhotoFilter.Limit is 0.
-	defaultPhotoListLimit = 50
-
-	// maxPhotoListLimit caps PhotoFilter.Limit; values larger than this are
-	// clamped down silently.
-	maxPhotoListLimit = 500
-
 	// photoUIDRandLen is the number of random base32 characters appended
 	// after the "p" prefix in a generated photo UID.
 	photoUIDRandLen = 16
@@ -118,20 +110,36 @@ func (r *PhotoRepository) ListPhotos(
 	ctx context.Context, filter database.PhotoFilter,
 ) ([]database.Photo, int, error) {
 	where, rankPrefix, args := buildPhotoFilter(filter)
-	orderBy := rankPrefix + photoOrderBy(filter.SortBy)
 	limit, offset := paginationBounds(filter)
 
+	// The count deliberately runs against the filter WHERE clause *without*
+	// the keyset predicate, so `total` stays the size of the whole matching
+	// set instead of shrinking with every page. That is what lets an export
+	// show real progress.
 	countSQL := "SELECT COUNT(*) FROM photos p" + photoFilterJoins(filter) + where
 	var total int
 	if err := r.pool.QueryRow(ctx, countSQL, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count photos: %w", err)
 	}
 
+	listWhere, listArgs := appendKeysetCursor(where, args, filter)
+	orderBy := photoOrderBy(filter.SortBy)
+	// ts_rank is only a valid leading ORDER BY key when we are NOT walking a
+	// keyset: the cursor encodes (updated_at, uid), so a rank ahead of them
+	// would make the resume predicate address the wrong position entirely.
+	// Under SortUpdated the search filter still applies as a WHERE clause —
+	// we just drop its relevance ordering.
+	if filter.SortBy != database.SortUpdated {
+		orderBy = rankPrefix + orderBy
+	}
+
+	// LIMIT/OFFSET are interpolated rather than bound; paginationBounds has
+	// already clamped both to sane ints, matching the pre-existing contract.
 	listSQL := "SELECT " + qualifyPhotoColumns("p") + " FROM photos p" +
-		photoFilterJoins(filter) + where +
+		photoFilterJoins(filter) + listWhere +
 		" ORDER BY " + orderBy +
 		fmt.Sprintf(" LIMIT %d OFFSET %d", limit, offset)
-	rows, err := r.pool.Query(ctx, listSQL, args...)
+	rows, err := r.pool.Query(ctx, listSQL, listArgs...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list photos: %w", err)
 	}
@@ -495,6 +503,7 @@ func buildPhotoFilter(filter database.PhotoFilter) (string, string, []any) {
 	b.applyTakenRange(filter.TakenFrom, filter.TakenTo)
 	b.applyBBox(filter.BBox)
 	b.applyUploadedBy(filter.UploadedBy)
+	b.applyUpdatedSince(filter.UpdatedSince)
 	b.applySearch(filter.Search)
 	where, args := b.build()
 	return where, b.rankPrefix, args
@@ -616,6 +625,18 @@ func (b *photoFilterBuilder) applyUploadedBy(uid string) {
 	b.add("p.uploaded_by = " + ph)
 }
 
+// applyUpdatedSince restricts the result to rows touched at or after the
+// given instant. The bound is inclusive (>=) on purpose: a client that stores
+// "the newest updated_at I have seen" and passes it back must re-receive that
+// row rather than have it fall through the gap of an exclusive bound.
+func (b *photoFilterBuilder) applyUpdatedSince(since *time.Time) {
+	if since == nil {
+		return
+	}
+	ph := b.next(*since)
+	b.add("p.updated_at >= " + ph)
+}
+
 // applySearch wires the user's free-form search query into the WHERE
 // clause (and, when full-text search is active, into the ORDER BY via
 // rankPrefix).
@@ -667,12 +688,19 @@ func (b *photoFilterBuilder) build() (string, []any) {
 
 // photoOrderBy translates the public sort key into a SQL ORDER BY expression.
 // The trailing "uid DESC" makes ordering deterministic when sort keys tie.
+//
+// database.SortUpdated is the odd one out: it orders (updated_at, uid) both
+// ASCENDING, because that is the pair the keyset cursor encodes and a keyset
+// predicate must match its ORDER BY exactly. Walking updated_at forwards is
+// also what makes an export resumable — see database.SortUpdated.
 func photoOrderBy(sortBy string) string {
 	switch sortBy {
 	case "oldest":
 		return "p.taken_at ASC NULLS LAST, p.uid DESC"
 	case "name":
 		return "p.file_name ASC, p.uid DESC"
+	case database.SortUpdated:
+		return "p.updated_at ASC, p.uid ASC"
 	case "newest", "":
 		return "p.taken_at DESC NULLS LAST, p.uid DESC"
 	default:
@@ -680,14 +708,51 @@ func photoOrderBy(sortBy string) string {
 	}
 }
 
-// paginationBounds clamps the user-supplied limit/offset into safe ranges.
-func paginationBounds(filter database.PhotoFilter) (int, int) {
-	limit := filter.Limit
-	if limit <= 0 {
-		limit = defaultPhotoListLimit
+// appendKeysetCursor adds the keyset resume predicate to the list query's
+// WHERE clause, returning a fresh args slice so the caller's count query —
+// which must NOT see the cursor — keeps its original placeholder numbering.
+//
+// The predicate is a row-value comparison, `(updated_at, uid) > (ts, uid)`,
+// which Postgres can drive straight off the composite index added in
+// migration 045. Expanding it by hand into an OR of two conditions would
+// produce the same rows but a worse plan.
+//
+// The cursor is ignored unless the sort is SortUpdated: under any other
+// ordering the pair it encodes is not the sort key, so applying it would
+// silently drop rows. The handler rejects that combination up front; this is
+// the belt to that braces.
+func appendKeysetCursor(
+	where string, args []any, filter database.PhotoFilter,
+) (string, []any) {
+	if filter.Cursor == nil || filter.SortBy != database.SortUpdated {
+		return where, args
 	}
-	if limit > maxPhotoListLimit {
-		limit = maxPhotoListLimit
+
+	// Copy rather than append in place: args is the slice the count query
+	// already captured, and append could otherwise write through a shared
+	// backing array.
+	listArgs := make([]any, len(args), len(args)+2)
+	copy(listArgs, args)
+	listArgs = append(listArgs, filter.Cursor.UpdatedAt, filter.Cursor.UID)
+	clause := fmt.Sprintf(
+		"(p.updated_at, p.uid) > ($%d, $%d)", len(listArgs)-1, len(listArgs),
+	)
+
+	if where == "" {
+		return " WHERE " + clause, listArgs
+	}
+	return where + " AND " + clause, listArgs
+}
+
+// paginationBounds clamps the user-supplied limit/offset into safe ranges.
+//
+// A cursor forces OFFSET to 0: the cursor already *is* the position in the
+// result set, so also skipping N rows past it would silently drop records
+// from an export. Keyset and offset pagination are alternatives, not layers.
+func paginationBounds(filter database.PhotoFilter) (int, int) {
+	limit := database.ClampPhotoLimit(filter.Limit)
+	if filter.Cursor != nil && filter.SortBy == database.SortUpdated {
+		return limit, 0
 	}
 	offset := max(filter.Offset, 0)
 	return limit, offset

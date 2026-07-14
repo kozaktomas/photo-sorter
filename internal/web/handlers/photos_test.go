@@ -72,6 +72,14 @@ func (f *fakePhotoReader) GetPhotoByHash(_ context.Context, hash string) (*datab
 	return nil, database.ErrNotFound
 }
 
+// ListPhotos mirrors the semantics of the real SQL implementation closely
+// enough that handler tests are meaningful. In particular it reproduces the
+// three properties the export depends on:
+//
+//   - `total` counts the whole matching set and ignores the cursor, exactly
+//     as the repository's separate COUNT query does;
+//   - the keyset predicate is applied only under SortUpdated;
+//   - a cursor suppresses OFFSET rather than stacking with it.
 func (f *fakePhotoReader) ListPhotos(
 	_ context.Context, filter database.PhotoFilter,
 ) ([]database.Photo, int, error) {
@@ -86,14 +94,34 @@ func (f *fakePhotoReader) ListPhotos(
 		out = append(out, *p)
 	}
 	sortFakePhotos(out, filter.SortBy)
+
+	// The count is taken before the keyset is applied — see PhotoFilter.Cursor.
 	total := len(out)
-	limit := filter.Limit
-	if limit == 0 {
-		limit = 50
+
+	offset := filter.Offset
+	if filter.Cursor != nil && filter.SortBy == database.SortUpdated {
+		out = applyFakeKeyset(out, *filter.Cursor)
+		offset = 0
 	}
-	start := min(filter.Offset, total)
-	end := min(start+limit, total)
+
+	limit := database.ClampPhotoLimit(filter.Limit)
+	start := min(offset, len(out))
+	end := min(start+limit, len(out))
 	return out[start:end], total, nil
+}
+
+// applyFakeKeyset drops every row at or before the cursor position in the
+// (updated_at, uid) ordering — the Go equivalent of the SQL row-value
+// comparison `(updated_at, uid) > ($1, $2)`.
+func applyFakeKeyset(photos []database.Photo, cursor database.PhotoCursor) []database.Photo {
+	out := make([]database.Photo, 0, len(photos))
+	for _, p := range photos {
+		if p.UpdatedAt.After(cursor.UpdatedAt) ||
+			(p.UpdatedAt.Equal(cursor.UpdatedAt) && p.UID > cursor.UID) {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func (f *fakePhotoReader) ListPhotoFiles(
@@ -273,6 +301,10 @@ func fakePhotoMatches(p *database.Photo, filter database.PhotoFilter) bool {
 			return false
 		}
 	}
+	// Inclusive bound, matching applyUpdatedSince's ">=".
+	if filter.UpdatedSince != nil && p.UpdatedAt.Before(*filter.UpdatedSince) {
+		return false
+	}
 	return true
 }
 
@@ -288,6 +320,16 @@ func sortFakePhotos(photos []database.Photo, sortBy string) {
 		sort.SliceStable(photos, func(i, j int) bool { return keyOf(photos[i]).Before(keyOf(photos[j])) })
 	case "name":
 		sort.SliceStable(photos, func(i, j int) bool { return photos[i].FileName < photos[j].FileName })
+	case database.SortUpdated:
+		// (updated_at, uid) ascending — the ordering the keyset cursor
+		// encodes. The uid tiebreak is what makes a page boundary that
+		// falls inside a group of same-timestamp rows unambiguous.
+		sort.SliceStable(photos, func(i, j int) bool {
+			if photos[i].UpdatedAt.Equal(photos[j].UpdatedAt) {
+				return photos[i].UID < photos[j].UID
+			}
+			return photos[i].UpdatedAt.Before(photos[j].UpdatedAt)
+		})
 	default:
 		sort.SliceStable(photos, func(i, j int) bool { return keyOf(photos[i]).After(keyOf(photos[j])) })
 	}

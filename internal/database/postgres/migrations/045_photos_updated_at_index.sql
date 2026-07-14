@@ -1,0 +1,11 @@
+-- Composite index backing the incremental-export keyset walk.
+--
+-- `GET /photos?sort=updated&cursor=...` orders by (updated_at ASC, uid ASC)
+-- and resumes with the row-value predicate `(updated_at, uid) > ($1, $2)`.
+-- The column order here matches that ORDER BY exactly, which is what lets
+-- Postgres satisfy both the seek and the ordering from one index scan instead
+-- of sorting the whole photos table on every page of a 20k-photo export.
+--
+-- It also serves the `updated_since=<ts>` filter on its own (a leading-column
+-- range scan), so the two features share one index.
+CREATE INDEX IF NOT EXISTS idx_photos_updated_at_uid ON photos(updated_at, uid);

@@ -49,6 +49,12 @@ type PhotosHandler struct {
 	// browse handlers without standing up Postgres.
 	browseReader database.PhotoBrowseReader
 
+	// relations powers the ?include=labels,albums,markers,files expansion on
+	// the photo list/detail endpoints. Resolved lazily like browseReader, and
+	// only touched when a request actually asks for an expansion — the UI
+	// never does, so the common path never pays for it.
+	relations database.PhotoRelationReader
+
 	// repo serves the native photos table for both GET and write endpoints.
 	// May be nil in tests that do not exercise the native paths.
 	repo database.PhotoWriter
@@ -145,6 +151,16 @@ func (h *PhotosHandler) RefreshReader() {
 // trailing block (keywords, panorama, scan, quality, time_zone,
 // taken_at_offset, exif_*) carries the metadata gap-fix fields added in
 // migration 036.
+// The migration-export fields (file_path .. archived_at, plus the `exif`
+// blob and the nullable coordinates) were added so an external importer can
+// reconstruct a photo row faithfully. They are additive: every field the UI
+// already read keeps its name and type.
+//
+// Lat/Lng/Altitude are pointers, and that IS a wire change — they used to
+// serialise as 0.0 when the column was NULL, which made "no GPS" and "on the
+// equator at the prime meridian" the same value. They now serialise as null.
+// Nothing in the frontend reads them (the map is fed by /photos/geo-points),
+// so this fixes the ambiguity without changing any rendered behaviour.
 type PhotoResponse struct {
 	UID           string   `json:"uid"`
 	Title         string   `json:"title"`
@@ -156,8 +172,8 @@ type PhotoResponse struct {
 	Hash          string   `json:"hash"`
 	Width         int      `json:"width"`
 	Height        int      `json:"height"`
-	Lat           float64  `json:"lat"`
-	Lng           float64  `json:"lng"`
+	Lat           *float64 `json:"lat"`
+	Lng           *float64 `json:"lng"`
 	Country       string   `json:"country"`
 	Favorite      bool     `json:"favorite"`
 	Private       bool     `json:"private"`
@@ -176,6 +192,93 @@ type PhotoResponse struct {
 	ExifLicense   string   `json:"exif_license"`
 	ExifSoftware  string   `json:"exif_software"`
 	Edited        bool     `json:"edited"`
+
+	// --- Full-fidelity export fields ---
+
+	FilePath        string         `json:"file_path"`
+	FileSize        int64          `json:"file_size"`
+	FileMime        string         `json:"file_mime"`
+	FileOrientation int            `json:"file_orientation"`
+	TakenAtSource   string         `json:"taken_at_source"`
+	Notes           string         `json:"notes"`
+	Altitude        *float64       `json:"altitude"`
+	CameraMake      string         `json:"camera_make"`
+	LensModel       string         `json:"lens_model"`
+	ISO             *int           `json:"iso"`
+	Aperture        *float64       `json:"aperture"`
+	Exposure        string         `json:"exposure"`
+	FocalLength     *float64       `json:"focal_length"`
+	Exif            map[string]any `json:"exif"`
+	UploadedBy      string         `json:"uploaded_by"`
+	ArchivedAt      *string        `json:"archived_at"`
+	CreatedAt       string         `json:"created_at"`
+	// UpdatedAt is the value a client feeds back as `updated_since` on its
+	// next incremental sweep, so it must be on the wire for the filter to be
+	// usable at all.
+	UpdatedAt string `json:"updated_at"`
+
+	// --- ?include= expansions ---
+	//
+	// These are POINTERS to slices, not slices, and that is deliberate.
+	// `omitempty` on a plain slice omits it when it is empty — which would
+	// make "you asked for labels and this photo has none" indistinguishable
+	// from "you did not ask for labels". An importer must be able to tell
+	// those apart: the first means "clear the local labels", the second means
+	// "leave them alone".
+	//
+	// With a pointer, omitempty keys off nil-ness instead, giving three
+	// distinct wire states:
+	//
+	//	field absent  -> not requested
+	//	"labels": []  -> requested, photo has none
+	//	"labels": [..]-> requested, photo has these
+
+	Labels  *[]PhotoLabelResponse  `json:"labels,omitempty"`
+	Albums  *[]PhotoAlbumResponse  `json:"albums,omitempty"`
+	Markers *[]PhotoMarkerResponse `json:"markers,omitempty"`
+	Files   *[]PhotoFileResponse   `json:"files,omitempty"`
+}
+
+// PhotoLabelResponse is a label attached to a photo, with the provenance
+// columns from the photo_labels join row.
+type PhotoLabelResponse struct {
+	UID         string `json:"uid"`
+	Name        string `json:"name"`
+	Source      string `json:"source"`
+	Uncertainty int    `json:"uncertainty"`
+}
+
+// PhotoAlbumResponse is a slim album reference for the ?include=albums view.
+type PhotoAlbumResponse struct {
+	UID   string `json:"uid"`
+	Title string `json:"title"`
+}
+
+// PhotoMarkerResponse is a face/label marker. Unlike the /photos/{uid}/faces
+// view it carries subject_uid, so marker→person identity can be rebuilt
+// without matching on display names.
+type PhotoMarkerResponse struct {
+	UID        string  `json:"uid"`
+	SubjectUID string  `json:"subject_uid"`
+	Type       string  `json:"type"`
+	X          float64 `json:"x"`
+	Y          float64 `json:"y"`
+	W          float64 `json:"w"`
+	H          float64 `json:"h"`
+	Score      int     `json:"score"`
+	Invalid    bool    `json:"invalid"`
+	Reviewed   bool    `json:"reviewed"`
+}
+
+// PhotoFileResponse is one entry of a photo's physical file stack (original
+// plus any RAW/JPEG sidecars and edited variants).
+type PhotoFileResponse struct {
+	FilePath  string `json:"file_path"`
+	FileHash  string `json:"file_hash"`
+	FileSize  int64  `json:"file_size"`
+	FileMime  string `json:"file_mime"`
+	IsPrimary bool   `json:"is_primary"`
+	Role      string `json:"role"`
 }
 
 // PhotoListResponse is the envelope returned by List.
@@ -184,6 +287,10 @@ type PhotoListResponse struct {
 	Total  int             `json:"total"`
 	Limit  int             `json:"limit"`
 	Offset int             `json:"offset"`
+	// NextCursor is set only for sort=updated, and only when the page came
+	// back full — i.e. when there may be more rows. An empty value means the
+	// walk is done. Clients echo it back as ?cursor= to resume.
+	NextCursor string `json:"next_cursor,omitempty"`
 }
 
 // requirePhotoReader returns the configured PhotoReader; on missing
@@ -270,6 +377,12 @@ func parsePhotoFilter(w http.ResponseWriter, r *http.Request) (database.PhotoFil
 	}
 	filter.TakenFrom, filter.TakenTo = from, to
 
+	since, ok := parseUpdatedSince(w, q.Get("updated_since"))
+	if !ok {
+		return filter, false
+	}
+	filter.UpdatedSince = since
+
 	box, ok := parseBBox(w, q)
 	if !ok {
 		return filter, false
@@ -283,6 +396,21 @@ func parsePhotoFilter(w http.ResponseWriter, r *http.Request) (database.PhotoFil
 	filter.Limit, filter.Offset = limit, offset
 
 	return filter, true
+}
+
+// parseUpdatedSince parses the RFC3339 `updated_since` filter. An empty
+// string yields (nil, true) — no filter. On a malformed timestamp it writes
+// the error response and returns ok=false.
+func parseUpdatedSince(w http.ResponseWriter, raw string) (*time.Time, bool) {
+	if raw == "" {
+		return nil, true
+	}
+	t, err := time.Parse(time.RFC3339, raw)
+	if err != nil {
+		respondError(w, http.StatusBadRequest, "invalid updated_since")
+		return nil, false
+	}
+	return &t, true
 }
 
 func parseTakenRange(w http.ResponseWriter, fromStr, toStr string) (*time.Time, *time.Time, bool) {
@@ -370,13 +498,6 @@ func nativePhotoToResponse(p database.Photo) PhotoResponse {
 		takenAtStr = p.TakenAt.UTC().Format(time.RFC3339)
 		year, month, day = p.TakenAt.Year(), int(p.TakenAt.Month()), p.TakenAt.Day()
 	}
-	lat, lng := 0.0, 0.0
-	if p.Lat != nil {
-		lat = *p.Lat
-	}
-	if p.Lng != nil {
-		lng = *p.Lng
-	}
 	keywords := p.Keywords
 	if keywords == nil {
 		// A photo with no keywords renders as `"keywords": []` rather than
@@ -384,7 +505,7 @@ func nativePhotoToResponse(p database.Photo) PhotoResponse {
 		// already expect.
 		keywords = []string{}
 	}
-	return PhotoResponse{
+	resp := PhotoResponse{
 		UID:           p.UID,
 		Title:         p.Title,
 		Description:   p.Description,
@@ -395,8 +516,8 @@ func nativePhotoToResponse(p database.Photo) PhotoResponse {
 		Hash:          p.FileHash,
 		Width:         p.FileWidth,
 		Height:        p.FileHeight,
-		Lat:           lat,
-		Lng:           lng,
+		Lat:           p.Lat,
+		Lng:           p.Lng,
 		Favorite:      p.Favorite,
 		Private:       p.Private,
 		Type:          photoTypeFromMime(p.FileMime),
@@ -414,6 +535,90 @@ func nativePhotoToResponse(p database.Photo) PhotoResponse {
 		ExifLicense:   p.ExifLicense,
 		ExifSoftware:  p.ExifSoftware,
 	}
+	fillExportFields(&resp, p)
+	return resp
+}
+
+// fillExportFields copies the full-fidelity columns — the ones the old
+// PhotoPrism-shaped response dropped — onto the wire struct. Split out of
+// nativePhotoToResponse purely to keep that function inside the funlen
+// budget; there is no behavioural seam here.
+func fillExportFields(resp *PhotoResponse, p database.Photo) {
+	exif := p.Exif
+	if exif == nil {
+		exif = map[string]any{}
+	}
+	var archivedAt *string
+	if p.ArchivedAt != nil {
+		s := p.ArchivedAt.UTC().Format(time.RFC3339)
+		archivedAt = &s
+	}
+
+	resp.FilePath = p.FilePath
+	resp.FileSize = p.FileSize
+	resp.FileMime = p.FileMime
+	resp.FileOrientation = p.FileOrientation
+	resp.TakenAtSource = p.TakenAtSource
+	resp.Notes = p.Notes
+	resp.Altitude = p.Altitude
+	resp.CameraMake = p.CameraMake
+	resp.LensModel = p.LensModel
+	resp.ISO = p.ISO
+	resp.Aperture = p.Aperture
+	resp.Exposure = p.Exposure
+	resp.FocalLength = p.FocalLength
+	resp.Exif = exif
+	resp.UploadedBy = p.UploadedBy
+	resp.ArchivedAt = archivedAt
+	resp.CreatedAt = p.CreatedAt.UTC().Format(time.RFC3339)
+	resp.UpdatedAt = p.UpdatedAt.UTC().Format(time.RFC3339)
+}
+
+// attachRelations copies the expanded relations for one photo onto its wire
+// response. A nil slice in rel (the relation was not requested) leaves the
+// corresponding pointer nil so the field is omitted entirely; a non-nil
+// slice — even an empty one — is published, rendering as [].
+func attachRelations(resp *PhotoResponse, rel *database.PhotoRelations) {
+	if rel == nil {
+		return
+	}
+	if rel.Labels != nil {
+		out := make([]PhotoLabelResponse, 0, len(rel.Labels))
+		for _, l := range rel.Labels {
+			out = append(out, PhotoLabelResponse{
+				UID: l.UID, Name: l.Name, Source: l.Source, Uncertainty: l.Uncertainty,
+			})
+		}
+		resp.Labels = &out
+	}
+	if rel.Albums != nil {
+		out := make([]PhotoAlbumResponse, 0, len(rel.Albums))
+		for _, a := range rel.Albums {
+			out = append(out, PhotoAlbumResponse{UID: a.UID, Title: a.Title})
+		}
+		resp.Albums = &out
+	}
+	if rel.Markers != nil {
+		out := make([]PhotoMarkerResponse, 0, len(rel.Markers))
+		for _, m := range rel.Markers {
+			out = append(out, PhotoMarkerResponse{
+				UID: m.UID, SubjectUID: m.SubjectUID, Type: m.Type,
+				X: m.X, Y: m.Y, W: m.W, H: m.H,
+				Score: m.Score, Invalid: m.Invalid, Reviewed: m.Reviewed,
+			})
+		}
+		resp.Markers = &out
+	}
+	if rel.Files != nil {
+		out := make([]PhotoFileResponse, 0, len(rel.Files))
+		for _, f := range rel.Files {
+			out = append(out, PhotoFileResponse{
+				FilePath: f.FilePath, FileHash: f.FileHash, FileSize: f.FileSize,
+				FileMime: f.FileMime, IsPrimary: f.IsPrimary, Role: f.Role,
+			})
+		}
+		resp.Files = &out
+	}
 }
 
 // photoTypeFromMime returns a coarse media type ("image" / "video") that
@@ -428,12 +633,25 @@ func photoTypeFromMime(mime string) string {
 }
 
 // List returns photos filtered + paginated from the native photos table.
+//
+// Beyond the UI's filters it serves the migration export: `sort=updated` plus
+// an opaque `cursor` walks the whole library resumably, `updated_since`
+// narrows the walk to what changed, and `include=` expands each photo with
+// its labels / albums / markers / files.
 func (h *PhotosHandler) List(w http.ResponseWriter, r *http.Request) {
 	reader := h.requirePhotoReader(w)
 	if reader == nil {
 		return
 	}
 	filter, ok := parsePhotoFilter(w, r)
+	if !ok {
+		return
+	}
+	q := r.URL.Query()
+	if !applyCursorParam(w, q.Get("cursor"), &filter) {
+		return
+	}
+	include, ok := parseInclude(w, q.Get("include"))
 	if !ok {
 		return
 	}
@@ -446,16 +664,20 @@ func (h *PhotosHandler) List(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response := PhotoListResponse{
-		Photos: make([]PhotoResponse, 0, len(photos)),
-		Total:  total,
-		Limit:  filter.Limit,
-		Offset: filter.Offset,
+		Photos:     make([]PhotoResponse, 0, len(photos)),
+		Total:      total,
+		Limit:      filter.Limit,
+		Offset:     filter.Offset,
+		NextCursor: nextCursorFor(photos, filter),
 	}
 	if response.Limit == 0 {
 		response.Limit = constants.DefaultHandlerPageSize
 	}
 	for i := range photos {
 		response.Photos = append(response.Photos, nativePhotoToResponse(photos[i]))
+	}
+	if !h.expandRelations(r.Context(), w, photos, response.Photos, include) {
+		return
 	}
 	respondJSON(w, http.StatusOK, response)
 }
@@ -490,9 +712,22 @@ func (h *PhotosHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	include, ok := parseInclude(w, r.URL.Query().Get("include"))
+	if !ok {
+		return
+	}
+
 	response := nativePhotoToResponse(*photo)
 	response.Edited = h.photoHasEdits(r.Context(), uid)
-	respondJSON(w, http.StatusOK, response)
+
+	// Reuse the page-oriented expansion for the single-photo case: one photo
+	// is just a page of length 1, and sharing the path keeps the two views
+	// from drifting apart.
+	responses := []PhotoResponse{response}
+	if !h.expandRelations(r.Context(), w, []database.Photo{*photo}, responses, include) {
+		return
+	}
+	respondJSON(w, http.StatusOK, responses[0])
 }
 
 // photoHasEdits checks whether a photo has stored non-destructive edits.

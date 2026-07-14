@@ -30,6 +30,23 @@ type Server struct {
 	metrics        *metrics.Registry
 }
 
+// enableAPITokenAuth attaches the api_tokens store to the session manager so
+// `Authorization: Bearer psat_...` credentials authenticate.
+//
+// The store is resolved from the provider registry rather than threaded
+// through NewServer's signature, mirroring how the audit writer is wired. When
+// it is unavailable (a partial test wiring, or a very early boot), API-token
+// auth is simply off — session auth is unaffected, and a token presented
+// against such a server gets a 401 rather than a crash.
+func enableAPITokenAuth(sessionManager *middleware.SessionManager) {
+	tokens, err := database.GetAPITokenWriter(context.Background())
+	if err != nil {
+		log.Printf("api tokens: store unavailable: %v (bearer API tokens disabled)", err)
+		return
+	}
+	sessionManager.SetAPITokenStore(tokens)
+}
+
 // NewServer creates a new web server.
 // mcpHandler is optional — pass nil to disable MCP endpoints.
 // metricsReg is optional — pass nil to skip /metrics + HTTP instrumentation
@@ -46,6 +63,7 @@ func NewServer(
 
 	// Create session manager with optional persistence.
 	sessionManager := middleware.NewSessionManager(sessionSecret, sessionRepo)
+	enableAPITokenAuth(sessionManager)
 
 	// Resolve the audit writer once at server boot. When the writer is
 	// not yet registered (e.g. very early in startup or in tests that

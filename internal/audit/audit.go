@@ -126,6 +126,13 @@ const (
 	// Text operations that mutate the database.
 	ActionTextCheckSave     = "text_check_save"
 	ActionTextVersionRestor = "text_version_restore"
+
+	// Long-lived read-only API tokens (migration export clients). Minting
+	// and revoking a credential is exactly the kind of privileged act the
+	// audit trail exists for; the token's *use* is not logged, since a
+	// read-only export would otherwise write one audit row per photo.
+	ActionAPITokenCreate = "api_token_create"
+	ActionAPITokenRevoke = "api_token_revoke"
 )
 
 // Entity type constants.
@@ -143,6 +150,7 @@ const (
 	EntityProcessJob = "process_job"
 	EntitySortJob    = "sort_job"
 	EntityBookExport = "book_export"
+	EntityAPIToken   = "api_token"
 )
 
 // Logger wraps the database AuditLogWriter and the optional request
