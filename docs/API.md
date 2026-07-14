@@ -15,6 +15,7 @@ This document describes all REST API endpoints for the photo-sorter web server. 
 - [Labels](#labels)
 - [Subjects (People)](#subjects-people)
 - [Face Matching](#face-matching)
+- [Vectors (Migration Export)](#vectors-migration-export)
 - [Sort (AI Analysis)](#sort-ai-analysis)
 - [Process (Embeddings & Faces)](#process-embeddings--faces)
 - [Upload](#upload)
@@ -34,7 +35,7 @@ This document describes all REST API endpoints for the photo-sorter web server. 
 
 | Mechanism | Endpoints | Notes |
 |-----------|-----------|-------|
-| Anonymous (no cookie) | `/health`, `/public/share/{slug}/*` | Public share endpoints layer their own per-share `share_<slug>` HttpOnly cookie set by `POST /public/share/{slug}/verify`; the verify endpoint is rate-limited to 10 attempts per (IP, slug) per 5 minutes (`429` + `Retry-After`). |
+| Anonymous (no cookie) | `/health`, `/public/share/{slug}/*` | Public share endpoints layer their own per-share `share_<slug>` HttpOnly cookie set by `POST /public/share/{slug}/verify`; the verify endpoint is rate-limited to 10 attempts per (IP, slug) per 5 minutes (`429` + `Retry-After`). The vector feeds are **never** reachable this way — see [Vectors](#vectors-migration-export). |
 | Authenticated (any role) | most `/api/v1/*` reads, `/me`, `/me/password`, smart-album listing, photo similarity, text AI | Requires the `session` cookie. |
 | Write access (`admin` or `editor`) | every mutating CRUD endpoint outside the admin-only set (albums, photos, labels, books, smart albums, share-link create/revoke, EXIF/edits, ...) | `auth.HasWriteAccess` — `viewer` gets `403 forbidden`. |
 | Admin only | `/users/*`, `/audit-log`, `/photos/batch/purge`, `/process/build-thumbs` | `middleware.RequireRole(auth.RoleAdmin)` — non-admins get `403 forbidden`. The last admin cannot be deleted, disabled, or demoted (`400 last admin`). |
@@ -2007,6 +2008,12 @@ GET /photos/{uid}/faces
 |-----------|------|---------|-------------|
 | `threshold` | float | 0.5 | Similarity threshold for suggestions |
 | `limit` | int | 5 | Max suggestions per face |
+| `include_embeddings` | bool | `false` | Add each face's 512-dim vector (plus `model` and `dim`) to the response — the spot-check twin of the bulk [`GET /faces`](#face-vector-feed-get-faces) feed |
+| `encoding` | `json` \| `base64` | `json` | Encoding of the vectors added by `include_embeddings`. See [Vector encodings](#vector-encodings) |
+
+`include_embeddings` and `encoding` are **strict**: an unparseable value is a
+400, not a silent fallback. The UI's default response is unchanged — it never
+asks for the vectors, and so never pays for 512 floats per face.
 
 **Response (200):**
 ```json
@@ -2063,9 +2070,23 @@ GET /photos/{uid}/faces
 
 **Notes:**
 - `face_index >= 0`: Face from embeddings database
-- `face_index < 0`: Unmatched marker (no embedding stored; always has empty suggestions)
+- `face_index < 0`: Unmatched marker (no embedding stored; always has empty suggestions — and, with `include_embeddings=true`, no vector either, since there is none to report)
 - `embeddings_count` vs `markers_count` surfaces discrepancies
 - Suggestions use a fallback mechanism: if the `threshold` yields fewer than `limit` results, a wider search (max cosine distance 2.0) fills remaining slots so faces with embeddings always get suggestions when named people exist in the database
+
+With `include_embeddings=true`, each `face_index >= 0` entry additionally
+carries `model`, `dim`, and one of `embedding` / `embedding_b64`:
+
+```json
+{
+  "face_index": 0,
+  "bbox": [100, 50, 300, 280],
+  "det_score": 0.95,
+  "model": "buffalo_l",
+  "dim": 512,
+  "embedding": [0.0123, -0.0456, "… 512 floats"]
+}
+```
 
 ### Compute Faces for Photo
 
@@ -2087,6 +2108,181 @@ POST /photos/{uid}/faces/compute
 **Note:** Use the Process page in the web UI to compute embeddings and detect faces for multiple photos. This endpoint is for single-photo computation.
 
 ---
+
+## Vectors (Migration Export)
+
+The 768-dim CLIP photo embeddings and the 512-dim face vectors are the only
+part of the library that cannot be cheaply recreated — re-running inference
+over 20k photos and 112k faces is hours of GPU time. These three read-only
+endpoints hand them over verbatim so a client (Kukátko) can migrate the whole
+library over HTTP without re-deriving a single vector.
+
+**Auth.** Read-only, and **never anonymous** — the vectors are the whole
+library's fingerprint. Any authenticated principal may read them; the intended
+credential is the long-lived read-only [`psat_` API token](#api-tokens), which
+a session cannot outlive. They are deliberately absent from every
+`/public/share/*` route.
+
+### Photo embedding feed (`GET /embeddings`)
+
+Keyset-paginated feed of every row in the `embeddings` table, ordered by
+`photo_uid`, so an interrupted export resumes exactly where it stopped.
+
+```
+GET /embeddings?after=<photo_uid>&limit=100&encoding=json
+```
+
+**Query Parameters:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `after` | string | - | Resume position: the `photo_uid` of the last row you received. Omit to start at the beginning. |
+| `limit` | int | 100 | Rows per page. Clamped to **500** — see [page-size caps](#page-size-caps). A non-numeric value is a 400. |
+| `encoding` | `json` \| `base64` | `json` | Vector encoding — see [Vector encodings](#vector-encodings). An unknown value is a 400. |
+
+**Response (200):**
+```json
+{
+  "embeddings": [
+    {
+      "photo_uid": "pq8abc123",
+      "model": "ViT-L-14",
+      "pretrained": "laion2b_s32b_b82k",
+      "dim": 768,
+      "created_at": "2024-06-01T12:00:00Z",
+      "embedding": [0.0123, -0.0456, "… 768 floats"]
+    }
+  ],
+  "total": 20092,
+  "limit": 100,
+  "encoding": "json",
+  "next_after": "pq8abc123"
+}
+```
+
+- `next_after` is the value to echo back as `?after=` for the next page, and is
+  **`null` when the walk is complete**. It is minted only when the page came
+  back full, measured against the *effective* (clamped) limit.
+- `total` ignores `after`, so it stays a usable progress denominator for the
+  whole export.
+- `model` / `pretrained` / `dim` ride along on **every row** on purpose: an
+  importer must be able to prove the vectors it stores came from the same model
+  it will later query with, and refuse the import when they do not match.
+
+```bash
+# Walk every embedding, compact encoding, into NDJSON.
+AFTER=""
+while :; do
+  RESP=$(curl -s -H "Authorization: Bearer $PHOTO_SORTER_TOKEN" \
+    "http://localhost:8080/api/v1/embeddings?limit=500&encoding=base64&after=$AFTER")
+  echo "$RESP" | jq -c '.embeddings[]' >> embeddings.ndjson
+  AFTER=$(echo "$RESP" | jq -r '.next_after // empty')
+  [ -z "$AFTER" ] && break
+done
+```
+
+### Face vector feed (`GET /faces`)
+
+The `faces` rows verbatim — vector plus bbox, detection score, and the
+marker/subject linkage that rebuilds person identity on the far side.
+Keyset-paginated by the table's `BIGSERIAL` id.
+
+```
+GET /faces?after=<id>&limit=200&encoding=json
+```
+
+**Query Parameters:**
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `after` | int | 0 | Resume position: the `id` of the last row you received. Must be >= 0; anything else is a 400. |
+| `limit` | int | 200 | Rows per page. Clamped to **1000**. |
+| `encoding` | `json` \| `base64` | `json` | Vector encoding. |
+
+**Response (200):**
+```json
+{
+  "faces": [
+    {
+      "id": 4711,
+      "photo_uid": "pq8abc123",
+      "face_index": 0,
+      "model": "buffalo_l",
+      "dim": 512,
+      "bbox": [100, 50, 300, 280],
+      "det_score": 0.95,
+      "marker_uid": "mq8marker1",
+      "subject_uid": "sq8xyz123",
+      "subject_name": "Jan Novák",
+      "photo_width": 4000,
+      "photo_height": 3000,
+      "orientation": 1,
+      "file_uid": "fq8xyz789",
+      "created_at": "2024-06-01T12:00:00Z",
+      "embedding": [0.0123, -0.0456, "… 512 floats"]
+    }
+  ],
+  "total": 112806,
+  "limit": 200,
+  "encoding": "json",
+  "next_after": 4711
+}
+```
+
+`next_after` behaves exactly as on the embedding feed (`null` = walk complete).
+There is no `pretrained` field: unlike `embeddings`, the `faces` table stores
+no such column — the detector is identified by `model` + `dim` alone.
+
+### Get a single photo's embedding
+
+The spot check: one photo's vector, for diffing an import against the source
+without walking the feed.
+
+```
+GET /photos/{uid}/embedding?encoding=json
+```
+
+**Response (200):** a single embedding object, identical in shape to one
+element of the feed's `embeddings[]` array.
+
+**Response (404):** the photo has no embedding. This is deliberately *not* an
+empty vector — "not embedded yet" and "embedded to all zeros" must not look
+alike to an importer.
+
+The face-side equivalent is
+[`GET /photos/{uid}/faces?include_embeddings=true`](#get-faces-in-photo).
+
+### Vector encodings
+
+| `encoding` | Field | Size (768-dim) | Notes |
+|------------|-------|----------------|-------|
+| `json` (default) | `embedding` | ≈9 KB | JSON array of numbers. Each float32 is printed with the shortest decimal that reparses **as a float32** — lossless, as long as the client parses into float32 (not float64). |
+| `base64` | `embedding_b64` | ≈4 KB | Base64 (standard alphabet, padded) of the vector's **little-endian IEEE-754 float32** bytes: 4 bytes per component, no decimal conversion on either side. |
+
+Exactly one of the two fields is present in any given response. Bulk exporters
+should prefer `base64`; `json` stays the default because it is the form you can
+read in a terminal.
+
+```python
+# Decoding the compact form.
+import base64, struct
+raw = base64.b64decode(item["embedding_b64"])
+vec = list(struct.unpack("<%df" % (len(raw) // 4), raw))   # 768 float32s
+```
+
+### Page-size caps
+
+Payload size is the binding constraint: 112k faces × 512 floats is not
+something to hold in RAM or ship in one response. Both feeds therefore clamp
+`limit` server-side (they clamp rather than reject — the response's `limit`
+field always reports the size actually applied):
+
+| Feed | Default | Max | Max page ≈ (json / base64) |
+|------|---------|-----|----------------------------|
+| `GET /embeddings` | 100 | 500 | 4.5 MB / 2 MB |
+| `GET /faces` | 200 | 1000 | 6 MB / 2.7 MB |
+
+Because `next_after` is minted against the **clamped** limit, asking for
+`limit=100000` simply yields a 500-row page and a cursor — never a truncated
+export.
 
 ## Sort (AI Analysis)
 

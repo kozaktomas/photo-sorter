@@ -68,6 +68,40 @@ type FaceReader interface {
 	GetPhotoUIDsWithSubjectName(ctx context.Context, photoUIDs []string, subjectName string) (map[string]bool, error)
 }
 
+// EmbeddingExportReader walks the whole embeddings table in a stable,
+// resumable order for the migration export feed (GET /api/v1/embeddings).
+//
+// It is kept separate from EmbeddingReader — and embeds it rather than being
+// merged into it — so the in-memory fakes that implement EmbeddingReader
+// across the upload-pipeline tests do not all have to grow a method they never
+// call. Only the Postgres repository (and the shared mock) satisfy it.
+type EmbeddingExportReader interface {
+	EmbeddingReader
+
+	// ListEmbeddingsAfter returns the embeddings whose photo_uid sorts
+	// strictly after afterPhotoUID, ordered by photo_uid ascending, capped at
+	// ClampEmbeddingExportLimit(limit). An empty afterPhotoUID starts at the
+	// first row.
+	//
+	// photo_uid is the embeddings table's primary key, so the ordering is a
+	// total order and the keyset is exact: an interrupted export resumes with
+	// after=<last photo_uid> and sees every remaining row exactly once.
+	ListEmbeddingsAfter(ctx context.Context, afterPhotoUID string, limit int) ([]StoredEmbedding, error)
+}
+
+// FaceExportReader walks the whole faces table in a stable, resumable order
+// for the migration export feed (GET /api/v1/faces). Kept separate from
+// FaceReader for the same reason as EmbeddingExportReader.
+type FaceExportReader interface {
+	FaceReader
+
+	// ListFacesAfter returns the faces whose id is strictly greater than
+	// afterID, ordered by id ascending, capped at ClampFaceExportLimit(limit).
+	// An afterID of 0 starts at the first row (ids are BIGSERIAL, so they
+	// start at 1).
+	ListFacesAfter(ctx context.Context, afterID int64, limit int) ([]StoredFace, error)
+}
+
 // FaceWriter provides write access to face data.
 type FaceWriter interface {
 	FaceReader

@@ -4,6 +4,7 @@ package mock
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strings"
 	"sync"
 
@@ -174,6 +175,36 @@ func (m *MockEmbeddingReader) GetCentroid(ctx context.Context, photoUIDs []strin
 		centroid[i] /= n
 	}
 	return centroid, nil
+}
+
+// ListEmbeddingsAfter returns the embeddings whose photo UID sorts strictly
+// after afterPhotoUID, in photo-UID order, capped at the export limit. It
+// mirrors the Postgres keyset walk (see EmbeddingRepository.ListEmbeddingsAfter)
+// so a test can drive the export feed without standing up a database.
+func (m *MockEmbeddingReader) ListEmbeddingsAfter(
+	ctx context.Context, afterPhotoUID string, limit int,
+) ([]database.StoredEmbedding, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	uids := make([]string, 0, len(m.embeddings))
+	for uid := range m.embeddings {
+		if uid > afterPhotoUID {
+			uids = append(uids, uid)
+		}
+	}
+	sort.Strings(uids)
+
+	limit = database.ClampEmbeddingExportLimit(limit)
+	if len(uids) > limit {
+		uids = uids[:limit]
+	}
+
+	out := make([]database.StoredEmbedding, 0, len(uids))
+	for _, uid := range uids {
+		out = append(out, *m.embeddings[uid])
+	}
+	return out, nil
 }
 
 // MockFaceReader is a mock implementation of database.FaceReader.
@@ -427,6 +458,42 @@ func (m *MockFaceReader) GetFacesWithMarkerUID(ctx context.Context) ([]database.
 	}
 	return result, nil
 }
+
+// ListFacesAfter returns the faces whose ID is strictly greater than afterID,
+// in ID order, capped at the export limit — the in-memory twin of
+// FaceRepository.ListFacesAfter. Faces added without an explicit ID all share
+// ID 0 and therefore only surface at afterID = -1; tests that exercise the
+// export feed must set StoredFace.ID, exactly as Postgres does.
+func (m *MockFaceReader) ListFacesAfter(
+	ctx context.Context, afterID int64, limit int,
+) ([]database.StoredFace, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	var out []database.StoredFace
+	for _, faces := range m.faces {
+		for i := range faces {
+			if faces[i].ID > afterID {
+				out = append(out, faces[i])
+			}
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
+
+	limit = database.ClampFaceExportLimit(limit)
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
+// Compile-time checks that the mocks satisfy the export feeds' interfaces —
+// the handler tests depend on it, and a drifted signature should fail here
+// rather than in every test that uses them.
+var (
+	_ database.EmbeddingExportReader = (*MockEmbeddingReader)(nil)
+	_ database.FaceExportReader      = (*MockFaceReader)(nil)
+)
 
 // MockFaceWriter is a mock implementation of database.FaceWriter.
 type MockFaceWriter struct { //nolint:revive // Mock prefix is conventional for test doubles.

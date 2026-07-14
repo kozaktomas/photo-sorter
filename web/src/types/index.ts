@@ -429,6 +429,13 @@ export interface PhotoFace {
   marker_name?: string;
   action: MatchAction;
   suggestions: FaceSuggestion[];
+  // Present only when the request passes ?include_embeddings=true (the
+  // migration export path). The UI never asks for it — 512 floats per face is
+  // an order of magnitude more payload than the photo detail page needs.
+  model?: string;
+  dim?: number;
+  embedding?: number[]; // ?encoding=json (default)
+  embedding_b64?: string; // ?encoding=base64 — little-endian float32 bytes
 }
 
 export interface FaceSuggestion {

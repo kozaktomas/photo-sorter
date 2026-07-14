@@ -105,6 +105,37 @@ func GetFaceWriter(ctx context.Context) (FaceWriter, error) {
 	return postgresFaceWriter(), nil
 }
 
+// GetEmbeddingExportReader returns an EmbeddingExportReader from the
+// PostgreSQL backend. It reuses the registered EmbeddingReader constructor
+// (the Postgres repository implements both) and type-asserts, so a future
+// backend that forgets the export methods fails loudly at the call site rather
+// than silently serving an empty feed.
+func GetEmbeddingExportReader(ctx context.Context) (EmbeddingExportReader, error) {
+	reader, err := GetEmbeddingReader(ctx)
+	if err != nil {
+		return nil, err
+	}
+	exporter, ok := reader.(EmbeddingExportReader)
+	if !ok {
+		return nil, errors.New("registered EmbeddingReader does not implement EmbeddingExportReader")
+	}
+	return exporter, nil
+}
+
+// GetFaceExportReader returns a FaceExportReader from the PostgreSQL backend.
+// Same shape as GetEmbeddingExportReader.
+func GetFaceExportReader(ctx context.Context) (FaceExportReader, error) {
+	reader, err := GetFaceReader(ctx)
+	if err != nil {
+		return nil, err
+	}
+	exporter, ok := reader.(FaceExportReader)
+	if !ok {
+		return nil, errors.New("registered FaceReader does not implement FaceExportReader")
+	}
+	return exporter, nil
+}
+
 // RegisterEmbeddingWriter registers the EmbeddingWriter constructor.
 // Separate from RegisterPostgresBackend to avoid changing all existing callers.
 func RegisterEmbeddingWriter(writer func() EmbeddingWriter) {

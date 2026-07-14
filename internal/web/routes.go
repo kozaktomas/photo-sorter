@@ -126,6 +126,24 @@ func (s *Server) resolveSmartAlbumRepo() database.SmartAlbumWriter {
 	return r
 }
 
+// resolveVectorExportReaders best-effort-fetches the readers behind the
+// migration vector feeds (GET /embeddings, GET /faces). Either may come back
+// nil — the corresponding endpoint then surfaces a 503 rather than blocking
+// server startup, exactly like the other native backends here.
+func (s *Server) resolveVectorExportReaders() (database.EmbeddingExportReader, database.FaceExportReader) {
+	embeddings, err := database.GetEmbeddingExportReader(context.Background())
+	if err != nil {
+		log.Printf("vectors: embedding export reader unavailable: %v", err)
+		embeddings = nil
+	}
+	faces, err := database.GetFaceExportReader(context.Background())
+	if err != nil {
+		log.Printf("vectors: face export reader unavailable: %v", err)
+		faces = nil
+	}
+	return embeddings, faces
+}
+
 // resolveUserRepos best-effort-fetches the native UserReader and
 // UserWriter. Returns nils (and logs) when the registration is missing —
 // the auth handler then surfaces a 500 from login until the user store is
@@ -183,6 +201,8 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 	smartAlbumsHandler := handlers.NewSmartAlbumsHandler(s.config, sessionManager, smartAlbumRepo, photoRepo)
 	auditLogRepo := s.resolveAuditLogRepo()
 	auditLogHandler := handlers.NewAuditLogHandler(auditLogRepo)
+	embeddingExportRepo, faceExportRepo := s.resolveVectorExportReaders()
+	vectorsHandler := handlers.NewVectorsHandler(embeddingExportRepo, faceExportRepo)
 
 	// Health check (no auth required).
 	s.router.Get("/api/v1/health", handlers.HealthCheck)
@@ -269,6 +289,7 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 				r.Put("/photos/{uid}/edits", photosHandler.PutEdits)
 				r.Delete("/photos/{uid}/edits", photosHandler.DeleteEdits)
 				r.Get("/photos/{uid}/faces", facesHandler.GetPhotoFaces)
+				r.Get("/photos/{uid}/embedding", vectorsHandler.GetPhotoEmbedding)
 				r.Post("/photos/{uid}/faces/compute", facesHandler.ComputeFaces)
 				r.Get("/photos/{uid}/estimate-era", photosHandler.EstimateEra)
 				r.Get("/photos/{uid}/albums", albumsHandler.GetPhotoAlbums)
@@ -305,6 +326,14 @@ func (s *Server) setupRoutes(sessionManager *middleware.SessionManager) {
 				r.Post("/faces/match", facesHandler.Match)
 				r.Post("/faces/apply", facesHandler.Apply)
 				r.Post("/faces/outliers", facesHandler.FindOutliers)
+
+				// Migration export feeds: the raw CLIP photo embeddings and
+				// face vectors, keyset-paginated and read-only. They live
+				// inside this authenticated group on purpose — the read-only
+				// psat_ token is the intended credential, and the vectors are
+				// deliberately absent from every /public/share route.
+				r.Get("/embeddings", vectorsHandler.ListEmbeddings)
+				r.Get("/faces", vectorsHandler.ListFaces)
 
 				// Process (start/cancel/sync; progress stream is in the long group).
 				r.Post("/process", processHandler.Start)

@@ -676,6 +676,36 @@ func (r *FaceRepository) GetAllFaces(ctx context.Context) ([]database.StoredFace
 	return scanFaces(rows)
 }
 
+// ListFacesAfter returns the faces whose id is strictly greater than afterID,
+// ordered by id, capped at the export limit. It backs the keyset-paginated
+// migration feed (GET /api/v1/faces).
+//
+// id is the table's BIGSERIAL primary key, so the ordering is total and the
+// walk is exact — pass afterID = 0 to start, then the id of the last row of
+// each page to continue. GetAllFaces returns the same rows in the same order
+// but loads all 112k of them (≈230 MB of float32) into RAM; this is the form
+// an HTTP feed can serve.
+func (r *FaceRepository) ListFacesAfter(
+	ctx context.Context, afterID int64, limit int,
+) ([]database.StoredFace, error) {
+	query := `
+		SELECT id, photo_uid, face_index, embedding, bbox, det_score, model, dim, created_at,
+		       marker_uid, subject_uid, subject_name, photo_width, photo_height, orientation, file_uid
+		FROM faces
+		WHERE id > $1
+		ORDER BY id
+		LIMIT $2
+	`
+
+	rows, err := r.pool.Query(ctx, query, afterID, database.ClampFaceExportLimit(limit))
+	if err != nil {
+		return nil, fmt.Errorf("query faces after %d: %w", afterID, err)
+	}
+	defer rows.Close()
+
+	return scanFaces(rows)
+}
+
 // DeleteFacesByPhoto removes all faces and faces_processed records for a
 // photo. pgvector keeps the embedding index in sync automatically.
 // The returned slice is the list of deleted face IDs, retained on the
@@ -768,6 +798,7 @@ func (r *FaceRepository) GetPhotoUIDsWithSubjectName(
 
 // Compile-time interface checks.
 var (
-	_ database.FaceReader = (*FaceRepository)(nil)
-	_ database.FaceWriter = (*FaceRepository)(nil)
+	_ database.FaceReader       = (*FaceRepository)(nil)
+	_ database.FaceWriter       = (*FaceRepository)(nil)
+	_ database.FaceExportReader = (*FaceRepository)(nil)
 )

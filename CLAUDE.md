@@ -430,20 +430,30 @@ The `internal/database/` package provides storage for embeddings, faces data, ph
 
 **Similarity search:** Every cosine query runs in pgvector. `embeddings.embedding` (768-dim CLIP) and `faces.embedding` (512-dim ResNet100) each have an HNSW index with operator class `vector_cosine_ops` (migration `038_pgvector_hnsw_indexes.sql`). Each query opens a small read-only transaction, runs `SET LOCAL hnsw.ef_search = 100`, and issues `ORDER BY embedding <=> $1::vector`. The constant lives in `internal/database/postgres/embeddings.go`. pgvector keeps the index up to date on INSERT/UPDATE/DELETE; the app holds no in-memory vector data. See [`docs/similarity-search.md`](docs/similarity-search.md).
 
+**Vector export:** the vectors themselves are also readable over HTTP —
+`GET /embeddings` and `GET /faces` are keyset-paginated, read-only feeds of
+the two tables verbatim (see the API list below). Kukátko migrates this
+library over the API and would otherwise have to re-run inference on 20k
+photos / 112k faces. The keysets are the tables' primary keys
+(`embeddings.photo_uid`, `faces.id`), so an interrupted export resumes with
+`?after=`; page sizes are capped in `internal/database/vectors.go` and the
+same clamp is shared with the handler so "was the page full?" cannot drift.
+
 **Key files:**
 ```
 internal/database/
 ├── types.go            # StoredPhoto, StoredFace, ExportData, PhotoBook, BookChapter, BookSection, APIToken, RelationSet, Photo*Relation, etc.
 ├── cursor.go           # PhotoCursor + Encode/DecodePhotoCursor (opaque keyset token) and ClampPhotoLimit (shared by the repo and the handler so "was the page full?" cannot drift)
-├── repository.go       # FaceReader, FaceWriter, EmbeddingReader, BookReader, BookWriter, PhotoRelationReader, APITokenReader/Writer interfaces
+├── vectors.go          # Page-size caps + ClampEmbeddingExportLimit / ClampFaceExportLimit for the GET /embeddings + GET /faces vector feeds
+├── repository.go       # FaceReader, FaceWriter, EmbeddingReader, EmbeddingExportReader, FaceExportReader, BookReader, BookWriter, PhotoRelationReader, APITokenReader/Writer interfaces
 ├── provider.go         # Provider functions for getting readers/writers
 ├── cosine.go           # Cosine distance helper (used by face outlier ranking)
 ├── constants.go        # Shared constants (face size thresholds)
 └── postgres/           # PostgreSQL backend
     ├── postgres.go     # Connection pool management
     ├── migrations.go   # Auto-apply migrations on startup
-    ├── embeddings.go   # EmbeddingReader impl (pgvector, ef_search=100 + GetCentroid via AVG())
-    ├── faces.go        # FaceReader/FaceWriter impl (pgvector)
+    ├── embeddings.go   # EmbeddingReader impl (pgvector, ef_search=100 + GetCentroid via AVG()) + ListEmbeddingsAfter (keyset export feed)
+    ├── faces.go        # FaceReader/FaceWriter impl (pgvector) + ListFacesAfter (keyset export feed)
     ├── era_embeddings.go  # EraEmbeddingReader/Writer implementation
     ├── photos_relations.go # Bulk relation loaders for ?include= (one query per relation per page)
     ├── api_tokens.go   # APITokenRepository — mint/list/revoke + the auth hot path (ResolveAPIToken enforces revoked/expired in SQL)
@@ -560,7 +570,8 @@ Session cookies use `HttpOnly`, `SameSite=Strict`, and auto-detect `Secure` flag
 - `GET /api/v1/photos/{uid}/edits` - Get the stored non-destructive edit parameters (envelope `{ edits: <payload>|null }`).
 - `PUT /api/v1/photos/{uid}/edits` - Upsert non-destructive edits (`{ crop?: {x,y,w,h}, rotation: 0|90|180|270, brightness: -1..1, contrast: -1..1 }`). Validates ranges and rejects cropped output below 100×100 px. Synchronously invalidates + regenerates every cached thumbnail size from the post-edit pixels via `internal/imgedit` + `internal/thumb.GenerateSizesFromImage`. On HEIC/RAW originals without `heif-convert`/`dcraw`, rolls back the save and returns 503. `HasWriteAccess` required.
 - `DELETE /api/v1/photos/{uid}/edits` - Clear the edits row (revert-to-original); idempotent 204 even when no row existed. Rebuilds the thumbnail cache from the un-edited original. `HasWriteAccess` required.
-- `GET /api/v1/photos/{uid}/faces` - Get faces in a photo with suggestions
+- `GET /api/v1/photos/{uid}/faces` - Get faces in a photo with suggestions. `?include_embeddings=true` additionally returns each detected face's 512-dim vector plus `model`/`dim` (with `?encoding=json|base64`) — the spot-check twin of the bulk `GET /faces` feed. Both export params are strict (a bad value is a 400, never a silent fallback); the UI's default response is unchanged and never carries the vectors.
+- `GET /api/v1/photos/{uid}/embedding` - The photo's CLIP embedding (`{photo_uid, model, pretrained, dim, created_at, embedding|embedding_b64}`); `?encoding=json|base64`. 404 when the photo has no embedding — deliberately not a zero vector, so "not embedded yet" and "embedded to all zeros" cannot be confused.
 - `POST /api/v1/photos/{uid}/faces/compute` - Compute face embeddings for a photo
 - `GET /api/v1/photos/{uid}/estimate-era` - Estimate photo era from CLIP embeddings vs era centroids
 - `GET /api/v1/photos/{uid}/albums` - Get album memberships for a photo
@@ -589,6 +600,8 @@ Session cookies use `HttpOnly`, `SameSite=Strict`, and auto-detect `Secure` flag
 - `GET /api/v1/subjects` - List subjects (people)
 - `GET /api/v1/subjects/{uid}` - Get single subject
 - `PUT /api/v1/subjects/{uid}` - Update subject (rename, etc.)
+- `GET /api/v1/embeddings` - **Migration export feed.** Keyset-paginated feed of every photo embedding (`{photo_uid, model, pretrained, dim, created_at, embedding|embedding_b64}`), ordered by `photo_uid`. `?after=<photo_uid>` resumes an interrupted export; `?limit=` defaults to 100 and is clamped to 500; `?encoding=json|base64` picks the vector form (base64 = little-endian float32 bytes, ~half the size; both are bit-exact). Envelope `{embeddings, total, limit, encoding, next_after}` — `next_after` is `null` when the walk is done and is minted only on a full page, measured against the *clamped* limit. `total` ignores `after` so it stays a progress denominator. Read-only, authenticated (the `psat_` token is the intended credential), never anonymous.
+- `GET /api/v1/faces` - **Migration export feed.** The `faces` rows verbatim (`{id, photo_uid, face_index, model, dim, bbox, det_score, marker_uid, subject_uid, subject_name, photo_width, photo_height, orientation, file_uid, created_at, embedding|embedding_b64}`), keyset-paginated by the BIGSERIAL `id` (`?after=<id>`, must be ≥ 0). `?limit=` defaults to 200, clamped to 1000. Same `encoding` and envelope semantics as the embedding feed. There is no `pretrained` field — the `faces` table has no such column, so the detector is identified by `model` + `dim`. `marker_uid`/`subject_uid` are the point: they are what rebuilds person identity on import.
 - `POST /api/v1/faces/match` - Find photos matching a person's face
 - `POST /api/v1/faces/apply` - Apply face match (create/assign/unassign marker)
 - `POST /api/v1/faces/outliers` - Detect face outliers for a person
@@ -773,6 +786,7 @@ internal/web/handlers/
 ├── smart_albums.go                             # SmartAlbumsHandler: saved photo searches (CRUD + filter-replay listing)
 ├── photo_edits.go                              # PhotosHandler.GetEdits/PutEdits/DeleteEdits — non-destructive crop/rotate/brightness/contrast + thumb rebuild
 ├── photos_export.go                            # ?include= parsing + bulk relation expansion, keyset cursor parsing/minting for the migration export
+├── vectors.go                                  # VectorsHandler: GET /embeddings + GET /faces (keyset vector export feeds) + GET /photos/{uid}/embedding; the json/base64 float32 wire encodings live here and are reused by the per-photo faces variant
 ├── photos_browse.go                            # PhotosHandler.Histogram + GeoPoints for the Browse map + timeline
 ├── photos_exif.go                              # PhotosHandler.EditExif — taken_at/GPS/camera/lens edit + XMP sidecar write
 ├── photo_albums.go                             # PhotosHandler.GetPhotoAlbums for the photo detail page
@@ -871,6 +885,14 @@ album share links are minted at `POST /api/v1/albums/{uid}/share`
 sets a per-share `share_<slug>` HttpOnly cookie after `POST /verify`
 succeeds; `verify` is rate-limited to 10 attempts/IP/5min and returns
 429 + `Retry-After` once exceeded.
+
+The migration export surface is `GET /api/v1/photos` (`sort=updated` +
+`cursor` + `include=`), plus the two vector feeds `GET /api/v1/embeddings`
+and `GET /api/v1/faces` (keyset `?after=`, `?encoding=json|base64`) and
+their per-photo spot checks `GET /api/v1/photos/{uid}/embedding` and
+`GET /api/v1/photos/{uid}/faces?include_embeddings=true`. All of it is
+read-only and authenticated — the vectors in particular must never be
+exposed on a `/public/share/*` route.
 
 ## Documentation Requirements
 

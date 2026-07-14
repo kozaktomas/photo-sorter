@@ -18,6 +18,14 @@ operator class `vector_cosine_ops`, created by migration
 `038_pgvector_hnsw_indexes.sql`. The `era_embeddings` table is a small
 fixed set and does a plain sequential scan — no index needed.
 
+The `embeddings` and `faces` vectors are also readable over HTTP, verbatim:
+`GET /api/v1/embeddings` and `GET /api/v1/faces` are keyset-paginated,
+read-only export feeds (a migrating client would otherwise have to re-run
+inference over the whole library). They do **not** go through the HNSW index —
+they are ordered scans of the tables' primary keys — so they cost nothing in
+recall and nothing in index maintenance. See
+[`docs/API.md`](API.md#vectors-migration-export).
+
 ## Query shape
 
 Every cosine query in the app — both image (`EmbeddingRepository.FindSimilar`

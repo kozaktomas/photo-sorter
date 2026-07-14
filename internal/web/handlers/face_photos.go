@@ -24,15 +24,27 @@ type PhotoFacesResponse struct {
 }
 
 // PhotoFace represents a face in a photo with suggestions.
+//
+// Embedding / EmbeddingB64 / Model / Dim are populated only when the request
+// asks for ?include_embeddings=true — the UI never needs the 512 floats, and
+// sending them on every photo-detail page load would multiply the response by
+// an order of magnitude. Exactly one of the two vector fields is set, per the
+// ?encoding= parameter. Markers with no detected face behind them (the
+// negative-face_index rows appended by appendUnmatchedMarkers) have no vector
+// to report and leave all four fields absent.
 type PhotoFace struct {
-	FaceIndex   int              `json:"face_index"`
-	BBox        []float64        `json:"bbox"`
-	BBoxRel     []float64        `json:"bbox_rel"`
-	DetScore    float64          `json:"det_score"`
-	MarkerUID   string           `json:"marker_uid,omitempty"`
-	MarkerName  string           `json:"marker_name,omitempty"`
-	Action      MatchAction      `json:"action"`
-	Suggestions []FaceSuggestion `json:"suggestions"`
+	FaceIndex    int              `json:"face_index"`
+	BBox         []float64        `json:"bbox"`
+	BBoxRel      []float64        `json:"bbox_rel"`
+	DetScore     float64          `json:"det_score"`
+	MarkerUID    string           `json:"marker_uid,omitempty"`
+	MarkerName   string           `json:"marker_name,omitempty"`
+	Action       MatchAction      `json:"action"`
+	Suggestions  []FaceSuggestion `json:"suggestions"`
+	Model        string           `json:"model,omitempty"`
+	Dim          int              `json:"dim,omitempty"`
+	Embedding    []float32        `json:"embedding,omitempty"`
+	EmbeddingB64 string           `json:"embedding_b64,omitempty"`
 }
 
 // FaceSuggestion represents a suggested person for a face.
@@ -126,7 +138,7 @@ func applyMarkerMatch(
 func (h *FacesHandler) buildDBFaces(
 	ctx context.Context, dbFaces []database.StoredFace, markers []database.Marker,
 	width, height, orientation int, faceRepo database.FaceReader,
-	threshold float64, limit int, subjectMap map[string]database.Subject,
+	opts photoFacesOptions, subjectMap map[string]database.Subject,
 ) ([]PhotoFace, map[string]bool) {
 	faces := make([]PhotoFace, 0, len(dbFaces))
 	matchedMarkerUIDs := make(map[string]bool)
@@ -145,8 +157,13 @@ func (h *FacesHandler) buildDBFaces(
 		applyMarkerMatch(&face, displayBBox, markers, subjectMap, matchedMarkerUIDs)
 		face.Suggestions = h.findFaceSuggestions(
 			ctx, faceRepo, dbFace.Embedding,
-			threshold, limit, subjectMap, assignedNames,
+			opts.threshold, opts.limit, subjectMap, assignedNames,
 		)
+		if opts.includeEmbeddings {
+			face.Model = dbFace.Model
+			face.Dim = dbFace.Dim
+			applyVectorEncoding(opts.encoding, dbFace.Embedding, &face.Embedding, &face.EmbeddingB64)
+		}
 		faces = append(faces, face)
 	}
 	return faces, matchedMarkerUIDs
@@ -203,17 +220,53 @@ func countFaceMarkers(markers []database.Marker) int {
 	return count
 }
 
-// parsePhotoFacesParams extracts threshold and limit from query parameters.
-func parsePhotoFacesParams(r *http.Request) (float64, int) {
-	threshold := 0.5
+// photoFacesOptions bundles the query knobs of GET /photos/{uid}/faces: the
+// suggestion search parameters plus the opt-in vector export (the spot-check
+// twin of the bulk GET /faces feed).
+type photoFacesOptions struct {
+	threshold         float64
+	limit             int
+	includeEmbeddings bool
+	encoding          string
+}
+
+// parsePhotoFacesParams extracts the suggestion threshold/limit and the vector
+// export options from the query string.
+//
+// threshold and limit are tolerant (a garbage value falls back to the default)
+// because the UI has been sending them for years. include_embeddings and
+// encoding are strict — they are export parameters, and a client that
+// misspells one must not silently receive a response without the vectors it
+// asked for. On a rejected value the error response is already written and the
+// second return is false.
+func parsePhotoFacesParams(w http.ResponseWriter, r *http.Request) (photoFacesOptions, bool) {
+	opts := photoFacesOptions{
+		threshold: 0.5,
+		limit:     constants.DefaultFaceSuggestionLimit,
+		encoding:  vectorEncodingJSON,
+	}
 	if t, err := strconv.ParseFloat(r.URL.Query().Get("threshold"), 64); err == nil && t > 0 {
-		threshold = t
+		opts.threshold = t
 	}
-	limit := constants.DefaultFaceSuggestionLimit
 	if l, err := strconv.Atoi(r.URL.Query().Get("limit")); err == nil && l > 0 {
-		limit = l
+		opts.limit = l
 	}
-	return threshold, limit
+
+	if raw := r.URL.Query().Get("include_embeddings"); raw != "" {
+		include, err := strconv.ParseBool(raw)
+		if err != nil {
+			respondError(w, http.StatusBadRequest, "invalid include_embeddings (want true or false)")
+			return opts, false
+		}
+		opts.includeEmbeddings = include
+	}
+
+	encoding, ok := parseVectorEncoding(w, r)
+	if !ok {
+		return opts, false
+	}
+	opts.encoding = encoding
+	return opts, true
 }
 
 // fetchPhotoFacesData fetches faces, photo dimensions, markers, and subjects
@@ -269,7 +322,10 @@ func (h *FacesHandler) GetPhotoFaces(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	threshold, limit := parsePhotoFacesParams(r)
+	opts, ok := parsePhotoFacesParams(w, r)
+	if !ok {
+		return
+	}
 
 	dbFaces, fileInfo, markers, subjects, errMsg := fetchPhotoFacesData(
 		ctx, h.faceReader, h.photoReader, h.markerRepo, h.subjectRepo, photoUID,
@@ -282,7 +338,7 @@ func (h *FacesHandler) GetPhotoFaces(w http.ResponseWriter, r *http.Request) {
 	subjectMap := buildSubjectMap(subjects)
 	faces, matchedMarkerUIDs := h.buildDBFaces(ctx, dbFaces, markers,
 		fileInfo.Width, fileInfo.Height, fileInfo.Orientation,
-		h.faceReader, threshold, limit, subjectMap)
+		h.faceReader, opts, subjectMap)
 	faces = appendUnmatchedMarkers(faces, markers, matchedMarkerUIDs, subjectMap)
 	facesProcessed, _ := h.faceReader.IsFacesProcessed(ctx, photoUID)
 
