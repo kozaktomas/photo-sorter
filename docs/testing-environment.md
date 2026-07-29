@@ -187,6 +187,25 @@ you need them on `PATH`:
 The serve command logs a `WARN` line for each missing binary on startup so
 deployments fail loud, not silent.
 
+### PostgreSQL client tools
+
+`backup` / `db-export` shell out to `pg_dump` and `db-import` to
+`pg_restore` (`apt: postgresql-client-17`). `TestPgDump_subprocess` in
+`cmd/backup_test.go` exercises the real `pg_dump` binary against a
+throwaway `postgres:17-alpine` container, and silently skips itself when
+`pg_dump` or `docker` is missing from `PATH`.
+
+**The client must be version 17 or newer.** `pg_dump` refuses to dump a
+server newer than itself, so a version 16 client against the Postgres 17
+test container (and against production) aborts with `server version
+mismatch`. Ubuntu's stock client can lag behind — install
+`postgresql-client-17` from the [PGDG apt repository](https://apt.postgresql.org/)
+and make sure `/usr/lib/postgresql/17/bin` comes before `/usr/bin` on
+`PATH`, since `/usr/bin/pg_dump` is `pg_wrapper` and may resolve to an
+older versioned binary. The `test` job in `.github/workflows/test.yml`
+does exactly this and asserts the resolved major version, so CI fails
+loudly rather than skipping the test.
+
 ## Book Typography Fonts
 
 PDF export (the book exporter at `internal/latex/`) needs the book fonts

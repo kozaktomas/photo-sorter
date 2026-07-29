@@ -20,6 +20,46 @@ jobs:
           go-version: "1.26"
           cache: true
 
+      # TestPgDump_subprocess runs the real pg_dump against a postgres:17-alpine
+      # container (and production runs Postgres 17 too), but ubuntu-latest ships
+      # a version 16 client. pg_dump refuses to dump a server newer than itself,
+      # so the client has to be aligned to the server, not the other way around.
+      - name: Install PostgreSQL 17 client
+        run: |
+          set -euo pipefail
+          # The runner's bundled client is already a PGDG build, so the repo may
+          # be configured; only add it when 17 is not already installable, to
+          # avoid a duplicate-source list.
+          if ! apt-cache policy postgresql-client-17 2>/dev/null | grep -q 'Candidate: [0-9]'; then
+            sudo install -d /usr/share/postgresql-common/pgdg
+            sudo curl -fsSL -o /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc \
+              https://www.postgresql.org/media/keys/ACCC4CF8.asc
+            echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" \
+              | sudo tee /etc/apt/sources.list.d/pgdg.list > /dev/null
+            sudo apt-get update
+          fi
+          sudo apt-get install -y postgresql-client-17
+          # GITHUB_PATH prepends, so the versioned 17 binaries shadow /usr/bin's
+          # pg_wrapper (which resolves to the version 16 client) for every later
+          # step — that is what exec.LookPath("pg_dump") in the test picks up.
+          echo "/usr/lib/postgresql/17/bin" >> "$GITHUB_PATH"
+
+      # Fail loudly here rather than let TestPgDump_subprocess silently skip
+      # (binary missing from PATH) or fail (client older than the container).
+      - name: Verify PostgreSQL client version
+        run: |
+          set -euo pipefail
+          for bin in pg_dump pg_restore; do
+            resolved=$(command -v "$bin")
+            version=$("$bin" --version)
+            major=$(printf '%s\n' "$version" | awk '{print $3}' | cut -d. -f1)
+            echo "$bin -> $resolved ($version)"
+            if [ "$major" -lt 17 ]; then
+              echo "::error::$bin major version $major is older than the postgres:17 test server"
+              exit 1
+            fi
+          done
+
       - name: Download dependencies
         run: go mod download
 
