@@ -85,7 +85,12 @@ export function PhotoGrid({
     gridRef.current?.scrollToIndex({ index, behavior: 'smooth' });
   }, [focusedUid, photos]);
 
-  if (photos.length === 0) {
+  // Array.isArray rather than a bare length check: a caller that accidentally
+  // hands over an API envelope instead of the unwrapped list has an undefined
+  // .length, which would slip past `=== 0` and mount VirtuosoGrid over a
+  // non-array — computeItemKey then dereferences undefined and takes the whole
+  // page down with it.
+  if (!Array.isArray(photos) || photos.length === 0) {
     return (
       <div className="text-center py-12 text-slate-400">
         No photos found
